@@ -70,6 +70,17 @@ It emits `[n] Title (url)` headers followed by the page text, adds results whole
 until the character budget is reached (`maxChars: 12000` by default), and never
 truncates a source mid-sentence.
 
+To print a source list that matches the citations in the answer, ask which
+results were actually rendered rather than listing them all:
+
+```ts
+const results = await keenable.search("cerebras inference benchmarks");
+
+results.cited().forEach((result, index) => {
+  console.log(`[${index + 1}] ${result.title} - ${result.url}`);
+});
+```
+
 ## Read a full page
 
 ```ts
@@ -77,6 +88,7 @@ const page = await keenable.fetch("https://cerebras.ai/chip");
 
 console.log(page.title);
 console.log(page.content); // markdown, boilerplate stripped
+console.log(page.toContext()); // same citable block shape as search results
 ```
 
 ## Tool calling
@@ -100,7 +112,9 @@ for (const call of completion.choices[0].message.tool_calls ?? []) {
 ```
 
 `TOOLS` exposes `keenable_search` and `keenable_fetch`; `runToolCall` executes
-whichever the model picked and returns text ready for the `tool` message.
+whichever the model picked and returns text ready for the `tool` message. Both
+tools render the same numbered, citable block, so the model can cite a fetched
+page the way it cites a search result.
 
 ## Errors
 
@@ -122,7 +136,9 @@ All errors extend `KeenableError`:
 | `KEENABLE_API_URL` | `https://api.keenable.ai` | Override the API base URL |
 
 Both can also be passed to the constructor as `apiKey` and `baseUrl`, alongside
-`timeoutMs` and a custom `fetch`.
+`timeoutMs`, a custom `fetch`, and `clientSource`. Building an integration on
+top of this SDK? Set `clientSource: "Your Integration"` so your traffic is
+attributed to you rather than to the bare SDK.
 
 ## License
 

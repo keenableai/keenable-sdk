@@ -13,7 +13,13 @@
  * ```
  */
 
-export { DEFAULT_BASE_URL, Keenable, SearchResponse } from "./client.js";
+export {
+  DEFAULT_BASE_URL,
+  DEFAULT_CONTEXT_MAX_CHARS,
+  Keenable,
+  Page,
+  SearchResponse,
+} from "./client.js";
 export {
   KeenableAPIError,
   KeenableAuthError,
@@ -26,7 +32,6 @@ export { FETCH_TOOL, SEARCH_TOOL, TOOLS, runToolCall } from "./tools.js";
 export type { ToolDefinition } from "./tools.js";
 export type {
   KeenableOptions,
-  Page,
   SearchOptions,
   SearchResult,
   ToContextOptions,

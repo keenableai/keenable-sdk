@@ -40,6 +40,8 @@ completion = cerebras.chat.completions.create(
 
 print(completion.choices[0].message.content)
 
+# cited() reports the results that made it into the context, in the order the
+# model cites them, so this list cannot drift from the [n] markers it used.
 print("\nSources:")
-for index, result in enumerate(results, start=1):
+for index, result in enumerate(results.cited(), start=1):
     print(f"[{index}] {result.title} - {result.url}")

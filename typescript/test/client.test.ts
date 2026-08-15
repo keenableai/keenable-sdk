@@ -16,7 +16,7 @@ const SEARCH_BODY = {
       title: "How Cerebras works",
       url: "https://cerebras.ai/chip",
       description: "",
-      snippet: "The WSE keeps the whole model in on-chip memory.",
+      snippet: "The WSE keeps the whole model\nin on-chip memory.",
       published_at: "2026-05-31T23:57:19Z",
       acquired_at: "2026-07-24T01:32:23Z",
     },
@@ -38,11 +38,12 @@ const FETCH_BODY = {
 /** A client whose transport records requests and replays canned responses. */
 function mockClient(
   handler: (url: string, init: RequestInit) => Response,
-  options: { apiKey?: string } = {},
+  options: { apiKey?: string; clientSource?: string } = {},
 ) {
   const seen: Array<{ url: string; init: RequestInit }> = [];
   const client = new Keenable({
     apiKey: options.apiKey,
+    clientSource: options.clientSource,
     fetch: (async (input: RequestInfo | URL, init: RequestInit = {}) => {
       const url = String(input);
       seen.push({ url, init });
@@ -57,6 +58,10 @@ const json = (body: unknown, status = 200) =>
     status,
     headers: { "Content-Type": "application/json" },
   });
+
+/** Serve whichever endpoint was asked for. */
+const routed = (url: string) =>
+  url.includes("/v1/search") ? json(SEARCH_BODY) : json(FETCH_BODY);
 
 describe("search", () => {
   it("parses results and keeps snippet as the text field", async () => {
@@ -98,7 +103,18 @@ describe("search", () => {
     const headers = seen[0]?.init.headers as Record<string, string>;
     expect(headers["X-API-Key"]).toBeUndefined();
     // The public tier rejects requests without this header.
-    expect(headers["X-Keenable-Title"]).toBe("Keenable SDK (TypeScript)");
+    expect(headers["X-Keenable-Title"]).toBe("Keenable SDK");
+    expect(headers["Accept"]).toBe("application/json");
+  });
+
+  it("lets a wrapping integration set its own traffic source", async () => {
+    const { client, seen } = mockClient(() => json(SEARCH_BODY), {
+      clientSource: "Acme Agent",
+    });
+    await client.search("hello");
+
+    const headers = seen[0]?.init.headers as Record<string, string>;
+    expect(headers["X-Keenable-Title"]).toBe("Acme Agent");
   });
 
   it("switches to the keyed endpoint when an API key is set", async () => {
@@ -129,6 +145,9 @@ describe("toContext", () => {
       true,
     );
     expect(context).toContain("[2] MoE guide");
+    // Snippets are raw page text; their newlines would otherwise collide with
+    // the blank line that separates one source from the next.
+    expect(context).toContain("The WSE keeps the whole model in on-chip memory.");
 
     // A budget that only fits the first block drops the second one whole.
     const trimmed = response.toContext({ maxChars: 120 });
@@ -136,7 +155,20 @@ describe("toContext", () => {
     expect(trimmed).not.toContain("[2]");
     expect(trimmed.endsWith("memory.")).toBe(true);
 
-    expect(response.toContext({ maxResults: 1 })).not.toContain("[2]");
+    expect(response.toContext({ maxResults: 1 })).toBe(trimmed);
+  });
+
+  it("reports which results were rendered, in citation order", async () => {
+    const { client } = mockClient(() => json(SEARCH_BODY));
+    const response = await client.search("wafer scale engine");
+
+    expect(response.cited().map((r) => r.title)).toEqual([
+      "How Cerebras works",
+      "MoE guide",
+    ]);
+    expect(response.cited({ maxChars: 120 }).map((r) => r.title)).toEqual([
+      "How Cerebras works",
+    ]);
   });
 });
 
@@ -150,6 +182,18 @@ describe("fetch", () => {
     );
     expect(page.title).toBe("Example Domain");
     expect(page.content.startsWith("# Example Domain")).toBe(true);
+  });
+
+  it("renders a citable block like search results do", async () => {
+    const { client } = mockClient(() => json(FETCH_BODY));
+    const page = await client.fetch("https://example.com");
+
+    expect(page.toContext().startsWith("[1] Example Domain (https://example.com/)")).toBe(
+      true,
+    );
+    expect(page.toContext()).toContain("This domain is for use in examples.");
+    // One document, so an oversized page is cut rather than dropped entirely.
+    expect(page.toContext({ maxChars: 60 }).startsWith("[1] Example Domain")).toBe(true);
   });
 
   it.each([
@@ -195,9 +239,7 @@ describe("errors", () => {
 
 describe("runToolCall", () => {
   it("dispatches search and fetch, and rejects unknown tools", async () => {
-    const { client } = mockClient((url) =>
-      url.includes("/v1/search") ? json(SEARCH_BODY) : json(FETCH_BODY),
-    );
+    const { client, seen } = mockClient(routed);
 
     const searched = await runToolCall(
       client,
@@ -205,11 +247,13 @@ describe("runToolCall", () => {
       '{"query": "wafer scale", "site": "cerebras.ai"}',
     );
     expect(searched.startsWith("[1] How Cerebras works")).toBe(true);
+    expect(JSON.parse(String(seen[0]?.init.body)).site).toBe("cerebras.ai");
 
     const fetched = await runToolCall(client, "keenable_fetch", {
       url: "https://example.com",
     });
-    expect(fetched.startsWith("# Example Domain")).toBe(true);
+    // Both tools render the same citable shape, so a model can cite either.
+    expect(fetched.startsWith("[1] Example Domain (https://example.com/)")).toBe(true);
 
     await expect(runToolCall(client, "keenable_search", "not json")).rejects.toBeInstanceOf(
       KeenableInvalidRequestError,
@@ -217,5 +261,20 @@ describe("runToolCall", () => {
     await expect(runToolCall(client, "nope", "{}")).rejects.toBeInstanceOf(
       KeenableInvalidRequestError,
     );
+  });
+
+  it("forwards only the filters the schema offers the model", async () => {
+    const { client, seen } = mockClient(routed);
+    await runToolCall(client, "keenable_search", {
+      query: "q",
+      site: "cerebras.ai",
+      acquired_after: "2026-01-01",
+    });
+
+    const payload = JSON.parse(String(seen[0]?.init.body));
+    expect(payload.site).toBe("cerebras.ai");
+    // acquired_after is a real client filter but is not in the tool schema, so
+    // a model cannot reach past the subset it was offered.
+    expect(payload.acquired_after).toBeUndefined();
   });
 });

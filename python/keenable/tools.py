@@ -15,8 +15,9 @@ into a ``chat.completions.create(tools=...)`` call:
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Callable, NamedTuple
 
+from ._filters import tool_filter_kwargs, tool_properties
 from .client import AsyncKeenable, Keenable
 from .errors import KeenableInvalidRequestError
 
@@ -41,19 +42,8 @@ SEARCH_TOOL: dict[str, Any] = {
                         "rather than keywords."
                     ),
                 },
-                "site": {
-                    "type": "string",
-                    "description": (
-                        "Optional. Restrict results to one domain, e.g. 'arxiv.org'."
-                    ),
-                },
-                "published_after": {
-                    "type": "string",
-                    "description": (
-                        "Optional. Only pages published on or after this date "
-                        "(YYYY-MM-DD)."
-                    ),
-                },
+                # Only the filters marked tool-exposed; see ._filters.
+                **tool_properties(),
             },
             "required": ["query"],
         },
@@ -84,6 +74,15 @@ FETCH_TOOL: dict[str, Any] = {
 TOOLS: list[dict[str, Any]] = [SEARCH_TOOL, FETCH_TOOL]
 
 
+class _Call(NamedTuple):
+    """A resolved tool call: which client method to run, and how to render it."""
+
+    method: str
+    args: tuple[Any, ...]
+    kwargs: dict[str, Any]
+    render: Callable[[Any], str]
+
+
 def _parse_arguments(arguments: str | dict[str, Any]) -> dict[str, Any]:
     """Accept the model's raw JSON string or an already-decoded dict."""
     if isinstance(arguments, dict):
@@ -101,10 +100,34 @@ def _parse_arguments(arguments: str | dict[str, Any]) -> dict[str, Any]:
     return parsed
 
 
-def _search_kwargs(args: dict[str, Any]) -> dict[str, Any]:
-    """Keep only the arguments the tool schema exposes to the model."""
-    allowed = ("site", "published_after")
-    return {name: args[name] for name in allowed if args.get(name)}
+def _require_str(value: Any, message: str) -> str:
+    """Read a required string argument the model was supposed to supply."""
+    if not isinstance(value, str) or not value.strip():
+        raise KeenableInvalidRequestError(message)
+    return value
+
+
+def _plan(name: str, arguments: str | dict[str, Any]) -> _Call:
+    """Resolve a tool call into the client call it stands for.
+
+    Both entry points below share this, so sync and async cannot drift apart,
+    and a new tool is one branch rather than two.
+    """
+    args = _parse_arguments(arguments)
+
+    if name == "keenable_search":
+        query = _require_str(args.get("query"), "keenable_search needs a 'query'")
+        return _Call(
+            "search",
+            (query,),
+            tool_filter_kwargs(args),
+            lambda response: response.to_context(),
+        )
+    if name == "keenable_fetch":
+        url = _require_str(args.get("url"), "keenable_fetch needs a 'url'")
+        return _Call("fetch", (url,), {}, lambda page: page.to_context())
+
+    raise KeenableInvalidRequestError(f"unknown Keenable tool: {name!r}")
 
 
 def run_tool_call(
@@ -122,20 +145,11 @@ def run_tool_call(
             or an already-decoded dict.
 
     Returns:
-        Text ready to be attached to a ``role="tool"`` message.
+        Text ready to be attached to a ``role="tool"`` message, rendered as the
+        same numbered, citable block for both tools.
     """
-    args = _parse_arguments(arguments)
-    if name == "keenable_search":
-        query = args.get("query")
-        if not isinstance(query, str) or not query.strip():
-            raise KeenableInvalidRequestError("keenable_search needs a 'query'")
-        return client.search(query, **_search_kwargs(args)).to_context()
-    if name == "keenable_fetch":
-        url = args.get("url")
-        if not isinstance(url, str) or not url.strip():
-            raise KeenableInvalidRequestError("keenable_fetch needs a 'url'")
-        return client.fetch(url).content
-    raise KeenableInvalidRequestError(f"unknown Keenable tool: {name!r}")
+    call = _plan(name, arguments)
+    return call.render(getattr(client, call.method)(*call.args, **call.kwargs))
 
 
 async def arun_tool_call(
@@ -144,17 +158,5 @@ async def arun_tool_call(
     arguments: str | dict[str, Any],
 ) -> str:
     """Async counterpart of :func:`run_tool_call`."""
-    args = _parse_arguments(arguments)
-    if name == "keenable_search":
-        query = args.get("query")
-        if not isinstance(query, str) or not query.strip():
-            raise KeenableInvalidRequestError("keenable_search needs a 'query'")
-        response = await client.search(query, **_search_kwargs(args))
-        return response.to_context()
-    if name == "keenable_fetch":
-        url = args.get("url")
-        if not isinstance(url, str) or not url.strip():
-            raise KeenableInvalidRequestError("keenable_fetch needs a 'url'")
-        page = await client.fetch(url)
-        return page.content
-    raise KeenableInvalidRequestError(f"unknown Keenable tool: {name!r}")
+    call = _plan(name, arguments)
+    return call.render(await getattr(client, call.method)(*call.args, **call.kwargs))

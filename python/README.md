@@ -62,12 +62,23 @@ It emits `[1] Title (url)` headers followed by the page text, adds results whole
 until the character budget is reached (`max_chars=12000` by default), and never
 truncates a source mid-sentence.
 
+To print a source list that matches the citations in the answer, ask which
+results were actually rendered rather than listing them all:
+
+```python
+results = keenable.search("cerebras inference benchmarks")
+
+for index, result in enumerate(results.cited(), start=1):
+    print(f"[{index}] {result.title} - {result.url}")
+```
+
 ## Read a full page
 
 ```python
 page = keenable.fetch("https://cerebras.ai/chip")
 print(page.title)
-print(page.content)  # markdown, boilerplate stripped
+print(page.content)        # markdown, boilerplate stripped
+print(page.to_context())   # same citable block shape as search results
 ```
 
 ## Tool calling
@@ -94,7 +105,10 @@ for call in response.choices[0].message.tool_calls or []:
 ```
 
 `TOOLS` exposes `keenable_search` and `keenable_fetch`; `run_tool_call` executes
-whichever the model picked and returns text ready for the `tool` message.
+whichever the model picked and returns text ready for the `tool` message. Both
+tools render the same numbered, citable block, so the model can cite a fetched
+page the way it cites a search result. `arun_tool_call` is the async
+counterpart, for use with `AsyncKeenable`.
 
 ## Async
 
@@ -132,6 +146,11 @@ All errors subclass `KeenableError`:
 |---|---|---|
 | `KEENABLE_API_KEY` | unset | Lifts the hourly rate limit. Create one at [keenable.ai/console](https://keenable.ai/console) |
 | `KEENABLE_API_URL` | `https://api.keenable.ai` | Override the API base URL |
+
+Both can also be passed to the constructor as `api_key` and `base_url`, alongside
+`timeout` and `client_source`. Building an integration on top of this SDK? Set
+`client_source="Your Integration"` so your traffic is attributed to you rather
+than to the bare SDK.
 
 ## License
 

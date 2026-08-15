@@ -6,7 +6,32 @@ on:
   pull_request: {}
   workflow_dispatch: {}
 
+# A follow-up push supersedes the run in flight; without this its jobs keep
+# burning runner minutes on a commit nobody is waiting for any more.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # Version-independent checks, so they run once rather than once per matrix leg.
+  lint:
+    name: Lint and type check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "**/pyproject.toml"
+      # The dev group in pyproject.toml is the single source of tool versions.
+      - name: Ruff
+        run: uv run --group dev ruff check . && uv run --group dev ruff format --check .
+      - name: Mypy
+        run: uv run --group dev mypy keenable
+
   python:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
@@ -20,12 +45,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - name: Lint
-        run: uvx ruff@0.9.6 check . && uvx ruff@0.9.6 format --check .
-      - name: Type check
-        run: uv run --python ${{ matrix.python-version }} --with mypy --with httpx --with pytest mypy keenable
+        with:
+          enable-cache: true
+          cache-dependency-glob: "**/pyproject.toml"
       - name: Test
-        run: uv run --python ${{ matrix.python-version }} --with pytest --with pytest-asyncio --with httpx pytest -q
+        run: uv run --python ${{ matrix.python-version }} --group dev pytest -q
 
   typescript:
     name: Node ${{ matrix.node-version }}
@@ -43,6 +67,9 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
       - run: npm install
-      - run: npm run typecheck
       - run: npm test
-      - run: npm run build
+      # tsc and tsup read the pinned compiler from devDependencies, so their
+      # answer cannot vary by Node version; run them once.
+      - name: Type check and build
+        if: matrix.node-version == '22'
+        run: npm run typecheck && npm run build

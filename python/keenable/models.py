@@ -6,9 +6,9 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
-# Default budget for `to_context()`. Roughly 3k tokens: large enough that a
-# handful of results keep their substance, small enough to sit in front of a
-# user question without crowding out the rest of the prompt.
+# Default budget for the `to_context()` renderers. Roughly 3k tokens: large
+# enough that a handful of results keep their substance, small enough to sit in
+# front of a user question without crowding out the rest of the prompt.
 DEFAULT_CONTEXT_MAX_CHARS = 12_000
 
 
@@ -17,6 +17,21 @@ def _str_or_none(value: Any) -> str | None:
     if isinstance(value, str) and value.strip():
         return value
     return None
+
+
+def _collapse(text: str) -> str:
+    """Squeeze runs of whitespace into single spaces.
+
+    Snippets are raw page text and carry newlines. Left alone they collide with
+    the blank line that separates rendered sources, so a model cannot tell where
+    one source ends, and the character budget gets spent on layout.
+    """
+    return " ".join(text.split())
+
+
+def _context_block(header: str, body: str) -> str:
+    """One rendered source: its header line, then its text."""
+    return f"{header}\n{body}" if body else header
 
 
 @dataclass
@@ -88,6 +103,37 @@ class SearchResponse:
             raw=data,
         )
 
+    def cited(
+        self,
+        max_chars: int = DEFAULT_CONTEXT_MAX_CHARS,
+        max_results: int | None = None,
+        include_dates: bool = True,
+    ) -> list[SearchResult]:
+        """The results :meth:`to_context` would render, in citation order.
+
+        Use this to print a source list that matches the citations in a model's
+        answer: index ``0`` here is the source the model cites as ``[1]``.
+        Without it, a caller listing every result would number sources the model
+        never saw once the budget trimmed them.
+        """
+        selected = self.results if max_results is None else self.results[:max_results]
+        kept: list[SearchResult] = []
+        used = 0
+
+        for index, result in enumerate(selected, start=1):
+            body = _collapse(result.snippet or result.description or "")
+            header = self._header(index, result, include_dates=include_dates)
+            # Measure before building: past the budget the block is discarded,
+            # and each discarded snippet is kilobytes of throwaway string.
+            block_len = len(header) + (1 + len(body) if body else 0)
+            cost = block_len + (2 if kept else 0)  # +2 for the separating line
+            if kept and used + cost > max_chars:
+                break
+            kept.append(result)
+            used += cost
+
+        return kept
+
     def to_context(
         self,
         max_chars: int = DEFAULT_CONTEXT_MAX_CHARS,
@@ -108,26 +154,27 @@ class SearchResponse:
             include_dates: Append the publication date to each header when the
                 page exposes one. Useful when recency matters to the answer.
         """
-        blocks: list[str] = []
-        used = 0
-        selected = self.results if max_results is None else self.results[:max_results]
+        return "\n\n".join(
+            _context_block(
+                self._header(index, result, include_dates=include_dates),
+                _collapse(result.snippet or result.description or ""),
+            )
+            for index, result in enumerate(
+                self.cited(
+                    max_chars=max_chars,
+                    max_results=max_results,
+                    include_dates=include_dates,
+                ),
+                start=1,
+            )
+        )
 
-        for index, result in enumerate(selected, start=1):
-            header = f"[{index}] {result.title} ({result.url})"
-            if include_dates and result.published_at:
-                header += f" - published {result.published_at}"
-            body = result.snippet or result.description or ""
-            block = f"{header}\n{body}".strip()
-
-            # +2 for the blank line between blocks. Stop rather than truncate:
-            # a half-sentence source reads as corrupted context to the model.
-            cost = len(block) + (2 if blocks else 0)
-            if blocks and used + cost > max_chars:
-                break
-            blocks.append(block)
-            used += cost
-
-        return "\n\n".join(blocks)
+    @staticmethod
+    def _header(index: int, result: SearchResult, include_dates: bool = True) -> str:
+        header = f"[{index}] {result.title} ({result.url})"
+        if include_dates and result.published_at:
+            header += f" - published {result.published_at}"
+        return header
 
 
 @dataclass
@@ -156,3 +203,20 @@ class Page:
             published_at=_str_or_none(data.get("published_at")),
             raw=data,
         )
+
+    def to_context(self, max_chars: int = DEFAULT_CONTEXT_MAX_CHARS) -> str:
+        """Render the page as a citable block for a prompt.
+
+        Same shape as :meth:`SearchResponse.to_context`, so a model can cite a
+        fetched page the way it cites a search result instead of receiving
+        anonymous markdown. Unlike search results the content is one document,
+        so an oversized page is cut at the budget rather than dropped.
+        """
+        header = f"[1] {self.title} ({self.url})"
+        if self.published_at:
+            header += f" - published {self.published_at}"
+
+        budget = max_chars - len(header) - 1
+        if budget <= 0:
+            return header
+        return _context_block(header, self.content[:budget].rstrip())

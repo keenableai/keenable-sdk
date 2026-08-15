@@ -6,11 +6,8 @@
     "lib": ["ES2022", "DOM"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
-    "declaration": true,
     "skipLibCheck": true,
-    "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "outDir": "dist",
     "types": ["node"]
   },
   "include": ["src", "test"]

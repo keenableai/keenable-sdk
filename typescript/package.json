@@ -1,6 +1,6 @@
 {
   "name": "keenable",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Official TypeScript SDK for the Keenable web search API, built for AI agents",
   "license": "MIT",
   "author": "Keenable <support@keenable.ai>",
@@ -22,7 +22,6 @@
   ],
   "type": "module",
   "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {

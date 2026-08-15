@@ -1,6 +1,6 @@
 [project]
 name = "keenable"
-version = "0.1.0"
+version = "0.1.1"
 description = "Official Python SDK for the Keenable web search API, built for AI agents"
 readme = "README.md"
 requires-python = ">=3.9"

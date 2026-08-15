@@ -19,22 +19,15 @@ export interface SearchResult {
   raw: Record<string, unknown>;
 }
 
-/** A web page fetched by `fetch()`, extracted as markdown. */
-export interface Page {
-  url: string;
-  title: string;
-  /** The page's main content as markdown, with boilerplate stripped. */
-  content: string;
-  description?: string;
-  author?: string;
-  publishedAt?: string;
-  raw: Record<string, unknown>;
-}
-
-/** Optional filters for `search()`. */
+/**
+ * Optional filters for `search()`.
+ *
+ * The filter names here pair with the wire names in `filters.ts`; add a filter
+ * in both places and every consumer picks it up.
+ */
 export interface SearchOptions {
   /** Search mode. `"pro"` (the default) does deeper retrieval. */
-  mode?: "pro";
+  mode?: string;
   /** Restrict results to one domain, e.g. `"arxiv.org"`. */
   site?: string;
   /** Only pages published on or after this date (`YYYY-MM-DD`). */
@@ -70,6 +63,12 @@ export interface KeenableOptions {
   apiKey?: string;
   /** API base URL. Falls back to `KEENABLE_API_URL`. */
   baseUrl?: string;
+  /**
+   * Name this client reports as its traffic source. Leave it alone unless you
+   * are building an integration on top of this SDK and want your own
+   * attribution.
+   */
+  clientSource?: string;
   /** Request timeout in milliseconds. Default 30000. */
   timeoutMs?: number;
   /** Custom fetch implementation (for tests or a proxy). */

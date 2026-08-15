@@ -10,6 +10,7 @@ the hourly rate limit.
     context = results.to_context()
 """
 
+from ._version import __version__
 from .client import DEFAULT_BASE_URL, AsyncKeenable, Keenable
 from .errors import (
     KeenableAPIError,
@@ -19,12 +20,13 @@ from .errors import (
     KeenableInvalidRequestError,
     KeenableRateLimitError,
 )
-from .models import Page, SearchResponse, SearchResult
-from .tools import FETCH_TOOL, SEARCH_TOOL, TOOLS, run_tool_call
+from .models import DEFAULT_CONTEXT_MAX_CHARS, Page, SearchResponse, SearchResult
+from .tools import FETCH_TOOL, SEARCH_TOOL, TOOLS, arun_tool_call, run_tool_call
 
 __all__ = [
     "AsyncKeenable",
     "DEFAULT_BASE_URL",
+    "DEFAULT_CONTEXT_MAX_CHARS",
     "FETCH_TOOL",
     "Keenable",
     "KeenableAPIError",
@@ -38,7 +40,7 @@ __all__ = [
     "SearchResponse",
     "SearchResult",
     "TOOLS",
+    "__version__",
+    "arun_tool_call",
     "run_tool_call",
 ]
-
-__version__ = "0.1.0"

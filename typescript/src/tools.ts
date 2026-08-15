@@ -8,6 +8,9 @@
 
 import type { Keenable } from "./client.js";
 import { KeenableInvalidRequestError } from "./errors.js";
+import { TOOL_FILTERS, toolProperties } from "./filters.js";
+import { nonEmpty } from "./internal.js";
+import type { SearchOptions } from "./types.js";
 
 /** An OpenAI-compatible function tool definition. */
 export interface ToolDefinition {
@@ -35,15 +38,8 @@ export const SEARCH_TOOL: ToolDefinition = {
           description:
             "What to look for, described in natural language rather than keywords.",
         },
-        site: {
-          type: "string",
-          description: "Optional. Restrict results to one domain, e.g. 'arxiv.org'.",
-        },
-        published_after: {
-          type: "string",
-          description:
-            "Optional. Only pages published on or after this date (YYYY-MM-DD).",
-        },
+        // Only the filters marked tool-exposed; see filters.ts.
+        ...toolProperties(),
       },
       required: ["query"],
     },
@@ -88,17 +84,27 @@ function parseArguments(args: string | Record<string, unknown>): Record<string, 
 }
 
 function requireString(value: unknown, message: string): string {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new KeenableInvalidRequestError(message);
+  const text = nonEmpty(value);
+  if (text === undefined) throw new KeenableInvalidRequestError(message);
+  return text;
+}
+
+/** Keep only the filters the tool schema actually offers the model. */
+function toolFilterOptions(args: Record<string, unknown>): SearchOptions {
+  const options: Record<string, unknown> = {};
+  for (const filter of TOOL_FILTERS) {
+    const value = nonEmpty(args[filter.wire]);
+    if (value !== undefined) options[filter.option] = value;
   }
-  return value;
+  return options as SearchOptions;
 }
 
 /**
  * Execute one tool call and return the string to send back as the result.
  *
  * Pass the tool name and raw arguments straight from the model's response; the
- * return value is ready to attach to a `role: "tool"` message.
+ * return value is ready to attach to a `role: "tool"` message, rendered as the
+ * same numbered, citable block for both tools.
  */
 export async function runToolCall(
   client: Keenable,
@@ -109,18 +115,14 @@ export async function runToolCall(
 
   if (name === "keenable_search") {
     const query = requireString(parsed.query, "keenable_search needs a 'query'");
-    const response = await client.search(query, {
-      site: typeof parsed.site === "string" ? parsed.site : undefined,
-      publishedAfter:
-        typeof parsed.published_after === "string" ? parsed.published_after : undefined,
-    });
+    const response = await client.search(query, toolFilterOptions(parsed));
     return response.toContext();
   }
 
   if (name === "keenable_fetch") {
     const url = requireString(parsed.url, "keenable_fetch needs a 'url'");
     const page = await client.fetch(url);
-    return page.content;
+    return page.toContext();
   }
 
   throw new KeenableInvalidRequestError(`unknown Keenable tool: ${JSON.stringify(name)}`);

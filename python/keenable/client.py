@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import ipaddress
-import os
-from typing import Any
+from collections.abc import Iterator
+from contextlib import contextmanager
+from os import environ
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 import httpx
 
+from ._version import __version__
 from .errors import (
     KeenableAPIError,
     KeenableAuthError,
@@ -20,38 +23,33 @@ from .models import Page, SearchResponse
 
 __all__ = ["Keenable", "AsyncKeenable"]
 
-try:  # pragma: no cover - trivial
-    from importlib import metadata
-
-    _VERSION = metadata.version("keenable")
-except Exception:  # pragma: no cover - source checkouts
-    _VERSION = "unknown"
-
 DEFAULT_BASE_URL = "https://api.keenable.ai"
 DEFAULT_TIMEOUT = 30.0
 
-# Keyless endpoints. A key is not a prerequisite for any call: it only lifts
-# the hourly rate limit, so the client picks the endpoint by key presence.
-_SEARCH_PUBLIC = "/v1/search/public"
-_SEARCH_KEYED = "/v1/search"
-_FETCH_PUBLIC = "/v1/fetch/public"
-_FETCH_KEYED = "/v1/fetch"
+# Endpoints are named once; the keyless variant of each is the same path with a
+# `/public` suffix, so a new endpoint is one name rather than two constants.
+_SEARCH = "search"
+_FETCH = "fetch"
+
+_BLOCKED_HOSTS = frozenset({"localhost", "metadata.google.internal"})
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+_STATUS_LABELS = {
+    401: "Keenable authentication failed (401)",
+    403: "Keenable authentication failed (403)",
+    402: "Keenable: insufficient credits (402)",
+    429: "Keenable rate limit exceeded (429)",
+}
 
 
 def _resolve_base_url(base_url: str | None) -> str:
     """Resolve and validate the API base URL, enforcing HTTPS off-localhost."""
-    base = (base_url or os.environ.get("KEENABLE_API_URL") or DEFAULT_BASE_URL).rstrip(
-        "/"
-    )
+    base = (base_url or environ.get("KEENABLE_API_URL") or DEFAULT_BASE_URL).rstrip("/")
     parsed = urlsplit(base)
     if parsed.hostname:
         if parsed.scheme == "https":
             return base
-        if parsed.scheme == "http" and parsed.hostname in {
-            "localhost",
-            "127.0.0.1",
-            "::1",
-        }:
+        if parsed.scheme == "http" and parsed.hostname in _LOCAL_HOSTS:
             return base
     raise KeenableInvalidRequestError(
         f"base_url must be an https:// URL with a host, got {base!r}"
@@ -64,13 +62,14 @@ def _reject_private_fetch_target(url: str) -> None:
     The backend enforces this too, but stopping here keeps an internal hostname
     out of an outbound request in the first place.
     """
-    if not url.lower().startswith(("http://", "https://")):
+    parsed = urlsplit(url)
+    if parsed.scheme not in {"http", "https"}:
         raise KeenableInvalidRequestError(f"fetch() needs an http(s) URL, got {url!r}")
 
-    host = (urlsplit(url).hostname or "").strip().lower()
+    host = (parsed.hostname or "").strip().lower()
     if not host:
         raise KeenableInvalidRequestError(f"fetch() URL has no host: {url!r}")
-    if host in {"localhost", "metadata.google.internal"}:
+    if host in _BLOCKED_HOSTS:
         raise KeenableInvalidRequestError(f"refusing to fetch internal host {host!r}")
     try:
         ip = ipaddress.ip_address(host)
@@ -87,39 +86,20 @@ def _reject_private_fetch_target(url: str) -> None:
         raise KeenableInvalidRequestError(f"refusing to fetch private address {host!r}")
 
 
-def _search_payload(
-    query: str,
-    mode: str | None,
-    site: str | None,
-    published_after: str | None,
-    published_before: str | None,
-    acquired_after: str | None,
-    acquired_before: str | None,
-    snippet_max_length: int | None,
-) -> dict[str, Any]:
+def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, Any]:
+    """Build the search request body, dropping filters the caller left unset."""
     if not query or not query.strip():
         raise KeenableInvalidRequestError("search() needs a non-empty query")
 
     payload: dict[str, Any] = {"query": query, "mode": mode or "pro"}
-    optional = (
-        ("site", site),
-        ("published_after", published_after),
-        ("published_before", published_before),
-        ("acquired_after", acquired_after),
-        ("acquired_before", acquired_before),
-        ("snippet_max_length", snippet_max_length),
+    payload.update(
+        {name: value for name, value in filters.items() if value is not None}
     )
-    for name, value in optional:
-        if value is not None:
-            payload[name] = value
     return payload
 
 
-def _raise_for_status(response: httpx.Response) -> None:
-    """Turn a non-2xx response into the most specific SDK error available."""
-    if response.is_success:
-        return
-
+def _to_api_error(response: httpx.Response) -> KeenableAPIError:
+    """Map a non-2xx response to the most specific SDK error available."""
     detail = ""
     try:
         body = response.json()
@@ -131,23 +111,20 @@ def _raise_for_status(response: httpx.Response) -> None:
         detail = (response.text or "").strip()
 
     status = response.status_code
-    label = {
-        401: "Keenable authentication failed (401)",
-        403: "Keenable authentication failed (403)",
-        402: "Keenable: insufficient credits (402)",
-        429: "Keenable rate limit exceeded (429)",
-    }.get(status, f"Keenable API error ({status})")
+    label = _STATUS_LABELS.get(status, f"Keenable API error ({status})")
     message = f"{label}: {detail}" if detail else label
 
     if status in (401, 403):
-        raise KeenableAuthError(message, status, detail or None)
+        return KeenableAuthError(message, status, detail or None)
     if status == 429:
-        raise KeenableRateLimitError(message, status, detail or None)
-    raise KeenableAPIError(message, status, detail or None)
+        return KeenableRateLimitError(message, status, detail or None)
+    return KeenableAPIError(message, status, detail or None)
 
 
 def _decode(response: httpx.Response) -> dict[str, Any]:
-    _raise_for_status(response)
+    """Validate the status and decode a JSON object body."""
+    if not response.is_success:
+        raise _to_api_error(response)
     try:
         data = response.json()
     except ValueError as exc:
@@ -164,10 +141,23 @@ def _decode(response: httpx.Response) -> dict[str, Any]:
     return data
 
 
+@contextmanager
+def _transport_errors() -> Iterator[None]:
+    """Translate httpx transport failures into a KeenableConnectionError.
+
+    Wrapping the ``await`` inside the ``with`` body works for the async client
+    too, so both clients share one definition of "could not reach the API".
+    """
+    try:
+        yield
+    except httpx.HTTPError as exc:
+        raise KeenableConnectionError(
+            f"could not reach the Keenable API: {exc!r}"
+        ) from exc
+
+
 class _BaseClient:
     """Shared configuration for the sync and async clients."""
-
-    _sdk_flavor = "python"
 
     def __init__(
         self,
@@ -175,11 +165,12 @@ class _BaseClient:
         *,
         base_url: str | None = None,
         timeout: float = DEFAULT_TIMEOUT,
+        client_source: str = "Keenable SDK",
     ) -> None:
-        key = api_key if api_key is not None else os.environ.get("KEENABLE_API_KEY")
+        key = api_key if api_key is not None else environ.get("KEENABLE_API_KEY")
         self._api_key = (key or "").strip() or None
         self._base_url = _resolve_base_url(base_url)
-        self._timeout = timeout
+        self._client_source = client_source
 
     @property
     def keyless(self) -> bool:
@@ -188,20 +179,19 @@ class _BaseClient:
 
     def _headers(self) -> dict[str, str]:
         headers = {
-            "User-Agent": f"keenable-{self._sdk_flavor}/{_VERSION}",
-            "X-Keenable-Title": "Keenable SDK (Python)",
+            "Accept": "application/json",
+            "User-Agent": f"keenable-python/{__version__}",
+            # The public tier rejects requests without this header.
+            "X-Keenable-Title": self._client_source,
         }
         if self._api_key is not None:
             headers["X-API-Key"] = self._api_key
         return headers
 
-    def _search_url(self) -> str:
-        path = _SEARCH_PUBLIC if self._api_key is None else _SEARCH_KEYED
-        return f"{self._base_url}{path}"
-
-    def _fetch_url(self) -> str:
-        path = _FETCH_PUBLIC if self._api_key is None else _FETCH_KEYED
-        return f"{self._base_url}{path}"
+    def _url(self, endpoint: str) -> str:
+        """The endpoint URL, keyless or keyed depending on the configured key."""
+        suffix = "/public" if self.keyless else ""
+        return f"{self._base_url}/v1/{endpoint}{suffix}"
 
 
 class Keenable(_BaseClient):
@@ -221,6 +211,15 @@ class Keenable(_BaseClient):
     The client can be reused across calls and is safe to keep for the lifetime
     of your process. Use it as a context manager (or call :meth:`close`) to
     release the underlying connection pool.
+
+    Args:
+        api_key: Falls back to ``KEENABLE_API_KEY``; omit it for the free tier.
+        base_url: Falls back to ``KEENABLE_API_URL``.
+        timeout: Request timeout in seconds.
+        client_source: Name this client reports as its traffic source. Leave it
+            alone unless you are building an integration on top of this SDK and
+            want your own attribution.
+        client: Bring your own ``httpx.Client`` (proxies, retries, transport).
     """
 
     def __init__(
@@ -229,9 +228,15 @@ class Keenable(_BaseClient):
         *,
         base_url: str | None = None,
         timeout: float = DEFAULT_TIMEOUT,
+        client_source: str = "Keenable SDK",
         client: httpx.Client | None = None,
     ) -> None:
-        super().__init__(api_key, base_url=base_url, timeout=timeout)
+        super().__init__(
+            api_key,
+            base_url=base_url,
+            timeout=timeout,
+            client_source=client_source,
+        )
         self._client = client or httpx.Client(timeout=timeout)
         self._owns_client = client is None
 
@@ -246,11 +251,36 @@ class Keenable(_BaseClient):
         if self._owns_client:
             self._client.close()
 
+    def _request(
+        self,
+        endpoint: str,
+        *,
+        json: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Send one request and return its decoded body.
+
+        Every transport concern lives here: endpoint selection, headers, error
+        translation and decoding, so a retry or a logging hook is one edit.
+        """
+        headers = self._headers()
+        with _transport_errors():
+            if json is None:
+                response = self._client.get(
+                    self._url(endpoint), params=params, headers=headers
+                )
+            else:
+                headers["Content-Type"] = "application/json"
+                response = self._client.post(
+                    self._url(endpoint), json=json, headers=headers
+                )
+        return _decode(response)
+
     def search(
         self,
         query: str,
         *,
-        mode: str | None = None,
+        mode: Literal["pro"] | None = None,
         site: str | None = None,
         published_after: str | None = None,
         published_before: str | None = None,
@@ -281,22 +311,14 @@ class Keenable(_BaseClient):
         payload = _search_payload(
             query,
             mode,
-            site,
-            published_after,
-            published_before,
-            acquired_after,
-            acquired_before,
-            snippet_max_length,
+            site=site,
+            published_after=published_after,
+            published_before=published_before,
+            acquired_after=acquired_after,
+            acquired_before=acquired_before,
+            snippet_max_length=snippet_max_length,
         )
-        try:
-            response = self._client.post(
-                self._search_url(), json=payload, headers=self._headers()
-            )
-        except httpx.HTTPError as exc:
-            raise KeenableConnectionError(
-                f"could not reach the Keenable API: {exc!r}"
-            ) from exc
-        return SearchResponse._from_json(_decode(response), query)
+        return SearchResponse._from_json(self._request(_SEARCH, json=payload), query)
 
     def fetch(self, url: str) -> Page:
         """Fetch one URL and return its main content as markdown.
@@ -305,15 +327,7 @@ class Keenable(_BaseClient):
         model needs the full page.
         """
         _reject_private_fetch_target(url)
-        try:
-            response = self._client.get(
-                self._fetch_url(), params={"url": url}, headers=self._headers()
-            )
-        except httpx.HTTPError as exc:
-            raise KeenableConnectionError(
-                f"could not reach the Keenable API: {exc!r}"
-            ) from exc
-        return Page._from_json(_decode(response), url)
+        return Page._from_json(self._request(_FETCH, params={"url": url}), url)
 
 
 class AsyncKeenable(_BaseClient):
@@ -337,9 +351,15 @@ class AsyncKeenable(_BaseClient):
         *,
         base_url: str | None = None,
         timeout: float = DEFAULT_TIMEOUT,
+        client_source: str = "Keenable SDK",
         client: httpx.AsyncClient | None = None,
     ) -> None:
-        super().__init__(api_key, base_url=base_url, timeout=timeout)
+        super().__init__(
+            api_key,
+            base_url=base_url,
+            timeout=timeout,
+            client_source=client_source,
+        )
         self._client = client or httpx.AsyncClient(timeout=timeout)
         self._owns_client = client is None
 
@@ -354,11 +374,32 @@ class AsyncKeenable(_BaseClient):
         if self._owns_client:
             await self._client.aclose()
 
+    async def _request(
+        self,
+        endpoint: str,
+        *,
+        json: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Async counterpart of :meth:`Keenable._request`."""
+        headers = self._headers()
+        with _transport_errors():
+            if json is None:
+                response = await self._client.get(
+                    self._url(endpoint), params=params, headers=headers
+                )
+            else:
+                headers["Content-Type"] = "application/json"
+                response = await self._client.post(
+                    self._url(endpoint), json=json, headers=headers
+                )
+        return _decode(response)
+
     async def search(
         self,
         query: str,
         *,
-        mode: str | None = None,
+        mode: Literal["pro"] | None = None,
         site: str | None = None,
         published_after: str | None = None,
         published_before: str | None = None,
@@ -370,32 +411,18 @@ class AsyncKeenable(_BaseClient):
         payload = _search_payload(
             query,
             mode,
-            site,
-            published_after,
-            published_before,
-            acquired_after,
-            acquired_before,
-            snippet_max_length,
+            site=site,
+            published_after=published_after,
+            published_before=published_before,
+            acquired_after=acquired_after,
+            acquired_before=acquired_before,
+            snippet_max_length=snippet_max_length,
         )
-        try:
-            response = await self._client.post(
-                self._search_url(), json=payload, headers=self._headers()
-            )
-        except httpx.HTTPError as exc:
-            raise KeenableConnectionError(
-                f"could not reach the Keenable API: {exc!r}"
-            ) from exc
-        return SearchResponse._from_json(_decode(response), query)
+        body = await self._request(_SEARCH, json=payload)
+        return SearchResponse._from_json(body, query)
 
     async def fetch(self, url: str) -> Page:
         """Fetch one URL as markdown. See :meth:`Keenable.fetch`."""
         _reject_private_fetch_target(url)
-        try:
-            response = await self._client.get(
-                self._fetch_url(), params={"url": url}, headers=self._headers()
-            )
-        except httpx.HTTPError as exc:
-            raise KeenableConnectionError(
-                f"could not reach the Keenable API: {exc!r}"
-            ) from exc
-        return Page._from_json(_decode(response), url)
+        body = await self._request(_FETCH, params={"url": url})
+        return Page._from_json(body, url)

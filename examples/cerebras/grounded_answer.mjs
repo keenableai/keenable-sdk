@@ -35,7 +35,9 @@ const completion = await cerebras.chat.completions.create({
 
 console.log(completion.choices[0].message.content);
 
+// cited() reports the results that made it into the context, in the order the
+// model cites them, so this list cannot drift from the [n] markers it used.
 console.log('\nSources:');
-results.results.forEach((result, index) => {
+results.cited().forEach((result, index) => {
   console.log(`[${index + 1}] ${result.title} - ${result.url}`);
 });

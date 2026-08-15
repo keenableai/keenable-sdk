@@ -13,7 +13,8 @@ environment `pypi`.
 To release:
 
 1. Bump `version` in `python/pyproject.toml` and `__version__` in
-   `python/keenable/__init__.py`.
+   `python/keenable/_version.py` (the only two places it appears; `__init__`
+   and the User-Agent both read the latter).
 2. Create a GitHub Release tagged `python-v<version>` (e.g. `python-v0.1.1`).
 3. `publish-python.yml` builds with `uv` and publishes. The workflow ignores
    releases whose tag does not start with `python-v`.
@@ -22,8 +23,8 @@ To release:
 
 Manual publish with OTP, matching how our other npm packages ship.
 
-1. Bump `version` in `typescript/package.json` and `VERSION` in
-   `typescript/src/client.ts` (the User-Agent tag).
+1. Bump `version` in `typescript/package.json`. Nothing else: the build injects
+   it into the User-Agent, so there is no second copy to forget.
 2. Build and verify:
    ```bash
    cd typescript
