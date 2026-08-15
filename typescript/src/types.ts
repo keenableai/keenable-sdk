@@ -27,7 +27,7 @@ export interface SearchResult {
  */
 export interface SearchOptions {
   /** Search mode. `"pro"` (the default) does deeper retrieval. */
-  mode?: string;
+  mode?: "pro";
   /** Restrict results to one domain, e.g. `"arxiv.org"`. */
   site?: string;
   /** Only pages published on or after this date (`YYYY-MM-DD`). */
