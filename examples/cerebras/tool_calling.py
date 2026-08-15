@@ -1,7 +1,8 @@
 """Let a Cerebras model decide when to search the web, via tool calling.
 
     pip install keenable cerebras_cloud_sdk
-    export CEREBRAS_API_KEY="..."   # KEENABLE_API_KEY is optional
+    export CEREBRAS_API_KEY="..."
+    export KEENABLE_API_KEY="..."
     python tool_calling.py
 """
 
@@ -9,12 +10,12 @@ import os
 
 from cerebras.cloud.sdk import Cerebras
 
-from keenable import TOOLS, Keenable, run_tool_call
+from keenable import TOOLS, Keenable, KeenableError, run_tool_call
 
 MODEL = "gpt-oss-120b"
 QUESTION = "What did Cerebras announce most recently, and when?"
 
-keenable = Keenable()
+keenable = Keenable(api_key=os.environ.get("KEENABLE_API_KEY"))
 cerebras = Cerebras(api_key=os.environ.get("CEREBRAS_API_KEY"))
 
 messages = [
@@ -45,12 +46,15 @@ while True:
     for call in tool_calls:
         # run_tool_call executes whichever tool the model picked and returns
         # text ready to hand back.
+        try:
+            output = run_tool_call(
+                keenable, call.function.name, call.function.arguments
+            )
+        except KeenableError as exc:
+            # Hand the failure back as the tool result so the model can try
+            # another source instead of the run dying on one bad URL.
+            output = f"Tool call failed: {exc}"
+
         messages.append(
-            {
-                "role": "tool",
-                "tool_call_id": call.id,
-                "content": run_tool_call(
-                    keenable, call.function.name, call.function.arguments
-                ),
-            }
+            {"role": "tool", "tool_call_id": call.id, "content": output}
         )

@@ -8,18 +8,13 @@ the page text already extracted, so a single call gives a model something to
 reason over. Paired with Cerebras Inference, it grounds responses in current web
 content while keeping agent latency low.
 
-<Tip>
-  Keenable is keyless by default. The examples below run with only your Cerebras
-  key set; a Keenable key is optional and only lifts the hourly rate limit.
-</Tip>
-
 ## Prerequisites
 
 Before you begin, ensure you have:
 
 - **Cerebras API Key**
+- **Keenable API Key** — create one in the [Keenable Console](https://keenable.ai/console)
 - **Python or Node.js**
-- **Keenable API Key** (optional, [keenable.ai/console](https://keenable.ai/console)) to lift the keyless rate limit
 
 ## Configure Keenable with Cerebras
 
@@ -36,19 +31,18 @@ Before you begin, ensure you have:
     </CodeGroup>
   </Step>
 
-  <Step title="Set your API key">
+  <Step title="Set your API keys">
+    Both SDKs read their key from the environment, so you do not have to pass it
+    with every request.
+
     <CodeGroup>
       ```bash macOS / Linux theme={null}
-      export CEREBRAS_API_KEY="your-api-key-here"
-
-      # Optional: lifts Keenable's keyless rate limit
+      export CEREBRAS_API_KEY="your-cerebras-key-here"
       export KEENABLE_API_KEY="your-keenable-key-here"
       ```
 
       ```powershell Windows (PowerShell) theme={null}
-      $env:CEREBRAS_API_KEY = "your-api-key-here"
-
-      # Optional: lifts Keenable's keyless rate limit
+      $env:CEREBRAS_API_KEY = "your-cerebras-key-here"
       $env:KEENABLE_API_KEY = "your-keenable-key-here"
       ```
     </CodeGroup>
@@ -67,7 +61,7 @@ Before you begin, ensure you have:
 
       question = "Which inference providers are fastest on gpt-oss-120b right now?"
 
-      keenable = Keenable()  # keyless; reads KEENABLE_API_KEY when set
+      keenable = Keenable(api_key=os.environ.get("KEENABLE_API_KEY"))
       cerebras = Cerebras(api_key=os.environ.get("CEREBRAS_API_KEY"))
 
       results = keenable.search(question, published_after="2026-01-01")
@@ -92,7 +86,7 @@ Before you begin, ensure you have:
 
       const question = 'Which inference providers are fastest on gpt-oss-120b right now?';
 
-      const keenable = new Keenable(); // keyless; reads KEENABLE_API_KEY when set
+      const keenable = new Keenable({ apiKey: process.env['KEENABLE_API_KEY'] });
       const cerebras = new Cerebras({ apiKey: process.env['CEREBRAS_API_KEY'] });
 
       const results = await keenable.search(question, { publishedAfter: '2026-01-01' });
@@ -178,9 +172,9 @@ The SDK ships OpenAI-compatible definitions for `keenable_search` and
 import os
 
 from cerebras.cloud.sdk import Cerebras
-from keenable import Keenable, TOOLS, run_tool_call
+from keenable import Keenable, KeenableError, TOOLS, run_tool_call
 
-keenable = Keenable()
+keenable = Keenable(api_key=os.environ.get("KEENABLE_API_KEY"))
 cerebras = Cerebras(api_key=os.environ.get("CEREBRAS_API_KEY"))
 
 messages = [
@@ -203,20 +197,21 @@ while True:
 
     messages.append(message.model_dump())
     for call in message.tool_calls:
-        messages.append(
-            {
-                "role": "tool",
-                "tool_call_id": call.id,
-                "content": run_tool_call(keenable, call.function.name, call.function.arguments),
-            }
-        )
+        try:
+            output = run_tool_call(keenable, call.function.name, call.function.arguments)
+        except KeenableError as exc:
+            # Hand the failure back so the model can try another source rather
+            # than the run dying on one bad URL.
+            output = f"Tool call failed: {exc}"
+
+        messages.append({"role": "tool", "tool_call_id": call.id, "content": output})
 ```
 
 ```javascript Node.js theme={null}
 import Cerebras from '@cerebras/cerebras_cloud_sdk';
-import { Keenable, TOOLS, runToolCall } from 'keenable';
+import { Keenable, KeenableError, TOOLS, runToolCall } from 'keenable';
 
-const keenable = new Keenable();
+const keenable = new Keenable({ apiKey: process.env['KEENABLE_API_KEY'] });
 const cerebras = new Cerebras({ apiKey: process.env['CEREBRAS_API_KEY'] });
 
 const messages = [
@@ -242,11 +237,16 @@ while (true) {
 
   messages.push(message);
   for (const call of message.tool_calls) {
-    messages.push({
-      role: 'tool',
-      tool_call_id: call.id,
-      content: await runToolCall(keenable, call.function.name, call.function.arguments),
-    });
+    let output;
+    try {
+      output = await runToolCall(keenable, call.function.name, call.function.arguments);
+    } catch (error) {
+      // Hand the failure back so the model can try another source rather than
+      // the run dying on one bad URL.
+      output = `Tool call failed: ${error instanceof KeenableError ? error.message : error}`;
+    }
+
+    messages.push({ role: 'tool', tool_call_id: call.id, content: output });
   }
 }
 ```
@@ -259,13 +259,14 @@ while (true) {
 
 ## Rate limits and errors
 
-Keyless requests share an hourly cap. Setting `KEENABLE_API_KEY` lifts it and
-switches the SDK to the authenticated endpoints automatically; nothing else in
-your code changes.
+Rate limits are attached to your Keenable account and shown in the
+[Console](https://keenable.ai/console), alongside usage. Every error the SDK
+raises subclasses `KeenableError`, so a single `except` keeps an agent loop
+alive.
 
 | Exception (Python / Node) | When |
 |---|---|
-| `KeenableRateLimitError` | HTTP 429. Set `KEENABLE_API_KEY` to lift the keyless cap |
+| `KeenableRateLimitError` | HTTP 429, your account's rate limit |
 | `KeenableAuthError` | HTTP 401/403, the key was rejected |
 | `KeenableAPIError` | Any other non-2xx response; carries `status_code` |
 | `KeenableConnectionError` | The API could not be reached |
@@ -273,6 +274,6 @@ your code changes.
 ## Next steps
 
 - Browse the [Keenable SDK reference](https://github.com/keenableai/keenable-sdk) for async clients, filters, and error handling
-- Create an optional key in the [Keenable Console](https://keenable.ai/console) to lift the keyless rate limit
+- Track usage and rate limits in the [Keenable Console](https://keenable.ai/console)
 - See [Tool Calling](/capabilities/tool-use) for the full tool-calling contract on Cerebras
 - See [Designing for Cerebras](/resources/designing-for-cerebras) for agent patterns that take advantage of fast inference

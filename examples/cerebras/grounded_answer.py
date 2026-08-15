@@ -1,7 +1,8 @@
 """Ground a Cerebras model in live web results from Keenable.
 
     pip install keenable cerebras_cloud_sdk
-    export CEREBRAS_API_KEY="..."   # KEENABLE_API_KEY is optional
+    export CEREBRAS_API_KEY="..."
+    export KEENABLE_API_KEY="..."
     python grounded_answer.py
 """
 
@@ -13,9 +14,7 @@ from keenable import Keenable
 
 QUESTION = "Which inference providers are fastest on gpt-oss-120b right now?"
 
-# No API key needed: Keenable is keyless by default. Set KEENABLE_API_KEY to
-# lift the hourly rate limit.
-keenable = Keenable()
+keenable = Keenable(api_key=os.environ.get("KEENABLE_API_KEY"))
 cerebras = Cerebras(api_key=os.environ.get("CEREBRAS_API_KEY"))
 
 # One call gets ranked pages with their text already extracted, and

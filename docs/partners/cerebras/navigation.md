@@ -24,7 +24,7 @@ Add a card alongside the other search providers:
 
 ```jsx
 <Card title="Keenable" icon="magnifying-glass" href="/integrations/keenable">
-  Ground responses in live web results. Keyless by default.
+  Ground responses in live web results, with the page text already extracted.
 </Card>
 ```
 

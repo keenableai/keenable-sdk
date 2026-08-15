@@ -2,17 +2,18 @@
  * Let a Cerebras model decide when to search the web, via tool calling.
  *
  *   npm install keenable @cerebras/cerebras_cloud_sdk
- *   export CEREBRAS_API_KEY="..."   # KEENABLE_API_KEY is optional
+ *   export CEREBRAS_API_KEY="..."
+ *   export KEENABLE_API_KEY="..."
  *   node tool_calling.mjs
  */
 
 import Cerebras from '@cerebras/cerebras_cloud_sdk';
-import { Keenable, TOOLS, runToolCall } from 'keenable';
+import { Keenable, KeenableError, TOOLS, runToolCall } from 'keenable';
 
 const MODEL = 'gpt-oss-120b';
 const QUESTION = 'What did Cerebras announce most recently, and when?';
 
-const keenable = new Keenable();
+const keenable = new Keenable({ apiKey: process.env['KEENABLE_API_KEY'] });
 const cerebras = new Cerebras({ apiKey: process.env['CEREBRAS_API_KEY'] });
 
 const messages = [
@@ -44,10 +45,15 @@ while (true) {
   for (const call of message.tool_calls) {
     // runToolCall executes whichever tool the model picked and returns text
     // ready to hand back.
-    messages.push({
-      role: 'tool',
-      tool_call_id: call.id,
-      content: await runToolCall(keenable, call.function.name, call.function.arguments),
-    });
+    let output;
+    try {
+      output = await runToolCall(keenable, call.function.name, call.function.arguments);
+    } catch (error) {
+      // Hand the failure back as the tool result so the model can try another
+      // source instead of the run dying on one bad URL.
+      output = `Tool call failed: ${error instanceof KeenableError ? error.message : error}`;
+    }
+
+    messages.push({ role: 'tool', tool_call_id: call.id, content: output });
   }
 }

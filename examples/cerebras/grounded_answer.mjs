@@ -2,7 +2,8 @@
  * Ground a Cerebras model in live web results from Keenable.
  *
  *   npm install keenable @cerebras/cerebras_cloud_sdk
- *   export CEREBRAS_API_KEY="..."   # KEENABLE_API_KEY is optional
+ *   export CEREBRAS_API_KEY="..."
+ *   export KEENABLE_API_KEY="..."
  *   node grounded_answer.mjs
  */
 
@@ -11,9 +12,7 @@ import { Keenable } from 'keenable';
 
 const question = 'Which inference providers are fastest on gpt-oss-120b right now?';
 
-// No API key needed: Keenable is keyless by default. Set KEENABLE_API_KEY to
-// lift the hourly rate limit.
-const keenable = new Keenable();
+const keenable = new Keenable({ apiKey: process.env['KEENABLE_API_KEY'] });
 const cerebras = new Cerebras({ apiKey: process.env['CEREBRAS_API_KEY'] });
 
 // One call gets ranked pages with their text already extracted, and
