@@ -77,8 +77,8 @@ for index, result in enumerate(results.cited(), start=1):
 ```python
 page = keenable.fetch("https://cerebras.ai/chip")
 print(page.title)
-print(page.content)        # markdown, boilerplate stripped
-print(page.to_context())   # same citable block shape as search results
+print(page.content)  # markdown, boilerplate stripped
+print(page.to_context())  # same citable block shape as search results
 ```
 
 ## Tool calling
