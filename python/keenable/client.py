@@ -66,7 +66,9 @@ def _reject_private_fetch_target(url: str) -> None:
     if parsed.scheme not in {"http", "https"}:
         raise KeenableInvalidRequestError(f"fetch() needs an http(s) URL, got {url!r}")
 
-    host = (parsed.hostname or "").strip().lower()
+    # A trailing dot resolves to the same host but does not match it as a
+    # string, which is enough to walk past the blocklist below.
+    host = (parsed.hostname or "").strip().lower().rstrip(".")
     if not host:
         raise KeenableInvalidRequestError(f"fetch() URL has no host: {url!r}")
     if host in _BLOCKED_HOSTS:

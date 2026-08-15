@@ -66,7 +66,14 @@ export const FETCH_TOOL: ToolDefinition = {
 export const TOOLS: ToolDefinition[] = [SEARCH_TOOL, FETCH_TOOL];
 
 function parseArguments(args: string | Record<string, unknown>): Record<string, unknown> {
-  if (typeof args === "object" && args !== null) return args;
+  // An array is `typeof "object"` but carries no named arguments, so let it
+  // fall through to the same rejection a JSON array gets below.
+  if (typeof args === "object" && args !== null && !Array.isArray(args)) return args;
+  if (typeof args !== "string") {
+    throw new KeenableInvalidRequestError(
+      `tool call arguments must be a JSON string or an object, got ${JSON.stringify(args)}`,
+    );
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(args || "{}");

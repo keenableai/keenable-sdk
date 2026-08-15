@@ -94,8 +94,29 @@ function rejectPrivateFetchTarget(url: string): void {
   }
 }
 
+/**
+ * The IPv4 address embedded in an IPv4-mapped IPv6 host, if there is one.
+ *
+ * `::ffff:127.0.0.1` reaches the same machine as `127.0.0.1`, so it has to be
+ * classified as that address. Note the hex form: `new URL()` rewrites the
+ * dotted tail into two 16-bit groups (`::ffff:7f00:1`), so a check that only
+ * knows the dotted spelling never fires on a real URL.
+ */
+function mappedIPv4(host: string): string | undefined {
+  const dotted = /^(?:0*:)*ffff:((?:\d{1,3}\.){3}\d{1,3})$/i.exec(host);
+  if (dotted?.[1]) return dotted[1];
+
+  const hex = /^(?:0*:)*ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(host);
+  if (!hex?.[1] || !hex[2]) return undefined;
+  const high = parseInt(hex[1], 16);
+  const low = parseInt(hex[2], 16);
+  return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
+}
+
 function isPrivateAddress(host: string): boolean {
-  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  const candidate = mappedIPv4(host) ?? host;
+
+  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(candidate);
   if (ipv4) {
     const [a, b] = [Number(ipv4[1]), Number(ipv4[2])];
     if (a === 10 || a === 127 || a === 0) return true;

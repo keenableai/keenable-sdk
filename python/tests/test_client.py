@@ -170,6 +170,29 @@ def test_to_context_numbers_results_and_respects_the_budget() -> None:
     assert response.to_context(max_results=1) == trimmed
 
 
+def test_to_context_stops_at_the_first_result_that_does_not_fit() -> None:
+    """Citation numbers stay contiguous: no [1] followed by [3].
+
+    An oversized middle result ends the block rather than being skipped over,
+    because a gap in the numbering breaks the mapping from the model's
+    citations back to the results.
+    """
+    body = {
+        "query": "q",
+        "results": [
+            {"title": "First", "url": "https://example.com/1", "snippet": "short"},
+            {"title": "Second", "url": "https://example.com/2", "snippet": "x" * 500},
+            {"title": "Third", "url": "https://example.com/3", "snippet": "also short"},
+        ],
+    }
+    keenable, _ = _client(_ok(body))
+    context = keenable.search("q").to_context(max_chars=120)
+
+    assert "[1] First" in context
+    assert "[2]" not in context
+    assert "Third" not in context
+
+
 def test_cited_reports_the_results_that_were_rendered() -> None:
     keenable, _ = _client(_ok(SEARCH_BODY))
     response = keenable.search("wafer scale engine")
@@ -209,6 +232,14 @@ def test_page_to_context_is_citable_like_search_results() -> None:
         "https://169.254.169.254/latest/meta-data/",
         "file:///etc/passwd",
         "https://metadata.google.internal/",
+        # A trailing dot resolves to the same host without matching it as a
+        # string, and IPv4-mapped IPv6 reaches the same address as the bare v4
+        # form. Both are ways past a naive blocklist.
+        "https://localhost./",
+        "https://metadata.google.internal./",
+        "https://[::ffff:169.254.169.254]/latest/meta-data/",
+        "https://[::ffff:127.0.0.1]/",
+        "https://[::ffff:10.0.0.1]/",
     ],
 )
 def test_fetch_refuses_internal_targets_before_sending(url: str) -> None:
@@ -261,6 +292,16 @@ def test_run_tool_call_dispatches_search_and_fetch() -> None:
         run_tool_call(keenable, "keenable_search", "not json")
     with pytest.raises(KeenableInvalidRequestError):
         run_tool_call(keenable, "nope", "{}")
+
+
+@pytest.mark.parametrize("arguments", [123, None, [], b"{}"])
+def test_tool_arguments_of_the_wrong_type_stay_inside_the_error_contract(
+    arguments: Any,
+) -> None:
+    """A caller catching KeenableError should never see a raw TypeError."""
+    keenable, _ = _client(_routed)
+    with pytest.raises(KeenableInvalidRequestError):
+        run_tool_call(keenable, "keenable_search", arguments)
 
 
 def test_tool_call_forwards_only_the_filters_the_schema_offers() -> None:

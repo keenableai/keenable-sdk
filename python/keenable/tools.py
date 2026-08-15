@@ -84,9 +84,19 @@ class _Call(NamedTuple):
 
 
 def _parse_arguments(arguments: str | dict[str, Any]) -> dict[str, Any]:
-    """Accept the model's raw JSON string or an already-decoded dict."""
+    """Accept the model's raw JSON string or an already-decoded dict.
+
+    Anything else is rejected here rather than inside ``json.loads``, which
+    raises ``TypeError`` for non-strings and would escape the SDK's error
+    contract: callers catching :class:`KeenableError` would still crash.
+    """
     if isinstance(arguments, dict):
         return arguments
+    if not isinstance(arguments, str):
+        raise KeenableInvalidRequestError(
+            f"tool call arguments must be a JSON string or a dict, "
+            f"got {type(arguments).__name__}"
+        )
     try:
         parsed = json.loads(arguments or "{}")
     except json.JSONDecodeError as exc:

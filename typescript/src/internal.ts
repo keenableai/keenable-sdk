@@ -6,13 +6,19 @@ export function nonEmpty(value: unknown): string | undefined {
 }
 
 /**
- * A URL's host in one canonical form: lowercased, without IPv6 brackets.
+ * A URL's host in one canonical form: lowercased, without IPv6 brackets, and
+ * without the trailing dot of a fully-qualified name.
  *
  * `URL.hostname` keeps the brackets on IPv6 literals, so comparing hosts
- * against a set only works if every caller strips them the same way.
+ * against a set only works if every caller strips them the same way. The
+ * trailing dot matters too: `localhost.` resolves to `localhost` but does not
+ * match it as a string, which is enough to walk past a blocklist.
  */
 export function normalizeHost(url: URL): string {
-  return url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  return url.hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/\.+$/, "");
 }
 
 /** Read an environment variable, tolerating runtimes with no `process`. */

@@ -158,6 +158,26 @@ describe("toContext", () => {
     expect(response.toContext({ maxResults: 1 })).toBe(trimmed);
   });
 
+  // Citation numbers stay contiguous: no [1] followed by [3]. An oversized
+  // middle result ends the block rather than being skipped over, because a gap
+  // breaks the mapping from the model's citations back to the results.
+  it("stops at the first result that does not fit", async () => {
+    const body = {
+      query: "q",
+      results: [
+        { title: "First", url: "https://example.com/1", snippet: "short" },
+        { title: "Second", url: "https://example.com/2", snippet: "x".repeat(500) },
+        { title: "Third", url: "https://example.com/3", snippet: "also short" },
+      ],
+    };
+    const { client } = mockClient(() => json(body));
+    const context = (await client.search("q")).toContext({ maxChars: 120 });
+
+    expect(context).toContain("[1] First");
+    expect(context).not.toContain("[2]");
+    expect(context).not.toContain("Third");
+  });
+
   it("reports which results were rendered, in citation order", async () => {
     const { client } = mockClient(() => json(SEARCH_BODY));
     const response = await client.search("wafer scale engine");
@@ -204,6 +224,15 @@ describe("fetch", () => {
     "https://192.168.1.1/",
     "file:///etc/passwd",
     "https://metadata.google.internal/",
+    // A trailing dot resolves to the same host without matching it as a
+    // string, and IPv4-mapped IPv6 reaches the same address as the bare v4
+    // form. Both are ways past a naive blocklist.
+    "https://localhost./",
+    "https://metadata.google.internal./",
+    "https://[::ffff:169.254.169.254]/latest/meta-data/",
+    "https://[::ffff:127.0.0.1]/",
+    "https://[::ffff:10.0.0.1]/",
+    "https://[0:0:0:0:0:ffff:169.254.169.254]/",
   ])("refuses the internal target %s before sending", async (url) => {
     const { client, seen } = mockClient(() => json(FETCH_BODY));
     await expect(client.fetch(url)).rejects.toBeInstanceOf(KeenableInvalidRequestError);
@@ -262,6 +291,17 @@ describe("runToolCall", () => {
       KeenableInvalidRequestError,
     );
   });
+
+  // A caller catching KeenableError should never see a raw TypeError.
+  it.each([123, null, [], true])(
+    "rejects %s arguments inside the error contract",
+    async (arguments_) => {
+      const { client } = mockClient(routed);
+      await expect(
+        runToolCall(client, "keenable_search", arguments_ as never),
+      ).rejects.toBeInstanceOf(KeenableInvalidRequestError);
+    },
+  );
 
   it("forwards only the filters the schema offers the model", async () => {
     const { client, seen } = mockClient(routed);
