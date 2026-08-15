@@ -1,0 +1,271 @@
+---
+title: "Get Started with Keenable"
+description: "Learn how to ground Cerebras responses with Keenable web search."
+---
+
+Keenable is a web search API built for AI agents: every result comes back with
+the page text already extracted, so a single call gives a model something to
+reason over. Paired with Cerebras Inference, it grounds responses in current web
+content while keeping agent latency low.
+
+<Tip>
+  Keenable is keyless by default. The examples below run with only your Cerebras
+  key set; a Keenable key is optional and only lifts the hourly rate limit.
+</Tip>
+
+## Prerequisites
+
+Before you begin, ensure you have:
+
+- **Cerebras API Key**
+- **Python or Node.js**
+- **Keenable API Key** (optional, [keenable.ai/console](https://keenable.ai/console)) to lift the keyless rate limit
+
+## Configure Keenable with Cerebras
+
+<Steps>
+  <Step title="Install the SDKs">
+    <CodeGroup>
+      ```bash Python theme={null}
+      pip install --upgrade keenable cerebras_cloud_sdk
+      ```
+
+      ```bash Node.js theme={null}
+      npm install keenable @cerebras/cerebras_cloud_sdk@latest
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Set your API key">
+    <CodeGroup>
+      ```bash macOS / Linux theme={null}
+      export CEREBRAS_API_KEY="your-api-key-here"
+
+      # Optional: lifts Keenable's keyless rate limit
+      export KEENABLE_API_KEY="your-keenable-key-here"
+      ```
+
+      ```powershell Windows (PowerShell) theme={null}
+      $env:CEREBRAS_API_KEY = "your-api-key-here"
+
+      # Optional: lifts Keenable's keyless rate limit
+      $env:KEENABLE_API_KEY = "your-keenable-key-here"
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Search the web and answer from the results">
+    `to_context()` renders the result set as a numbered, citable block, so
+    grounding a completion is two calls: one search, one chat completion.
+
+    <CodeGroup>
+      ```python Python theme={null}
+      import os
+
+      from cerebras.cloud.sdk import Cerebras
+      from keenable import Keenable
+
+      question = "Which inference providers are fastest on gpt-oss-120b right now?"
+
+      keenable = Keenable()  # keyless; reads KEENABLE_API_KEY when set
+      cerebras = Cerebras(api_key=os.environ.get("CEREBRAS_API_KEY"))
+
+      results = keenable.search(question, published_after="2026-01-01")
+
+      completion = cerebras.chat.completions.create(
+          model="gpt-oss-120b",
+          messages=[
+              {
+                  "role": "system",
+                  "content": "Answer using only the sources provided. Cite them by number, like [1].",
+              },
+              {"role": "user", "content": f"{results.to_context()}\n\nQuestion: {question}"},
+          ],
+      )
+
+      print(completion.choices[0].message.content)
+      ```
+
+      ```javascript Node.js theme={null}
+      import Cerebras from '@cerebras/cerebras_cloud_sdk';
+      import { Keenable } from 'keenable';
+
+      const question = 'Which inference providers are fastest on gpt-oss-120b right now?';
+
+      const keenable = new Keenable(); // keyless; reads KEENABLE_API_KEY when set
+      const cerebras = new Cerebras({ apiKey: process.env['CEREBRAS_API_KEY'] });
+
+      const results = await keenable.search(question, { publishedAfter: '2026-01-01' });
+
+      const completion = await cerebras.chat.completions.create({
+        model: 'gpt-oss-120b',
+        messages: [
+          {
+            role: 'system',
+            content: 'Answer using only the sources provided. Cite them by number, like [1].',
+          },
+          { role: 'user', content: `${results.toContext()}\n\nQuestion: ${question}` },
+        ],
+      });
+
+      console.log(completion.choices[0].message.content);
+      ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Filters and freshness controls
+
+Keenable's index is semantic: describe the ideal page rather than typing
+keywords. Filters are optional and combine freely.
+
+| Filter | Best for |
+|---|---|
+| `site` | Restricting to one domain, e.g. `arxiv.org` |
+| `published_after` / `published_before` | Time-boxing by when the page was published |
+| `acquired_after` / `acquired_before` | Time-boxing by when Keenable indexed the page. Use this for "what is new since ..." queries, where publication dates are unreliable or missing |
+| `snippet_max_length` | Capping how much page text comes back per result, to control prompt size |
+
+Dates are `YYYY-MM-DD`. In Node the same filters are camelCase
+(`publishedAfter`, `acquiredAfter`, `snippetMaxLength`).
+
+```python Python theme={null}
+results = keenable.search(
+    "post-training quantization results for mixture-of-experts models",
+    site="arxiv.org",
+    published_after="2026-01-01",
+    snippet_max_length=500,
+)
+```
+
+## Get page contents
+
+Every search result already carries the page text in `snippet`, so a separate
+call is usually unnecessary. Reach for `fetch` when you have a URL and want the
+full page as markdown.
+
+<CodeGroup>
+```python Python theme={null}
+page = keenable.fetch("https://cerebras.ai/chip")
+
+print(page.title)
+print(page.content)  # markdown, boilerplate stripped
+```
+
+```javascript Node.js theme={null}
+const page = await keenable.fetch('https://cerebras.ai/chip');
+
+console.log(page.title);
+console.log(page.content); // markdown, boilerplate stripped
+```
+</CodeGroup>
+
+## Use Keenable as a tool for grounded answers
+
+Tool calling works well when you want a Cerebras model to decide when to search.
+The SDK ships OpenAI-compatible definitions for `keenable_search` and
+`keenable_fetch`, and a helper that runs whichever tool the model picked.
+
+<CodeGroup>
+```python Python theme={null}
+import os
+
+from cerebras.cloud.sdk import Cerebras
+from keenable import Keenable, TOOLS, run_tool_call
+
+keenable = Keenable()
+cerebras = Cerebras(api_key=os.environ.get("CEREBRAS_API_KEY"))
+
+messages = [
+    {
+        "role": "system",
+        "content": "Use the web tools when the answer depends on recent information, and cite the URLs you used.",
+    },
+    {"role": "user", "content": "What did Cerebras announce most recently, and when?"},
+]
+
+while True:
+    completion = cerebras.chat.completions.create(
+        model="gpt-oss-120b", messages=messages, tools=TOOLS
+    )
+    message = completion.choices[0].message
+
+    if not getattr(message, "tool_calls", None):
+        print(message.content)
+        break
+
+    messages.append(message.model_dump())
+    for call in message.tool_calls:
+        messages.append(
+            {
+                "role": "tool",
+                "tool_call_id": call.id,
+                "content": run_tool_call(keenable, call.function.name, call.function.arguments),
+            }
+        )
+```
+
+```javascript Node.js theme={null}
+import Cerebras from '@cerebras/cerebras_cloud_sdk';
+import { Keenable, TOOLS, runToolCall } from 'keenable';
+
+const keenable = new Keenable();
+const cerebras = new Cerebras({ apiKey: process.env['CEREBRAS_API_KEY'] });
+
+const messages = [
+  {
+    role: 'system',
+    content: 'Use the web tools when the answer depends on recent information, and cite the URLs you used.',
+  },
+  { role: 'user', content: 'What did Cerebras announce most recently, and when?' },
+];
+
+while (true) {
+  const completion = await cerebras.chat.completions.create({
+    model: 'gpt-oss-120b',
+    messages,
+    tools: TOOLS,
+  });
+  const message = completion.choices[0].message;
+
+  if (!message.tool_calls?.length) {
+    console.log(message.content);
+    break;
+  }
+
+  messages.push(message);
+  for (const call of message.tool_calls) {
+    messages.push({
+      role: 'tool',
+      tool_call_id: call.id,
+      content: await runToolCall(keenable, call.function.name, call.function.arguments),
+    });
+  }
+}
+```
+</CodeGroup>
+
+<Note>
+  `run_tool_call` returns the same numbered, citable block as `to_context()`, so
+  the model can cite sources by number in its final answer.
+</Note>
+
+## Rate limits and errors
+
+Keyless requests share an hourly cap. Setting `KEENABLE_API_KEY` lifts it and
+switches the SDK to the authenticated endpoints automatically; nothing else in
+your code changes.
+
+| Exception (Python / Node) | When |
+|---|---|
+| `KeenableRateLimitError` | HTTP 429. Set `KEENABLE_API_KEY` to lift the keyless cap |
+| `KeenableAuthError` | HTTP 401/403, the key was rejected |
+| `KeenableAPIError` | Any other non-2xx response; carries `status_code` |
+| `KeenableConnectionError` | The API could not be reached |
+
+## Next steps
+
+- Browse the [Keenable SDK reference](https://github.com/keenableai/keenable-sdk) for async clients, filters, and error handling
+- Create an optional key in the [Keenable Console](https://keenable.ai/console) to lift the keyless rate limit
+- See [Tool Calling](/capabilities/tool-use) for the full tool-calling contract on Cerebras
+- See [Designing for Cerebras](/resources/designing-for-cerebras) for agent patterns that take advantage of fast inference

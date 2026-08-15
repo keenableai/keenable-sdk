@@ -1,0 +1,55 @@
+name: Publish Python to PyPI
+
+# Publishes the `keenable` Python SDK to PyPI via Trusted Publishing (OIDC) —
+# no API tokens or passwords. Runs when a GitHub Release whose tag starts with
+# `python-v` is published; the tag must match the version in
+# python/pyproject.toml (e.g. python-v0.1.0 -> version 0.1.0).
+#
+# One-time setup on PyPI: register a Trusted Publisher for project `keenable`
+# pointing at this repo, workflow `publish-python.yml`, environment `pypi`.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    name: Build distribution
+    # Release-triggered runs are gated on the tag so a TypeScript release does
+    # not try to publish the Python package.
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'python-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Build sdist + wheel
+        run: uv build
+        working-directory: python
+      - name: Check metadata
+        run: uvx twine check dist/*
+        working-directory: python
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: python/dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/keenable
+    permissions:
+      id-token: write # required for Trusted Publishing (OIDC)
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI (Trusted Publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
