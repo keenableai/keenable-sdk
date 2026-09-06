@@ -69,7 +69,7 @@ export interface KeenableOptions {
    * attribution.
    */
   clientSource?: string;
-  /** Request timeout in milliseconds. Default 30000. */
+  /** Deadline in milliseconds for the whole request, headers and body. Default 30000. */
   timeoutMs?: number;
   /** Custom fetch implementation (for tests or a proxy). */
   fetch?: typeof globalThis.fetch;
