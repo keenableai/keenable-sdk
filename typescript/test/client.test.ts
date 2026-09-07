@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   Keenable,
   KeenableAuthError,
+  KeenableConnectionError,
   KeenableInvalidRequestError,
   KeenableRateLimitError,
   runToolCall,
@@ -38,12 +39,13 @@ const FETCH_BODY = {
 /** A client whose transport records requests and replays canned responses. */
 function mockClient(
   handler: (url: string, init: RequestInit) => Response,
-  options: { apiKey?: string; clientSource?: string } = {},
+  options: { apiKey?: string; clientSource?: string; timeoutMs?: number } = {},
 ) {
   const seen: Array<{ url: string; init: RequestInit }> = [];
   const client = new Keenable({
     apiKey: options.apiKey,
     clientSource: options.clientSource,
+    timeoutMs: options.timeoutMs,
     fetch: (async (input: RequestInfo | URL, init: RequestInit = {}) => {
       const url = String(input);
       seen.push({ url, init });
@@ -62,6 +64,29 @@ const json = (body: unknown, status = 200) =>
 /** Serve whichever endpoint was asked for. */
 const routed = (url: string) =>
   url.includes("/v1/search") ? json(SEARCH_BODY) : json(FETCH_BODY);
+
+/**
+ * A 200 whose headers arrive at once but whose body lands after `delayMs`.
+ *
+ * Like a real fetch body, the stream fails with an AbortError as soon as the
+ * request signal fires, so a client that keeps its deadline armed while reading
+ * sees the abort, and one that drops it early sees the body succeed.
+ */
+function slowJson(body: unknown, delayMs: number, signal?: AbortSignal | null) {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const deliver = setTimeout(() => {
+        controller.enqueue(new TextEncoder().encode(JSON.stringify(body)));
+        controller.close();
+      }, delayMs);
+      signal?.addEventListener("abort", () => {
+        clearTimeout(deliver);
+        controller.error(new DOMException("This operation was aborted", "AbortError"));
+      });
+    },
+  });
+  return new Response(stream, { status: 200, headers: { "Content-Type": "application/json" } });
+}
 
 describe("search", () => {
   it("parses results and keeps snippet as the text field", async () => {
@@ -237,6 +262,38 @@ describe("fetch", () => {
     const { client, seen } = mockClient(() => json(FETCH_BODY));
     await expect(client.fetch(url)).rejects.toBeInstanceOf(KeenableInvalidRequestError);
     expect(seen).toEqual([]);
+  });
+});
+
+describe("deadline", () => {
+  it("applies the timeout to a body that arrives after the headers", async () => {
+    const { client } = mockClient(
+      (_url, init) => slowJson(SEARCH_BODY, 100, init.signal),
+      { timeoutMs: 10 },
+    );
+    const error = await client.search("q").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(KeenableConnectionError);
+    expect((error as KeenableConnectionError).message).toContain("10 ms");
+  });
+
+  it("honours a caller abort that fires after the headers", async () => {
+    const { client } = mockClient((_url, init) => slowJson(FETCH_BODY, 100, init.signal));
+    const caller = new AbortController();
+    setTimeout(() => caller.abort(), 5);
+    const error = await client
+      .fetch("https://example.com/", { signal: caller.signal })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(DOMException);
+    expect((error as DOMException).name).toBe("AbortError");
+  });
+
+  it("returns a slow body that lands inside the deadline", async () => {
+    const { client } = mockClient(
+      (_url, init) => slowJson(SEARCH_BODY, 5, init.signal),
+      { timeoutMs: 1000 },
+    );
+    const response = await client.search("q");
+    expect(response.results).toHaveLength(2);
   });
 });
 

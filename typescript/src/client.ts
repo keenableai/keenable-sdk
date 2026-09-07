@@ -435,10 +435,19 @@ export class Keenable {
     callerSignal?.addEventListener("abort", onAbort);
 
     let response: Response;
+    let text: string;
     try {
       response = await this.fetchImpl(url, { ...rest, signal: controller.signal });
+      // fetch() resolves on headers. The body can still take arbitrarily long,
+      // so the deadline and the caller's signal must stay armed until it is read.
+      text = await response.text();
     } catch (cause) {
       if (callerSignal?.aborted) throw cause;
+      if (controller.signal.aborted) {
+        throw new KeenableConnectionError(
+          `the Keenable API did not respond within ${this.timeoutMs} ms`,
+        );
+      }
       throw new KeenableConnectionError(
         `could not reach the Keenable API: ${String(cause)}`,
       );
@@ -447,7 +456,6 @@ export class Keenable {
       callerSignal?.removeEventListener("abort", onAbort);
     }
 
-    const text = await response.text();
     if (!response.ok) throw toApiError(response.status, text);
 
     let data: unknown;
