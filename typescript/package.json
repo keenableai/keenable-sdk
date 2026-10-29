@@ -1,6 +1,6 @@
 {
   "name": "keenable",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Official TypeScript SDK for the Keenable web search API, built for AI agents",
   "license": "MIT",
   "author": "Keenable <support@keenable.ai>",
