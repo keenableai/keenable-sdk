@@ -28,7 +28,7 @@ Manual publish with OTP, matching how our other npm packages ship.
 2. Build and verify:
    ```bash
    cd typescript
-   npm install
+   npm install --legacy-peer-deps   # npm 10 crashes on vitest 4's peer set without it
    npm run typecheck && npm test && npm run build
    npm pack --dry-run    # check the file list
    ```
