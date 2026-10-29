@@ -66,7 +66,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-      - run: npm install
+      # npm 10's arborist crashes ("Cannot read properties of null (reading
+      # 'edgesOut')") resolving vitest 4's optional peer set; legacy peer
+      # resolution skips that path. Our own deps carry no peers we rely on.
+      - run: npm install --legacy-peer-deps
       - run: npm test
       # tsc and tsup read the pinned compiler from devDependencies, so their
       # answer cannot vary by Node version; run them once.
