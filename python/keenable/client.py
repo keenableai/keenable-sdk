@@ -6,7 +6,7 @@ import ipaddress
 from collections.abc import Iterator
 from contextlib import contextmanager
 from os import environ
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 from urllib.parse import urlsplit
 
 import httpx
@@ -16,8 +16,11 @@ from .errors import (
     KeenableAPIError,
     KeenableAuthError,
     KeenableConnectionError,
+    KeenableCreditsError,
+    KeenableForbiddenError,
     KeenableInvalidRequestError,
     KeenableRateLimitError,
+    KeenableValidationError,
 )
 from .models import Page, SearchResponse
 
@@ -35,11 +38,15 @@ _BLOCKED_HOSTS = frozenset({"localhost", "metadata.google.internal"})
 _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
 _STATUS_LABELS = {
+    400: "Keenable rejected the request (400)",
     401: "Keenable authentication failed (401)",
-    403: "Keenable authentication failed (403)",
     402: "Keenable: insufficient credits (402)",
+    403: "Keenable: forbidden (403)",
+    422: "Keenable rejected the request (422)",
     429: "Keenable rate limit exceeded (429)",
 }
+
+_CONSOLE_URL = "https://keenable.ai/console"
 
 
 def _resolve_base_url(base_url: str | None) -> str:
@@ -100,51 +107,150 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
     return payload
 
 
-def _to_api_error(response: httpx.Response) -> KeenableAPIError:
+class _Reply(NamedTuple):
+    """A decoded response body and the request id the API assigned to it."""
+
+    data: dict[str, Any]
+    request_id: str | None
+
+
+def _header_int(response: httpx.Response, name: str) -> int | None:
+    try:
+        return int(response.headers.get(name, ""))
+    except ValueError:
+        return None
+
+
+def _hint(status: int, keyless: bool, reset: str | None) -> str:
+    """The one next step that ends an API error message."""
+    if status in (400, 422):
+        return (
+            "Fix the request (the message says what was rejected); "
+            "retrying unchanged fails the same way."
+        )
+    if status == 401:
+        return (
+            "Check KEENABLE_API_KEY or the api_key you passed; "
+            "unset both to use the keyless tier."
+        )
+    if status == 402:
+        return (
+            f"Add credits at {_CONSOLE_URL}; retrying before that fails the same way."
+        )
+    if status == 403:
+        if keyless:
+            return (
+                "This needs an API key: set KEENABLE_API_KEY "
+                f"(create one at {_CONSOLE_URL})."
+            )
+        return f"Your plan does not include this; check it at {_CONSOLE_URL}."
+    if status == 429:
+        when = (
+            f"Retry after {reset}"
+            if reset
+            else "Retry after the rate limit window resets"
+        )
+        if keyless:
+            return f"{when}, or set KEENABLE_API_KEY to lift the keyless hourly cap."
+        return f"{when}."
+    if status == 404:
+        return "Check the URL; retrying unchanged fails the same way."
+    if status >= 500:
+        return "Retry the request; search and fetch are safe to repeat."
+    return "If it keeps failing, confirm KEENABLE_API_URL."
+
+
+def _to_api_error(response: httpx.Response, keyless: bool) -> KeenableAPIError:
     """Map a non-2xx response to the most specific SDK error available."""
     detail = ""
+    api_error: str | None = None
+    details: Any = None
     try:
         body = response.json()
         if isinstance(body, dict):
             detail = str(
                 body.get("message") or body.get("error") or body.get("detail") or ""
             )
+            api_error = _str_or_none(body.get("error"))
+            details = body.get("details")
     except ValueError:
         detail = (response.text or "").strip()
 
     status = response.status_code
+    request_id = response.headers.get("X-Request-Id") or None
+    reset = response.headers.get("X-RateLimit-Reset") or None
     label = _STATUS_LABELS.get(status, f"Keenable API error ({status})")
-    message = f"{label}: {detail}" if detail else label
+    hint = _hint(status, keyless, reset)
 
-    if status in (401, 403):
-        return KeenableAuthError(message, status, detail or None)
+    # The API's messages often end in a period; drop one so the ". <hint>"
+    # below doesn't produce "..".
+    shown = detail[:-1] if detail.endswith(".") else detail
+    message = f"{label}: {shown}" if detail else label
+    if request_id:
+        message += f" (request_id: {request_id})"
+    message += f". {hint}"
+
+    fields: dict[str, Any] = {
+        "api_error": api_error,
+        "details": details,
+        "request_id": request_id,
+        "hint": hint,
+    }
+    body_text = detail or None
+    if status in (400, 422):
+        return KeenableValidationError(message, status, body_text, **fields)
+    if status == 401:
+        return KeenableAuthError(message, status, body_text, **fields)
+    if status == 402:
+        return KeenableCreditsError(message, status, body_text, **fields)
+    if status == 403:
+        return KeenableForbiddenError(message, status, body_text, **fields)
     if status == 429:
-        return KeenableRateLimitError(message, status, detail or None)
-    return KeenableAPIError(message, status, detail or None)
+        return KeenableRateLimitError(
+            message,
+            status,
+            body_text,
+            limit=_header_int(response, "X-RateLimit-Limit"),
+            remaining=_header_int(response, "X-RateLimit-Remaining"),
+            reset=reset,
+            **fields,
+        )
+    return KeenableAPIError(message, status, body_text, **fields)
 
 
-def _decode(response: httpx.Response) -> dict[str, Any]:
+def _str_or_none(value: Any) -> str | None:
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _decode(response: httpx.Response, keyless: bool) -> _Reply:
     """Validate the status and decode a JSON object body."""
     if not response.is_success:
-        raise _to_api_error(response)
+        raise _to_api_error(response, keyless)
+    request_id = response.headers.get("X-Request-Id") or None
+    retry = "Retry the request; if it keeps failing, confirm KEENABLE_API_URL."
+    rid = f" (request_id: {request_id})" if request_id else ""
     try:
         data = response.json()
     except ValueError as exc:
         snippet = (response.text or "")[:200]
         raise KeenableAPIError(
-            f"Keenable API returned a non-JSON response: {snippet!r}",
+            f"Keenable API returned a non-JSON response: {snippet!r}{rid}. {retry}",
             response.status_code,
+            request_id=request_id,
+            hint=retry,
         ) from exc
     if not isinstance(data, dict):
         raise KeenableAPIError(
-            f"Unexpected response from the Keenable API: {data!r}",
+            f"Unexpected response from the Keenable API: {data!r}{rid}. {retry}",
             response.status_code,
+            request_id=request_id,
+            hint=retry,
         )
-    return data
+    return _Reply(data, request_id)
 
 
 @contextmanager
-def _transport_errors() -> Iterator[None]:
+def _transport_errors(timeout: float | None) -> Iterator[None]:
     """Translate httpx transport failures into a KeenableConnectionError.
 
     Wrapping the ``await`` inside the ``with`` body works for the async client
@@ -152,9 +258,23 @@ def _transport_errors() -> Iterator[None]:
     """
     try:
         yield
+    except httpx.TimeoutException as exc:
+        # ``timeout`` is None when the caller passed their own httpx client:
+        # its own timeout applies then, and ``timeout=`` would change nothing.
+        if timeout is None:
+            raise KeenableConnectionError(
+                f"the Keenable API did not respond before the deadline of the "
+                f"httpx client you passed ({exc!r}). Retrying is safe; raise "
+                "that client's timeout if it keeps happening."
+            ) from exc
+        raise KeenableConnectionError(
+            f"the Keenable API did not respond within {timeout:g}s ({exc!r}). "
+            "Retrying is safe; raise timeout= if it keeps happening."
+        ) from exc
     except httpx.HTTPError as exc:
         raise KeenableConnectionError(
-            f"could not reach the Keenable API: {exc!r}"
+            f"could not reach the Keenable API: {exc!r}. "
+            "Retrying is safe; check your network and KEENABLE_API_URL."
         ) from exc
 
 
@@ -173,6 +293,7 @@ class _BaseClient:
         self._api_key = (key or "").strip() or None
         self._base_url = _resolve_base_url(base_url)
         self._client_source = client_source
+        self._timeout = timeout
 
     @property
     def keyless(self) -> bool:
@@ -259,14 +380,14 @@ class Keenable(_BaseClient):
         *,
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+    ) -> _Reply:
         """Send one request and return its decoded body.
 
         Every transport concern lives here: endpoint selection, headers, error
         translation and decoding, so a retry or a logging hook is one edit.
         """
         headers = self._headers()
-        with _transport_errors():
+        with _transport_errors(self._timeout if self._owns_client else None):
             if json is None:
                 response = self._client.get(
                     self._url(endpoint), params=params, headers=headers
@@ -276,7 +397,7 @@ class Keenable(_BaseClient):
                 response = self._client.post(
                     self._url(endpoint), json=json, headers=headers
                 )
-        return _decode(response)
+        return _decode(response, self.keyless)
 
     def search(
         self,
@@ -331,7 +452,8 @@ class Keenable(_BaseClient):
             max_results=max_results,
             query_time=query_time,
         )
-        return SearchResponse._from_json(self._request(_SEARCH, json=payload), query)
+        reply = self._request(_SEARCH, json=payload)
+        return SearchResponse._from_json(reply.data, query, reply.request_id)
 
     def fetch(self, url: str) -> Page:
         """Fetch one URL and return its main content as markdown.
@@ -340,7 +462,8 @@ class Keenable(_BaseClient):
         model needs the full page.
         """
         _reject_private_fetch_target(url)
-        return Page._from_json(self._request(_FETCH, params={"url": url}), url)
+        reply = self._request(_FETCH, params={"url": url})
+        return Page._from_json(reply.data, url, reply.request_id)
 
 
 class AsyncKeenable(_BaseClient):
@@ -393,10 +516,10 @@ class AsyncKeenable(_BaseClient):
         *,
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+    ) -> _Reply:
         """Async counterpart of :meth:`Keenable._request`."""
         headers = self._headers()
-        with _transport_errors():
+        with _transport_errors(self._timeout if self._owns_client else None):
             if json is None:
                 response = await self._client.get(
                     self._url(endpoint), params=params, headers=headers
@@ -406,7 +529,7 @@ class AsyncKeenable(_BaseClient):
                 response = await self._client.post(
                     self._url(endpoint), json=json, headers=headers
                 )
-        return _decode(response)
+        return _decode(response, self.keyless)
 
     async def search(
         self,
@@ -435,11 +558,11 @@ class AsyncKeenable(_BaseClient):
             max_results=max_results,
             query_time=query_time,
         )
-        body = await self._request(_SEARCH, json=payload)
-        return SearchResponse._from_json(body, query)
+        reply = await self._request(_SEARCH, json=payload)
+        return SearchResponse._from_json(reply.data, query, reply.request_id)
 
     async def fetch(self, url: str) -> Page:
         """Fetch one URL as markdown. See :meth:`Keenable.fetch`."""
         _reject_private_fetch_target(url)
-        body = await self._request(_FETCH, params={"url": url})
-        return Page._from_json(body, url)
+        reply = await self._request(_FETCH, params={"url": url})
+        return Page._from_json(reply.data, url, reply.request_id)

@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   Keenable,
+  KeenableAPIError,
   KeenableAuthError,
   KeenableConnectionError,
+  KeenableCreditsError,
+  KeenableForbiddenError,
   KeenableInvalidRequestError,
   KeenableRateLimitError,
+  KeenableValidationError,
   runToolCall,
 } from "../src/index.js";
 
@@ -318,6 +322,136 @@ describe("errors", () => {
     await expect(unauthorized.client.search("q")).rejects.toBeInstanceOf(
       KeenableAuthError,
     );
+  });
+
+  const withHeaders = (body: unknown, status: number, headers: Record<string, string>) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json", ...headers },
+    });
+
+  const thrown = async (promise: Promise<unknown>) => {
+    try {
+      await promise;
+    } catch (error) {
+      return error as KeenableAPIError;
+    }
+    throw new Error("expected the call to throw");
+  };
+
+  it.each([
+    [400, "Invalid parameter", KeenableValidationError, "retrying unchanged fails"],
+    [422, "Unprocessable", KeenableValidationError, "Fix the"],
+    [401, "Authentication failed", KeenableAuthError, "KEENABLE_API_KEY"],
+    [402, "Payment required", KeenableCreditsError, "Add credits"],
+    [403, "Forbidden", KeenableForbiddenError, "This needs an API key"],
+    [503, "Unavailable", KeenableAPIError, "safe to repeat"],
+  ] as const)(
+    "maps %i to the right error and carries the API fields",
+    async (status, apiError, expected, hintPart) => {
+      const body = { error: apiError, message: "the api message", details: { param: "x" } };
+      const { client } = mockClient(() =>
+        withHeaders(body, status, { "X-Request-Id": "req-123" }),
+      );
+      const error = await thrown(client.search("q"));
+      expect(error.constructor).toBe(expected);
+      expect(error.statusCode).toBe(status);
+      expect(error.body).toBe("the api message");
+      expect(error.apiError).toBe(apiError);
+      expect(error.details).toEqual({ param: "x" });
+      expect(error.requestId).toBe("req-123");
+      expect(error.hint).toContain(hintPart);
+      expect(error.message).toContain("(request_id: req-123)");
+      expect(error.message.endsWith(error.hint ?? "")).toBe(true);
+    },
+  );
+
+  it("tells a missing page to check the URL, without a double period", async () => {
+    const { client } = mockClient(() =>
+      json({ error: "Not found", message: "The page does not exist at this URL." }, 404),
+    );
+    const error = await thrown(client.fetch("https://example.com/missing"));
+    expect(error.hint).toBe("Check the URL; retrying unchanged fails the same way.");
+    expect(error.message).toBe(
+      "Keenable API error (404): The page does not exist at this URL. " +
+        "Check the URL; retrying unchanged fails the same way.",
+    );
+    expect(error.body).toBe("The page does not exist at this URL.");
+  });
+
+  it("keeps 403 an auth error for existing instanceof checks", async () => {
+    const { client } = mockClient(() => json({ error: "Forbidden", message: "no" }, 403));
+    const error = await thrown(client.search("q"));
+    expect(error).toBeInstanceOf(KeenableAuthError);
+    expect(error).toBeInstanceOf(KeenableForbiddenError);
+    expect(error.message).not.toContain("authentication failed");
+  });
+
+  it("tells keyed callers about their plan, not about setting a key", async () => {
+    const { client } = mockClient(() => json({ message: "no" }, 403), { apiKey: "keen_x" });
+    const error = await thrown(client.search("q"));
+    expect(error.hint).not.toContain("KEENABLE_API_KEY");
+    expect(error.hint).toContain("plan");
+  });
+
+  it("reads the rate-limit headers and words the hint by key state", async () => {
+    const headers = {
+      "X-RateLimit-Limit": "1000",
+      "X-RateLimit-Remaining": "0",
+      "X-RateLimit-Reset": "2026-11-02T19:48:53.100Z",
+    };
+    const keyless = mockClient(() => withHeaders({ message: "cap" }, 429, headers)).client;
+    const error = (await thrown(keyless.search("q"))) as KeenableRateLimitError;
+    expect([error.limit, error.remaining, error.reset]).toEqual([
+      1000,
+      0,
+      "2026-11-02T19:48:53.100Z",
+    ]);
+    expect(error.message).toContain("Retry after 2026-11-02T19:48:53.100Z");
+    expect(error.message).toContain("KEENABLE_API_KEY");
+
+    const keyed = mockClient(() => withHeaders({ message: "cap" }, 429, headers), {
+      apiKey: "keen_x",
+    }).client;
+    const keyedError = await thrown(keyed.search("q"));
+    expect(keyedError.message).not.toContain("KEENABLE_API_KEY");
+  });
+
+  it("never puts the API key in an error message", async () => {
+    const { client } = mockClient(() => json({ message: "bad" }, 401), {
+      apiKey: "keen_secret",
+    });
+    const error = await thrown(client.search("q"));
+    expect(error.message).not.toContain("keen_secret");
+  });
+
+  it("puts the request id on successful responses", async () => {
+    const { client } = mockClient((url) =>
+      withHeaders(url.includes("/v1/search") ? SEARCH_BODY : FETCH_BODY, 200, {
+        "X-Request-Id": "req-ok",
+      }),
+    );
+    expect((await client.search("q")).requestId).toBe("req-ok");
+    expect((await client.fetch("https://example.com/")).requestId).toBe("req-ok");
+  });
+
+  it("keeps the request id in the message of an undecodable 2xx reply", async () => {
+    const { client } = mockClient(
+      () => new Response("<html>", { status: 200, headers: { "X-Request-Id": "req-bad" } }),
+    );
+    const error = await thrown(client.search("q"));
+    expect(error.message).toContain("(request_id: req-bad)");
+    expect(error.requestId).toBe("req-bad");
+  });
+
+  it("says a failed connection is safe to retry", async () => {
+    const client = new Keenable({
+      fetch: (async () => {
+        throw new TypeError("fetch failed");
+      }) as unknown as typeof globalThis.fetch,
+    });
+    await expect(client.search("q")).rejects.toThrow(KeenableConnectionError);
+    await expect(client.search("q")).rejects.toThrow(/Retrying is safe/);
   });
 
   it("rejects a non-https base URL", () => {
