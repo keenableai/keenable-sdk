@@ -86,7 +86,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go-version: ["1.27.3", "oldstable", "stable"]
+        go-version: ["1.22", "oldstable", "stable"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
