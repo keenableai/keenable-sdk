@@ -43,6 +43,15 @@ export interface SearchOptions {
   acquiredBefore?: string;
   /** Cap the characters of page text returned per result. */
   snippetMaxLength?: number;
+  /** How many results to return, 1 to 50. The API default is 10. */
+  maxResults?: number;
+  /**
+   * Search the index as it stood at this moment; pages newer than it are
+   * excluded. It sets no lower bound, so it is not a recency filter: use
+   * `publishedAfter` for that. Accepts an ISO 8601 datetime, `YYYY-MM-DD`, or
+   * an offset back from now such as `"7d"` (as of 7 days ago).
+   */
+  queryTime?: string;
   /** Abort the request from your own controller. */
   signal?: AbortSignal;
 }

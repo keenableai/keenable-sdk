@@ -59,6 +59,18 @@ SEARCH_FILTERS: tuple[Filter, ...] = (
         "Optional. Cap the characters of page text returned per result.",
         json_type="integer",
     ),
+    Filter(
+        "max_results",
+        "Optional. How many results to return, 1 to 50. The API default is 10.",
+        json_type="integer",
+    ),
+    Filter(
+        "query_time",
+        "Optional. Search the index as it stood at this moment: pages newer "
+        "than it are excluded. Not a recency filter (use published_after for "
+        "that). An ISO 8601 datetime, YYYY-MM-DD, or an offset back from now "
+        "such as '7d'.",
+    ),
 )
 
 TOOL_FILTERS: tuple[Filter, ...] = tuple(f for f in SEARCH_FILTERS if f.tool_exposed)

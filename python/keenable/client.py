@@ -289,6 +289,8 @@ class Keenable(_BaseClient):
         acquired_after: str | None = None,
         acquired_before: str | None = None,
         snippet_max_length: int | None = None,
+        max_results: int | None = None,
+        query_time: str | None = None,
     ) -> SearchResponse:
         """Search the web and return ranked results with page text.
 
@@ -305,6 +307,13 @@ class Keenable(_BaseClient):
                 where the publication date is unreliable or missing.
             acquired_before: Keep pages indexed on or before ``YYYY-MM-DD``.
             snippet_max_length: Cap the characters of page text per result.
+            max_results: How many results to return, 1 to 50. The API
+                default is 10.
+            query_time: Search the index as it stood at this moment; pages
+                newer than it are excluded. It sets no lower bound, so it is
+                not a recency filter: use ``published_after`` for that.
+                Accepts an ISO 8601 datetime, ``YYYY-MM-DD``, or an offset
+                back from now such as ``"7d"`` (as of 7 days ago).
 
         Returns:
             A :class:`SearchResponse`; iterate it for results or call
@@ -319,6 +328,8 @@ class Keenable(_BaseClient):
             acquired_after=acquired_after,
             acquired_before=acquired_before,
             snippet_max_length=snippet_max_length,
+            max_results=max_results,
+            query_time=query_time,
         )
         return SearchResponse._from_json(self._request(_SEARCH, json=payload), query)
 
@@ -408,6 +419,8 @@ class AsyncKeenable(_BaseClient):
         acquired_after: str | None = None,
         acquired_before: str | None = None,
         snippet_max_length: int | None = None,
+        max_results: int | None = None,
+        query_time: str | None = None,
     ) -> SearchResponse:
         """Search the web. See :meth:`Keenable.search` for the arguments."""
         payload = _search_payload(
@@ -419,6 +432,8 @@ class AsyncKeenable(_BaseClient):
             acquired_after=acquired_after,
             acquired_before=acquired_before,
             snippet_max_length=snippet_max_length,
+            max_results=max_results,
+            query_time=query_time,
         )
         body = await self._request(_SEARCH, json=payload)
         return SearchResponse._from_json(body, query)

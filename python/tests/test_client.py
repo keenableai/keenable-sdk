@@ -122,6 +122,15 @@ def test_search_sends_filters_and_defaults_to_pro() -> None:
     }
 
 
+def test_search_sends_max_results_and_query_time() -> None:
+    keenable, seen = _client(_ok(SEARCH_BODY))
+    keenable.search("un security council", max_results=25, query_time="2026-05-01")
+
+    payload = json.loads(seen[0].content)
+    assert payload["max_results"] == 25
+    assert payload["query_time"] == "2026-05-01"
+
+
 def test_keyless_client_uses_public_endpoint_and_identifies_itself() -> None:
     keenable, seen = _client(_ok(SEARCH_BODY))
     keenable.search("hello")
@@ -317,6 +326,15 @@ def test_tool_call_forwards_only_the_filters_the_schema_offers() -> None:
     # acquired_after is a real client filter but is not in the tool schema, so
     # a model cannot reach past the subset it was offered.
     assert "acquired_after" not in payload
+
+
+def test_tool_schema_keeps_max_results_and_query_time_out() -> None:
+    from keenable import TOOLS
+
+    search = next(t for t in TOOLS if t["function"]["name"] == "keenable_search")
+    props = search["function"]["parameters"]["properties"]
+    assert "max_results" not in props
+    assert "query_time" not in props
 
 
 async def test_async_client_mirrors_the_sync_one() -> None:
