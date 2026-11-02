@@ -8,14 +8,14 @@ plus a fetch endpoint that returns any URL as clean markdown.
 `KEENABLE_API_KEY` only lifts the hourly rate limit.
 
 ```bash
-go get github.com/keenableai/keenable-sdk/go@v0.1.0
+go get github.com/keenableai/keenable-sdk/go@v0.2.0
 ```
 
 Go 1.22 or newer. The module uses only the standard library.
 
-That version is the git tag `go/v0.1.0` on `github.com/keenableai/keenable-sdk`
-(the `go/` prefix is the directory, and it is not part of the `@v0.1.0` you
-pass to `go get`). Until that tag exists, `go get` cannot resolve the module.
+That version is the git tag `go/v0.2.0` on `github.com/keenableai/keenable-sdk`
+(the `go/` prefix is the directory, and it is not part of the `@v0.2.0` you
+pass to `go get`).
 From a checkout of this repo, the same program is `example/hello`:
 
 ```bash
@@ -50,8 +50,8 @@ func main() {
 }
 ```
 
-Results carry the page text in `Snippet`. (`Description` is the page's meta
-description and is nil for most pages, so build prompts from `Snippet`.)
+Results carry the page text in `Snippet`; build prompts from it. See
+[Response shape](#response-shape) for every field.
 
 Filters are optional and combine freely. Empty strings are left unset. A
 pointer is used where zero or false is a real value:
@@ -153,6 +153,21 @@ page, err := client.Fetch(ctx, "https://example.com/", &keenable.FetchOptions{
 `QueryTime` is the opposite of a recency filter: it searches the index as it
 stood at that moment and excludes everything newer, which is useful for
 reproducing past results.
+
+## Response shape
+
+What each field holds, so a pipeline or benchmark harness can map it without
+special cases:
+
+| Field | Holds |
+|---|---|
+| `SearchResult.Snippet` | The page text extracted for this query. The field to score or prompt with |
+| `SearchResult.Description` | Deprecated. The API leaves it empty, so the SDK mirrors `Snippet` into it. Do not render both |
+| `SearchResult.PublishedAt`, `Page.PublishedAt` | ISO-8601 strings. Fetch sends a Unix timestamp on the wire; the SDK converts it to `YYYY-MM-DDTHH:MM:SSZ` (UTC) |
+| `Page.Content` | The page as markdown, exactly as the API sent it. When cut at `MaxChars` it ends with a short truncation note |
+| `Page.Truncated()` | `true` when that note is present. `keenable.StripTruncationMarker(page.Content)` returns the text without it |
+| `RequestID` | The API's request id, on responses and errors. Quote it to support |
+| `Raw` | The unmodified JSON, for fields this SDK does not model yet |
 
 ## Tool calling
 

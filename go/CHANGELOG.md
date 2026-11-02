@@ -1,7 +1,17 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
+- From 0.2.0 the Python, TypeScript and Go SDKs share one version number and
+  release together, so Go skips from 0.1.1 to 0.2.0.
+- `Page.PublishedAt` was silently dropped because the API sends a Unix
+  timestamp. It is now converted to an ISO-8601 UTC string, matching search.
+- `Description` on search results mirrors `Snippet` when the API leaves it
+  empty (it always does today), for code written against `Description`. It
+  stays deprecated: if you render both fields, the text now appears twice.
+- `Page.Truncated()` reports whether fetched content was cut at the character
+  limit, and `StripTruncationMarker()` removes the API's trailing note for
+  callers that want bare text.
 - `SearchOptions` gains `EnableWizards` and `SessionID`; `Mode` documents
   `"realtime"`.
 - `Fetch` takes a `*FetchOptions` (`MaxChars`, `Live`, `Prompt`, `SessionID`),

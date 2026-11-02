@@ -1,5 +1,43 @@
 /** Helpers shared by the client and the tool layer. Not part of the public API. */
 
+// Epoch values at or above this are milliseconds: 1e11 seconds is the year
+// 5138, while 1e11 milliseconds is 1973, so no real date is ambiguous.
+const EPOCH_MS_THRESHOLD = 100_000_000_000;
+// Values below this (1973-03-03 in seconds) are not read as epochs: they are
+// far more likely a compact date such as "20261022", a bare year, or 0 for
+// "unknown". The Python and Go SDKs apply the same rules.
+const EPOCH_MIN = 100_000_000;
+// 9999-12-31T23:59:59Z: past it a "date" is garbage, not a four-digit year.
+const EPOCH_MAX_SECONDS = 253_402_300_799;
+
+/**
+ * Normalize a timestamp to ISO-8601, or undefined.
+ *
+ * Search returns ISO strings, which pass through untouched. Fetch returns a
+ * Unix epoch number (seconds, or milliseconds past the threshold above), which
+ * becomes `YYYY-MM-DDTHH:MM:SSZ` in UTC.
+ */
+export function isoTimestamp(value: unknown): string | undefined {
+  let epoch: number;
+  if (typeof value === "string") {
+    const text = value.trim();
+    if (text === "") return undefined;
+    // A digit string too small to be an epoch is returned as given.
+    if (!/^\d+$/.test(text) || Number(text) < EPOCH_MIN) return value;
+    epoch = Number(text);
+  } else if (typeof value === "number" && Number.isFinite(value)) {
+    if (value < EPOCH_MIN) return undefined;
+    epoch = value;
+  } else {
+    return undefined;
+  }
+  const ms = epoch >= EPOCH_MS_THRESHOLD ? epoch : epoch * 1000;
+  if (ms / 1000 > EPOCH_MAX_SECONDS) return undefined;
+  const date = new Date(Math.floor(ms / 1000) * 1000);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return date.toISOString().replace(".000Z", "Z");
+}
+
 /** Return a non-empty string, or undefined for anything else (incl. ""). */
 export function nonEmpty(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value : undefined;

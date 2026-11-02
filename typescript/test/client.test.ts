@@ -11,7 +11,9 @@ import {
   KeenableRateLimitError,
   KeenableValidationError,
   TOOLS,
+  TRUNCATION_MARKER,
   runToolCall,
+  stripTruncationMarker,
 } from "../src/index.js";
 
 const SEARCH_BODY = {
@@ -101,8 +103,9 @@ describe("search", () => {
     expect(response.length).toBe(2);
     expect(response.results[0]?.title).toBe("How Cerebras works");
     expect(response.results[0]?.snippet).toContain("on-chip memory");
-    // The API sends description="" for most pages; it must not survive as "".
-    expect(response.results[0]?.description).toBeUndefined();
+    // The API sends description=""; the SDK mirrors snippet so code written
+    // against description still gets text (and never a bare "").
+    expect(response.results[0]?.description).toBe(response.results[0]?.snippet);
     expect(response.results[0]?.publishedAt).toBe("2026-05-31T23:57:19Z");
     expect([...response].map((r) => r.title)).toEqual(["How Cerebras works", "MoE guide"]);
   });
@@ -131,6 +134,22 @@ describe("search", () => {
     const payload = JSON.parse(String(seen[0]?.init.body));
     expect(payload.max_results).toBe(25);
     expect(payload.query_time).toBe("2026-05-01");
+  });
+
+  it.each([
+    ["", "page text"],
+    [undefined, "page text"],
+    ["A real meta description", "A real meta description"],
+  ])("falls back from description %j to the snippet", async (wire, expected) => {
+    const result = { title: "t", url: "https://a.example/", snippet: "page text", description: wire };
+    const { client } = mockClient(() => json({ query: "q", results: [result] }));
+    expect((await client.search("q")).results[0]?.description).toBe(expected);
+  });
+
+  it("leaves description unset without a snippet", async () => {
+    const result = { title: "t", url: "https://a.example/", snippet: "" };
+    const { client } = mockClient(() => json({ query: "q", results: [result] }));
+    expect((await client.search("q")).results[0]?.description).toBeUndefined();
   });
 
   it("sends realtime mode, enableWizards and sessionId", async () => {
@@ -289,6 +308,62 @@ describe("fetch", () => {
       KeenableInvalidRequestError,
     );
     expect(seen).toHaveLength(0);
+  });
+
+  it.each([
+    [1792695600, "2026-10-22T19:00:00Z"],
+    [1792695600000, "2026-10-22T19:00:00Z"],
+    ["1792695600", "2026-10-22T19:00:00Z"],
+    [1792695600.5, "2026-10-22T19:00:00Z"],
+    [946684800000, "2000-01-01T00:00:00Z"],
+    ["20261022", "20261022"],
+    ["2026", "2026"],
+    [0, undefined],
+    ["²", "²"],
+    [1e23, undefined],
+    ["99999999999999999999999", undefined],
+    [253402300800000, undefined],
+    ["2026-10-22T19:00:00Z", "2026-10-22T19:00:00Z"],
+    ["2026-10-22T19:00:00+00:00", "2026-10-22T19:00:00+00:00"],
+    ["", undefined],
+    [null, undefined],
+    [true, undefined],
+    [{ nested: 1 }, undefined],
+  ])("turns published_at %j into %j", async (wire, expected) => {
+    const { client } = mockClient(() => json({ ...FETCH_BODY, published_at: wire }));
+    expect((await client.fetch("https://example.com/")).publishedAt).toBe(expected);
+  });
+
+  it("reports and strips the truncation note", async () => {
+    const cut =
+      "# Example\n\nSome text\n\n" +
+      "..._This content has been truncated to stay below 300 characters_...";
+    const { client } = mockClient(() => json({ ...FETCH_BODY, content: cut }));
+    const page = await client.fetch("https://example.com/");
+    expect(page.truncated).toBe(true);
+    expect(page.content).toBe(cut); // verbatim: the note is useful to a model
+    expect(stripTruncationMarker(page.content)).toBe("# Example\n\nSome text");
+    expect(TRUNCATION_MARKER.test(page.toContext())).toBe(true);
+
+    const spaced = "x" + " ".repeat(100_000) + "y";
+    const pageWs = await mockClient(() => json({ ...FETCH_BODY, content: spaced })).client.fetch(
+      "https://example.com/",
+    );
+    const start = performance.now();
+    expect(pageWs.truncated).toBe(false);
+    expect(stripTruncationMarker(spaced)).toBe(spaced);
+    // The old pattern took ~16 s here; a generous budget keeps CI stable.
+    expect(performance.now() - start).toBeLessThan(5000);
+
+    const authored = "Notes\n\n..._This content has been truncated by the author_...";
+    const byAuthor = await mockClient(() => json({ ...FETCH_BODY, content: authored })).client.fetch(
+      "https://example.com/",
+    );
+    expect(byAuthor.truncated).toBe(false);
+
+    const whole = await mockClient(() => json(FETCH_BODY)).client.fetch("https://example.com/");
+    expect(whole.truncated).toBe(false);
+    expect(stripTruncationMarker(whole.content)).toBe(whole.content);
   });
 
   it("renders a citable block like search results do", async () => {

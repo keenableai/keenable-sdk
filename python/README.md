@@ -25,8 +25,8 @@ for result in results:
     print(result.snippet)
 ```
 
-Results carry the page text in `snippet`. (`description` is the page's meta
-description and is empty for most pages, so build prompts from `snippet`.)
+Results carry the page text in `snippet`; build prompts from it. See
+[Response shape](#response-shape) for every field.
 
 Filters are optional and combine freely:
 
@@ -122,6 +122,21 @@ print(page.content)
 `query_time` is the opposite of a recency filter: it searches the index as it
 stood at that moment and excludes everything newer, which is useful for
 reproducing past results.
+
+## Response shape
+
+What each field holds, so a pipeline or benchmark harness can map it without
+special cases:
+
+| Field | Holds |
+|---|---|
+| `SearchResult.snippet` | The page text extracted for this query. The field to score or prompt with |
+| `SearchResult.description` | Deprecated. The API leaves it empty, so the SDK mirrors `snippet` into it. Do not render both |
+| `SearchResult.published_at`, `Page.published_at` | ISO-8601 strings. Fetch sends a Unix timestamp on the wire; the SDK converts it to `YYYY-MM-DDTHH:MM:SSZ` (UTC) |
+| `Page.content` | The page as markdown, exactly as the API sent it. When cut at `max_chars` it ends with a short truncation note |
+| `Page.truncated` | `True` when that note is present. `strip_truncation_marker(page.content)` returns the text without it |
+| `request_id` | The API's request id, on responses and errors. Quote it to support |
+| `raw` | The unmodified JSON, for fields this SDK does not model yet |
 
 ## Tool calling
 

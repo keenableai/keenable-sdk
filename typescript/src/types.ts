@@ -5,13 +5,14 @@ export interface SearchResult {
   title: string;
   url: string;
   /**
-   * Page text extracted for this query. This is the field to put in a prompt:
-   * it carries the actual content, unlike `description`.
+   * Page text extracted for this query: the field to put in a prompt.
+   * `description` is a deprecated copy of it.
    */
   snippet: string;
   /**
-   * @deprecated Always empty: the API no longer fills it. Read `snippet`.
-   * Kept for compatibility; see https://docs.keenable.ai/versioning.
+   * @deprecated Read `snippet`. The API no longer fills this field, so the SDK
+   * mirrors `snippet` into it for code written against it. Do not render both
+   * fields, or the text appears twice.
    */
   description?: string;
   /** ISO-8601 timestamp of publication, when the page exposes one. */

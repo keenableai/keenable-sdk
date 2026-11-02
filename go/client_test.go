@@ -154,8 +154,10 @@ func TestSearchParsesResults(t *testing.T) {
 	if !strings.HasPrefix(first.Snippet, "The WSE") {
 		t.Fatal(first.Snippet)
 	}
-	if first.Description != nil {
-		t.Fatalf("description %q, want absent", *first.Description)
+	// The API sends description=""; the SDK mirrors Snippet so code written
+	// against Description still gets text.
+	if first.Description == nil || *first.Description != first.Snippet {
+		t.Fatalf("description %#v, want the snippet", first.Description)
 	}
 	if first.PublishedAt == nil || *first.PublishedAt != "2026-05-31T23:57:19Z" {
 		t.Fatalf("published %#v", first.PublishedAt)
@@ -163,7 +165,7 @@ func TestSearchParsesResults(t *testing.T) {
 	if first.AcquiredAt == nil || *first.AcquiredAt != "2026-07-24T01:32:23Z" {
 		t.Fatalf("acquired %#v", first.AcquiredAt)
 	}
-	if resp.Results[1].Description != nil || resp.Results[1].AcquiredAt != nil {
+	if resp.Results[1].AcquiredAt != nil || resp.Results[1].PublishedAt != nil {
 		t.Fatal("second result should omit empty fields")
 	}
 }
@@ -460,6 +462,103 @@ func TestSearchSendsRealtimeWizardsAndSessionID(t *testing.T) {
 	p := payloadOf(t, one(t, seen))
 	if p["mode"] != "realtime" || p["enable_wizards"] != false || p["session_id"] != "agent-run-7" {
 		t.Fatalf("payload = %v", p)
+	}
+}
+
+func TestFetchPublishedAtBecomesISO(t *testing.T) {
+	cases := []struct {
+		wire any
+		want string // "" means nil
+	}{
+		{1792695600, "2026-10-22T19:00:00Z"},
+		{1792695600000, "2026-10-22T19:00:00Z"},
+		{"1792695600", "2026-10-22T19:00:00Z"},
+		{1792695600.5, "2026-10-22T19:00:00Z"},
+		{946684800000, "2000-01-01T00:00:00Z"},
+		{"20261022", "20261022"},
+		{"2026", "2026"},
+		{0, ""},
+		{"²", "²"},
+		{1e23, ""},
+		{"99999999999999999999999", ""},
+		{253402300800000, ""},
+		{"2026-10-22T19:00:00Z", "2026-10-22T19:00:00Z"},
+		{"2026-10-22T19:00:00+00:00", "2026-10-22T19:00:00+00:00"},
+		{"", ""},
+		{nil, ""},
+		{true, ""},
+		{map[string]any{"nested": 1}, ""},
+	}
+	for _, tc := range cases {
+		body := map[string]any{"url": "https://example.com/", "title": "t", "content": "c", "published_at": tc.wire}
+		c, _ := startKeyless(t, jsonHandler(http.StatusOK, body), nil)
+		page, err := c.Fetch(context.Background(), "https://example.com/", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := ""
+		if page.PublishedAt != nil {
+			got = *page.PublishedAt
+		}
+		if got != tc.want {
+			t.Errorf("published_at %#v: got %q, want %q", tc.wire, got, tc.want)
+		}
+	}
+}
+
+func TestSearchDescriptionFallsBackToSnippet(t *testing.T) {
+	for wire, want := range map[string]string{"": "page text", "A real meta description": "A real meta description"} {
+		result := map[string]any{"title": "t", "url": "https://a.example/", "snippet": "page text", "description": wire}
+		c, _ := startKeyless(t, jsonHandler(http.StatusOK, map[string]any{"query": "q", "results": []any{result}}), nil)
+		res, err := c.Search(context.Background(), "q", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d := res.Results[0].Description; d == nil || *d != want {
+			t.Errorf("description %q: got %#v, want %q", wire, d, want)
+		}
+	}
+	result := map[string]any{"title": "t", "url": "https://a.example/", "snippet": ""}
+	c, _ := startKeyless(t, jsonHandler(http.StatusOK, map[string]any{"query": "q", "results": []any{result}}), nil)
+	res, err := c.Search(context.Background(), "q", nil)
+	if err != nil || res.Results[0].Description != nil {
+		t.Fatalf("no snippet should leave Description nil: %v %#v", err, res)
+	}
+}
+
+func TestFetchReportsAndStripsTheTruncationNote(t *testing.T) {
+	cut := "# Example\n\nSome text\n\n..._This content has been truncated to stay below 300 characters_..."
+	body := map[string]any{"url": "https://example.com/", "title": "t", "content": cut}
+	c, _ := startKeyless(t, jsonHandler(http.StatusOK, body), nil)
+	page, err := c.Fetch(context.Background(), "https://example.com/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !page.Truncated() || page.Content != cut {
+		t.Fatalf("truncated=%v content=%q", page.Truncated(), page.Content)
+	}
+	if got := keenable.StripTruncationMarker(page.Content); got != "# Example\n\nSome text" {
+		t.Fatalf("stripped = %q", got)
+	}
+	if !keenable.TruncationMarker.MatchString(page.ToContext(nil)) {
+		t.Fatal("ToContext should keep the note for the model")
+	}
+
+	authored := map[string]any{"url": "https://example.com/", "title": "t", "content": "Notes\n\n..._This content has been truncated by the author_..."}
+	c, _ = startKeyless(t, jsonHandler(http.StatusOK, authored), nil)
+	byAuthor, err := c.Fetch(context.Background(), "https://example.com/", nil)
+	if err != nil || byAuthor.Truncated() {
+		t.Fatalf("author text must not count as truncation: %v", err)
+	}
+
+	c, _ = startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
+	whole, err := c.Fetch(context.Background(), "https://example.com/", nil)
+	if err != nil || whole.Truncated() || keenable.StripTruncationMarker(whole.Content) != whole.Content {
+		t.Fatalf("an uncut page: %v %q", err, whole.Content)
+	}
+	var nilPage *keenable.Page
+	if nilPage.Truncated() {
+		t.Fatal("nil page")
 	}
 }
 

@@ -19,6 +19,8 @@ export {
   Keenable,
   Page,
   SearchResponse,
+  TRUNCATION_MARKER,
+  stripTruncationMarker,
 } from "./client.js";
 export {
   KeenableAPIError,

@@ -9,7 +9,7 @@ import {
   KeenableValidationError,
 } from "./errors.js";
 import { SEARCH_FILTERS } from "./filters.js";
-import { collapse, nonEmpty, normalizeHost, readEnv } from "./internal.js";
+import { collapse, isoTimestamp, nonEmpty, normalizeHost, readEnv } from "./internal.js";
 import type {
   FetchOptions,
   KeenableOptions,
@@ -150,6 +150,28 @@ function sourceHeader(index: number, title: string, url: string, date?: string):
   return date ? `${header} - published ${date}` : header;
 }
 
+/**
+ * The note the API appends to fetched content cut at `maxChars`.
+ *
+ * Best-effort: it matches the API's current wording, and `Page.truncated`
+ * reads `false` if the wording changes.
+ */
+// No leading \s*: an unanchored one rescans every whitespace run in the page
+// (seconds on a 50,000-character page). stripTruncationMarker trims instead.
+export const TRUNCATION_MARKER =
+  /\.{3}_This content has been truncated to stay below \d+ characters_\.{3}\s*$/;
+
+/**
+ * Return `text` without a trailing truncation note, if it has one.
+ *
+ * For scorers and pipelines that want only page text. A model usually benefits
+ * from seeing the note, so `Page.toContext()` keeps it.
+ */
+export function stripTruncationMarker(text: string): string {
+  const match = TRUNCATION_MARKER.exec(text);
+  return match ? text.slice(0, match.index).trimEnd() : text;
+}
+
 /** One rendered source: its header line, then its text. */
 function contextBlock(header: string, body: string): string {
   return body ? `${header}\n${body}` : header;
@@ -262,6 +284,10 @@ export class Page {
    */
   readonly description?: string;
   readonly author?: string;
+  /**
+   * ISO-8601 publication time in UTC. The API sends a Unix timestamp here; the
+   * SDK converts it so it matches `SearchResult.publishedAt`.
+   */
   readonly publishedAt?: string;
   /** The API's `X-Request-Id` for this call. Quote it to support. */
   readonly requestId?: string;
@@ -288,6 +314,14 @@ export class Page {
   }
 
   /**
+   * True when the API cut `content` at `maxChars`. `content` keeps the API's
+   * trailing note; use `stripTruncationMarker()` for the bare text.
+   */
+  get truncated(): boolean {
+    return TRUNCATION_MARKER.test(this.content);
+  }
+
+  /**
    * Render the page as a citable block for a prompt.
    *
    * Same shape as `SearchResponse.toContext()`, so a model can cite a fetched
@@ -309,8 +343,8 @@ function toSearchResult(data: Record<string, unknown>): SearchResult {
     title: String(data.title ?? ""),
     url: String(data.url ?? ""),
     snippet: String(data.snippet ?? ""),
-    description: nonEmpty(data.description),
-    publishedAt: nonEmpty(data.published_at),
+    description: nonEmpty(data.description) ?? nonEmpty(data.snippet),
+    publishedAt: isoTimestamp(data.published_at),
     acquiredAt: nonEmpty(data.acquired_at),
     raw: data,
   };
@@ -323,7 +357,7 @@ function toPage(data: Record<string, unknown>, url: string, requestId?: string):
     content: String(data.content ?? ""),
     description: nonEmpty(data.description),
     author: nonEmpty(data.author),
-    publishedAt: nonEmpty(data.published_at),
+    publishedAt: isoTimestamp(data.published_at),
     requestId,
     raw: data,
   });

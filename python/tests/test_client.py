@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 import httpx
 import pytest
 
 from keenable import (
+    TRUNCATION_MARKER,
     AsyncKeenable,
     Keenable,
     KeenableAPIError,
@@ -21,6 +23,7 @@ from keenable import (
     KeenableValidationError,
     arun_tool_call,
     run_tool_call,
+    strip_truncation_marker,
 )
 
 SEARCH_BODY: dict[str, Any] = {
@@ -107,8 +110,9 @@ def test_search_parses_results_and_prefers_snippet() -> None:
     assert len(response) == 2
     assert response[0].title == "How Cerebras works"
     assert response[0].snippet.startswith("The WSE")
-    # The API sends description="" for most pages; it must not become a str "".
-    assert response[0].description is None
+    # The API sends description=""; the SDK mirrors snippet so code written
+    # against description still gets text (and never a bare "").
+    assert response[0].description == response[0].snippet
     assert response[0].published_at == "2026-05-31T23:57:19Z"
 
 
@@ -274,6 +278,91 @@ def test_fetch_returns_markdown() -> None:
     assert seen[0].url.params["url"] == "https://example.com"
     assert page.title == "Example Domain"
     assert page.content.startswith("# Example Domain")
+
+
+@pytest.mark.parametrize(
+    ("wire", "description"),
+    [
+        ("", "page text"),
+        (None, "page text"),
+        ("A real meta description", "A real meta description"),
+    ],
+)
+def test_search_description_falls_back_to_snippet(
+    wire: str | None, description: str
+) -> None:
+    result = {"title": "t", "url": "https://a.example/", "snippet": "page text"}
+    if wire is not None:
+        result["description"] = wire
+    keenable, _ = _client(_ok({"query": "q", "results": [result]}))
+    assert keenable.search("q")[0].description == description
+
+
+def test_search_description_stays_none_without_a_snippet() -> None:
+    result = {"title": "t", "url": "https://a.example/", "snippet": ""}
+    keenable, _ = _client(_ok({"query": "q", "results": [result]}))
+    assert keenable.search("q")[0].description is None
+
+
+@pytest.mark.parametrize(
+    ("wire", "expected"),
+    [
+        (1792695600, "2026-10-22T19:00:00Z"),
+        (1792695600000, "2026-10-22T19:00:00Z"),
+        ("1792695600", "2026-10-22T19:00:00Z"),
+        (1792695600.5, "2026-10-22T19:00:00Z"),
+        (946684800000, "2000-01-01T00:00:00Z"),  # ms before 2001
+        ("20261022", "20261022"),  # compact date, not an epoch
+        ("2026", "2026"),
+        (0, None),  # "unknown", not 1970
+        ("²", "²"),  # str.isdigit() is True, int() would raise
+        (1e23, None),  # past year 9999
+        ("9" * 5000, None),  # beyond int()'s digit limit
+        ("99999999999999999999999", None),
+        (253402300800000, None),  # ms past year 9999
+        ("2026-10-22T19:00:00Z", "2026-10-22T19:00:00Z"),
+        ("2026-10-22T19:00:00+00:00", "2026-10-22T19:00:00+00:00"),
+        ("", None),
+        (None, None),
+        (True, None),
+        ({"nested": 1}, None),
+    ],
+)
+def test_fetch_published_at_becomes_iso(wire: Any, expected: str | None) -> None:
+    keenable, _ = _client(_ok({**FETCH_BODY, "published_at": wire}))
+    assert keenable.fetch("https://example.com/").published_at == expected
+
+
+def test_fetch_reports_and_strips_the_truncation_note() -> None:
+    cut = (
+        "# Example\n\nSome text\n\n"
+        "..._This content has been truncated to stay below 300 characters_..."
+    )
+    keenable, _ = _client(_ok({**FETCH_BODY, "content": cut}))
+    page = keenable.fetch("https://example.com/")
+    assert page.truncated
+    assert page.content == cut  # verbatim: the note is useful to a model
+    assert strip_truncation_marker(page.content) == "# Example\n\nSome text"
+    assert TRUNCATION_MARKER.search(page.to_context())
+
+    # A long whitespace run without the note must stay cheap to check.
+    spaced = "x" + " " * 100_000 + "y"
+    keenable, _ = _client(_ok({**FETCH_BODY, "content": spaced}))
+    page_ws = keenable.fetch("https://example.com/")
+    start = time.perf_counter()
+    assert not page_ws.truncated
+    assert strip_truncation_marker(spaced) == spaced
+    # The old pattern took ~45 s here; a generous budget keeps CI stable.
+    assert time.perf_counter() - start < 5
+
+    authored = "Notes\n\n..._This content has been truncated by the author_..."
+    keenable, _ = _client(_ok({**FETCH_BODY, "content": authored}))
+    assert not keenable.fetch("https://example.com/").truncated
+
+    keenable, _ = _client(_ok(FETCH_BODY))
+    whole = keenable.fetch("https://example.com/")
+    assert not whole.truncated
+    assert strip_truncation_marker(whole.content) == whole.content
 
 
 def test_page_to_context_is_citable_like_search_results() -> None:

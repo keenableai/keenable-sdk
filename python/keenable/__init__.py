@@ -23,7 +23,14 @@ from .errors import (
     KeenableRateLimitError,
     KeenableValidationError,
 )
-from .models import DEFAULT_CONTEXT_MAX_CHARS, Page, SearchResponse, SearchResult
+from .models import (
+    DEFAULT_CONTEXT_MAX_CHARS,
+    TRUNCATION_MARKER,
+    Page,
+    SearchResponse,
+    SearchResult,
+    strip_truncation_marker,
+)
 from .tools import FETCH_TOOL, SEARCH_TOOL, TOOLS, arun_tool_call, run_tool_call
 
 __all__ = [
@@ -47,7 +54,9 @@ __all__ = [
     "SearchResponse",
     "SearchResult",
     "TOOLS",
+    "TRUNCATION_MARKER",
     "__version__",
     "arun_tool_call",
     "run_tool_call",
+    "strip_truncation_marker",
 ]

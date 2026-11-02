@@ -1,8 +1,12 @@
 package keenable
 
 import (
+	"errors"
+	"math"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -85,8 +89,11 @@ type SearchResult struct {
 	Title   string `json:"title"`
 	URL     string `json:"url"`
 	Snippet string `json:"snippet"`
-	// Description is the page's meta description. Often absent. Prefer Snippet
-	// in prompts. Nil when the API omitted it or sent an empty string.
+	// Description mirrors Snippet: the API no longer fills it, so the SDK
+	// copies Snippet in for code written against it. Do not render both
+	// fields, or the text appears twice. Nil when Snippet is empty too.
+	//
+	// Deprecated: read Snippet.
 	Description *string `json:"description,omitempty"`
 	// PublishedAt is the ISO-8601 publication time, when the page exposes one.
 	PublishedAt *string `json:"published_at,omitempty"`
@@ -111,11 +118,17 @@ type SearchResponse struct {
 
 // Page is a URL fetched by [Client.Fetch], with main content as markdown.
 type Page struct {
-	URL         string  `json:"url"`
-	Title       string  `json:"title"`
-	Content     string  `json:"content"`
+	URL     string `json:"url"`
+	Title   string `json:"title"`
+	Content string `json:"content"`
+	// Description is always nil: the API no longer fills it.
+	//
+	// Deprecated: read Content.
 	Description *string `json:"description,omitempty"`
 	Author      *string `json:"author,omitempty"`
+	// PublishedAt is the ISO-8601 publication time in UTC. The API sends a
+	// Unix timestamp here; the SDK converts it so it matches
+	// SearchResult.PublishedAt.
 	PublishedAt *string `json:"published_at,omitempty"`
 	// RequestID is the API's X-Request-Id for this call. Quote it to support.
 	RequestID string         `json:"-"`
@@ -294,8 +307,8 @@ func searchResultFromJSON(data map[string]any) SearchResult {
 		Title:       asString(data["title"]),
 		URL:         asString(data["url"]),
 		Snippet:     asString(data["snippet"]),
-		Description: nonEmptyString(data["description"]),
-		PublishedAt: nonEmptyString(data["published_at"]),
+		Description: firstNonEmpty(data["description"], data["snippet"]),
+		PublishedAt: isoTimestamp(data["published_at"]),
 		AcquiredAt:  nonEmptyString(data["acquired_at"]),
 		Raw:         data,
 	}
@@ -312,9 +325,94 @@ func pageFromJSON(data map[string]any, fallbackURL string) *Page {
 		Content:     asString(data["content"]),
 		Description: nonEmptyString(data["description"]),
 		Author:      nonEmptyString(data["author"]),
-		PublishedAt: nonEmptyString(data["published_at"]),
+		PublishedAt: isoTimestamp(data["published_at"]),
 		Raw:         data,
 	}
+}
+
+// TruncationMarker matches the note the API appends to fetched content cut at
+// MaxChars. Best-effort: it matches the API's current wording, and
+// [Page.Truncated] reports false if the wording changes.
+var TruncationMarker = regexp.MustCompile(`\.{3}_This content has been truncated to stay below \d+ characters_\.{3}\s*$`)
+
+// StripTruncationMarker returns s without a trailing truncation note, if it
+// has one. For scorers and pipelines that want only page text. A model usually
+// benefits from seeing the note, so [Page.ToContext] keeps it.
+func StripTruncationMarker(s string) string {
+	loc := TruncationMarker.FindStringIndex(s)
+	if loc == nil {
+		return s
+	}
+	return strings.TrimRightFunc(s[:loc[0]], unicode.IsSpace)
+}
+
+// Truncated reports whether the API cut Content at MaxChars. Content keeps the
+// API's trailing note; use [StripTruncationMarker] for the bare text.
+func (p *Page) Truncated() bool {
+	return p != nil && TruncationMarker.MatchString(p.Content)
+}
+
+// epochMillisThreshold: epoch values at or above it are milliseconds. 1e11
+// seconds is the year 5138, while 1e11 milliseconds is 1973, so no real date
+// is ambiguous. Values below epochMin (1973-03-03 in seconds) are not read as
+// epochs: a compact date such as "20261022", a bare year, or 0 for "unknown"
+// is far more likely. The Python and TypeScript SDKs apply the same rules.
+const (
+	epochMillisThreshold = 1e11
+	epochMin             = 1e8
+	// epochMax is 9999-12-31T23:59:59Z: past it a "date" is garbage.
+	epochMax = 253402300799
+)
+
+// isoTimestamp normalizes a timestamp to ISO-8601. Search returns ISO strings,
+// which pass through untouched. Fetch returns a Unix epoch number (seconds, or
+// milliseconds past the threshold), which becomes YYYY-MM-DDTHH:MM:SSZ in UTC.
+func isoTimestamp(v any) *string {
+	var epoch float64
+	switch t := v.(type) {
+	case string:
+		text := strings.TrimSpace(t)
+		if text == "" {
+			return nil
+		}
+		n, err := strconv.ParseUint(text, 10, 64)
+		if errors.Is(err, strconv.ErrRange) {
+			// All digits but too large for any epoch: unset, as in Python and TS.
+			return nil
+		}
+		if err != nil || float64(n) < epochMin {
+			// Not an epoch: return it as given.
+			return &t
+		}
+		epoch = float64(n)
+	case float64:
+		if t < epochMin {
+			return nil
+		}
+		epoch = t
+	default:
+		return nil
+	}
+	if math.IsNaN(epoch) || math.IsInf(epoch, 0) {
+		return nil
+	}
+	if epoch >= epochMillisThreshold {
+		epoch /= 1000
+	}
+	if epoch > epochMax {
+		return nil
+	}
+	s := time.Unix(int64(math.Floor(epoch)), 0).UTC().Format("2006-01-02T15:04:05Z")
+	return &s
+}
+
+func firstNonEmpty(values ...any) *string {
+	for _, v := range values {
+		if s := nonEmptyString(v); s != nil {
+			return s
+		}
+	}
+	return nil
 }
 
 func nonEmptyString(v any) *string {
