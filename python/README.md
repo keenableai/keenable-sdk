@@ -45,6 +45,8 @@ results = keenable.search(
 | `published_after` / `published_before` | Filter by publication date (`YYYY-MM-DD`) |
 | `acquired_after` / `acquired_before` | Filter by when Keenable indexed the page |
 | `snippet_max_length` | Cap the page text returned per result |
+| `max_results` | How many results to return, 1 to 50 (default 10) |
+| `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `mode` | Search mode; `"pro"` (default) does deeper retrieval |
 
 ## Ground a model in one line

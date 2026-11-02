@@ -119,6 +119,15 @@ describe("search", () => {
     });
   });
 
+  it("sends maxResults and queryTime", async () => {
+    const { client, seen } = mockClient(() => json(SEARCH_BODY));
+    await client.search("un security council", { maxResults: 25, queryTime: "2026-05-01" });
+
+    const payload = JSON.parse(String(seen[0]?.init.body));
+    expect(payload.max_results).toBe(25);
+    expect(payload.query_time).toBe("2026-05-01");
+  });
+
   it("uses the public endpoint and identifies itself when keyless", async () => {
     const { client, seen } = mockClient(() => json(SEARCH_BODY));
     await client.search("hello");

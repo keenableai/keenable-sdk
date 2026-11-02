@@ -49,6 +49,8 @@ const results = await keenable.search("post-training quantization results", {
 | `publishedAfter` / `publishedBefore` | Filter by publication date (`YYYY-MM-DD`) |
 | `acquiredAfter` / `acquiredBefore` | Filter by when Keenable indexed the page |
 | `snippetMaxLength` | Cap the page text returned per result |
+| `maxResults` | How many results to return, 1 to 50 (default 10) |
+| `queryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `mode` | Search mode; `"pro"` (default) does deeper retrieval |
 | `signal` | An `AbortSignal` to cancel the request |
 

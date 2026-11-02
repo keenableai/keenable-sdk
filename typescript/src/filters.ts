@@ -60,6 +60,20 @@ export const SEARCH_FILTERS: readonly Filter[] = [
     description: "Optional. Cap the characters of page text returned per result.",
     jsonType: "integer",
   },
+  {
+    wire: "max_results",
+    option: "maxResults",
+    description: "Optional. How many results to return, 1 to 50. The API default is 10.",
+    jsonType: "integer",
+  },
+  {
+    wire: "query_time",
+    option: "queryTime",
+    description:
+      "Optional. Search the index as it stood at this moment: pages newer than it are " +
+      "excluded. Not a recency filter (use published_after for that). An ISO 8601 " +
+      "datetime, YYYY-MM-DD, or an offset back from now such as '7d'.",
+  },
 ];
 
 export const TOOL_FILTERS: readonly Filter[] = SEARCH_FILTERS.filter(
