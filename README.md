@@ -12,10 +12,12 @@ markdown.
 |---|---|---|
 | Python 3.9+ | [`keenable`](https://pypi.org/project/keenable/) | [`python/`](./python) |
 | TypeScript / Node 18+ | [`keenable`](https://www.npmjs.com/package/keenable) | [`typescript/`](./typescript) |
+| Go 1.22+ | [`keenable`](https://pkg.go.dev/github.com/keenableai/keenable-sdk/go) | [`go/`](./go) |
 
 ```bash
 pip install keenable
 npm install keenable
+go get github.com/keenableai/keenable-sdk/go@v0.1.0
 ```
 
 ```python
@@ -34,9 +36,36 @@ const results = await keenable.search("fastest inference providers 2026");
 console.log(results.toContext());
 ```
 
-Both SDKs expose the same surface: `search`, `fetch`, a `to_context()` /
-`toContext()` renderer for prompts, and OpenAI-compatible tool definitions for
-tool calling. See the per-language READMEs for the full reference.
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/keenableai/keenable-sdk/go"
+)
+
+func main() {
+	client, err := keenable.New(nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer client.Close()
+
+	results, err := client.Search(context.Background(), "fastest inference providers 2026", nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(results.ToContext(nil))
+}
+```
+
+Each SDK exposes the same surface: search, fetch, a `to_context()` /
+`toContext()` / `ToContext()` renderer for prompts, and OpenAI-compatible tool
+definitions for tool calling. See the per-language READMEs for the full
+reference.
 
 ## Examples
 

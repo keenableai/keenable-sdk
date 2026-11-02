@@ -1,6 +1,6 @@
 # Publishing
 
-Two packages ship from this repo, on independent version numbers.
+Three SDKs ship from this repo, on independent version numbers.
 
 ## Python (`keenable` on PyPI)
 
@@ -38,8 +38,24 @@ Manual publish with OTP, matching how our other npm packages ship.
    ```
 4. Tag the release `ts-v<version>` on GitHub.
 
+## Go (`github.com/keenableai/keenable-sdk/go`)
+
+The module lives in `go/`. There is no registry workflow: `go get` and
+pkg.go.dev follow a git tag.
+
+1. Bump `Version` in `go/version.go`. That constant is the only copy. The
+   User-Agent reads it.
+2. Tag `go/v<version>` (for example `go/v0.1.0`) on the commit that contains
+   that constant. The tag prefix is the module directory. Users install with
+   `go get github.com/keenableai/keenable-sdk/go@v0.1.0`. The `@` version does
+   not repeat the `go/` prefix.
+3. The module proxy indexes the tag the first time someone fetches it.
+
+A root `v0.1.0` tag does not version this module. `python-v*` and `ts-v*` do
+not publish it either.
+
 ## Version sync
 
-The two packages keep the same feature surface but version independently. When
-a change touches both, release both and note it in the same GitHub Release
-description.
+The three SDKs keep the same feature surface but version independently. When a
+change touches more than one, release each and note it in the same GitHub
+Release description.
