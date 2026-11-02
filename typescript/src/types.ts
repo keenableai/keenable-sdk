@@ -9,7 +9,10 @@ export interface SearchResult {
    * it carries the actual content, unlike `description`.
    */
   snippet: string;
-  /** The page's meta description. Often absent; prefer `snippet`. */
+  /**
+   * @deprecated Always empty: the API no longer fills it. Read `snippet`.
+   * Kept for compatibility; see https://docs.keenable.ai/versioning.
+   */
   description?: string;
   /** ISO-8601 timestamp of publication, when the page exposes one. */
   publishedAt?: string;

@@ -237,6 +237,10 @@ export class Page {
   readonly title: string;
   /** The page's main content as markdown, with boilerplate stripped. */
   readonly content: string;
+  /**
+   * @deprecated Always empty: the API no longer fills it. Read `content`.
+   * Kept for compatibility; see https://docs.keenable.ai/versioning.
+   */
   readonly description?: string;
   readonly author?: string;
   readonly publishedAt?: string;

@@ -6,4 +6,4 @@ nothing else. Reading it from installed metadata instead would cost a
 filesystem walk on every import for a value that never changes.
 """
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"

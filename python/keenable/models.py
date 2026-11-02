@@ -45,7 +45,8 @@ class SearchResult:
     prompt: it carries the actual content, unlike ``description``."""
 
     description: str | None = None
-    """The page's meta description. Often absent; prefer ``snippet``."""
+    """Deprecated: always empty, the API no longer fills it. Read ``snippet``.
+    Kept for compatibility; see https://docs.keenable.ai/versioning."""
 
     published_at: str | None = None
     """ISO-8601 timestamp of publication, when the page exposes one."""
@@ -188,6 +189,9 @@ class Page:
     stripped."""
 
     description: str | None = None
+    """Deprecated: always empty, the API no longer fills it. Read ``content``.
+    Kept for compatibility; see https://docs.keenable.ai/versioning."""
+
     author: str | None = None
     published_at: str | None = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
