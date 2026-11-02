@@ -76,18 +76,22 @@ type SearchResponse struct {
 	Query   string         `json:"query"`
 	Mode    *string        `json:"mode,omitempty"`
 	Results []SearchResult `json:"results"`
-	Raw     map[string]any `json:"-"`
+	// RequestID is the API's X-Request-Id for this call. Quote it to support.
+	RequestID string         `json:"-"`
+	Raw       map[string]any `json:"-"`
 }
 
 // Page is a URL fetched by [Client.Fetch], with main content as markdown.
 type Page struct {
-	URL         string         `json:"url"`
-	Title       string         `json:"title"`
-	Content     string         `json:"content"`
-	Description *string        `json:"description,omitempty"`
-	Author      *string        `json:"author,omitempty"`
-	PublishedAt *string        `json:"published_at,omitempty"`
-	Raw         map[string]any `json:"-"`
+	URL         string  `json:"url"`
+	Title       string  `json:"title"`
+	Content     string  `json:"content"`
+	Description *string `json:"description,omitempty"`
+	Author      *string `json:"author,omitempty"`
+	PublishedAt *string `json:"published_at,omitempty"`
+	// RequestID is the API's X-Request-Id for this call. Quote it to support.
+	RequestID string         `json:"-"`
+	Raw       map[string]any `json:"-"`
 }
 
 // Cited returns the results ToContext would render, in citation order.

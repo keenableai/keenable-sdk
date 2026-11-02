@@ -264,12 +264,26 @@ Rate limits are attached to your Keenable account and shown in the
 raises subclasses `KeenableError`, so a single `except` keeps an agent loop
 alive.
 
+The typed errors below need `keenable` 0.2.0 or later in both Python and
+Node; earlier versions raise `KeenableAuthError` or `KeenableAPIError` for
+these statuses.
+
 | Exception (Python / Node) | When |
 |---|---|
-| `KeenableRateLimitError` | HTTP 429, your account's rate limit |
-| `KeenableAuthError` | HTTP 401/403, the key was rejected |
-| `KeenableAPIError` | Any other non-2xx response; carries `status_code` |
-| `KeenableConnectionError` | The API could not be reached |
+| `KeenableValidationError` | HTTP 400/422, the API rejected the request; the message says what |
+| `KeenableAuthError` | HTTP 401, the API key is missing or invalid |
+| `KeenableForbiddenError` | HTTP 403, not allowed for this key or plan (a subclass of `KeenableAuthError`) |
+| `KeenableCreditsError` | HTTP 402, the account is out of credits |
+| `KeenableRateLimitError` | HTTP 429, your account's rate limit; carries the reset time when the API sends one |
+| `KeenableAPIError` | Any other non-2xx response; base class of the API errors above |
+| `KeenableConnectionError` | The API could not be reached; retrying is safe |
+| `KeenableInvalidRequestError` | The SDK rejected the arguments; no request was sent |
+
+Every API error message ends with the next step to take (also on the error's
+`hint` attribute). When the API sent a request id, the message includes it just
+before that step, for quoting to support. In the tool loop above, the model sees
+that text too, so it can tell a retryable rate limit from a request it has to
+fix.
 
 ## Next steps
 

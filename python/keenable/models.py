@@ -79,6 +79,10 @@ class SearchResponse:
     results: list[SearchResult]
     mode: str | None = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
+    # Declared after ``raw`` so code that builds this dataclass positionally
+    # keeps working.
+    request_id: str | None = None
+    """The API's ``X-Request-Id`` for this call. Quote it to support."""
 
     def __iter__(self) -> Iterator[SearchResult]:
         return iter(self.results)
@@ -90,7 +94,9 @@ class SearchResponse:
         return self.results[index]
 
     @classmethod
-    def _from_json(cls, data: dict[str, Any], query: str) -> SearchResponse:
+    def _from_json(
+        cls, data: dict[str, Any], query: str, request_id: str | None = None
+    ) -> SearchResponse:
         raw_results = data.get("results")
         results = (
             [SearchResult._from_json(r) for r in raw_results if isinstance(r, dict)]
@@ -101,6 +107,7 @@ class SearchResponse:
             query=str(data.get("query") or query),
             results=results,
             mode=_str_or_none(data.get("mode")),
+            request_id=request_id,
             raw=data,
         )
 
@@ -195,9 +202,15 @@ class Page:
     author: str | None = None
     published_at: str | None = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
+    # Declared after ``raw`` so code that builds this dataclass positionally
+    # keeps working.
+    request_id: str | None = None
+    """The API's ``X-Request-Id`` for this call. Quote it to support."""
 
     @classmethod
-    def _from_json(cls, data: dict[str, Any], url: str) -> Page:
+    def _from_json(
+        cls, data: dict[str, Any], url: str, request_id: str | None = None
+    ) -> Page:
         return cls(
             url=str(data.get("url") or url),
             title=str(data.get("title") or ""),
@@ -205,6 +218,7 @@ class Page:
             description=_str_or_none(data.get("description")),
             author=_str_or_none(data.get("author")),
             published_at=_str_or_none(data.get("published_at")),
+            request_id=request_id,
             raw=data,
         )
 

@@ -31,6 +31,13 @@ jobs:
         run: uv run --group dev ruff check . && uv run --group dev ruff format --check .
       - name: Mypy
         run: uv run --group dev mypy keenable
+      # Without py.typed in the wheel, type checkers treat the installed
+      # package as untyped and every annotation above is invisible to users.
+      - name: Wheel ships py.typed
+        run: |
+          uv build --wheel --out-dir dist
+          unzip -l dist/*.whl | grep -q 'keenable/py.typed' \
+            || { echo "::error::the wheel is missing keenable/py.typed"; exit 1; }
 
   python:
     name: Python ${{ matrix.python-version }}
