@@ -55,6 +55,17 @@ var searchFilters = []filter{
 			"excluded. Not a recency filter (use published_after for that). An ISO 8601 " +
 			"datetime, YYYY-MM-DD, or an offset back from now such as '7d'.",
 	},
+	{
+		wire: "enable_wizards",
+		description: "Optional. Experimental structured-data extraction. Only valid in 'pro' mode, " +
+			"and not under a zero data retention policy.",
+		jsonType: "boolean",
+	},
+	{
+		wire: "session_id",
+		description: "Optional. An id for the agent session making this call. Send the same value " +
+			"on every call in one session so its requests can be grouped.",
+	},
 }
 
 func applyFilters(payload map[string]any, opts *SearchOptions) {
@@ -110,6 +121,16 @@ func (f filter) value(opts *SearchOptions) (any, bool) {
 			return nil, false
 		}
 		return opts.QueryTime, true
+	case "enable_wizards":
+		if opts.EnableWizards == nil {
+			return nil, false
+		}
+		return *opts.EnableWizards, true
+	case "session_id":
+		if opts.SessionID == "" {
+			return nil, false
+		}
+		return opts.SessionID, true
 	default:
 		return nil, false
 	}

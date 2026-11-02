@@ -10,6 +10,7 @@ import {
   KeenableInvalidRequestError,
   KeenableRateLimitError,
   KeenableValidationError,
+  TOOLS,
   runToolCall,
 } from "../src/index.js";
 
@@ -132,6 +133,21 @@ describe("search", () => {
     expect(payload.query_time).toBe("2026-05-01");
   });
 
+  it("sends realtime mode, enableWizards and sessionId", async () => {
+    const { client, seen } = mockClient(() => json(SEARCH_BODY));
+    await client.search("q", { mode: "realtime", enableWizards: false, sessionId: "agent-run-7" });
+    const payload = JSON.parse(String(seen[0]?.init.body));
+    expect(payload.mode).toBe("realtime");
+    expect(payload.enable_wizards).toBe(false);
+    expect(payload.session_id).toBe("agent-run-7");
+  });
+
+  it("passes a mode it does not name through", async () => {
+    const { client, seen } = mockClient(() => json(SEARCH_BODY));
+    await client.search("q", { mode: "some-future-mode" });
+    expect(JSON.parse(String(seen[0]?.init.body)).mode).toBe("some-future-mode");
+  });
+
   it("uses the public endpoint and identifies itself when keyless", async () => {
     const { client, seen } = mockClient(() => json(SEARCH_BODY));
     await client.search("hello");
@@ -240,6 +256,39 @@ describe("fetch", () => {
     );
     expect(page.title).toBe("Example Domain");
     expect(page.content.startsWith("# Example Domain")).toBe(true);
+  });
+
+  it("sends only the fetch options that were set", async () => {
+    const { client, seen } = mockClient(() => json(FETCH_BODY));
+    await client.fetch("https://example.com/");
+    expect(Object.fromEntries(new URL(seen[0]!.url).searchParams)).toEqual({
+      url: "https://example.com/",
+    });
+
+    await client.fetch("https://example.com/", {
+      maxChars: 300,
+      live: true,
+      prompt: "What is this domain for?",
+      sessionId: "agent-run-7",
+    });
+    expect(Object.fromEntries(new URL(seen[1]!.url).searchParams)).toEqual({
+      url: "https://example.com/",
+      max_chars: "300",
+      live: "true",
+      prompt: "What is this domain for?",
+      session_id: "agent-run-7",
+    });
+
+    await client.fetch("https://example.com/", { live: false });
+    expect(new URL(seen[2]!.url).searchParams.get("live")).toBe("false");
+  });
+
+  it("rejects a non-integer maxChars before sending", async () => {
+    const { client, seen } = mockClient(() => json(FETCH_BODY));
+    await expect(client.fetch("https://example.com/", { maxChars: 1.5 })).rejects.toThrow(
+      KeenableInvalidRequestError,
+    );
+    expect(seen).toHaveLength(0);
   });
 
   it("renders a citable block like search results do", async () => {
@@ -463,6 +512,23 @@ describe("errors", () => {
     );
     // Plain http is allowed against localhost for local development.
     expect(() => new Keenable({ baseUrl: "http://localhost:8000" })).not.toThrow();
+  });
+});
+
+describe("tool schemas", () => {
+  // Pinned on purpose: a model chooses worse among many knobs, so new search
+  // parameters stay SDK-only unless deliberately exposed here.
+  it("offer the model exactly these arguments", () => {
+    const props = Object.fromEntries(
+      TOOLS.map((t) => [
+        t.function.name,
+        Object.keys((t.function.parameters as { properties: object }).properties).sort(),
+      ]),
+    );
+    expect(props).toEqual({
+      keenable_search: ["published_after", "query", "site"],
+      keenable_fetch: ["url"],
+    });
   });
 });
 

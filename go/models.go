@@ -12,7 +12,9 @@ import (
 // Empty strings are left unset and are not sent. SnippetMaxLength uses a
 // pointer so zero can be sent; nil means unset. Mode defaults to "pro".
 type SearchOptions struct {
-	// Mode is the search mode. Empty means "pro".
+	// Mode is "pro" (deeper retrieval, the default when empty) or "realtime"
+	// (fastest, for latency-sensitive calls). Other strings are passed
+	// through, so a mode the API adds later works before this SDK names it.
 	Mode string
 	// Site restricts results to one domain, for example "arxiv.org".
 	Site string
@@ -35,6 +37,32 @@ type SearchOptions struct {
 	// filter: use PublishedAfter for that. Accepts an ISO 8601 datetime,
 	// YYYY-MM-DD, or an offset back from now such as "7d" (as of 7 days ago).
 	QueryTime string
+	// EnableWizards turns on experimental structured-data extraction. Only
+	// valid in "pro" mode, and not under a zero data retention policy. Nil
+	// means unset.
+	EnableWizards *bool
+	// SessionID is an id for the agent session making this call. Send the
+	// same value on every call in one session so its requests can be grouped.
+	SessionID string
+}
+
+// FetchOptions are the optional arguments to [Client.Fetch].
+//
+// Nil pointers and empty strings are left unset and are not sent.
+type FetchOptions struct {
+	// MaxChars caps the content at this many characters (the API default is
+	// 50,000). A cut page ends with a short note saying it was truncated. Nil
+	// means unset; like SearchOptions.SnippetMaxLength, a pointer to zero is
+	// sent (and the API rejects it).
+	MaxChars *int
+	// Live fetches from the source when the page is not in the index.
+	// Without it, an unindexed URL fails. Nil means unset.
+	Live *bool
+	// Prompt returns the answer to this instruction, extracted from the page
+	// by a model, instead of the full page.
+	Prompt string
+	// SessionID is the same as [SearchOptions.SessionID].
+	SessionID string
 }
 
 // ContextOptions controls [SearchResponse.ToContext] and [SearchResponse.Cited].

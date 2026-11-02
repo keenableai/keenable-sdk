@@ -5,6 +5,10 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- `search()` accepts `mode="realtime"` (the fastest mode), `enableWizards` and `sessionId`.
+  `mode` also accepts any other string, so a mode the API adds later works
+  before this SDK names it.
+- `fetch()` accepts `maxChars`, `live`, `prompt` and `sessionId`.
 - New error classes by HTTP status: `KeenableValidationError` (400/422), `KeenableCreditsError` (402) and
   `KeenableForbiddenError` (403). `KeenableForbiddenError` extends `KeenableAuthError`, so existing handlers keep
   catching 403s, but its message no longer says "authentication failed".

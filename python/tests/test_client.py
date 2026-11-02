@@ -136,6 +136,55 @@ def test_search_sends_max_results_and_query_time() -> None:
     assert payload["query_time"] == "2026-05-01"
 
 
+def test_search_sends_realtime_mode_wizards_and_session_id() -> None:
+    keenable, seen = _client(_ok(SEARCH_BODY))
+    keenable.search(
+        "q", mode="realtime", enable_wizards=False, session_id="agent-run-7"
+    )
+    payload = json.loads(seen[0].content)
+    assert payload["mode"] == "realtime"
+    assert payload["enable_wizards"] is False
+    assert payload["session_id"] == "agent-run-7"
+
+
+def test_search_passes_an_unnamed_mode_through() -> None:
+    keenable, seen = _client(_ok(SEARCH_BODY))
+    keenable.search("q", mode="some-future-mode")
+    assert json.loads(seen[0].content)["mode"] == "some-future-mode"
+
+
+def test_fetch_sends_only_the_options_that_were_set() -> None:
+    keenable, seen = _client(_ok(FETCH_BODY))
+    keenable.fetch("https://example.com/")
+    assert dict(seen[0].url.params) == {"url": "https://example.com/"}
+
+    keenable.fetch(
+        "https://example.com/",
+        max_chars=300,
+        live=True,
+        prompt="What is this domain for?",
+        session_id="agent-run-7",
+    )
+    assert dict(seen[1].url.params) == {
+        "url": "https://example.com/",
+        "max_chars": "300",
+        "live": "true",
+        "prompt": "What is this domain for?",
+        "session_id": "agent-run-7",
+    }
+
+    keenable.fetch("https://example.com/", live=False)
+    assert seen[2].url.params["live"] == "false"
+
+
+@pytest.mark.parametrize("bad", [True, 1.5, "300"])
+def test_fetch_rejects_a_non_integer_max_chars_locally(bad: Any) -> None:
+    keenable, seen = _client(_ok(FETCH_BODY))
+    with pytest.raises(KeenableInvalidRequestError, match="max_chars"):
+        keenable.fetch("https://example.com/", max_chars=bad)
+    assert seen == []
+
+
 def test_keyless_client_uses_public_endpoint_and_identifies_itself() -> None:
     keenable, seen = _client(_ok(SEARCH_BODY))
     keenable.search("hello")
@@ -524,13 +573,26 @@ def test_tool_call_forwards_only_the_filters_the_schema_offers() -> None:
     assert "acquired_after" not in payload
 
 
-def test_tool_schema_keeps_max_results_and_query_time_out() -> None:
+def test_tool_schemas_offer_the_model_exactly_these_arguments() -> None:
+    # Pinned on purpose: a model chooses worse among many knobs, so new search
+    # parameters stay SDK-only unless deliberately exposed here.
     from keenable import TOOLS
 
-    search = next(t for t in TOOLS if t["function"]["name"] == "keenable_search")
-    props = search["function"]["parameters"]["properties"]
-    assert "max_results" not in props
-    assert "query_time" not in props
+    props = {
+        t["function"]["name"]: set(t["function"]["parameters"]["properties"])
+        for t in TOOLS
+    }
+    assert props == {
+        "keenable_search": {"query", "site", "published_after"},
+        "keenable_fetch": {"url"},
+    }
+
+
+async def test_async_fetch_sends_the_same_options() -> None:
+    keenable, seen = _aclient(_ok(FETCH_BODY))
+    await keenable.fetch("https://example.com/", max_chars=10, live=True)
+    assert seen[0].url.params["max_chars"] == "10"
+    assert seen[0].url.params["live"] == "true"
 
 
 async def test_async_client_mirrors_the_sync_one() -> None:

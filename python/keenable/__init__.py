@@ -11,7 +11,7 @@ the hourly rate limit.
 """
 
 from ._version import __version__
-from .client import DEFAULT_BASE_URL, AsyncKeenable, Keenable
+from .client import DEFAULT_BASE_URL, AsyncKeenable, Keenable, Mode
 from .errors import (
     KeenableAPIError,
     KeenableAuthError,
@@ -41,6 +41,7 @@ __all__ = [
     "KeenableInvalidRequestError",
     "KeenableRateLimitError",
     "KeenableValidationError",
+    "Mode",
     "Page",
     "SEARCH_TOOL",
     "SearchResponse",

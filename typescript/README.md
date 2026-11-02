@@ -51,8 +51,12 @@ const results = await keenable.search("post-training quantization results", {
 | `snippetMaxLength` | Cap the page text returned per result |
 | `maxResults` | How many results to return, 1 to 50 (default 10) |
 | `queryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `mode` | Search mode; `"pro"` (default) does deeper retrieval |
+| `mode` | `"pro"` (default) does deeper retrieval; `"realtime"` is the fastest |
 | `signal` | An `AbortSignal` to cancel the request |
+
+Advanced, for agent frameworks: `sessionId` groups the calls of one agent
+session (send the same value on each call), and `enableWizards: true` turns on
+experimental structured-data extraction (`"pro"` mode only).
 
 ## Ground a model in one line
 
@@ -92,6 +96,41 @@ console.log(page.title);
 console.log(page.content); // markdown, boilerplate stripped
 console.log(page.toContext()); // same citable block shape as search results
 ```
+
+| Option | What it does |
+|---|---|
+| `maxChars` | Cap the content (API default 50,000). A cut page ends with a note saying so |
+| `live` | Fetch from the source when the page is not in the index yet |
+| `prompt` | Return the answer to this instruction, extracted from the page, instead of the full page |
+| `sessionId` | Same as on `search()` |
+| `signal` | An `AbortSignal` to cancel the request |
+
+## Going further
+
+More results, faster, and only recent pages:
+
+```ts
+const results = await keenable.search("open-weight model releases", {
+  mode: "realtime", // fastest mode, for latency-sensitive calls
+  maxResults: 25, // up to 50; the default is 10
+  publishedAfter: "2026-10-01", // recency filter
+});
+```
+
+Read just the part of a page you need, from the source if it is not indexed
+yet:
+
+```ts
+const page = await keenable.fetch("https://example.com/", {
+  live: true,
+  prompt: "What is this domain for? One sentence.",
+});
+console.log(page.content);
+```
+
+`queryTime` is the opposite of a recency filter: it searches the index as it
+stood at that moment and excludes everything newer, which is useful for
+reproducing past results.
 
 ## Tool calling
 

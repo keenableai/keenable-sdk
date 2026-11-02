@@ -11,6 +11,7 @@ import {
 import { SEARCH_FILTERS } from "./filters.js";
 import { collapse, nonEmpty, normalizeHost, readEnv } from "./internal.js";
 import type {
+  FetchOptions,
   KeenableOptions,
   SearchOptions,
   SearchResult,
@@ -431,11 +432,23 @@ export class Keenable {
    * Use this after `search()` when a snippet is not enough and the model needs
    * the full page.
    */
-  async fetch(url: string, options: { signal?: AbortSignal } = {}): Promise<Page> {
+  async fetch(url: string, options: FetchOptions = {}): Promise<Page> {
     rejectPrivateFetchTarget(url);
+    const { maxChars, live, prompt, sessionId } = options;
+    // Ranges are the API's to enforce; a bad value comes back as a
+    // KeenableValidationError naming the parameter.
+    if (maxChars !== undefined && !Number.isInteger(maxChars)) {
+      throw new KeenableInvalidRequestError(
+        `maxChars must be an integer, got ${JSON.stringify(maxChars)}`,
+      );
+    }
 
     const target = new URL(this.url("fetch"));
     target.searchParams.set("url", url);
+    if (maxChars !== undefined) target.searchParams.set("max_chars", String(maxChars));
+    if (live !== undefined) target.searchParams.set("live", live ? "true" : "false");
+    if (prompt) target.searchParams.set("prompt", prompt);
+    if (sessionId) target.searchParams.set("session_id", sessionId);
 
     const { data, requestId } = await this.request(
       "fetch",

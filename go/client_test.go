@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -392,7 +393,7 @@ func TestCitedMatchesRendered(t *testing.T) {
 
 func TestFetchReturnsMarkdown(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
-	page, err := c.Fetch(context.Background(), "https://example.com")
+	page, err := c.Fetch(context.Background(), "https://example.com", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -414,9 +415,57 @@ func TestFetchReturnsMarkdown(t *testing.T) {
 	}
 }
 
+func TestFetchSendsOnlyTheOptionsThatWereSet(t *testing.T) {
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
+	ctx := context.Background()
+	if _, err := c.Fetch(ctx, "https://example.com/", nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := (*seen)[0].Query; len(got) != 1 || got.Get("url") != "https://example.com/" {
+		t.Fatalf("unset options were sent: %v", got)
+	}
+
+	live, maxChars := true, 300
+	_, err := c.Fetch(ctx, "https://example.com/", &keenable.FetchOptions{
+		MaxChars:  &maxChars,
+		Live:      &live,
+		Prompt:    "What is this domain for?",
+		SessionID: "agent-run-7",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := (*seen)[1].Query
+	if q.Get("max_chars") != "300" || q.Get("live") != "true" || q.Get("prompt") != "What is this domain for?" || q.Get("session_id") != "agent-run-7" {
+		t.Fatalf("query = %v", q)
+	}
+
+	notLive := false
+	if _, err := c.Fetch(ctx, "https://example.com/", &keenable.FetchOptions{Live: &notLive}); err != nil {
+		t.Fatal(err)
+	}
+	if (*seen)[2].Query.Get("live") != "false" {
+		t.Fatal((*seen)[2].Query)
+	}
+
+}
+
+func TestSearchSendsRealtimeWizardsAndSessionID(t *testing.T) {
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, map[string]any{"query": "q", "results": []any{}}), nil)
+	off := false
+	_, err := c.Search(context.Background(), "q", &keenable.SearchOptions{Mode: "realtime", EnableWizards: &off, SessionID: "agent-run-7"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := payloadOf(t, one(t, seen))
+	if p["mode"] != "realtime" || p["enable_wizards"] != false || p["session_id"] != "agent-run-7" {
+		t.Fatalf("payload = %v", p)
+	}
+}
+
 func TestFetchAllowsPublicAddress(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
-	if _, err := c.Fetch(context.Background(), "https://8.8.8.8/path"); err != nil {
+	if _, err := c.Fetch(context.Background(), "https://8.8.8.8/path", nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(*seen) != 1 {
@@ -426,7 +475,7 @@ func TestFetchAllowsPublicAddress(t *testing.T) {
 
 func TestPageToContextCuts(t *testing.T) {
 	c, _ := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
-	page, err := c.Fetch(context.Background(), "https://example.com")
+	page, err := c.Fetch(context.Background(), "https://example.com", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -462,7 +511,7 @@ func TestFetchRefusesInternalTargets(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
 	for _, raw := range urls {
 		before := len(*seen)
-		_, err := c.Fetch(context.Background(), raw)
+		_, err := c.Fetch(context.Background(), raw, nil)
 		var inv *keenable.InvalidRequestError
 		if !errors.As(err, &inv) {
 			t.Fatalf("%s: %v", raw, err)
@@ -494,7 +543,7 @@ func TestNilContext(t *testing.T) {
 	if _, err := c.Search(nil, "q", nil); !errors.As(err, new(*keenable.InvalidRequestError)) {
 		t.Fatal(err)
 	}
-	if _, err := c.Fetch(nil, "https://example.com"); !errors.As(err, new(*keenable.InvalidRequestError)) {
+	if _, err := c.Fetch(nil, "https://example.com", nil); !errors.As(err, new(*keenable.InvalidRequestError)) {
 		t.Fatal(err)
 	}
 	if len(*seen) != 0 {
@@ -610,7 +659,7 @@ func TestTypedAPIErrors(t *testing.T) {
 
 func TestMissingPageSaysCheckTheURL(t *testing.T) {
 	c, _ := startKeyless(t, jsonHandler(http.StatusNotFound, map[string]any{"error": "Not found", "message": "The page does not exist at this URL."}), nil)
-	_, err := c.Fetch(context.Background(), "https://example.com/missing")
+	_, err := c.Fetch(context.Background(), "https://example.com/missing", nil)
 	var api *keenable.APIError
 	if !errors.As(err, &api) || api.Hint != "Check the URL; retrying unchanged fails the same way." {
 		t.Fatalf("%v", err)
@@ -659,7 +708,7 @@ func TestResponsesCarryRequestID(t *testing.T) {
 	if err != nil || res.RequestID != "req-ok" {
 		t.Fatalf("search: %v id=%q", err, res.RequestID)
 	}
-	page, err := c.Fetch(context.Background(), "https://example.com/")
+	page, err := c.Fetch(context.Background(), "https://example.com/", nil)
 	if err != nil || page.RequestID != "req-ok" {
 		t.Fatalf("fetch: %v", err)
 	}
@@ -742,6 +791,31 @@ func TestToolArgumentTypes(t *testing.T) {
 		if errors.As(err, &syntax) {
 			t.Fatalf("%#v leaked json.SyntaxError", args)
 		}
+	}
+}
+
+// Pinned on purpose: a model chooses worse among many knobs, so new search
+// parameters stay SDK-only unless deliberately exposed here.
+func TestToolSchemaOffersExactlyTheseArguments(t *testing.T) {
+	props := searchToolProperties(t)
+	var names []string
+	for name := range props {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	if strings.Join(names, ",") != "published_after,query,site" {
+		t.Fatalf("keenable_search properties = %v", names)
+	}
+}
+
+func TestFetchSendsMaxCharsZero(t *testing.T) {
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
+	zero := 0
+	if _, err := c.Fetch(context.Background(), "https://example.com/", &keenable.FetchOptions{MaxChars: &zero}); err != nil {
+		t.Fatal(err)
+	}
+	if got := one(t, seen).Query.Get("max_chars"); got != "0" {
+		t.Fatalf("max_chars = %q, want it sent so the API can reject it", got)
 	}
 }
 
@@ -900,7 +974,7 @@ func TestNilClientDoesNotPanic(t *testing.T) {
 	if _, err := client.Search(context.Background(), "q", nil); !errors.As(err, new(*keenable.InvalidRequestError)) {
 		t.Fatal(err)
 	}
-	if _, err := client.Fetch(context.Background(), "https://example.com"); !errors.As(err, new(*keenable.InvalidRequestError)) {
+	if _, err := client.Fetch(context.Background(), "https://example.com", nil); !errors.As(err, new(*keenable.InvalidRequestError)) {
 		t.Fatal(err)
 	}
 	if (*keenable.SearchResponse)(nil).ToContext(nil) != "" {
@@ -1080,7 +1154,7 @@ func TestLocalErrorsNameTheFix(t *testing.T) {
 	if !strings.Contains(err.Error(), "query argument") {
 		t.Fatal(err)
 	}
-	_, err = c.Fetch(context.Background(), "http://127.0.0.1/")
+	_, err = c.Fetch(context.Background(), "http://127.0.0.1/", nil)
 	if !strings.Contains(err.Error(), "public http(s) URL") {
 		t.Fatal(err)
 	}

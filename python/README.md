@@ -47,7 +47,11 @@ results = keenable.search(
 | `snippet_max_length` | Cap the page text returned per result |
 | `max_results` | How many results to return, 1 to 50 (default 10) |
 | `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `mode` | Search mode; `"pro"` (default) does deeper retrieval |
+| `mode` | `"pro"` (default) does deeper retrieval; `"realtime"` is the fastest |
+
+Advanced, for agent frameworks: `session_id` groups the calls of one agent
+session (send the same value on each call), and `enable_wizards=True` turns on
+experimental structured-data extraction (`"pro"` mode only).
 
 ## Ground a model in one line
 
@@ -82,6 +86,42 @@ print(page.title)
 print(page.content)  # markdown, boilerplate stripped
 print(page.to_context())  # same citable block shape as search results
 ```
+
+| Argument | What it does |
+|---|---|
+| `max_chars` | Cap the content (API default 50,000). A cut page ends with a note saying so |
+| `live` | Fetch from the source when the page is not in the index yet |
+| `prompt` | Return the answer to this instruction, extracted from the page, instead of the full page |
+| `session_id` | Same as on `search()` |
+
+## Going further
+
+More results, faster, and only recent pages:
+
+```python
+results = keenable.search(
+    "open-weight model releases",
+    mode="realtime",  # fastest mode, for latency-sensitive calls
+    max_results=25,  # up to 50; the default is 10
+    published_after="2026-10-01",  # recency filter
+)
+```
+
+Read just the part of a page you need, from the source if it is not indexed
+yet:
+
+```python
+page = keenable.fetch(
+    "https://example.com/",
+    live=True,
+    prompt="What is this domain for? One sentence.",
+)
+print(page.content)
+```
+
+`query_time` is the opposite of a recency filter: it searches the index as it
+stood at that moment and excludes everything newer, which is useful for
+reproducing past results.
 
 ## Tool calling
 

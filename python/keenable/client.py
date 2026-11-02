@@ -6,7 +6,7 @@ import ipaddress
 from collections.abc import Iterator
 from contextlib import contextmanager
 from os import environ
-from typing import Any, Literal, NamedTuple
+from typing import Any, Literal, NamedTuple, Union
 from urllib.parse import urlsplit
 
 import httpx
@@ -24,7 +24,7 @@ from .errors import (
 )
 from .models import Page, SearchResponse
 
-__all__ = ["Keenable", "AsyncKeenable"]
+__all__ = ["Keenable", "AsyncKeenable", "Mode"]
 
 DEFAULT_BASE_URL = "https://api.keenable.ai"
 DEFAULT_TIMEOUT = 30.0
@@ -33,6 +33,10 @@ DEFAULT_TIMEOUT = 30.0
 # `/public` suffix, so a new endpoint is one name rather than two constants.
 _SEARCH = "search"
 _FETCH = "fetch"
+
+Mode = Union[Literal["pro", "realtime"], str]
+"""``"pro"`` (default) or ``"realtime"``. Other strings are passed through, so a
+mode the API adds later works before this SDK names it."""
 
 _BLOCKED_HOSTS = frozenset({"localhost", "metadata.google.internal"})
 _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -158,6 +162,37 @@ def _hint(status: int, keyless: bool, reset: str | None) -> str:
     if status >= 500:
         return "Retry the request; search and fetch are safe to repeat."
     return "If it keeps failing, confirm KEENABLE_API_URL."
+
+
+def _fetch_params(
+    url: str,
+    max_chars: int | None,
+    live: bool | None,
+    prompt: str | None,
+    session_id: str | None,
+) -> dict[str, Any]:
+    """Build the fetch query string, dropping options the caller left unset.
+
+    Ranges are the API's to enforce; a bad value comes back as a
+    :class:`KeenableValidationError` naming the parameter.
+    """
+    _reject_private_fetch_target(url)
+    if max_chars is not None and (
+        isinstance(max_chars, bool) or not isinstance(max_chars, int)
+    ):
+        raise KeenableInvalidRequestError(
+            f"max_chars must be an integer, got {max_chars!r}"
+        )
+    params: dict[str, Any] = {"url": url}
+    if max_chars is not None:
+        params["max_chars"] = max_chars
+    if live is not None:
+        params["live"] = "true" if live else "false"
+    if prompt:
+        params["prompt"] = prompt
+    if session_id:
+        params["session_id"] = session_id
+    return params
 
 
 def _to_api_error(response: httpx.Response, keyless: bool) -> KeenableAPIError:
@@ -403,7 +438,7 @@ class Keenable(_BaseClient):
         self,
         query: str,
         *,
-        mode: Literal["pro"] | None = None,
+        mode: Mode | None = None,
         site: str | None = None,
         published_after: str | None = None,
         published_before: str | None = None,
@@ -412,6 +447,8 @@ class Keenable(_BaseClient):
         snippet_max_length: int | None = None,
         max_results: int | None = None,
         query_time: str | None = None,
+        enable_wizards: bool | None = None,
+        session_id: str | None = None,
     ) -> SearchResponse:
         """Search the web and return ranked results with page text.
 
@@ -419,7 +456,8 @@ class Keenable(_BaseClient):
             query: What to look for. Describe the ideal page in natural
                 language ("blog post comparing React and Vue performance")
                 rather than typing keywords; the index is semantic.
-            mode: Search mode. ``"pro"`` (the default) does deeper retrieval.
+            mode: ``"pro"`` (the default) does deeper retrieval;
+                ``"realtime"`` is the fastest, for latency-sensitive calls.
             site: Restrict results to one domain, e.g. ``"arxiv.org"``.
             published_after: Keep pages published on or after ``YYYY-MM-DD``.
             published_before: Keep pages published on or before ``YYYY-MM-DD``.
@@ -435,6 +473,11 @@ class Keenable(_BaseClient):
                 not a recency filter: use ``published_after`` for that.
                 Accepts an ISO 8601 datetime, ``YYYY-MM-DD``, or an offset
                 back from now such as ``"7d"`` (as of 7 days ago).
+            enable_wizards: Experimental structured-data extraction. Only valid
+                in ``"pro"`` mode, and not under a zero data retention policy.
+            session_id: An id for the agent session making this call. Send the
+                same value on every call in one session so its requests can be
+                grouped.
 
         Returns:
             A :class:`SearchResponse`; iterate it for results or call
@@ -451,18 +494,39 @@ class Keenable(_BaseClient):
             snippet_max_length=snippet_max_length,
             max_results=max_results,
             query_time=query_time,
+            enable_wizards=enable_wizards,
+            session_id=session_id,
         )
         reply = self._request(_SEARCH, json=payload)
         return SearchResponse._from_json(reply.data, query, reply.request_id)
 
-    def fetch(self, url: str) -> Page:
+    def fetch(
+        self,
+        url: str,
+        *,
+        max_chars: int | None = None,
+        live: bool | None = None,
+        prompt: str | None = None,
+        session_id: str | None = None,
+    ) -> Page:
         """Fetch one URL and return its main content as markdown.
 
         Use this after :meth:`search` when a snippet is not enough and the
         model needs the full page.
+
+        Args:
+            url: The page to read.
+            max_chars: Cap the content at this many characters (the API
+                default is 50,000). A cut page ends with a short note saying
+                it was truncated.
+            live: Fetch from the source when the page is not in the index.
+                Without it, an unindexed URL fails.
+            prompt: Instead of the full page, return the answer to this
+                instruction, extracted from the page by a model.
+            session_id: Same as on :meth:`search`.
         """
-        _reject_private_fetch_target(url)
-        reply = self._request(_FETCH, params={"url": url})
+        params = _fetch_params(url, max_chars, live, prompt, session_id)
+        reply = self._request(_FETCH, params=params)
         return Page._from_json(reply.data, url, reply.request_id)
 
 
@@ -535,7 +599,7 @@ class AsyncKeenable(_BaseClient):
         self,
         query: str,
         *,
-        mode: Literal["pro"] | None = None,
+        mode: Mode | None = None,
         site: str | None = None,
         published_after: str | None = None,
         published_before: str | None = None,
@@ -544,6 +608,8 @@ class AsyncKeenable(_BaseClient):
         snippet_max_length: int | None = None,
         max_results: int | None = None,
         query_time: str | None = None,
+        enable_wizards: bool | None = None,
+        session_id: str | None = None,
     ) -> SearchResponse:
         """Search the web. See :meth:`Keenable.search` for the arguments."""
         payload = _search_payload(
@@ -557,12 +623,22 @@ class AsyncKeenable(_BaseClient):
             snippet_max_length=snippet_max_length,
             max_results=max_results,
             query_time=query_time,
+            enable_wizards=enable_wizards,
+            session_id=session_id,
         )
         reply = await self._request(_SEARCH, json=payload)
         return SearchResponse._from_json(reply.data, query, reply.request_id)
 
-    async def fetch(self, url: str) -> Page:
+    async def fetch(
+        self,
+        url: str,
+        *,
+        max_chars: int | None = None,
+        live: bool | None = None,
+        prompt: str | None = None,
+        session_id: str | None = None,
+    ) -> Page:
         """Fetch one URL as markdown. See :meth:`Keenable.fetch`."""
-        _reject_private_fetch_target(url)
-        reply = await self._request(_FETCH, params={"url": url})
+        params = _fetch_params(url, max_chars, live, prompt, session_id)
+        reply = await self._request(_FETCH, params=params)
         return Page._from_json(reply.data, url, reply.request_id)

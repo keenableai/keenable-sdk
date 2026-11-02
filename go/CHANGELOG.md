@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `SearchOptions` gains `EnableWizards` and `SessionID`; `Mode` documents
+  `"realtime"`.
+- `Fetch` takes a `*FetchOptions` (`MaxChars`, `Live`, `Prompt`, `SessionID`),
+  like `Search` takes `*SearchOptions`: `Fetch(ctx, url, nil)` for none. This
+  changes the signature; update `Fetch(ctx, url)` calls.
 - New error types by HTTP status: `ValidationError` (400/422, code
   `validation`), `CreditsError` (402, code `credits`) and `ForbiddenError`
   (403, code `forbidden`). `ForbiddenError` unwraps to `AuthError`, so
