@@ -27,6 +27,14 @@ type SearchOptions struct {
 	// SnippetMaxLength caps the characters of page text per result.
 	// Nil means unset. A pointer to zero is sent.
 	SnippetMaxLength *int
+	// MaxResults is how many results to return, 1 to 50. Zero means unset,
+	// and the API returns its default of 10.
+	MaxResults int
+	// QueryTime searches the index as it stood at this moment; pages newer
+	// than it are excluded. It sets no lower bound, so it is not a recency
+	// filter: use PublishedAfter for that. Accepts an ISO 8601 datetime,
+	// YYYY-MM-DD, or an offset back from now such as "7d" (as of 7 days ago).
+	QueryTime string
 }
 
 // ContextOptions controls [SearchResponse.ToContext] and [SearchResponse.Cited].

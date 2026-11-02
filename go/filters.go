@@ -44,6 +44,17 @@ var searchFilters = []filter{
 		description: "Optional. Cap the characters of page text returned per result.",
 		jsonType:    "integer",
 	},
+	{
+		wire:        "max_results",
+		description: "Optional. How many results to return, 1 to 50. The API default is 10.",
+		jsonType:    "integer",
+	},
+	{
+		wire: "query_time",
+		description: "Optional. Search the index as it stood at this moment: pages newer than it are " +
+			"excluded. Not a recency filter (use published_after for that). An ISO 8601 " +
+			"datetime, YYYY-MM-DD, or an offset back from now such as '7d'.",
+	},
 }
 
 func applyFilters(payload map[string]any, opts *SearchOptions) {
@@ -89,6 +100,16 @@ func (f filter) value(opts *SearchOptions) (any, bool) {
 			return nil, false
 		}
 		return *opts.SnippetMaxLength, true
+	case "max_results":
+		if opts.MaxResults == 0 {
+			return nil, false
+		}
+		return opts.MaxResults, true
+	case "query_time":
+		if opts.QueryTime == "" {
+			return nil, false
+		}
+		return opts.QueryTime, true
 	default:
 		return nil, false
 	}

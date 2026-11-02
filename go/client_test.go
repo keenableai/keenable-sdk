@@ -205,12 +205,17 @@ func TestSearchSendsEveryFilter(t *testing.T) {
 		AcquiredAfter:    "2026-03-01",
 		AcquiredBefore:   "2026-04-01",
 		SnippetMaxLength: &zero,
+		MaxResults:       25,
+		QueryTime:        "2026-05-01",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	payload := payloadOf(t, one(t, seen))
-	for _, key := range []string{"site", "published_after", "published_before", "acquired_after", "acquired_before", "snippet_max_length"} {
+	if payload["max_results"] != float64(25) || payload["query_time"] != "2026-05-01" {
+		t.Fatalf("max_results/query_time not sent: %#v", payload)
+	}
+	for _, key := range []string{"site", "published_after", "published_before", "acquired_after", "acquired_before", "snippet_max_length", "max_results", "query_time"} {
 		if _, ok := payload[key]; !ok {
 			t.Fatalf("missing %s in %#v", key, payload)
 		}
