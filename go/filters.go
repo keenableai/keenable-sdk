@@ -14,7 +14,6 @@ import (
 type filter struct {
 	wire        string
 	description string
-	// jsonType is the JSON-schema type; empty means "string", "array" a list of strings.
 	jsonType    string
 	toolExposed bool
 }
@@ -95,7 +94,6 @@ func (f filter) value(opts *SearchOptions) (any, bool) {
 		}
 		return opts.Site, true
 	case "include_domains":
-		// nil is unset; a non-nil empty slice is sent as [].
 		if opts.IncludeDomains == nil {
 			return nil, false
 		}
@@ -168,7 +166,6 @@ func toolProperties() map[string]any {
 }
 
 // toolSearchOptions keeps only the filters the tool schema offers the model.
-// List filters come back raw in lists so the API, not the SDK, rejects bad values.
 func toolSearchOptions(args map[string]any) (*SearchOptions, map[string]any) {
 	opts := &SearchOptions{}
 	lists := map[string]any{}

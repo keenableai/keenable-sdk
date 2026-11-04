@@ -31,11 +31,11 @@ export interface SearchResult {
 export interface SearchOptions {
   /** Search mode. `"pro"` (the default) does deeper retrieval. */
   mode?: "pro";
-  /** Restrict results to one domain, e.g. `"arxiv.org"`. Not combinable with `includeDomains`. */
+  /** Restrict results to one domain, e.g. `"arxiv.org"`. */
   site?: string;
-  /** Only return results from these domains, e.g. `"un.org"`, `"un.org/en/ga"` or `".gov"`. */
+  /** Only return results from these domains, e.g. `"un.org"` or `".gov"`. */
   includeDomains?: readonly string[];
-  /** Never return results from these domains; same entry forms as `includeDomains`. */
+  /** Never return results from these domains. */
   excludeDomains?: readonly string[];
   /** Only pages published on or after this date (`YYYY-MM-DD`). */
   publishedAfter?: string;

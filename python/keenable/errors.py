@@ -18,9 +18,7 @@ class KeenableAPIError(KeenableError):
     """The Keenable API returned a non-2xx response.
 
     ``status_code`` is the HTTP status and ``body`` the decoded error message
-    from the API when it sent one. ``data`` is the decoded JSON object body.
-    ``field``, ``value`` and ``reason`` name the rejected entry on a 400
-    ``invalid_filter`` error and are ``None`` otherwise.
+    from the API when it sent one.
     """
 
     def __init__(
@@ -44,7 +42,6 @@ class KeenableAPIError(KeenableError):
 
 
 def _text(value: Any) -> str | None:
-    """Strings as is, other JSON re-encoded, ``None`` kept."""
     if value is None:
         return None
     if isinstance(value, str):

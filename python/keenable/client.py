@@ -101,7 +101,6 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
 
 
 def _domain_list(value: Sequence[str] | None) -> Any:
-    """Send an iterable as a JSON list; ``[]``, strings, mappings and others as is."""
     if value is None or isinstance(value, (str, Mapping)):
         return value
     if not isinstance(value, Iterable):
@@ -312,12 +311,9 @@ class Keenable(_BaseClient):
                 language ("blog post comparing React and Vue performance")
                 rather than typing keywords; the index is semantic.
             mode: Search mode. ``"pro"`` (the default) does deeper retrieval.
-            site: Restrict results to one domain, e.g. ``"arxiv.org"``. Not
-                combinable with ``include_domains``.
-            include_domains: Only return results from these domains, e.g.
-                ``"un.org"``, ``"un.org/en/ga"`` or ``".gov"``.
-            exclude_domains: Never return results from these domains; same
-                entry forms as ``include_domains``.
+            site: Restrict results to one domain, e.g. ``"arxiv.org"``.
+            include_domains: Only return results from these domains.
+            exclude_domains: Never return results from these domains.
             published_after: Keep pages published on or after ``YYYY-MM-DD``.
             published_before: Keep pages published on or before ``YYYY-MM-DD``.
             acquired_after: Keep pages Keenable indexed on or after

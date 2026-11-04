@@ -152,7 +152,6 @@ describe("search", () => {
       include_domains: ["un.org"],
       exclude_domains: ["blogs.un.org"],
     });
-    // site is still its own single-domain filter.
     expect(payloads[2]).not.toHaveProperty("site");
   });
 
@@ -179,7 +178,6 @@ describe("search", () => {
     await client.search("q", { includeDomains: [], excludeDomains: [] });
 
     const payload = JSON.parse(String(seen[0]?.init.body));
-    // An empty allow-list is sent as [] for the API to reject.
     expect(payload.include_domains).toEqual([]);
     expect(payload.exclude_domains).toEqual([]);
   });
@@ -391,7 +389,6 @@ describe("errors", () => {
   });
 
   it("names the field, entry and reason of a rejected domain filter", async () => {
-    // The API's 400 body for a rejected domain filter.
     const body = {
       error: "invalid_filter",
       message: 'Invalid include_domains value "https://un.org": scheme is not allowed',
@@ -484,7 +481,6 @@ describe("errors", () => {
   });
 
   it("keeps other 400s as they were, with no filter detail", async () => {
-    // A "field" key alone does not count without error: "invalid_filter".
     const body = { error: "Bad request", message: "query is required", field: "query" };
     const { client } = mockClient(() => json(body, 400));
     const error = (await client.search("q").catch((e: unknown) => e)) as KeenableAPIError;
@@ -585,16 +581,12 @@ describe("runToolCall", () => {
       JSON.parse(String(s.init.body)),
     );
     expect(first.include_domains).toEqual(["press.un.org", "undocs.org"]);
-    // An explicit [] is sent as is; the API rejects include [].
     expect(first.exclude_domains).toEqual([]);
     expect(emptyInclude.include_domains).toEqual([]);
-    // A lone string is wrapped; "" is unset.
     expect(second.include_domains).toEqual(["press.un.org"]);
     expect(second).not.toHaveProperty("exclude_domains");
-    // Absent stays unset.
     expect(absent).not.toHaveProperty("include_domains");
     expect(absent).not.toHaveProperty("exclude_domains");
-    // A blank string is unset; any other string is wrapped untouched.
     expect(padded).not.toHaveProperty("include_domains");
     expect(padded.exclude_domains).toEqual([" a.com,b.com "]);
   });
@@ -625,9 +617,7 @@ describe("runToolCall", () => {
     });
 
     const [first, second] = seen.map((s) => JSON.parse(String(s.init.body)));
-    // null means "none".
     expect(first).not.toHaveProperty("include_domains");
-    // Unreadable lists are sent unchanged for the API to reject.
     expect(first.exclude_domains).toBe(5);
     expect(second.exclude_domains).toEqual(["a.com", 7]);
   });

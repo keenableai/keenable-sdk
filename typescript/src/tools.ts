@@ -96,10 +96,6 @@ function requireString(value: unknown, message: string): string {
   return text;
 }
 
-/**
- * One tool argument as the client expects it, or undefined to leave it unset.
- * Lists are sent as given (a lone string wrapped) so the API rejects bad values.
- */
 function toolValue(filter: Filter, value: unknown): unknown {
   if (filter.jsonType === "array") {
     if (value === undefined || value === null) return undefined;

@@ -59,10 +59,9 @@ func (e *ConnectionError) keenableError() {}
 type APIError struct {
 	StatusCode int
 	Body       string
-	// Data is the decoded JSON error body, or nil when it was not an object.
+	// Data is the decoded JSON error body.
 	Data map[string]any
-	// Field, Value and Reason name the rejected filter entry on a 400
-	// invalid_filter error; empty otherwise.
+	// Field, Value and Reason name the entry rejected by a 400 invalid_filter error.
 	Field  string
 	Value  string
 	Reason string

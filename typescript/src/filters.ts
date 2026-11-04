@@ -15,7 +15,6 @@ export interface Filter {
   readonly option: string;
   /** Shown to the model when the filter is exposed as a tool parameter. */
   readonly description: string;
-  /** JSON-schema type, default `"string"`; `"array"` is a list of strings. */
   readonly jsonType?: "string" | "integer" | "array";
   /**
    * Whether a model may set this filter through the search tool. The subset is

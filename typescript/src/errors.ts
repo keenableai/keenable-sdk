@@ -14,19 +14,13 @@ export class KeenableConnectionError extends KeenableError {}
 /** The arguments passed to the SDK are invalid; no request was sent. */
 export class KeenableInvalidRequestError extends KeenableError {}
 
-/**
- * The Keenable API returned a non-2xx response. `data` is the decoded JSON
- * object body; `field`, `value` and `reason` are set on a 400 invalid_filter.
- */
+/** The Keenable API returned a non-2xx response. */
 export class KeenableAPIError extends KeenableError {
   readonly statusCode: number;
   readonly body?: string;
   readonly data?: Record<string, unknown>;
-  /** The rejected filter's name, e.g. `"include_domains"` (invalid_filter only). */
   readonly field?: string;
-  /** The rejected entry as sent (invalid_filter only). */
   readonly value?: string;
-  /** Why the API rejected it (invalid_filter only). */
   readonly reason?: string;
 
   constructor(
@@ -47,7 +41,6 @@ export class KeenableAPIError extends KeenableError {
   }
 }
 
-/** Strings as is, other JSON re-encoded, null and undefined as undefined. */
 function text(value: unknown): string | undefined {
   if (value === undefined || value === null) return undefined;
   return typeof value === "string" ? value : JSON.stringify(value);

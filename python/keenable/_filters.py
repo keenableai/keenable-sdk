@@ -24,7 +24,6 @@ class Filter:
     """Shown to the model when the filter is exposed as a tool parameter."""
 
     json_type: str = "string"
-    """JSON-schema type of the value; ``"array"`` is a list of strings."""
 
     tool_exposed: bool = False
     """Whether a model may set this filter through the search tool. The subset
@@ -95,7 +94,6 @@ TOOL_FILTERS: tuple[Filter, ...] = tuple(f for f in SEARCH_FILTERS if f.tool_exp
 
 
 def _schema(f: Filter) -> dict[str, Any]:
-    """One filter's JSON-schema property."""
     if f.json_type == "array":
         return {
             "type": "array",
@@ -111,7 +109,7 @@ def tool_properties() -> dict[str, Any]:
 
 
 def tool_filter_kwargs(args: dict[str, Any]) -> dict[str, Any]:
-    """Tool-exposed filters only; falsy scalars unset, a lone list string wrapped."""
+    """Keep only the filters the tool schema actually offers the model."""
     kwargs: dict[str, Any] = {}
     for f in TOOL_FILTERS:
         value = args.get(f.name)

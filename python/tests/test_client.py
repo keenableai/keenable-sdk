@@ -142,7 +142,6 @@ def test_search_sends_domain_lists_as_arrays() -> None:
     first, second, both = (json.loads(r.content) for r in seen)
     assert first["include_domains"] == ["press.un.org", "undocs.org", ".gov"]
     assert "exclude_domains" not in first
-    # Any sequence works; it goes out as a JSON array.
     assert second["exclude_domains"] == ["blogs.un.org"]
     assert "include_domains" not in second
     assert both["include_domains"] == ["un.org"]
@@ -151,7 +150,6 @@ def test_search_sends_domain_lists_as_arrays() -> None:
 
 
 def test_search_passes_an_empty_domain_list_through() -> None:
-    """An empty allow-list is sent as [] for the API to reject."""
     keenable, seen = _client(_ok(SEARCH_BODY))
     keenable.search("q", include_domains=[], exclude_domains=[])
 
@@ -181,7 +179,6 @@ def test_search_sends_any_iterable_as_an_array(make: Any) -> None:
 
 @pytest.mark.parametrize("value", ["un.org", {"un.org": True}], ids=["str", "mapping"])
 def test_search_sends_a_lone_string_or_mapping_unchanged(value: Any) -> None:
-    """The API rejects these; they must not be split into characters or keys."""
     keenable, seen = _client(_ok(SEARCH_BODY))
     keenable.search("q", include_domains=value, exclude_domains=value)
 
@@ -200,7 +197,6 @@ def test_site_still_works_next_to_the_domain_lists() -> None:
 
 
 def test_site_and_include_domains_are_both_sent() -> None:
-    """The API rejects this pair with a 400; the SDK must not decide for it."""
     keenable, seen = _client(_ok(SEARCH_BODY))
     keenable.search("q", site="arxiv.org", include_domains=["un.org"])
     run_tool_call(
@@ -398,7 +394,6 @@ def test_rate_limit_and_auth_errors_carry_the_api_message() -> None:
     assert auth.value.data == {"error": "bad key"}
 
 
-# The API's 400 body for a rejected domain filter.
 INVALID_FILTER_BODY = {
     "error": "invalid_filter",
     "message": 'Invalid include_domains value "https://un.org": scheme is not allowed',
@@ -427,7 +422,6 @@ def test_invalid_filter_error_names_field_entry_and_reason() -> None:
 
 
 def test_invalid_filter_error_without_a_value() -> None:
-    """An empty allow-list names no entry; value stays None."""
     body = {
         "error": "invalid_filter",
         "message": "Invalid include_domains value: must not be empty",
@@ -444,7 +438,6 @@ def test_invalid_filter_error_without_a_value() -> None:
 
 
 def test_other_400s_carry_no_filter_detail() -> None:
-    """Other 400s leave field / value / reason unset, even with a "field" key."""
     body = {"error": "Bad request", "message": "query is required", "field": "query"}
     keenable, _ = _client(_ok(body, status=400))
     with pytest.raises(KeenableAPIError) as excinfo:
@@ -585,13 +578,10 @@ def test_tool_call_forwards_domain_lists_and_keeps_empty_ones() -> None:
 
     first, second, empty_include, absent = (json.loads(r.content) for r in seen)
     assert first["include_domains"] == ["press.un.org"]
-    # An explicit [] is sent as is; the API rejects include [].
     assert first["exclude_domains"] == []
     assert empty_include["include_domains"] == []
-    # A lone string is wrapped; "" is unset.
     assert second["include_domains"] == ["press.un.org"]
     assert "exclude_domains" not in second
-    # Absent stays unset.
     assert "include_domains" not in absent
     assert "exclude_domains" not in absent
 
@@ -613,9 +603,7 @@ def test_tool_call_sends_a_malformed_domain_list_to_the_api() -> None:
     )
 
     first, second, third = (json.loads(r.content) for r in seen)
-    # null means "none".
     assert "include_domains" not in first
-    # Unreadable lists are sent unchanged for the API to reject.
     assert first["exclude_domains"] == 5
     assert second["exclude_domains"] == {"a.com": True}
     assert third["exclude_domains"] == ["a.com", 7]
@@ -675,7 +663,6 @@ async def test_async_search_matches_the_sync_payloads() -> None:
     assert empty_exclude["exclude_domains"] == []
     assert mixed["site"] == "arxiv.org"
     assert mixed["include_domains"] == ["arxiv.org"]
-    # A lone string is sent unchanged, not split.
     assert mixed["exclude_domains"] == "x"
 
 

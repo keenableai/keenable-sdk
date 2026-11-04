@@ -278,7 +278,6 @@ func TestSearchSendsDomainLists(t *testing.T) {
 	}
 }
 
-// The API rejects site plus include_domains; the SDK sends both so the 400 reaches the caller.
 func TestSearchSendsSiteWithIncludeDomains(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, searchBody), nil)
 	_, err := c.Search(context.Background(), "q", &keenable.SearchOptions{Site: "arxiv.org", IncludeDomains: []string{"un.org"}})
@@ -319,7 +318,6 @@ func TestSearchRawKeepsWarning(t *testing.T) {
 	}
 }
 
-// Nil is unset; a non-nil empty slice is sent as [].
 func TestSearchDomainListNilVersusEmpty(t *testing.T) {
 	cases := []struct {
 		name string
@@ -348,7 +346,6 @@ func TestSearchDomainListNilVersusEmpty(t *testing.T) {
 	}
 }
 
-// invalidFilterBody is the API's 400 body for a rejected domain filter.
 var invalidFilterBody = map[string]any{
 	"error":   "invalid_filter",
 	"message": `Invalid include_domains value "https://un.org": scheme is not allowed`,
@@ -383,7 +380,6 @@ func TestInvalidFilterErrorNamesFieldEntryAndReason(t *testing.T) {
 }
 
 func TestInvalidFilterErrorWithoutValue(t *testing.T) {
-	// An empty allow-list names no entry; Value stays empty.
 	c, _ := startKeyless(t, jsonHandler(http.StatusBadRequest, map[string]any{
 		"error":   "invalid_filter",
 		"message": "Invalid include_domains value: must not be empty",
@@ -401,7 +397,6 @@ func TestInvalidFilterErrorWithoutValue(t *testing.T) {
 }
 
 func TestOtherBadRequestHasNoFilterDetail(t *testing.T) {
-	// A "field" key alone does not count without "error": "invalid_filter".
 	body := map[string]any{"error": "Bad request", "message": "query is required", "field": "query"}
 	c, _ := startKeyless(t, jsonHandler(http.StatusBadRequest, body), nil)
 	_, err := c.Search(context.Background(), "q", nil)
@@ -423,7 +418,6 @@ func TestOtherBadRequestHasNoFilterDetail(t *testing.T) {
 	}
 }
 
-// Non-string entries are re-encoded as JSON; null is empty.
 func TestInvalidFilterNonStringValues(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -464,7 +458,6 @@ func TestInvalidFilterNonStringValues(t *testing.T) {
 	}
 }
 
-// Field, Value and Reason are filled only for a 400.
 func TestInvalidFilterBodyOnOtherStatus(t *testing.T) {
 	for _, status := range []int{http.StatusUnauthorized, http.StatusUnprocessableEntity, http.StatusTooManyRequests, http.StatusInternalServerError} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
@@ -550,7 +543,6 @@ func TestToolSchemaOffersSiteAndDomainLists(t *testing.T) {
 }
 
 func TestToolCallDomainLists(t *testing.T) {
-	// A lone string is wrapped, "" and null are unset, and an explicit [] is sent as is.
 	cases := []struct {
 		name  string
 		args  any
@@ -602,7 +594,6 @@ func TestToolCallSendsMalformedDomainListToAPI(t *testing.T) {
 			t.Fatalf("%s: a malformed list goes to the API, got local error %v", call, err)
 		}
 	}
-	// Unreadable lists are sent unchanged for the API to reject.
 	want := []any{[]any{"a.com", 7}, 5, map[string]any{"a.com": true}}
 	for i, w := range want {
 		got := payloadOf(t, (*seen)[i])["exclude_domains"]

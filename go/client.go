@@ -145,7 +145,6 @@ func (c *Client) Search(ctx context.Context, query string, opts *SearchOptions) 
 	return c.search(ctx, query, opts, nil)
 }
 
-// search is Search with raw wire values set over the payload built from opts.
 func (c *Client) search(ctx context.Context, query string, opts *SearchOptions, raw map[string]any) (*SearchResponse, error) {
 	if err := requireClient(c); err != nil {
 		return nil, err
@@ -574,7 +573,6 @@ func classifyStatus(status int, msg, body string, data map[string]any, header ht
 	}
 }
 
-// detailText returns a string as is, other JSON re-encoded, nil as "".
 func detailText(v any) string {
 	switch t := v.(type) {
 	case nil:

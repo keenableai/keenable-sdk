@@ -15,13 +15,10 @@ type SearchOptions struct {
 	// Mode is the search mode. Empty means "pro".
 	Mode string
 	// Site restricts results to one domain, for example "arxiv.org".
-	// For several domains use IncludeDomains; the API rejects the two together.
 	Site string
-	// IncludeDomains keeps only results from these domains, e.g. "un.org",
-	// "un.org/en/ga" or ".gov". Nil is unset; an empty slice is sent as [].
+	// IncludeDomains keeps only results from these domains, e.g. "un.org" or ".gov".
 	IncludeDomains []string
-	// ExcludeDomains drops results from these domains; same entry forms as
-	// IncludeDomains. Nil is unset; an empty slice is sent as [].
+	// ExcludeDomains drops results from these domains.
 	ExcludeDomains []string
 	// PublishedAfter keeps pages published on or after YYYY-MM-DD.
 	PublishedAfter string
