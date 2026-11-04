@@ -1,6 +1,9 @@
 package keenable
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // The search filter set, declared once.
 //
@@ -12,14 +15,32 @@ import "encoding/json"
 type filter struct {
 	wire        string
 	description string
+	// jsonType is the JSON-schema type. Empty means "string". "array" is a
+	// list of strings.
 	jsonType    string
 	toolExposed bool
 }
 
 var searchFilters = []filter{
 	{
-		wire:        "site",
-		description: "Optional. Restrict results to one domain, e.g. 'arxiv.org'.",
+		wire: "site",
+		description: "Optional. Restrict results to one domain, e.g. 'arxiv.org'. " +
+			"For several domains use include_domains.",
+		toolExposed: true,
+	},
+	{
+		wire: "include_domains",
+		description: "Optional. Only return results from these domains. Each entry is a domain " +
+			"('un.org', which also matches its subdomains), a domain with a path prefix " +
+			"('un.org/en/ga'), or a suffix ('.gov'). Do not combine with site.",
+		jsonType:    "array",
+		toolExposed: true,
+	},
+	{
+		wire: "exclude_domains",
+		description: "Optional. Never return results from these domains. Same entry forms as " +
+			"include_domains; an entry in both lists is an error.",
+		jsonType:    "array",
 		toolExposed: true,
 	},
 	{
@@ -75,6 +96,17 @@ func (f filter) value(opts *SearchOptions) (any, bool) {
 			return nil, false
 		}
 		return opts.Site, true
+	case "include_domains":
+		// nil is unset; a non-nil empty slice is sent as [] on purpose.
+		if opts.IncludeDomains == nil {
+			return nil, false
+		}
+		return opts.IncludeDomains, true
+	case "exclude_domains":
+		if opts.ExcludeDomains == nil {
+			return nil, false
+		}
+		return opts.ExcludeDomains, true
 	case "published_after":
 		if opts.PublishedAfter == "" {
 			return nil, false
@@ -125,19 +157,29 @@ func toolProperties() map[string]any {
 		if kind == "" {
 			kind = "string"
 		}
-		props[f.wire] = map[string]any{
+		prop := map[string]any{
 			"type":        kind,
 			"description": f.description,
 		}
+		if kind == "array" {
+			prop["items"] = map[string]any{"type": "string"}
+		}
+		props[f.wire] = prop
 	}
 	return props
 }
 
 // toolSearchOptions keeps only the filters the tool schema offers the model.
-func toolSearchOptions(args map[string]any) *SearchOptions {
+//
+// Models fill optional parameters with "" or [] to mean "none", so falsy
+// values count as unset here (unlike Client.Search, which sends a non-nil
+// empty slice as []). A lone string where the schema asks for a list is
+// wrapped. A list holding a non-string is an error rather than being
+// dropped, since dropping a block-list entry would widen the search.
+func toolSearchOptions(args map[string]any) (*SearchOptions, error) {
 	opts := &SearchOptions{}
 	if args == nil {
-		return opts
+		return opts, nil
 	}
 	for _, f := range searchFilters {
 		if !f.toolExposed {
@@ -147,9 +189,54 @@ func toolSearchOptions(args map[string]any) *SearchOptions {
 		if !ok || !truthy(v) {
 			continue
 		}
+		if f.jsonType == "array" {
+			list, err := stringList(f.wire, v)
+			if err != nil {
+				return nil, err
+			}
+			assignList(opts, f.wire, list)
+			continue
+		}
 		assignFilter(opts, f.wire, v)
 	}
-	return opts
+	return opts, nil
+}
+
+// stringList reads a tool argument the schema declares as an array of strings.
+func stringList(wire string, v any) ([]string, error) {
+	switch t := v.(type) {
+	case string:
+		return []string{t}, nil
+	case []string:
+		return t, nil
+	case []any:
+		out := make([]string, 0, len(t))
+		for _, item := range t {
+			s, ok := item.(string)
+			if !ok {
+				return nil, &InvalidRequestError{msg: fmt.Sprintf(
+					"%s must be a list of strings, got the entry %#v. Pass domains such as [\"un.org\"].",
+					wire, item,
+				)}
+			}
+			out = append(out, s)
+		}
+		return out, nil
+	default:
+		return nil, &InvalidRequestError{msg: fmt.Sprintf(
+			"%s must be a list of strings, got %T. Pass domains such as [\"un.org\"].",
+			wire, v,
+		)}
+	}
+}
+
+func assignList(opts *SearchOptions, wire string, list []string) {
+	switch wire {
+	case "include_domains":
+		opts.IncludeDomains = list
+	case "exclude_domains":
+		opts.ExcludeDomains = list
+	}
 }
 
 func assignFilter(opts *SearchOptions, wire string, v any) {
@@ -194,6 +281,10 @@ func truthy(v any) bool {
 		return t != 0
 	case json.Number:
 		return t != "" && t != "0"
+	case []any:
+		return len(t) > 0
+	case []string:
+		return len(t) > 0
 	default:
 		return true
 	}

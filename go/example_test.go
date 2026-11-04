@@ -1,6 +1,7 @@
 package keenable_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -33,4 +34,32 @@ func ExampleInvalidRequestError() {
 	// Output:
 	// baseURL must be an https:// URL with a host, got "" (invalid_request)
 	// invalid_request
+}
+
+// Restrict a search to an allow-list of domains and drop one subdomain.
+// Leave a list nil to send no filter; an empty non-nil slice is sent as [].
+// (No Output comment: this example calls the live API, so go test only
+// compiles it.)
+func ExampleClient_Search_domainFilters() {
+	client, err := keenable.New(nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer client.Close()
+
+	results, err := client.Search(context.Background(), "security council resolution on sudan", &keenable.SearchOptions{
+		IncludeDomains: []string{"press.un.org", "undocs.org", "documents.un.org"},
+		ExcludeDomains: []string{"blogs.un.org"},
+	})
+	var api *keenable.APIError
+	if errors.As(err, &api) && api.StatusCode == 400 {
+		// A rejected entry: Data names the field, value and reason.
+		log.Fatalf("bad filter %v: %v", api.Data["value"], api.Data["reason"])
+	}
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, result := range results.Results {
+		fmt.Println(result.URL)
+	}
 }

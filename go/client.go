@@ -488,11 +488,19 @@ var statusLabels = map[int]string{
 
 func toAPIError(status int, raw []byte, header http.Header, keyless bool) error {
 	detail := ""
+	var data map[string]any
 	var body any
 	if err := json.Unmarshal(raw, &body); err != nil {
 		detail = strings.TrimSpace(string(raw))
 	} else if m, ok := body.(map[string]any); ok {
-		detail = firstDetail(m, "message", "error", "detail")
+		data = m
+		detail = firstDetail(m, "message")
+		if detail == "" {
+			detail = structuredDetail(m)
+		}
+		if detail == "" {
+			detail = firstDetail(m, "error", "detail")
+		}
 	}
 	label, ok := statusLabels[status]
 	if !ok {
@@ -505,6 +513,8 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 	switch status {
 	case 401, 403:
 		msg += ". Check KEENABLE_API_KEY, or pass Options.APIKey."
+	case 400:
+		msg += ". Fix the argument named above; the same request will fail again."
 	case 402:
 		msg += ". Add credits at https://keenable.ai/console."
 	case 429:
@@ -519,10 +529,39 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 	default:
 		msg += ". Retry the request. If it keeps failing, confirm KEENABLE_API_URL."
 	}
-	return classifyStatus(status, msg, detail, header)
+	return classifyStatus(status, msg, detail, data, header)
 }
 
-func classifyStatus(status int, msg, body string, header http.Header) error {
+// structuredDetail describes a structured validation error body in one line:
+// {"error":"invalid_filter","field":"include_domains","value":"x","reason":"..."}
+// becomes `invalid_filter: include_domains entry "x": ...`. It returns "" when
+// the body names no field and no reason.
+func structuredDetail(m map[string]any) string {
+	field := firstDetail(m, "field")
+	reason := firstDetail(m, "reason")
+	if field == "" && reason == "" {
+		return ""
+	}
+	subject := field
+	if v, ok := m["value"]; ok && v != nil {
+		encoded, err := json.Marshal(v)
+		if err == nil {
+			if subject != "" {
+				subject += " entry "
+			}
+			subject += string(encoded)
+		}
+	}
+	parts := make([]string, 0, 3)
+	for _, part := range []string{firstDetail(m, "error"), subject, reason} {
+		if part != "" {
+			parts = append(parts, part)
+		}
+	}
+	return strings.Join(parts, ": ")
+}
+
+func classifyStatus(status int, msg, body string, data map[string]any, header http.Header) error {
 	code := CodeAPI
 	switch status {
 	case 401, 403:
@@ -533,6 +572,7 @@ func classifyStatus(status int, msg, body string, header http.Header) error {
 	api := &APIError{
 		StatusCode: status,
 		Body:       body,
+		Data:       data,
 		RequestID:  headerValue(header, "X-Request-Id"),
 		msg:        msg,
 		code:       code,
