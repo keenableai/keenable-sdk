@@ -280,19 +280,30 @@ func TestSearchSendsDomainLists(t *testing.T) {
 
 // Nil is unset; a non-nil empty slice is sent as [].
 func TestSearchDomainListNilVersusEmpty(t *testing.T) {
-	c, seen := startKeyless(t, jsonHandler(http.StatusOK, searchBody), nil)
-	if _, err := c.Search(context.Background(), "q", &keenable.SearchOptions{
-		IncludeDomains: []string{},
-		ExcludeDomains: nil,
-	}); err != nil {
-		t.Fatal(err)
+	cases := []struct {
+		name string
+		opts keenable.SearchOptions
+		sent string
+		gone string
+	}{
+		{"empty include, nil exclude", keenable.SearchOptions{IncludeDomains: []string{}}, `"include_domains":[]`, "exclude_domains"},
+		{"empty exclude, nil include", keenable.SearchOptions{ExcludeDomains: []string{}}, `"exclude_domains":[]`, "include_domains"},
 	}
-	req := one(t, seen)
-	if !strings.Contains(string(req.Body), `"include_domains":[]`) {
-		t.Fatalf("empty IncludeDomains must be sent as []: %s", req.Body)
-	}
-	if strings.Contains(string(req.Body), "exclude_domains") {
-		t.Fatalf("nil ExcludeDomains must not be sent: %s", req.Body)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, seen := startKeyless(t, jsonHandler(http.StatusOK, searchBody), nil)
+			opts := tc.opts
+			if _, err := c.Search(context.Background(), "q", &opts); err != nil {
+				t.Fatal(err)
+			}
+			body := string(one(t, seen).Body)
+			if !strings.Contains(body, tc.sent) {
+				t.Fatalf("want %s in %s", tc.sent, body)
+			}
+			if strings.Contains(body, tc.gone) {
+				t.Fatalf("nil %s must not be sent: %s", tc.gone, body)
+			}
+		})
 	}
 }
 
@@ -363,6 +374,104 @@ func TestOtherBadRequestHasNoFilterDetail(t *testing.T) {
 	if api.Field != "" || api.Value != "" || api.Reason != "" {
 		t.Fatalf("Field/Value/Reason: %q %q %q", api.Field, api.Value, api.Reason)
 	}
+	if !strings.Contains(err.Error(), "query is required. Fix the argument named above") {
+		t.Fatalf("error text: %s", err.Error())
+	}
+	if strings.Contains(err.Error(), "Retry the request") {
+		t.Fatalf("a 400 should not advise a blind retry: %s", err.Error())
+	}
+}
+
+// Non-string entries are re-encoded as JSON; null is empty.
+func TestInvalidFilterNonStringValues(t *testing.T) {
+	cases := []struct {
+		name  string
+		value any
+		want  string
+	}{
+		{"number", 7, "7"},
+		{"list", []any{"a"}, `["a"]`},
+		{"object", map[string]any{"a.com": true}, `{"a.com":true}`},
+		{"null", nil, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := map[string]any{
+				"error":   "invalid_filter",
+				"message": "Invalid exclude_domains value",
+				"field":   "exclude_domains",
+				"value":   tc.value,
+				"reason":  "must be a string",
+			}
+			h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("X-Request-Id", "req_filter")
+				jsonHandler(http.StatusBadRequest, body).ServeHTTP(w, r)
+			})
+			c, _ := startKeyless(t, h, nil)
+			_, err := keenable.RunToolCall(context.Background(), c, "keenable_search", map[string]any{"query": "q", "exclude_domains": []any{"a.com", tc.value}})
+			var api *keenable.APIError
+			if !errors.As(err, &api) || api.StatusCode != 400 {
+				t.Fatalf("want a 400 APIError, got %v", err)
+			}
+			if api.Field != "exclude_domains" || api.Value != tc.want || api.Reason != "must be a string" {
+				t.Fatalf("Field/Value/Reason: %q %q %q", api.Field, api.Value, api.Reason)
+			}
+			if api.RequestID != "req_filter" {
+				t.Fatalf("RequestID: %q", api.RequestID)
+			}
+		})
+	}
+}
+
+// Field, Value and Reason are filled only for a 400.
+func TestInvalidFilterBodyOnOtherStatus(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusUnprocessableEntity, http.StatusTooManyRequests, http.StatusInternalServerError} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			c, _ := startKeyless(t, jsonHandler(status, invalidFilterBody), nil)
+			_, err := c.Search(context.Background(), "q", nil)
+			var api *keenable.APIError
+			if !errors.As(err, &api) || api.StatusCode != status {
+				t.Fatalf("want a %d APIError, got %v", status, err)
+			}
+			if api.Field != "" || api.Value != "" || api.Reason != "" {
+				t.Fatalf("Field/Value/Reason: %q %q %q", api.Field, api.Value, api.Reason)
+			}
+			if !jsonEqual(api.Data, invalidFilterBody) {
+				t.Fatalf("Data: %#v", api.Data)
+			}
+		})
+	}
+}
+
+func TestErrorDataIsNilForNonObjectBodies(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		body   string
+		want   string
+	}{
+		{"proxy page", http.StatusBadGateway, "  <html>Bad Gateway</html>\n", "<html>Bad Gateway</html>"},
+		{"json array", http.StatusBadRequest, `["a","b"]`, ""},
+		{"json string", http.StatusInternalServerError, `"boom"`, ""},
+		{"empty", http.StatusInternalServerError, "", ""},
+		{"empty 401", http.StatusUnauthorized, "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := startKeyless(t, textHandler(tc.status, tc.body), nil)
+			_, err := c.Search(context.Background(), "q", nil)
+			var api *keenable.APIError
+			if !errors.As(err, &api) || api.StatusCode != tc.status {
+				t.Fatalf("want a %d APIError, got %v", tc.status, err)
+			}
+			if api.Data != nil {
+				t.Fatalf("Data should be nil: %#v", api.Data)
+			}
+			if api.Body != tc.want {
+				t.Fatalf("Body: %q, want %q", api.Body, tc.want)
+			}
+		})
+	}
 }
 
 func TestBadRequestWithoutDetailNamesNoArgument(t *testing.T) {
@@ -400,41 +509,42 @@ func TestToolSchemaOffersSiteAndDomainLists(t *testing.T) {
 }
 
 func TestToolCallDomainLists(t *testing.T) {
-	c, seen := startKeyless(t, routed(), nil)
-	ctx := context.Background()
-	calls := []string{
-		`{"query":"q","include_domains":["press.un.org","undocs.org"],"exclude_domains":[]}`,
-		`{"query":"q","include_domains":"press.un.org","exclude_domains":""}`,
-		`{"query":"q","include_domains":[]}`,
-		`{"query":"q","include_domains":null}`,
+	// A lone string is wrapped, "" and null are unset, and an explicit [] is sent as is.
+	cases := []struct {
+		name  string
+		args  any
+		field string
+		sent  bool
+		want  any
+	}{
+		{"json list", `{"query":"q","include_domains":["press.un.org","undocs.org"]}`, "include_domains", true, []any{"press.un.org", "undocs.org"}},
+		{"json empty exclude", `{"query":"q","exclude_domains":[]}`, "exclude_domains", true, []any{}},
+		{"json empty include", `{"query":"q","include_domains":[]}`, "include_domains", true, []any{}},
+		{"json string include", `{"query":"q","include_domains":"press.un.org"}`, "include_domains", true, []any{"press.un.org"}},
+		{"json string exclude", `{"query":"q","exclude_domains":"x.com"}`, "exclude_domains", true, []any{"x.com"}},
+		{"json blank include", `{"query":"q","include_domains":""}`, "include_domains", false, nil},
+		{"json blank exclude", `{"query":"q","exclude_domains":""}`, "exclude_domains", false, nil},
+		{"json null include", `{"query":"q","include_domains":null}`, "include_domains", false, nil},
+		{"go slice", map[string]any{"query": "q", "include_domains": []string{"a.com"}}, "include_domains", true, []any{"a.com"}},
+		{"go empty slice", map[string]any{"query": "q", "include_domains": []string{}}, "include_domains", true, []any{}},
+		{"go nil slice", map[string]any{"query": "q", "exclude_domains": []string(nil)}, "exclude_domains", false, nil},
+		{"go nil any slice", map[string]any{"query": "q", "exclude_domains": []any(nil)}, "exclude_domains", false, nil},
 	}
-	for _, call := range calls {
-		if _, err := keenable.RunToolCall(ctx, c, "keenable_search", call); err != nil {
-			t.Fatal(err)
-		}
-	}
-	first, second := payloadOf(t, (*seen)[0]), payloadOf(t, (*seen)[1])
-	emptyInclude, null := payloadOf(t, (*seen)[2]), payloadOf(t, (*seen)[3])
-	if !jsonEqual(first["include_domains"], []any{"press.un.org", "undocs.org"}) {
-		t.Fatalf("include_domains: %#v", first)
-	}
-	// An explicit [] is sent as is; the API rejects include [].
-	if v, ok := first["exclude_domains"]; !ok || !jsonEqual(v, []any{}) {
-		t.Fatalf("empty exclude_domains not sent as []: %#v", first)
-	}
-	if v, ok := emptyInclude["include_domains"]; !ok || !jsonEqual(v, []any{}) {
-		t.Fatalf("empty include_domains not sent as []: %#v", emptyInclude)
-	}
-	// A lone string is wrapped; "" is unset.
-	if !jsonEqual(second["include_domains"], []any{"press.un.org"}) {
-		t.Fatalf("lone string not wrapped: %#v", second)
-	}
-	if _, ok := second["exclude_domains"]; ok {
-		t.Fatalf("empty-string exclude_domains forwarded: %#v", second)
-	}
-	// null stays unset.
-	if _, ok := null["include_domains"]; ok {
-		t.Fatalf("null include_domains forwarded: %#v", null)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, seen := startKeyless(t, routed(), nil)
+			if _, err := keenable.RunToolCall(context.Background(), c, "keenable_search", tc.args); err != nil {
+				t.Fatal(err)
+			}
+			payload := payloadOf(t, one(t, seen))
+			got, ok := payload[tc.field]
+			if ok != tc.sent {
+				t.Fatalf("%s sent=%v, want %v: %#v", tc.field, ok, tc.sent, payload)
+			}
+			if tc.sent && !jsonEqual(got, tc.want) {
+				t.Fatalf("%s: %#v, want %#v", tc.field, got, tc.want)
+			}
+		})
 	}
 }
 
@@ -759,6 +869,9 @@ func TestStatusErrors(t *testing.T) {
 		if !errors.As(err, &api) {
 			t.Fatal("rate limit should unwrap to APIError")
 		}
+		if !jsonEqual(rate.Data, map[string]any{"message": "hourly cap reached"}) {
+			t.Fatalf("Data: %#v", rate.Data)
+		}
 	})
 	t.Run("401", func(t *testing.T) {
 		c, _ := startKeyless(t, jsonHandler(http.StatusUnauthorized, map[string]any{"error": "bad key"}), nil)
@@ -766,6 +879,9 @@ func TestStatusErrors(t *testing.T) {
 		var auth *keenable.AuthError
 		if !errors.As(err, &auth) || auth.StatusCode != 401 || !strings.Contains(err.Error(), "bad key") {
 			t.Fatal(err)
+		}
+		if !jsonEqual(auth.Data, map[string]any{"error": "bad key"}) {
+			t.Fatalf("Data: %#v", auth.Data)
 		}
 	})
 	t.Run("403", func(t *testing.T) {
