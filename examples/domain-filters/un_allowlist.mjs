@@ -25,9 +25,10 @@ let results;
 try {
   results = await keenable.search(QUESTION, { includeDomains: ALLOWED, maxResults: 20 });
 } catch (err) {
-  // A malformed entry is a 400 naming the field, the entry and the reason.
+  // A malformed entry is a 400 whose message names the field, the entry and
+  // the reason.
   if (err instanceof KeenableAPIError) {
-    console.error(`rejected: ${err.message}`, err.data);
+    console.error(`rejected: ${err.message}`);
     process.exit(1);
   }
   throw err;

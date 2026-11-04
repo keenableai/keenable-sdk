@@ -81,17 +81,20 @@ results had to be removed to honour it, the response says so in
 The lists are sent as given, including `[]`, and the API validates them. An
 empty `include_domains`, an entry with a scheme, port, query or IP address,
 the same entry in both lists, or `include_domains` together with `site` is
-rejected with HTTP 400, raised as `KeenableAPIError`:
+rejected with HTTP 400, raised as `KeenableAPIError`. Its message names the
+field, the entry and the reason:
 
 ```python
 try:
     keenable.search("q", include_domains=["https://un.org"])
 except KeenableAPIError as err:
-    # ... invalid_filter: include_domains entry "https://un.org": <reason>
-    print(err)
-    # {"error": "invalid_filter", "field": ..., "value": ..., "reason": ...}
-    print(err.data)
+    print(err.body)
+    # Invalid include_domains value "https://un.org": scheme is not allowed
 ```
+
+The field, entry and reason are only in that message; the API sends no
+separate keys for them. `err.data` holds the whole decoded body
+(`{"error": "Bad request", "message": "..."}`).
 
 `site` still works for a single domain. The `keenable_search` tool offers the
 model `site`, `include_domains` and `exclude_domains`.

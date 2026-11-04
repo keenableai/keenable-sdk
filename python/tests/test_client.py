@@ -316,38 +316,27 @@ def test_rate_limit_and_auth_errors_carry_the_api_message() -> None:
         keenable.search("q")
 
 
+# The 400 body the public API sends for a rejected domain filter, copied from
+# the backend's response (search.service.ts rejectedSearchError via
+# BAD_REQUEST): the field, entry and reason are only in the message.
+INVALID_FILTER_BODY = {
+    "error": "Bad request",
+    "message": 'Invalid include_domains value "https://un.org": scheme is not allowed',
+}
+
+
 def test_invalid_filter_error_names_field_entry_and_reason() -> None:
-    body = {
-        "error": "invalid_filter",
-        "field": "include_domains",
-        "value": "https://un.org",
-        "reason": "scheme not allowed",
-    }
-    keenable, _ = _client(_ok(body, status=400))
+    keenable, _ = _client(_ok(INVALID_FILTER_BODY, status=400))
     with pytest.raises(KeenableAPIError) as excinfo:
         keenable.search("q", include_domains=["https://un.org"])
 
     assert excinfo.value.status_code == 400
     assert str(excinfo.value) == (
-        "Keenable API error (400): invalid_filter: include_domains entry "
-        '"https://un.org": scheme not allowed'
+        'Keenable API error (400): Invalid include_domains value "https://un.org": '
+        "scheme is not allowed"
     )
-    assert excinfo.value.data == body
-
-
-def test_api_message_wins_over_the_composed_filter_detail() -> None:
-    body = {
-        "error": "invalid_filter",
-        "message": "include_domains must not be empty",
-        "field": "include_domains",
-    }
-    keenable, _ = _client(_ok(body, status=400))
-    with pytest.raises(KeenableAPIError) as excinfo:
-        keenable.search("q", include_domains=[])
-
-    assert excinfo.value.body == "include_domains must not be empty"
-    assert excinfo.value.data is not None
-    assert excinfo.value.data["field"] == "include_domains"
+    assert excinfo.value.body == INVALID_FILTER_BODY["message"]
+    assert excinfo.value.data == INVALID_FILTER_BODY
 
 
 def test_bad_base_url_is_rejected() -> None:

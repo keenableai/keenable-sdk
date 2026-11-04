@@ -13,8 +13,8 @@ All notable changes to the `keenable` Python package. Versions follow
 - The `keenable_search` tool offers `include_domains` and `exclude_domains`
   alongside `site`.
 - `KeenableAPIError.data` holds the decoded JSON error body. A rejected filter
-  now reads `invalid_filter: include_domains entry "x": <reason>` instead of
-  just `invalid_filter`.
+  is a 400 whose message names the field, entry and reason
+  (`Invalid include_domains value "x": <reason>`).
 - The wheel now ships a `py.typed` marker, so mypy and pyright read the SDK's
   type hints instead of treating `keenable` as untyped. If you run a strict
   type checker, you may see new (correct) errors where your code passed values

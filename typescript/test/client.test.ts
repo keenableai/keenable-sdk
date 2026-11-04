@@ -360,11 +360,12 @@ describe("errors", () => {
   });
 
   it("names the field, entry and reason of a rejected domain filter", async () => {
+    // The 400 body the public API sends, copied from the backend's response
+    // (search.service.ts rejectedSearchError via BAD_REQUEST): the field,
+    // entry and reason are only in the message.
     const body = {
-      error: "invalid_filter",
-      field: "include_domains",
-      value: "https://un.org",
-      reason: "scheme not allowed",
+      error: "Bad request",
+      message: 'Invalid include_domains value "https://un.org": scheme is not allowed',
     };
     const { client } = mockClient(() => json(body, 400));
     const error = await client
@@ -375,21 +376,10 @@ describe("errors", () => {
     const apiError = error as KeenableAPIError;
     expect(apiError.statusCode).toBe(400);
     expect(apiError.message).toBe(
-      'Keenable API error (400): invalid_filter: include_domains entry "https://un.org": scheme not allowed',
+      'Keenable API error (400): Invalid include_domains value "https://un.org": scheme is not allowed',
     );
+    expect(apiError.body).toBe(body.message);
     expect(apiError.data).toEqual(body);
-  });
-
-  it("prefers the API's own message over the composed one", async () => {
-    const { client } = mockClient(() =>
-      json(
-        { error: "invalid_filter", message: "include_domains must not be empty", field: "include_domains" },
-        400,
-      ),
-    );
-    const error = (await client.search("q").catch((e: unknown) => e)) as KeenableAPIError;
-    expect(error.body).toBe("include_domains must not be empty");
-    expect(error.data?.field).toBe("include_domains");
   });
 
   it("rejects a non-https base URL", () => {

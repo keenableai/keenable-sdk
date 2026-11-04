@@ -13,8 +13,8 @@ All notable changes to the `keenable` npm package. Versions follow
 - The `keenable_search` tool offers `include_domains` and `exclude_domains`
   alongside `site`.
 - `KeenableAPIError.data` holds the decoded JSON error body. A rejected filter
-  now reads `invalid_filter: include_domains entry "x": <reason>` instead of
-  just `invalid_filter`.
+  is a 400 whose message names the field, entry and reason
+  (`Invalid include_domains value "x": <reason>`).
 
 ## 0.1.4
 

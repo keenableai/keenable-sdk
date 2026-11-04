@@ -32,8 +32,8 @@ type SearchOptions struct {
 	//
 	// Nil means unset. A non-nil empty slice is sent as [] and rejected by
 	// the API. Entries are validated by the API: a malformed one comes back
-	// as an [*APIError] with StatusCode 400 whose Data names the field,
-	// value and reason.
+	// as an [*APIError] with StatusCode 400 whose message names the field,
+	// the entry and the reason.
 	IncludeDomains []string
 	// ExcludeDomains drops results from these domains (a block-list). Same
 	// entry forms as IncludeDomains. With both set, a result must match the

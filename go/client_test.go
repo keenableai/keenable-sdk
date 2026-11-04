@@ -297,37 +297,50 @@ func TestSearchDomainListNilVersusEmpty(t *testing.T) {
 	}
 }
 
+// invalidFilterBody is the 400 body the public API sends for a rejected domain
+// filter, copied from the backend's response (search.service.ts
+// rejectedSearchError via BAD_REQUEST): the field, entry and reason are only
+// in the message.
+var invalidFilterBody = map[string]any{
+	"error":   "Bad request",
+	"message": `Invalid include_domains value "https://un.org": scheme is not allowed`,
+}
+
 func TestInvalidFilterErrorNamesFieldEntryAndReason(t *testing.T) {
-	body := map[string]any{
-		"error":  "invalid_filter",
-		"field":  "include_domains",
-		"value":  "https://un.org",
-		"reason": "scheme not allowed",
-	}
-	c, _ := startKeyless(t, jsonHandler(http.StatusBadRequest, body), nil)
+	c, _ := startKeyless(t, jsonHandler(http.StatusBadRequest, invalidFilterBody), nil)
 	_, err := c.Search(context.Background(), "q", &keenable.SearchOptions{IncludeDomains: []string{"https://un.org"}})
 	var api *keenable.APIError
 	if !errors.As(err, &api) || api.StatusCode != 400 {
 		t.Fatalf("want a 400 APIError, got %v", err)
 	}
-	want := `Keenable API error (400): invalid_filter: include_domains entry "https://un.org": scheme not allowed`
+	want := `Keenable API error (400): Invalid include_domains value "https://un.org": scheme is not allowed. Fix the argument named above`
 	if !strings.HasPrefix(err.Error(), want) {
 		t.Fatalf("error text:\n got %s\nwant prefix %s", err.Error(), want)
 	}
-	if api.Data["field"] != "include_domains" || api.Data["value"] != "https://un.org" || api.Data["reason"] != "scheme not allowed" {
+	if api.Body != invalidFilterBody["message"] {
+		t.Fatalf("Body: %q", api.Body)
+	}
+	if !jsonEqual(api.Data, invalidFilterBody) {
 		t.Fatalf("Data: %#v", api.Data)
 	}
 	if strings.Contains(err.Error(), "Retry the request") {
 		t.Fatalf("a 400 should not advise a blind retry: %s", err.Error())
 	}
+}
 
-	// The API's own message wins over the composed one.
-	c2, _ := startKeyless(t, jsonHandler(http.StatusBadRequest, map[string]any{
-		"error": "invalid_filter", "message": "include_domains must not be empty", "field": "include_domains",
+func TestBadRequestWithoutDetailNamesNoArgument(t *testing.T) {
+	c, _ := startKeyless(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
 	}), nil)
-	_, err = c2.Search(context.Background(), "q", &keenable.SearchOptions{IncludeDomains: []string{}})
-	if !errors.As(err, &api) || api.Body != "include_domains must not be empty" {
-		t.Fatalf("want the API message as Body, got %v", err)
+	_, err := c.Search(context.Background(), "q", nil)
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	if strings.Contains(err.Error(), "named above") {
+		t.Fatalf("an empty 400 names no argument: %s", err.Error())
+	}
+	if !strings.Contains(err.Error(), "Check the request arguments") {
+		t.Fatalf("error text: %s", err.Error())
 	}
 }
 

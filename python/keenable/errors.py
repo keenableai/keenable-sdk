@@ -17,9 +17,12 @@ class KeenableAPIError(KeenableError):
     """The Keenable API returned a non-2xx response.
 
     ``status_code`` is the HTTP status and ``body`` the decoded error message
-    from the API when it sent one. ``data`` is the decoded JSON error body,
-    so structured fields stay reachable: a rejected domain filter arrives as
-    HTTP 400 with ``{"error": "invalid_filter", "field", "value", "reason"}``.
+    from the API when it sent one. ``data`` is the decoded JSON error body
+    when it was a JSON object, so any field the API sends stays reachable. A
+    rejected domain filter arrives as HTTP 400 with ``{"error": "Bad
+    request", "message": "Invalid include_domains value \"https://un.org\":
+    scheme is not allowed"}``: the field, entry and reason are in the
+    message (also on ``body``), not in separate keys.
     """
 
     def __init__(

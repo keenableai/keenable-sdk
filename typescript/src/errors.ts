@@ -18,9 +18,11 @@ export class KeenableInvalidRequestError extends KeenableError {}
  * The Keenable API returned a non-2xx response.
  *
  * `body` is the API's error message. `data` is the decoded JSON error body
- * when there was one, so structured fields stay reachable: a rejected domain
- * filter, for example, arrives as HTTP 400 with
- * `{ error: "invalid_filter", field, value, reason }`.
+ * when it was a JSON object, so any field the API sends stays reachable. A
+ * rejected domain filter arrives as HTTP 400 with
+ * `{ error: "Bad request", message: 'Invalid include_domains value "https://un.org": scheme is not allowed' }`:
+ * the field, entry and reason are in the message (also on `body`), not in
+ * separate keys.
  */
 export class KeenableAPIError extends KeenableError {
   readonly statusCode: number;

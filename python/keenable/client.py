@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ipaddress
-import json
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from os import environ
@@ -113,25 +112,6 @@ def _domain_list(value: Sequence[str] | None) -> Any:
     return list(value)
 
 
-def _structured_detail(body: dict[str, Any]) -> str | None:
-    """Describe a structured validation error body in one line.
-
-    ``{"error": "invalid_filter", "field": "include_domains", "value": "x",
-    "reason": "..."}`` becomes ``invalid_filter: include_domains entry "x":
-    ...``. Returns ``None`` when the body names no field and no reason.
-    """
-    field = body.get("field")
-    reason = body.get("reason")
-    if not field and not reason:
-        return None
-    subject = str(field or "")
-    if body.get("value") is not None:
-        value = json.dumps(body["value"])
-        subject = f"{subject} entry {value}" if subject else value
-    parts = [body.get("error"), subject, reason]
-    return ": ".join(str(part) for part in parts if part)
-
-
 def _to_api_error(response: httpx.Response) -> KeenableAPIError:
     """Map a non-2xx response to the most specific SDK error available."""
     detail = ""
@@ -141,11 +121,7 @@ def _to_api_error(response: httpx.Response) -> KeenableAPIError:
         if isinstance(body, dict):
             data = body
             detail = str(
-                body.get("message")
-                or _structured_detail(body)
-                or body.get("error")
-                or body.get("detail")
-                or ""
+                body.get("message") or body.get("error") or body.get("detail") or ""
             )
     except ValueError:
         detail = (response.text or "").strip()
@@ -350,8 +326,8 @@ class Keenable(_BaseClient):
                 entries across both lists. A narrow list can return fewer
                 than ``max_results``. Sent as given, including ``[]``: the
                 API rejects an empty list or a malformed entry with HTTP 400,
-                raised as :class:`KeenableAPIError` naming the field, entry
-                and reason (the decoded body is on ``.data``).
+                raised as :class:`KeenableAPIError` whose message names the
+                field, entry and reason.
             exclude_domains: Never return results from these domains (a
                 block-list). Same entry forms as ``include_domains``. With
                 both set a result must match the allow-list and miss the
