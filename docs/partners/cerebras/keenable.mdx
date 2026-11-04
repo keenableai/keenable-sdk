@@ -118,17 +118,23 @@ Before you begin, ensure you have:
 ## Filters and freshness controls
 
 Keenable's index is semantic: describe the ideal page rather than typing
-keywords. Filters are optional and combine freely.
+keywords. Filters are optional and most combine freely. Two rules apply to the
+domain filters: `site` and `include_domains` cannot be sent together, and the
+same entry in both `include_domains` and `exclude_domains` is an error. Either
+mistake is an HTTP 400.
 
 | Filter | Best for |
 |---|---|
 | `site` | Restricting to one domain, e.g. `arxiv.org` |
+| `include_domains` | Restricting to a list of domains (an allow-list), e.g. `["press.un.org", "undocs.org"]`. Entries can be a domain (subdomains match too), a domain with a path prefix (`un.org/en/ga`), or a suffix (`.gov`). Up to 200 entries across both lists |
+| `exclude_domains` | Keeping domains out (a block-list), with the same entry forms. With both lists, a result must match the allow-list and miss the block-list |
 | `published_after` / `published_before` | Time-boxing by when the page was published |
 | `acquired_after` / `acquired_before` | Time-boxing by when Keenable indexed the page. Use this for "what is new since ..." queries, where publication dates are unreliable or missing |
 | `snippet_max_length` | Capping how much page text comes back per result, to control prompt size |
 
 Dates are `YYYY-MM-DD`. In Node the same filters are camelCase
-(`publishedAfter`, `acquiredAfter`, `snippetMaxLength`).
+(`publishedAfter`, `acquiredAfter`, `snippetMaxLength`, `includeDomains`,
+`excludeDomains`).
 
 ```python Python theme={null}
 results = keenable.search(
