@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import ipaddress
-from collections.abc import Iterator
+import json
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from os import environ
 from typing import Any, Literal
@@ -100,14 +101,51 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
     return payload
 
 
+def _domain_list(value: Sequence[str] | None) -> Any:
+    """Send a domain list as a JSON array, unchanged otherwise.
+
+    ``[]`` is kept: the API rejects an empty allow-list rather than treating
+    it as "no filter". A bare ``str`` is passed as is so the API's error
+    names it, instead of being split into characters.
+    """
+    if value is None or isinstance(value, str):
+        return value
+    return list(value)
+
+
+def _structured_detail(body: dict[str, Any]) -> str | None:
+    """Describe a structured validation error body in one line.
+
+    ``{"error": "invalid_filter", "field": "include_domains", "value": "x",
+    "reason": "..."}`` becomes ``invalid_filter: include_domains entry "x":
+    ...``. Returns ``None`` when the body names no field and no reason.
+    """
+    field = body.get("field")
+    reason = body.get("reason")
+    if not field and not reason:
+        return None
+    subject = str(field or "")
+    if body.get("value") is not None:
+        value = json.dumps(body["value"])
+        subject = f"{subject} entry {value}" if subject else value
+    parts = [body.get("error"), subject, reason]
+    return ": ".join(str(part) for part in parts if part)
+
+
 def _to_api_error(response: httpx.Response) -> KeenableAPIError:
     """Map a non-2xx response to the most specific SDK error available."""
     detail = ""
+    data: dict[str, Any] | None = None
     try:
         body = response.json()
         if isinstance(body, dict):
+            data = body
             detail = str(
-                body.get("message") or body.get("error") or body.get("detail") or ""
+                body.get("message")
+                or _structured_detail(body)
+                or body.get("error")
+                or body.get("detail")
+                or ""
             )
     except ValueError:
         detail = (response.text or "").strip()
@@ -117,10 +155,10 @@ def _to_api_error(response: httpx.Response) -> KeenableAPIError:
     message = f"{label}: {detail}" if detail else label
 
     if status in (401, 403):
-        return KeenableAuthError(message, status, detail or None)
+        return KeenableAuthError(message, status, detail or None, data)
     if status == 429:
-        return KeenableRateLimitError(message, status, detail or None)
-    return KeenableAPIError(message, status, detail or None)
+        return KeenableRateLimitError(message, status, detail or None, data)
+    return KeenableAPIError(message, status, detail or None, data)
 
 
 def _decode(response: httpx.Response) -> dict[str, Any]:
@@ -284,6 +322,8 @@ class Keenable(_BaseClient):
         *,
         mode: Literal["pro"] | None = None,
         site: str | None = None,
+        include_domains: Sequence[str] | None = None,
+        exclude_domains: Sequence[str] | None = None,
         published_after: str | None = None,
         published_before: str | None = None,
         acquired_after: str | None = None,
@@ -299,7 +339,24 @@ class Keenable(_BaseClient):
                 language ("blog post comparing React and Vue performance")
                 rather than typing keywords; the index is semantic.
             mode: Search mode. ``"pro"`` (the default) does deeper retrieval.
-            site: Restrict results to one domain, e.g. ``"arxiv.org"``.
+            site: Restrict results to one domain, e.g. ``"arxiv.org"``. For
+                several domains use ``include_domains``; the API rejects the
+                two together.
+            include_domains: Only return results from these domains (an
+                allow-list). Each entry is a domain (``"un.org"``, which also
+                matches its subdomains), a domain with a path prefix
+                (``"un.org/en/ga"``, matched on whole path segments), or a
+                suffix (``".gov"``, ``"*.gov"``, ``".gov.uk"``). Up to 200
+                entries across both lists. A narrow list can return fewer
+                than ``max_results``. Sent as given, including ``[]``: the
+                API rejects an empty list or a malformed entry with HTTP 400,
+                raised as :class:`KeenableAPIError` naming the field, entry
+                and reason (the decoded body is on ``.data``).
+            exclude_domains: Never return results from these domains (a
+                block-list). Same entry forms as ``include_domains``. With
+                both set a result must match the allow-list and miss the
+                block-list; the same entry in both lists is a 400. ``[]``
+                means no block-list.
             published_after: Keep pages published on or after ``YYYY-MM-DD``.
             published_before: Keep pages published on or before ``YYYY-MM-DD``.
             acquired_after: Keep pages Keenable indexed on or after
@@ -318,11 +375,20 @@ class Keenable(_BaseClient):
         Returns:
             A :class:`SearchResponse`; iterate it for results or call
             :meth:`SearchResponse.to_context` to build a prompt block.
+
+        Example:
+            >>> keenable.search(
+            ...     "security council resolution on sudan",
+            ...     include_domains=["press.un.org", "undocs.org"],
+            ...     exclude_domains=["blogs.un.org"],
+            ... )  # doctest: +SKIP
         """
         payload = _search_payload(
             query,
             mode,
             site=site,
+            include_domains=_domain_list(include_domains),
+            exclude_domains=_domain_list(exclude_domains),
             published_after=published_after,
             published_before=published_before,
             acquired_after=acquired_after,
@@ -414,6 +480,8 @@ class AsyncKeenable(_BaseClient):
         *,
         mode: Literal["pro"] | None = None,
         site: str | None = None,
+        include_domains: Sequence[str] | None = None,
+        exclude_domains: Sequence[str] | None = None,
         published_after: str | None = None,
         published_before: str | None = None,
         acquired_after: str | None = None,
@@ -427,6 +495,8 @@ class AsyncKeenable(_BaseClient):
             query,
             mode,
             site=site,
+            include_domains=_domain_list(include_domains),
+            exclude_domains=_domain_list(exclude_domains),
             published_after=published_after,
             published_before=published_before,
             acquired_after=acquired_after,

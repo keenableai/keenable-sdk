@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 
 class KeenableError(Exception):
     """Base class for every error raised by this SDK."""
@@ -15,13 +17,22 @@ class KeenableAPIError(KeenableError):
     """The Keenable API returned a non-2xx response.
 
     ``status_code`` is the HTTP status and ``body`` the decoded error message
-    from the API when it sent one.
+    from the API when it sent one. ``data`` is the decoded JSON error body,
+    so structured fields stay reachable: a rejected domain filter arrives as
+    HTTP 400 with ``{"error": "invalid_filter", "field", "value", "reason"}``.
     """
 
-    def __init__(self, message: str, status_code: int, body: str | None = None):
+    def __init__(
+        self,
+        message: str,
+        status_code: int,
+        body: str | None = None,
+        data: dict[str, Any] | None = None,
+    ):
         super().__init__(message)
         self.status_code = status_code
         self.body = body
+        self.data = data
 
 
 class KeenableAuthError(KeenableAPIError):

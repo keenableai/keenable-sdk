@@ -24,6 +24,8 @@ class Filter:
     """Shown to the model when the filter is exposed as a tool parameter."""
 
     json_type: str = "string"
+    """JSON-schema type of the value. An ``"array"`` filter is a list of
+    strings (``items: {"type": "string"}`` in the tool schema)."""
 
     tool_exposed: bool = False
     """Whether a model may set this filter through the search tool. The subset
@@ -34,7 +36,24 @@ class Filter:
 SEARCH_FILTERS: tuple[Filter, ...] = (
     Filter(
         "site",
-        "Optional. Restrict results to one domain, e.g. 'arxiv.org'.",
+        "Optional. Restrict results to one domain, e.g. 'arxiv.org'. "
+        "For several domains use include_domains.",
+        tool_exposed=True,
+    ),
+    Filter(
+        "include_domains",
+        "Optional. Only return results from these domains. Each entry is a "
+        "domain ('un.org', which also matches its subdomains), a domain with a "
+        "path prefix ('un.org/en/ga'), or a suffix ('.gov'). Do not combine "
+        "with site.",
+        json_type="array",
+        tool_exposed=True,
+    ),
+    Filter(
+        "exclude_domains",
+        "Optional. Never return results from these domains. Same entry forms "
+        "as include_domains; an entry in both lists is an error.",
+        json_type="array",
         tool_exposed=True,
     ),
     Filter(
@@ -76,14 +95,36 @@ SEARCH_FILTERS: tuple[Filter, ...] = (
 TOOL_FILTERS: tuple[Filter, ...] = tuple(f for f in SEARCH_FILTERS if f.tool_exposed)
 
 
+def _schema(f: Filter) -> dict[str, Any]:
+    """One filter's JSON-schema property."""
+    if f.json_type == "array":
+        return {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": f.description,
+        }
+    return {"type": f.json_type, "description": f.description}
+
+
 def tool_properties() -> dict[str, Any]:
     """The JSON-schema ``properties`` entries for the tool-exposed filters."""
-    return {
-        f.name: {"type": f.json_type, "description": f.description}
-        for f in TOOL_FILTERS
-    }
+    return {f.name: _schema(f) for f in TOOL_FILTERS}
 
 
 def tool_filter_kwargs(args: dict[str, Any]) -> dict[str, Any]:
-    """Keep only the filters the tool schema actually offers the model."""
-    return {f.name: args[f.name] for f in TOOL_FILTERS if args.get(f.name)}
+    """Keep only the filters the tool schema actually offers the model.
+
+    Models fill optional parameters with ``""`` or ``[]`` to mean "none", so
+    falsy values count as unset here (unlike ``search()``, which sends ``[]``
+    as given). A lone string where the schema asks for a list is wrapped,
+    since models do that too. Entries are not checked: the API validates them.
+    """
+    kwargs: dict[str, Any] = {}
+    for f in TOOL_FILTERS:
+        value = args.get(f.name)
+        if not value:
+            continue
+        if f.json_type == "array" and isinstance(value, str):
+            value = [value]
+        kwargs[f.name] = value
+    return kwargs

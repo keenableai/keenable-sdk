@@ -9,8 +9,10 @@ import httpx
 import pytest
 
 from keenable import (
+    TOOLS,
     AsyncKeenable,
     Keenable,
+    KeenableAPIError,
     KeenableAuthError,
     KeenableInvalidRequestError,
     KeenableRateLimitError,
@@ -129,6 +131,43 @@ def test_search_sends_max_results_and_query_time() -> None:
     payload = json.loads(seen[0].content)
     assert payload["max_results"] == 25
     assert payload["query_time"] == "2026-05-01"
+
+
+def test_search_sends_domain_lists_as_arrays() -> None:
+    keenable, seen = _client(_ok(SEARCH_BODY))
+    keenable.search("q", include_domains=["press.un.org", "undocs.org", ".gov"])
+    keenable.search("q", exclude_domains=("blogs.un.org",))
+    keenable.search("q", include_domains=["un.org"], exclude_domains=["blogs.un.org"])
+
+    first, second, both = (json.loads(r.content) for r in seen)
+    assert first["include_domains"] == ["press.un.org", "undocs.org", ".gov"]
+    assert "exclude_domains" not in first
+    # Any sequence works; it goes out as a JSON array.
+    assert second["exclude_domains"] == ["blogs.un.org"]
+    assert "include_domains" not in second
+    assert both["include_domains"] == ["un.org"]
+    assert both["exclude_domains"] == ["blogs.un.org"]
+    assert "site" not in both
+
+
+def test_search_passes_an_empty_domain_list_through() -> None:
+    """The API is the single validator: [] include is a 400 there, not a
+    silent "no filter" here."""
+    keenable, seen = _client(_ok(SEARCH_BODY))
+    keenable.search("q", include_domains=[], exclude_domains=[])
+
+    payload = json.loads(seen[0].content)
+    assert payload["include_domains"] == []
+    assert payload["exclude_domains"] == []
+
+
+def test_site_still_works_next_to_the_domain_lists() -> None:
+    keenable, seen = _client(_ok(SEARCH_BODY))
+    keenable.search("q", site="arxiv.org", exclude_domains=["export.arxiv.org"])
+
+    payload = json.loads(seen[0].content)
+    assert payload["site"] == "arxiv.org"
+    assert payload["exclude_domains"] == ["export.arxiv.org"]
 
 
 def test_keyless_client_uses_public_endpoint_and_identifies_itself() -> None:
@@ -277,6 +316,40 @@ def test_rate_limit_and_auth_errors_carry_the_api_message() -> None:
         keenable.search("q")
 
 
+def test_invalid_filter_error_names_field_entry_and_reason() -> None:
+    body = {
+        "error": "invalid_filter",
+        "field": "include_domains",
+        "value": "https://un.org",
+        "reason": "scheme not allowed",
+    }
+    keenable, _ = _client(_ok(body, status=400))
+    with pytest.raises(KeenableAPIError) as excinfo:
+        keenable.search("q", include_domains=["https://un.org"])
+
+    assert excinfo.value.status_code == 400
+    assert str(excinfo.value) == (
+        "Keenable API error (400): invalid_filter: include_domains entry "
+        '"https://un.org": scheme not allowed'
+    )
+    assert excinfo.value.data == body
+
+
+def test_api_message_wins_over_the_composed_filter_detail() -> None:
+    body = {
+        "error": "invalid_filter",
+        "message": "include_domains must not be empty",
+        "field": "include_domains",
+    }
+    keenable, _ = _client(_ok(body, status=400))
+    with pytest.raises(KeenableAPIError) as excinfo:
+        keenable.search("q", include_domains=[])
+
+    assert excinfo.value.body == "include_domains must not be empty"
+    assert excinfo.value.data is not None
+    assert excinfo.value.data["field"] == "include_domains"
+
+
 def test_bad_base_url_is_rejected() -> None:
     with pytest.raises(KeenableInvalidRequestError):
         Keenable(base_url="ftp://api.keenable.ai")
@@ -328,6 +401,38 @@ def test_tool_call_forwards_only_the_filters_the_schema_offers() -> None:
     assert "acquired_after" not in payload
 
 
+def test_tool_schema_offers_site_and_both_domain_lists() -> None:
+    search = next(t for t in TOOLS if t["function"]["name"] == "keenable_search")
+    props = search["function"]["parameters"]["properties"]
+    for name in ("include_domains", "exclude_domains"):
+        assert props[name]["type"] == "array"
+        assert props[name]["items"] == {"type": "string"}
+    assert props["site"]["type"] == "string"
+    assert "include_domains" in props["site"]["description"]
+
+
+def test_tool_call_forwards_domain_lists_and_drops_empty_ones() -> None:
+    keenable, seen = _client(_routed)
+    run_tool_call(
+        keenable,
+        "keenable_search",
+        {"query": "q", "include_domains": ["press.un.org"], "exclude_domains": []},
+    )
+    run_tool_call(
+        keenable,
+        "keenable_search",
+        '{"query": "q", "include_domains": "press.un.org", "exclude_domains": ""}',
+    )
+
+    first, second = (json.loads(r.content) for r in seen)
+    assert first["include_domains"] == ["press.un.org"]
+    # A model's [] or "" means "none"; it must not turn into a 400.
+    assert "exclude_domains" not in first
+    # A lone string where the schema asks for a list is wrapped.
+    assert second["include_domains"] == ["press.un.org"]
+    assert "exclude_domains" not in second
+
+
 def test_tool_schema_keeps_max_results_and_query_time_out() -> None:
     from keenable import TOOLS
 
@@ -335,6 +440,20 @@ def test_tool_schema_keeps_max_results_and_query_time_out() -> None:
     props = search["function"]["parameters"]["properties"]
     assert "max_results" not in props
     assert "query_time" not in props
+
+
+async def test_async_search_sends_domain_lists() -> None:
+    keenable, seen = _aclient(_routed)
+    async with keenable:
+        await keenable.search(
+            "q", include_domains=["press.un.org"], exclude_domains=["blogs.un.org"]
+        )
+        await keenable.search("q", include_domains=[])
+
+    first, second = (json.loads(r.content) for r in seen)
+    assert first["include_domains"] == ["press.un.org"]
+    assert first["exclude_domains"] == ["blogs.un.org"]
+    assert second["include_domains"] == []
 
 
 async def test_async_client_mirrors_the_sync_one() -> None:
