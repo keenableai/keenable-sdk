@@ -278,6 +278,47 @@ func TestSearchSendsDomainLists(t *testing.T) {
 	}
 }
 
+// The API rejects site plus include_domains; the SDK sends both so the 400 reaches the caller.
+func TestSearchSendsSiteWithIncludeDomains(t *testing.T) {
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, searchBody), nil)
+	_, err := c.Search(context.Background(), "q", &keenable.SearchOptions{Site: "arxiv.org", IncludeDomains: []string{"un.org"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := payloadOf(t, one(t, seen))
+	if payload["site"] != "arxiv.org" || !jsonEqual(payload["include_domains"], []any{"un.org"}) {
+		t.Fatalf("payload %#v", payload)
+	}
+}
+
+func TestToolCallSendsSiteWithIncludeDomains(t *testing.T) {
+	c, seen := startKeyless(t, routed(), nil)
+	args := `{"query":"q","site":"arxiv.org","include_domains":["un.org"]}`
+	if _, err := keenable.RunToolCall(context.Background(), c, "keenable_search", args); err != nil {
+		t.Fatal(err)
+	}
+	payload := payloadOf(t, one(t, seen))
+	if payload["site"] != "arxiv.org" || !jsonEqual(payload["include_domains"], []any{"un.org"}) {
+		t.Fatalf("payload %#v", payload)
+	}
+}
+
+func TestSearchRawKeepsWarning(t *testing.T) {
+	body := map[string]any{
+		"query":   "q",
+		"results": []any{},
+		"warning": "3 results were removed by your domain filter",
+	}
+	c, _ := startKeyless(t, jsonHandler(http.StatusOK, body), nil)
+	resp, err := c.Search(context.Background(), "q", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Raw["warning"] != "3 results were removed by your domain filter" {
+		t.Fatalf("Raw: %#v", resp.Raw)
+	}
+}
+
 // Nil is unset; a non-nil empty slice is sent as [].
 func TestSearchDomainListNilVersusEmpty(t *testing.T) {
 	cases := []struct {

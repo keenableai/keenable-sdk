@@ -199,6 +199,56 @@ def test_site_still_works_next_to_the_domain_lists() -> None:
     assert payload["exclude_domains"] == ["export.arxiv.org"]
 
 
+def test_site_and_include_domains_are_both_sent() -> None:
+    """The API rejects this pair with a 400; the SDK must not decide for it."""
+    keenable, seen = _client(_ok(SEARCH_BODY))
+    keenable.search("q", site="arxiv.org", include_domains=["un.org"])
+    run_tool_call(
+        keenable,
+        "keenable_search",
+        {"query": "q", "site": "arxiv.org", "include_domains": ["un.org"]},
+    )
+
+    for request in seen:
+        payload = json.loads(request.content)
+        assert payload["site"] == "arxiv.org"
+        assert payload["include_domains"] == ["un.org"]
+
+
+async def test_async_site_and_include_domains_are_both_sent() -> None:
+    keenable, seen = _aclient(_routed)
+    async with keenable:
+        await keenable.search("q", site="arxiv.org", include_domains=["un.org"])
+        await arun_tool_call(
+            keenable,
+            "keenable_search",
+            {"query": "q", "site": "arxiv.org", "include_domains": ["un.org"]},
+        )
+
+    for request in seen:
+        payload = json.loads(request.content)
+        assert payload["site"] == "arxiv.org"
+        assert payload["include_domains"] == ["un.org"]
+
+
+def test_search_raw_keeps_the_filter_warning() -> None:
+    body = {**SEARCH_BODY, "warning": "3 results were removed by your domain filter"}
+    keenable, _ = _client(_ok(body))
+    response = keenable.search("q", include_domains=["un.org"])
+
+    assert response.raw["warning"] == "3 results were removed by your domain filter"
+    assert response.raw["results"] == SEARCH_BODY["results"]
+
+
+async def test_async_search_raw_keeps_the_filter_warning() -> None:
+    body = {**SEARCH_BODY, "warning": "3 results were removed by your domain filter"}
+    keenable, _ = _aclient(_ok(body))
+    async with keenable:
+        response = await keenable.search("q", include_domains=["un.org"])
+
+    assert response.raw["warning"] == "3 results were removed by your domain filter"
+
+
 def test_keyless_client_uses_public_endpoint_and_identifies_itself() -> None:
     keenable, seen = _client(_ok(SEARCH_BODY))
     keenable.search("hello")

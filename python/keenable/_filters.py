@@ -111,11 +111,7 @@ def tool_properties() -> dict[str, Any]:
 
 
 def tool_filter_kwargs(args: dict[str, Any]) -> dict[str, Any]:
-    """Keep only the filters the tool schema actually offers the model.
-
-    Falsy scalars are unset. Lists are sent as given (a lone string wrapped)
-    so the API, not the SDK, rejects bad values.
-    """
+    """Tool-exposed filters only; falsy scalars unset, a lone list string wrapped."""
     kwargs: dict[str, Any] = {}
     for f in TOOL_FILTERS:
         value = args.get(f.name)

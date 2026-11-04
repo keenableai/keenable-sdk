@@ -101,10 +101,7 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
 
 
 def _domain_list(value: Sequence[str] | None) -> Any:
-    """Send an iterable as a JSON list; ``[]``, strings, mappings and others as is.
-
-    The API validates the value, so nothing is dropped or split here.
-    """
+    """Send an iterable as a JSON list; ``[]``, strings, mappings and others as is."""
     if value is None or isinstance(value, (str, Mapping)):
         return value
     if not isinstance(value, Iterable):

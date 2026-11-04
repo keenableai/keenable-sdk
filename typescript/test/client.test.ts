@@ -165,6 +165,15 @@ describe("search", () => {
     expect(payload.include_domains).toEqual(["press.un.org"]);
   });
 
+  it("keeps the API's filter warning in raw", async () => {
+    const body = { ...SEARCH_BODY, warning: "3 results were removed by your domain filter" };
+    const { client } = mockClient(() => json(body));
+    const response = await client.search("q", { includeDomains: ["un.org"] });
+
+    expect(response.raw.warning).toBe("3 results were removed by your domain filter");
+    expect(response.raw.results).toEqual(SEARCH_BODY.results);
+  });
+
   it("passes an empty list through so the API can reject it", async () => {
     const { client, seen } = mockClient(() => json(SEARCH_BODY));
     await client.search("q", { includeDomains: [], excludeDomains: [] });
@@ -436,6 +445,26 @@ describe("errors", () => {
     expect(error.field).toBe(expected);
     expect(error.value).toBe(expected);
     expect(error.reason).toBe(expected);
+  });
+
+  it.each([
+    [401, KeenableAuthError],
+    [429, KeenableRateLimitError],
+  ])("ignores an invalid_filter body on a %s subclass error", async (status, cls) => {
+    const body = {
+      error: "invalid_filter",
+      field: "include_domains",
+      value: "https://un.org",
+      reason: "scheme is not allowed",
+    };
+    const { client } = mockClient(() => json(body, status));
+    const error = (await client.search("q").catch((e: unknown) => e)) as KeenableAPIError;
+    expect(error).toBeInstanceOf(cls);
+    expect(error.statusCode).toBe(status);
+    expect(error.data).toEqual(body);
+    expect(error.field).toBeUndefined();
+    expect(error.value).toBeUndefined();
+    expect(error.reason).toBeUndefined();
   });
 
   it.each([422, 500])("ignores an invalid_filter body on a %s", async (status) => {
