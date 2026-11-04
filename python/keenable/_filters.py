@@ -114,20 +114,28 @@ def tool_properties() -> dict[str, Any]:
 def tool_filter_kwargs(args: dict[str, Any]) -> dict[str, Any]:
     """Keep only the filters the tool schema actually offers the model.
 
-    Models fill optional parameters with ``""``, ``[]`` or ``null`` to mean
-    "none", so falsy values count as unset here (unlike ``search()``, which
-    sends ``[]`` as given). A lone string where the schema asks for a list is
-    wrapped, since models do that too. Anything else (a number, an object, a
-    list with a non-string entry) is sent unchanged so the API rejects it with
-    a 400: dropping it would silently widen the search, and the API is the
-    single validator.
+    Scalar filters: models fill optional parameters with ``""`` or ``null``
+    to mean "none", so falsy values count as unset.
+
+    List filters (``include_domains`` / ``exclude_domains``): only an absent
+    key or ``null`` is unset. A list is sent as given, ``[]`` included, so an
+    empty allow-list comes back from the API as a 400 instead of quietly
+    becoming an unrestricted search (``exclude_domains: []`` is the same as
+    no block-list at the API). A lone string is wrapped, since models do
+    that; ``""`` counts as unset, like any empty scalar. Anything else (a
+    number, an object, a list with a non-string entry) is sent unchanged so
+    the API rejects it with a 400: dropping it would silently widen the
+    search, and the API is the single validator.
     """
     kwargs: dict[str, Any] = {}
     for f in TOOL_FILTERS:
         value = args.get(f.name)
-        if not value:
+        if f.json_type == "array":
+            if value is None or value == "":
+                continue
+            if isinstance(value, str):
+                value = [value]
+        elif not value:
             continue
-        if f.json_type == "array" and isinstance(value, str):
-            value = [value]
         kwargs[f.name] = value
     return kwargs

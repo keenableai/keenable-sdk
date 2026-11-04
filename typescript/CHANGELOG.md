@@ -12,13 +12,17 @@ All notable changes to the `keenable` npm package. Versions follow
   is unchanged.
 - The `keenable_search` tool offers `include_domains` and `exclude_domains`
   alongside `site`.
-  `runToolCall` treats `""`, `[]` and `null` as unset and sends any other
-  value as given (a number or a non-string entry included), so the API
-  rejects it with a 400 rather than the SDK dropping it and widening the
-  search.
+  `runToolCall` sends a list as given, `[]` included, so an empty
+  `include_domains` comes back as a 400 instead of running an unrestricted
+  search. Only an absent or `null` list (or `""`) is unset; a lone string is
+  wrapped. Any other value (a number, a non-string entry) is sent as given
+  too, so the API rejects it with a 400 rather than the SDK dropping it and
+  widening the search.
 - `KeenableAPIError.data` holds the decoded JSON error body. A rejected filter
   is a 400 whose message names the field, entry and reason
-  (`Invalid include_domains value "x": <reason>`).
+  (`Invalid include_domains value "x": <reason>`), and
+  `KeenableAPIError.field`, `.value` and `.reason` hold them separately
+  (set only when the body's `error` is `invalid_filter`, `undefined` otherwise).
 
 ## 0.1.4
 

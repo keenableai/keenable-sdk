@@ -53,8 +53,8 @@ func ExampleClient_Search_domainFilters() {
 	})
 	var api *keenable.APIError
 	if errors.As(err, &api) && api.StatusCode == 400 {
-		// A rejected entry: the message names the field, entry and reason.
-		log.Fatalf("bad filter: %s", api.Body)
+		// A rejected entry: Field, Value and Reason name it.
+		log.Fatalf("bad %s entry %q: %s", api.Field, api.Value, api.Reason)
 	}
 	if err != nil {
 		log.Fatal(err)

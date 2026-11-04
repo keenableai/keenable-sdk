@@ -89,7 +89,8 @@ The lists are sent as given, including `[]`, and the API validates them. An
 empty `includeDomains`, an entry with a scheme, port, query or IP address, the
 same entry in both lists, or `includeDomains` together with `site` is rejected
 with HTTP 400, thrown as `KeenableAPIError`. Its message names the field, the
-entry and the reason:
+entry and the reason, and `field`, `value` and `reason` hold them as separate
+properties:
 
 ```ts
 try {
@@ -97,13 +98,18 @@ try {
 } catch (err) {
   if (err instanceof KeenableAPIError) {
     console.log(err.body); // Invalid include_domains value "https://un.org": scheme is not allowed
+    console.log(err.field, err.value, err.reason); // include_domains https://un.org scheme is not allowed
   }
 }
 ```
 
-The field, entry and reason are only in that message; the API sends no
-separate keys for them. `err.data` holds the whole decoded body
-(`{ error: "Bad request", message: "..." }`).
+`field` / `value` / `reason` are set only for that rejection (a 400 whose
+body has `error: "invalid_filter"`); they are `undefined` on every other
+error. `err.data` holds the whole decoded body.
+
+`runToolCall` sends a model's `include_domains: []` as `[]` too, so it comes
+back as that 400 rather than running an unrestricted search. Only an absent or
+`null` list is left unset.
 
 `site` still works for a single domain. The `keenable_search` tool offers the
 model `site`, `include_domains` and `exclude_domains`.

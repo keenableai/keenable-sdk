@@ -2,7 +2,6 @@ package keenable
 
 import (
 	"encoding/json"
-	"fmt"
 )
 
 // The search filter set, declared once.
@@ -171,72 +170,61 @@ func toolProperties() map[string]any {
 
 // toolSearchOptions keeps only the filters the tool schema offers the model.
 //
-// Models fill optional parameters with "" or [] to mean "none", so falsy
-// values count as unset here (unlike Client.Search, which sends a non-nil
-// empty slice as []). A lone string where the schema asks for a list is
-// wrapped. A list holding a non-string is an error rather than being
-// dropped, since dropping a block-list entry would widen the search.
-func toolSearchOptions(args map[string]any) (*SearchOptions, error) {
+// Scalar filters: models fill optional parameters with "" or null to mean
+// "none", so falsy values count as unset.
+//
+// List filters (include_domains / exclude_domains) come back in lists, the
+// raw values to send, and never in opts. Only an absent key or null is unset.
+// A list is sent as given, [] included, so an empty allow-list comes back from
+// the API as a 400 instead of quietly becoming an unrestricted search
+// (exclude_domains: [] is the same as no block-list at the API). A lone
+// string is wrapped; "" counts as unset, like any empty scalar. Anything else
+// (a number, an object, a list with a non-string entry) is sent unchanged so
+// the API rejects it with a 400, as the Python and TypeScript SDKs do:
+// dropping it would silently widen the search, and the API is the single
+// validator. The values bypass SearchOptions because its []string fields
+// cannot carry such a value.
+func toolSearchOptions(args map[string]any) (*SearchOptions, map[string]any) {
 	opts := &SearchOptions{}
-	if args == nil {
-		return opts, nil
-	}
+	lists := map[string]any{}
 	for _, f := range searchFilters {
 		if !f.toolExposed {
 			continue
 		}
 		v, ok := args[f.wire]
-		if !ok || !truthy(v) {
+		if !ok {
 			continue
 		}
 		if f.jsonType == "array" {
-			list, err := stringList(f.wire, v)
-			if err != nil {
-				return nil, err
+			switch t := v.(type) {
+			case nil:
+				continue
+			case string:
+				if t == "" {
+					continue
+				}
+				lists[f.wire] = []string{t}
+			case []string:
+				// A Go caller's nil slice is unset, like a JSON null.
+				if t == nil {
+					continue
+				}
+				lists[f.wire] = t
+			case []any:
+				if t == nil {
+					continue
+				}
+				lists[f.wire] = t
+			default:
+				lists[f.wire] = v
 			}
-			assignList(opts, f.wire, list)
 			continue
 		}
-		assignFilter(opts, f.wire, v)
-	}
-	return opts, nil
-}
-
-// stringList reads a tool argument the schema declares as an array of strings.
-func stringList(wire string, v any) ([]string, error) {
-	switch t := v.(type) {
-	case string:
-		return []string{t}, nil
-	case []string:
-		return t, nil
-	case []any:
-		out := make([]string, 0, len(t))
-		for _, item := range t {
-			s, ok := item.(string)
-			if !ok {
-				return nil, &InvalidRequestError{msg: fmt.Sprintf(
-					"%s must be a list of strings, got the entry %#v. Pass domains such as [\"un.org\"].",
-					wire, item,
-				)}
-			}
-			out = append(out, s)
+		if truthy(v) {
+			assignFilter(opts, f.wire, v)
 		}
-		return out, nil
-	default:
-		return nil, &InvalidRequestError{msg: fmt.Sprintf(
-			"%s must be a list of strings, got %T. Pass domains such as [\"un.org\"].",
-			wire, v,
-		)}
 	}
-}
-
-func assignList(opts *SearchOptions, wire string, list []string) {
-	switch wire {
-	case "include_domains":
-		opts.IncludeDomains = list
-	case "exclude_domains":
-		opts.ExcludeDomains = list
-	}
+	return opts, lists
 }
 
 func assignFilter(opts *SearchOptions, wire string, v any) {

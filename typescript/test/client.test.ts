@@ -360,12 +360,14 @@ describe("errors", () => {
   });
 
   it("names the field, entry and reason of a rejected domain filter", async () => {
-    // The 400 body the public API sends, copied from the backend's response
-    // (search.service.ts rejectedSearchError via BAD_REQUEST): the field,
-    // entry and reason are only in the message.
+    // The agreed 400 body: the orchestrator's invalid_filter error, with the
+    // field, entry and reason both in the message and as separate keys.
     const body = {
-      error: "Bad request",
+      error: "invalid_filter",
       message: 'Invalid include_domains value "https://un.org": scheme is not allowed',
+      field: "include_domains",
+      value: "https://un.org",
+      reason: "scheme is not allowed",
     };
     const { client } = mockClient(() => json(body, 400));
     const error = await client
@@ -380,6 +382,38 @@ describe("errors", () => {
     );
     expect(apiError.body).toBe(body.message);
     expect(apiError.data).toEqual(body);
+    expect(apiError.field).toBe("include_domains");
+    expect(apiError.value).toBe("https://un.org");
+    expect(apiError.reason).toBe("scheme is not allowed");
+  });
+
+  it("leaves value unset when an invalid_filter body names no entry", async () => {
+    const body = {
+      error: "invalid_filter",
+      message: "Invalid include_domains value: must not be empty",
+      field: "include_domains",
+      reason: "must not be empty",
+    };
+    const { client } = mockClient(() => json(body, 400));
+    const error = (await client
+      .search("q", { includeDomains: [] })
+      .catch((e: unknown) => e)) as KeenableAPIError;
+    expect(error.field).toBe("include_domains");
+    expect(error.value).toBeUndefined();
+    expect(error.reason).toBe("must not be empty");
+  });
+
+  it("keeps other 400s as they were, with no filter detail", async () => {
+    // A key named like the structured ones does not count without
+    // error: "invalid_filter".
+    const body = { error: "Bad request", message: "query is required", field: "query" };
+    const { client } = mockClient(() => json(body, 400));
+    const error = (await client.search("q").catch((e: unknown) => e)) as KeenableAPIError;
+    expect(error.body).toBe("query is required");
+    expect(error.data).toEqual(body);
+    expect(error.field).toBeUndefined();
+    expect(error.value).toBeUndefined();
+    expect(error.reason).toBeUndefined();
   });
 
   it("rejects a non-https base URL", () => {
@@ -448,7 +482,7 @@ describe("runToolCall", () => {
     expect(properties.site?.description).toContain("include_domains");
   });
 
-  it("forwards domain lists from a tool call, dropping empty ones", async () => {
+  it("forwards domain lists from a tool call, keeping empty ones", async () => {
     const { client, seen } = mockClient(routed);
     await runToolCall(client, "keenable_search", {
       query: "q",
@@ -460,14 +494,25 @@ describe("runToolCall", () => {
       include_domains: "press.un.org",
       exclude_domains: "",
     });
+    await runToolCall(client, "keenable_search", { query: "q", include_domains: [] });
+    await runToolCall(client, "keenable_search", { query: "q" });
 
-    const [first, second] = seen.map((s) => JSON.parse(String(s.init.body)));
+    const [first, second, emptyInclude, absent] = seen.map((s) =>
+      JSON.parse(String(s.init.body)),
+    );
     expect(first.include_domains).toEqual(["press.un.org", "undocs.org"]);
-    // A model's [] or "" means "none"; it must not turn into a 400.
-    expect(first).not.toHaveProperty("exclude_domains");
-    // A lone string where the schema asks for a list is wrapped.
+    // An explicit [] is sent as is: the API reads exclude [] as "no
+    // block-list" ...
+    expect(first.exclude_domains).toEqual([]);
+    // ... and rejects include [] with a 400 (decision D9). Dropping it here
+    // would turn an empty allow-list into an unrestricted search.
+    expect(emptyInclude.include_domains).toEqual([]);
+    // A lone string where the schema asks for a list is wrapped; "" is unset.
     expect(second.include_domains).toEqual(["press.un.org"]);
     expect(second).not.toHaveProperty("exclude_domains");
+    // Absent stays unset.
+    expect(absent).not.toHaveProperty("include_domains");
+    expect(absent).not.toHaveProperty("exclude_domains");
   });
 
   it("sends a malformed domain-list argument to the API instead of dropping it", async () => {

@@ -142,6 +142,13 @@ func (c *Client) Keyless() bool { return c != nil && c.apiKey == "" }
 // Vue performance") rather than keywords. The index is semantic.
 // opts may be nil.
 func (c *Client) Search(ctx context.Context, query string, opts *SearchOptions) (*SearchResponse, error) {
+	return c.search(ctx, query, opts, nil)
+}
+
+// search is Search with raw filter values set over opts. RunToolCall uses it
+// to send a model's list arguments as given, including values a []string
+// field cannot hold.
+func (c *Client) search(ctx context.Context, query string, opts *SearchOptions, raw map[string]any) (*SearchResponse, error) {
 	if err := requireClient(c); err != nil {
 		return nil, err
 	}
@@ -160,6 +167,9 @@ func (c *Client) Search(ctx context.Context, query string, opts *SearchOptions) 
 		"mode":  mode,
 	}
 	applyFilters(payload, opts)
+	for wire, v := range raw {
+		payload[wire] = v
+	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, &InvalidRequestError{msg: "could not encode the search request. Retry with a string query."}
@@ -548,6 +558,11 @@ func classifyStatus(status int, msg, body string, data map[string]any, header ht
 		msg:        msg,
 		code:       code,
 	}
+	if status == 400 && data != nil && data["error"] == "invalid_filter" {
+		api.Field = detailText(data["field"])
+		api.Value = detailText(data["value"])
+		api.Reason = detailText(data["reason"])
+	}
 	switch status {
 	case 401, 403:
 		return &AuthError{APIError: api}
@@ -560,6 +575,23 @@ func classifyStatus(status int, msg, body string, data map[string]any, header ht
 		}
 	default:
 		return api
+	}
+}
+
+// detailText reads one key of a structured error body: a string as is, any
+// other JSON value re-encoded, nil as "".
+func detailText(v any) string {
+	switch t := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return t
+	default:
+		encoded, err := json.Marshal(t)
+		if err != nil {
+			return ""
+		}
+		return string(encoded)
 	}
 }
 

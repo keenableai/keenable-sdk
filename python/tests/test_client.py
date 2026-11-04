@@ -316,12 +316,15 @@ def test_rate_limit_and_auth_errors_carry_the_api_message() -> None:
         keenable.search("q")
 
 
-# The 400 body the public API sends for a rejected domain filter, copied from
-# the backend's response (search.service.ts rejectedSearchError via
-# BAD_REQUEST): the field, entry and reason are only in the message.
+# The agreed 400 body for a rejected domain filter: the orchestrator's
+# invalid_filter error, with the field, the entry and the reason both in the
+# message and as separate keys.
 INVALID_FILTER_BODY = {
-    "error": "Bad request",
+    "error": "invalid_filter",
     "message": 'Invalid include_domains value "https://un.org": scheme is not allowed',
+    "field": "include_domains",
+    "value": "https://un.org",
+    "reason": "scheme is not allowed",
 }
 
 
@@ -330,13 +333,48 @@ def test_invalid_filter_error_names_field_entry_and_reason() -> None:
     with pytest.raises(KeenableAPIError) as excinfo:
         keenable.search("q", include_domains=["https://un.org"])
 
-    assert excinfo.value.status_code == 400
-    assert str(excinfo.value) == (
+    err = excinfo.value
+    assert err.status_code == 400
+    assert str(err) == (
         'Keenable API error (400): Invalid include_domains value "https://un.org": '
         "scheme is not allowed"
     )
-    assert excinfo.value.body == INVALID_FILTER_BODY["message"]
-    assert excinfo.value.data == INVALID_FILTER_BODY
+    assert err.body == INVALID_FILTER_BODY["message"]
+    assert err.data == INVALID_FILTER_BODY
+    assert err.field == "include_domains"
+    assert err.value == "https://un.org"
+    assert err.reason == "scheme is not allowed"
+
+
+def test_invalid_filter_error_without_a_value() -> None:
+    """An empty allow-list names no entry; value stays None."""
+    body = {
+        "error": "invalid_filter",
+        "message": "Invalid include_domains value: must not be empty",
+        "field": "include_domains",
+        "reason": "must not be empty",
+    }
+    keenable, _ = _client(_ok(body, status=400))
+    with pytest.raises(KeenableAPIError) as excinfo:
+        keenable.search("q", include_domains=[])
+
+    assert excinfo.value.field == "include_domains"
+    assert excinfo.value.value is None
+    assert excinfo.value.reason == "must not be empty"
+
+
+def test_other_400s_carry_no_filter_detail() -> None:
+    """Other 400s keep today's shape and leave field / value / reason unset,
+    even when a key of the same name happens to be in the body."""
+    body = {"error": "Bad request", "message": "query is required", "field": "query"}
+    keenable, _ = _client(_ok(body, status=400))
+    with pytest.raises(KeenableAPIError) as excinfo:
+        keenable.search("q")
+
+    err = excinfo.value
+    assert err.body == "query is required"
+    assert err.data == body
+    assert (err.field, err.value, err.reason) == (None, None, None)
 
 
 def test_bad_base_url_is_rejected() -> None:
@@ -400,7 +438,7 @@ def test_tool_schema_offers_site_and_both_domain_lists() -> None:
     assert "include_domains" in props["site"]["description"]
 
 
-def test_tool_call_forwards_domain_lists_and_drops_empty_ones() -> None:
+def test_tool_call_forwards_domain_lists_and_keeps_empty_ones() -> None:
     keenable, seen = _client(_routed)
     run_tool_call(
         keenable,
@@ -412,14 +450,23 @@ def test_tool_call_forwards_domain_lists_and_drops_empty_ones() -> None:
         "keenable_search",
         '{"query": "q", "include_domains": "press.un.org", "exclude_domains": ""}',
     )
+    run_tool_call(keenable, "keenable_search", {"query": "q", "include_domains": []})
+    run_tool_call(keenable, "keenable_search", {"query": "q"})
 
-    first, second = (json.loads(r.content) for r in seen)
+    first, second, empty_include, absent = (json.loads(r.content) for r in seen)
     assert first["include_domains"] == ["press.un.org"]
-    # A model's [] or "" means "none"; it must not turn into a 400.
-    assert "exclude_domains" not in first
-    # A lone string where the schema asks for a list is wrapped.
+    # An explicit [] is sent as is: the API reads exclude [] as "no
+    # block-list" ...
+    assert first["exclude_domains"] == []
+    # ... and rejects include [] with a 400 (decision D9). Dropping it here
+    # would turn an empty allow-list into an unrestricted search.
+    assert empty_include["include_domains"] == []
+    # A lone string where the schema asks for a list is wrapped; "" is unset.
     assert second["include_domains"] == ["press.un.org"]
     assert "exclude_domains" not in second
+    # Absent stays unset.
+    assert "include_domains" not in absent
+    assert "exclude_domains" not in absent
 
 
 def test_tool_call_sends_a_malformed_domain_list_to_the_api() -> None:

@@ -112,27 +112,31 @@ TypeScript SDKs send `[]` the same way.
 The API validates every entry. An entry with a scheme, port, query or IP
 address, the same entry in both lists, or `IncludeDomains` together with
 `Site` is an `*APIError` with `StatusCode` 400. Its message (`Body`) names the
-field, the entry and the reason:
+field, the entry and the reason, and `Field`, `Value` and `Reason` hold them
+separately:
 
 ```go
 var api *keenable.APIError
 if errors.As(err, &api) && api.StatusCode == 400 {
 	fmt.Println(api.Body)
 	// Invalid include_domains value "https://un.org": scheme is not allowed
+	fmt.Println(api.Field, api.Value, api.Reason)
+	// include_domains https://un.org scheme is not allowed
 }
 ```
 
-The field, entry and reason are only in that message; the API sends no
-separate keys for them. `Data` holds the whole decoded body
-(`{"error": "Bad request", "message": "..."}`).
+`Field` / `Value` / `Reason` are set only for that rejection (a 400 whose body
+has `"error": "invalid_filter"`); they are empty on every other error. `Data`
+holds the whole decoded body.
 
-**Tool calls.** `RunToolCall` checks the type of a list argument before it
-sends anything: `IncludeDomains` is a `[]string`, so a model's
-`"exclude_domains": ["a.com", 7]` or `"exclude_domains": 7` is an
-`*InvalidRequestError` and no request is made. Dropping the bad value instead
-would widen the search. The Python and TypeScript tool helpers have no typed
-field to fill, so they send such a value as given and the API returns the 400.
-Entries that are strings are never checked locally in any SDK.
+**Tool calls.** `RunToolCall` sends a model's list arguments to the API as
+given, without checking them, like the Python and TypeScript tool helpers.
+`include_domains: []` is sent as `[]`, so it comes back as the 400 above rather
+than running an unrestricted search; only an absent or `null` list is unset. A
+malformed value such as `"exclude_domains": ["a.com", 7]` or
+`"exclude_domains": 7` is sent unchanged too, and the API returns the 400:
+dropping it would widen the search. (These values go straight into the request
+body, since a `[]string` field cannot hold them.)
 
 `Site` still works for a single domain. The `keenable_search` tool offers the
 model `site`, `include_domains` and `exclude_domains`.

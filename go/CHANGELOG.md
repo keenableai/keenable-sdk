@@ -11,13 +11,16 @@ slice is sent as `[]` (the API rejects an empty `IncludeDomains` with 400).
 
 `APIError.Data` holds the decoded JSON error body. A rejected filter is a 400
 whose message names the field, entry and reason (`Invalid include_domains value
-"x": <reason>`). A 400 no longer advises a retry: it says to fix the argument
-the API named, or to check the request arguments when the API named none.
+"x": <reason>`), and `APIError.Field`, `Value` and `Reason` hold them
+separately (set only when the body's `error` is `invalid_filter`). A 400 no
+longer advises a retry: it says to fix the argument the API named, or to check
+the request arguments when the API named none.
 
-`RunToolCall` refuses a domain-list argument that is not a string or a list of
-strings with `*InvalidRequestError`, without sending a request. This is the one
-place the SDK checks a filter itself: `IncludeDomains` is a `[]string`, and
-dropping the value would widen the search. No migration.
+`RunToolCall` sends `include_domains` / `exclude_domains` arguments to the API
+as given and checks nothing itself: `[]` is sent as `[]` (an empty allow-list
+is a 400, never an unrestricted search), `null` and `""` are unset, a lone
+string is wrapped, and a malformed value (a number, a non-string entry) goes to
+the API, which returns the 400. No migration.
 
 ## 0.1.1
 

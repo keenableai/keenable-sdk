@@ -99,18 +99,22 @@ function requireString(value: unknown, message: string): string {
 /**
  * One tool argument as the client expects it, or undefined to leave it unset.
  *
- * Models fill optional parameters with `""`, `[]` or `null` to mean "none",
- * so those count as unset here (unlike `search()`, which sends `[]` as
- * given). A lone string where the schema asks for a list is wrapped, since
- * models do that too. Anything else (a number, an object, a list with a
- * non-string entry) is sent unchanged so the API rejects it with a 400:
- * dropping it would silently widen the search, and the API is the single
- * validator.
+ * Scalar filters: models fill optional parameters with `""` or `null` to
+ * mean "none", so those count as unset.
+ *
+ * List filters (`include_domains` / `exclude_domains`): only an absent key or
+ * `null` is unset. A list is sent as given, `[]` included, so an empty
+ * allow-list comes back from the API as a 400 instead of quietly becoming an
+ * unrestricted search (`exclude_domains: []` is the same as no block-list at
+ * the API). A lone string is wrapped, since models do that; `""` counts as
+ * unset, like any empty scalar. Anything else (a number, an object, a list
+ * with a non-string entry) is sent unchanged so the API rejects it with a
+ * 400: dropping it would silently widen the search, and the API is the
+ * single validator.
  */
 function toolValue(filter: Filter, value: unknown): unknown {
   if (filter.jsonType === "array") {
     if (value === undefined || value === null) return undefined;
-    if (Array.isArray(value)) return value.length > 0 ? value : undefined;
     if (typeof value === "string") {
       const single = nonEmpty(value);
       return single === undefined ? undefined : [single];

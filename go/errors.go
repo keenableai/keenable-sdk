@@ -61,11 +61,18 @@ type APIError struct {
 	Body       string
 	// Data is the decoded JSON error body when it was a JSON object, so any
 	// field the API sends stays reachable. Nil when the body was not a JSON
-	// object. A rejected domain filter arrives as StatusCode 400 with
-	// {"error": "Bad request", "message": "Invalid include_domains value
-	// \"https://un.org\": scheme is not allowed"}: the field, entry and reason
-	// are in the message (also in Body), not in separate keys.
+	// object.
 	Data map[string]any
+	// Field, Value and Reason describe a rejected search filter. A rejected
+	// domain filter arrives as StatusCode 400 with
+	// {"error": "invalid_filter", "message": "Invalid include_domains value
+	// \"https://un.org\": scheme is not allowed", "field": "include_domains",
+	// "value": "https://un.org", "reason": "scheme is not allowed"}, and these
+	// hold the field, value and reason keys, so code can react to the rejected
+	// entry without parsing the message. They are empty on every other error.
+	Field  string
+	Value  string
+	Reason string
 	// RequestID is the API's X-Request-Id, when the response sent one.
 	RequestID string
 	msg       string
