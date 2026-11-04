@@ -71,6 +71,18 @@ SEARCH_FILTERS: tuple[Filter, ...] = (
         "that). An ISO 8601 datetime, YYYY-MM-DD, or an offset back from now "
         "such as '7d'.",
     ),
+    Filter(
+        "enable_wizards",
+        "Optional. Experimental structured-data extraction. Only valid in "
+        "'pro' mode, and not under a zero data retention policy.",
+        json_type="boolean",
+    ),
+    Filter(
+        "session_id",
+        "Optional. An id for the agent session making this call. Send the "
+        "same value on every call in one session so its requests can be "
+        "grouped.",
+    ),
 )
 
 TOOL_FILTERS: tuple[Filter, ...] = tuple(f for f in SEARCH_FILTERS if f.tool_exposed)

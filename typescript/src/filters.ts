@@ -15,7 +15,7 @@ export interface Filter {
   readonly option: string;
   /** Shown to the model when the filter is exposed as a tool parameter. */
   readonly description: string;
-  readonly jsonType?: "string" | "integer";
+  readonly jsonType?: "string" | "integer" | "boolean";
   /**
    * Whether a model may set this filter through the search tool. The subset is
    * deliberately small: a model choosing between six date and length knobs
@@ -73,6 +73,21 @@ export const SEARCH_FILTERS: readonly Filter[] = [
       "Optional. Search the index as it stood at this moment: pages newer than it are " +
       "excluded. Not a recency filter (use published_after for that). An ISO 8601 " +
       "datetime, YYYY-MM-DD, or an offset back from now such as '7d'.",
+  },
+  {
+    wire: "enable_wizards",
+    option: "enableWizards",
+    description:
+      "Optional. Experimental structured-data extraction. Only valid in 'pro' mode, " +
+      "and not under a zero data retention policy.",
+    jsonType: "boolean",
+  },
+  {
+    wire: "session_id",
+    option: "sessionId",
+    description:
+      "Optional. An id for the agent session making this call. Send the same value " +
+      "on every call in one session so its requests can be grouped.",
   },
 ];
 

@@ -29,8 +29,12 @@ export interface SearchResult {
  * in both places and every consumer picks it up.
  */
 export interface SearchOptions {
-  /** Search mode. `"pro"` (the default) does deeper retrieval. */
-  mode?: "pro";
+  /**
+   * `"pro"` (the default) does deeper retrieval; `"realtime"` is the fastest,
+   * for latency-sensitive calls. Other strings are passed through, so a mode
+   * the API adds later works before this SDK names it.
+   */
+  mode?: SearchMode;
   /** Restrict results to one domain, e.g. `"arxiv.org"`. */
   site?: string;
   /** Only pages published on or after this date (`YYYY-MM-DD`). */
@@ -52,6 +56,44 @@ export interface SearchOptions {
    * an offset back from now such as `"7d"` (as of 7 days ago).
    */
   queryTime?: string;
+  /**
+   * Experimental structured-data extraction. Only valid in `"pro"` mode, and
+   * not under a zero data retention policy.
+   */
+  enableWizards?: boolean;
+  /**
+   * An id for the agent session making this call. Send the same value on every
+   * call in one session so its requests can be grouped.
+   */
+  sessionId?: string;
+  /** Abort the request from your own controller. */
+  signal?: AbortSignal;
+}
+
+/** A search mode: `"pro"`, `"realtime"`, or any mode the API adds later. */
+// `string & {}` keeps editor autocomplete for the two named modes while still
+// accepting any string.
+export type SearchMode = "pro" | "realtime" | (string & {});
+
+/** Optional arguments for `fetch()`. */
+export interface FetchOptions {
+  /**
+   * Cap the content at this many characters (the API default is 50,000). A
+   * cut page ends with a short note saying it was truncated.
+   */
+  maxChars?: number;
+  /**
+   * Fetch from the source when the page is not in the index. Without it, an
+   * unindexed URL fails.
+   */
+  live?: boolean;
+  /**
+   * Instead of the full page, return the answer to this instruction,
+   * extracted from the page by a model.
+   */
+  prompt?: string;
+  /** Same as `SearchOptions.sessionId`. */
+  sessionId?: string;
   /** Abort the request from your own controller. */
   signal?: AbortSignal;
 }

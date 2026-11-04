@@ -104,7 +104,7 @@ func RunToolCall(ctx context.Context, client *Client, name string, arguments any
 		if err != nil {
 			return "", err
 		}
-		page, err := client.Fetch(ctx, pageURL)
+		page, err := client.Fetch(ctx, pageURL, nil)
 		if err != nil {
 			return "", err
 		}
