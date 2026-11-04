@@ -160,6 +160,36 @@ def test_search_passes_an_empty_domain_list_through() -> None:
     assert payload["exclude_domains"] == []
 
 
+@pytest.mark.parametrize(
+    "make",
+    [
+        lambda: (d for d in ["un.org", "who.int"]),
+        lambda: {"un.org"},
+        lambda: {"un.org": 1, "who.int": 2}.keys(),
+    ],
+    ids=["generator", "set", "dict_keys"],
+)
+def test_search_sends_any_iterable_as_an_array(make: Any) -> None:
+    keenable, seen = _client(_ok(SEARCH_BODY))
+    expected = list(make())
+    keenable.search("q", include_domains=make(), exclude_domains=make())
+
+    payload = json.loads(seen[0].content)
+    assert payload["include_domains"] == expected
+    assert payload["exclude_domains"] == expected
+
+
+@pytest.mark.parametrize("value", ["un.org", {"un.org": True}], ids=["str", "mapping"])
+def test_search_sends_a_lone_string_or_mapping_unchanged(value: Any) -> None:
+    """The API rejects these; they must not be split into characters or keys."""
+    keenable, seen = _client(_ok(SEARCH_BODY))
+    keenable.search("q", include_domains=value, exclude_domains=value)
+
+    payload = json.loads(seen[0].content)
+    assert payload["include_domains"] == value
+    assert payload["exclude_domains"] == value
+
+
 def test_site_still_works_next_to_the_domain_lists() -> None:
     keenable, seen = _client(_ok(SEARCH_BODY))
     keenable.search("q", site="arxiv.org", exclude_domains=["export.arxiv.org"])
@@ -310,9 +340,12 @@ def test_rate_limit_and_auth_errors_carry_the_api_message() -> None:
     assert excinfo.value.status_code == 429
     assert "hourly cap reached" in str(excinfo.value)
 
+    assert excinfo.value.data == {"message": "hourly cap reached"}
+
     keenable, _ = _client(_ok({"error": "bad key"}, status=401))
-    with pytest.raises(KeenableAuthError):
+    with pytest.raises(KeenableAuthError) as auth:
         keenable.search("q")
+    assert auth.value.data == {"error": "bad key"}
 
 
 # The API's 400 body for a rejected domain filter.
@@ -370,6 +403,57 @@ def test_other_400s_carry_no_filter_detail() -> None:
     err = excinfo.value
     assert err.body == "query is required"
     assert err.data == body
+    assert (err.field, err.value, err.reason) == (None, None, None)
+
+
+@pytest.mark.parametrize("status", [422, 429, 500])
+def test_invalid_filter_detail_is_only_read_on_a_400(status: int) -> None:
+    keenable, _ = _client(_ok(INVALID_FILTER_BODY, status=status))
+    with pytest.raises(KeenableAPIError) as excinfo:
+        keenable.search("q")
+
+    err = excinfo.value
+    assert err.status_code == status
+    assert err.data == INVALID_FILTER_BODY
+    assert (err.field, err.value, err.reason) == (None, None, None)
+
+
+@pytest.mark.parametrize(
+    "value, text",
+    [(7, "7"), (["a"], '["a"]'), ({"k": 1}, '{"k": 1}'), (True, "true")],
+)
+def test_invalid_filter_non_string_entries_are_json_encoded(
+    value: Any, text: str
+) -> None:
+    body = {**INVALID_FILTER_BODY, "value": value}
+    keenable, _ = _client(_ok(body, status=400))
+    with pytest.raises(KeenableAPIError) as excinfo:
+        keenable.search("q", exclude_domains=["a.com", value])
+
+    assert excinfo.value.value == text
+    assert excinfo.value.field == "include_domains"
+
+
+@pytest.mark.parametrize(
+    "response, body",
+    [
+        (httpx.Response(400, json=["invalid_filter"]), None),
+        (httpx.Response(400, json="invalid_filter"), None),
+        (httpx.Response(400, text="upstream says no"), "upstream says no"),
+    ],
+    ids=["json-list", "json-string", "plain-text"],
+)
+def test_error_bodies_that_are_not_objects_carry_no_data(
+    response: httpx.Response, body: str | None
+) -> None:
+    keenable, _ = _client(lambda request: response)
+    with pytest.raises(KeenableAPIError) as excinfo:
+        keenable.search("q")
+
+    err = excinfo.value
+    assert err.status_code == 400
+    assert err.body == body
+    assert err.data is None
     assert (err.field, err.value, err.reason) == (None, None, None)
 
 
@@ -522,3 +606,56 @@ async def test_async_client_mirrors_the_sync_one() -> None:
     assert rendered.startswith("[1] Example Domain")
     assert seen[0].url.path == "/v1/search/public"
     assert seen[0].headers["X-Keenable-Title"] == "Keenable SDK"
+
+
+async def test_async_search_matches_the_sync_payloads() -> None:
+    generator: Any = (d for d in ["blogs.un.org"])
+    a_set: Any = {"arxiv.org"}
+    keenable, seen = _aclient(_routed)
+    async with keenable:
+        await keenable.search("q", exclude_domains=generator)
+        await keenable.search("q", exclude_domains=[])
+        await keenable.search(
+            "q", site="arxiv.org", include_domains=a_set, exclude_domains="x"
+        )
+
+    exclude_only, empty_exclude, mixed = (json.loads(r.content) for r in seen)
+    assert exclude_only["exclude_domains"] == ["blogs.un.org"]
+    assert "include_domains" not in exclude_only
+    assert empty_exclude["exclude_domains"] == []
+    assert mixed["site"] == "arxiv.org"
+    assert mixed["include_domains"] == ["arxiv.org"]
+    # A lone string is sent unchanged, not split.
+    assert mixed["exclude_domains"] == "x"
+
+
+async def test_async_invalid_filter_error_names_field_entry_and_reason() -> None:
+    keenable, _ = _aclient(_ok(INVALID_FILTER_BODY, status=400))
+    async with keenable:
+        with pytest.raises(KeenableAPIError) as excinfo:
+            await keenable.search("q", include_domains=["https://un.org"])
+
+    err = excinfo.value
+    assert err.status_code == 400
+    assert err.data == INVALID_FILTER_BODY
+    assert err.field == "include_domains"
+    assert err.value == "https://un.org"
+    assert err.reason == "scheme is not allowed"
+
+
+async def test_async_tool_call_forwards_domain_lists_like_the_sync_one() -> None:
+    keenable, seen = _aclient(_routed)
+    async with keenable:
+        for arguments in (
+            '{"query": "q", "include_domains": "press.un.org", "exclude_domains": ""}',
+            {"query": "q", "include_domains": [], "exclude_domains": ["a.com"]},
+            {"query": "q", "exclude_domains": ["a.com", 7]},
+        ):
+            await arun_tool_call(keenable, "keenable_search", arguments)
+
+    wrapped, empty_include, malformed = (json.loads(r.content) for r in seen)
+    assert wrapped["include_domains"] == ["press.un.org"]
+    assert "exclude_domains" not in wrapped
+    assert empty_include["include_domains"] == []
+    assert empty_include["exclude_domains"] == ["a.com"]
+    assert malformed["exclude_domains"] == ["a.com", 7]
