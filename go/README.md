@@ -68,12 +68,61 @@ results, err := client.Search(context.Background(), "post-training quantization 
 | Field | What it does |
 |---|---|
 | `Site` | Restrict to one domain, e.g. `"arxiv.org"` |
+| `IncludeDomains` | Only return results from these domains (allow-list); see below |
+| `ExcludeDomains` | Never return results from these domains (block-list) |
 | `PublishedAfter` / `PublishedBefore` | Filter by publication date (`YYYY-MM-DD`) |
 | `AcquiredAfter` / `AcquiredBefore` | Filter by when Keenable indexed the page |
 | `SnippetMaxLength` | Cap the page text returned per result. Nil means unset; a pointer to zero is sent |
 | `MaxResults` | How many results to return, 1 to 50. Zero means the API default of 10 |
 | `QueryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `Mode` | Search mode; empty means `"pro"` |
+
+### Domain allow-lists and block-lists
+
+`IncludeDomains` keeps only results from the listed sites; `ExcludeDomains`
+drops results from them. Set both and a result must match the allow-list and
+miss the block-list (exclude wins).
+
+```go
+results, err := client.Search(ctx, "Security Council resolution on the situation in Sudan", &keenable.SearchOptions{
+	IncludeDomains: []string{"press.un.org", "undocs.org", "documents.un.org"},
+	ExcludeDomains: []string{"blogs.un.org"},
+})
+```
+
+Each entry is one of:
+
+| Entry | Matches |
+|---|---|
+| `"un.org"` | the domain and all its subdomains |
+| `"un.org/en/ga"` | that path prefix, on whole segments (`/en/ga/x`, not `/en/gax`) |
+| `".gov"`, `"*.gov"`, `".gov.uk"` | every host under that suffix |
+
+Matching ignores case, a leading `www.` and a trailing `/`. Up to 200 entries
+across both lists. A narrow list can return fewer than `MaxResults`; when
+results had to be removed to honour it, the response says so in
+`results.Raw["warning"]`.
+
+**Nil versus empty.** A nil slice is unset and is not sent. A non-nil empty
+slice (`[]string{}`) is sent as `[]`, and the API rejects an empty
+`IncludeDomains` with HTTP 400. That is deliberate: an allow-list that ends up
+empty fails loudly instead of quietly searching the whole web. The Python and
+TypeScript SDKs send `[]` the same way.
+
+The API validates every entry. An entry with a scheme, port, query or IP
+address, the same entry in both lists, or `IncludeDomains` together with
+`Site` is an `*APIError` with `StatusCode` 400 whose `Data` names the field,
+value and reason:
+
+```go
+var api *keenable.APIError
+if errors.As(err, &api) && api.StatusCode == 400 {
+	fmt.Println(api.Data["field"], api.Data["value"], api.Data["reason"])
+}
+```
+
+`Site` still works for a single domain. The `keenable_search` tool offers the
+model `site`, `include_domains` and `exclude_domains`.
 
 ## Ground a model in one line
 
@@ -183,7 +232,7 @@ if errors.As(err, &sdk) {
 |---|---|---|
 | `RateLimitError` | `rate_limit` | HTTP 429. The message names `X-RateLimit-Reset` when the API sent it. A keyless call is told to set `KEENABLE_API_KEY`. A keyed call is told to wait for the window |
 | `AuthError` | `auth` | HTTP 401/403, the key was rejected |
-| `APIError` | `api_error` | Any other non-2xx response; carries `StatusCode`, `Body`, and `RequestID` when the API sent `X-Request-Id` |
+| `APIError` | `api_error` | Any other non-2xx response; carries `StatusCode`, `Body`, `Data` (the decoded JSON error body), and `RequestID` when the API sent `X-Request-Id` |
 | `ConnectionError` | `connection` | The API could not be reached, or the client deadline elapsed |
 | `InvalidRequestError` | `invalid_request` | Bad arguments; no request was sent |
 

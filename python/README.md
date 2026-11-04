@@ -42,12 +42,59 @@ results = keenable.search(
 | Argument | What it does |
 |---|---|
 | `site` | Restrict to one domain, e.g. `"arxiv.org"` |
+| `include_domains` | Only return results from these domains (allow-list); see below |
+| `exclude_domains` | Never return results from these domains (block-list) |
 | `published_after` / `published_before` | Filter by publication date (`YYYY-MM-DD`) |
 | `acquired_after` / `acquired_before` | Filter by when Keenable indexed the page |
 | `snippet_max_length` | Cap the page text returned per result |
 | `max_results` | How many results to return, 1 to 50 (default 10) |
 | `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `mode` | Search mode; `"pro"` (default) does deeper retrieval |
+
+### Domain allow-lists and block-lists
+
+`include_domains` keeps only results from the listed sites; `exclude_domains`
+drops results from them. Set both and a result must match the allow-list and
+miss the block-list (exclude wins).
+
+```python
+results = keenable.search(
+    "Security Council resolution on the situation in Sudan",
+    include_domains=["press.un.org", "undocs.org", "documents.un.org"],
+    exclude_domains=["blogs.un.org"],
+)
+```
+
+Each entry is one of:
+
+| Entry | Matches |
+|---|---|
+| `"un.org"` | the domain and all its subdomains |
+| `"un.org/en/ga"` | that path prefix, on whole segments (`/en/ga/x`, not `/en/gax`) |
+| `".gov"`, `"*.gov"`, `".gov.uk"` | every host under that suffix |
+
+Matching ignores case, a leading `www.` and a trailing `/`. Up to 200 entries
+across both lists. A narrow list can return fewer than `max_results`; when
+results had to be removed to honour it, the response says so in
+`results.raw["warning"]`.
+
+The lists are sent as given, including `[]`, and the API validates them. An
+empty `include_domains`, an entry with a scheme, port, query or IP address,
+the same entry in both lists, or `include_domains` together with `site` is
+rejected with HTTP 400, raised as `KeenableAPIError`:
+
+```python
+try:
+    keenable.search("q", include_domains=["https://un.org"])
+except KeenableAPIError as err:
+    # ... invalid_filter: include_domains entry "https://un.org": <reason>
+    print(err)
+    # {"error": "invalid_filter", "field": ..., "value": ..., "reason": ...}
+    print(err.data)
+```
+
+`site` still works for a single domain. The `keenable_search` tool offers the
+model `site`, `include_domains` and `exclude_domains`.
 
 ## Ground a model in one line
 
@@ -138,7 +185,7 @@ All errors subclass `KeenableError`:
 |---|---|
 | `KeenableRateLimitError` | HTTP 429. Set `KEENABLE_API_KEY` to lift the keyless cap |
 | `KeenableAuthError` | HTTP 401/403, the key was rejected |
-| `KeenableAPIError` | Any other non-2xx response; carries `status_code` |
+| `KeenableAPIError` | Any other non-2xx response; carries `status_code`, and `data` (the decoded JSON error body) when there is one |
 | `KeenableConnectionError` | The API could not be reached |
 | `KeenableInvalidRequestError` | Bad arguments; no request was sent |
 

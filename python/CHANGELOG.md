@@ -5,6 +5,16 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
+- `search()` (sync and async) accepts `include_domains` and `exclude_domains`:
+  lists of domains (`un.org`), domain path prefixes (`un.org/en/ga`) or
+  suffixes (`.gov`) to search only within, or to keep out. Lists are sent as
+  given, including `[]`; the API validates them and rejects bad entries with
+  HTTP 400. `site` is unchanged.
+- The `keenable_search` tool offers `include_domains` and `exclude_domains`
+  alongside `site`.
+- `KeenableAPIError.data` holds the decoded JSON error body. A rejected filter
+  now reads `invalid_filter: include_domains entry "x": <reason>` instead of
+  just `invalid_filter`.
 - The wheel now ships a `py.typed` marker, so mypy and pyright read the SDK's
   type hints instead of treating `keenable` as untyped. If you run a strict
   type checker, you may see new (correct) errors where your code passed values

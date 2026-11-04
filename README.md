@@ -62,6 +62,18 @@ func main() {
 }
 ```
 
+Restrict a search to a set of sites, or keep sites out, with
+`include_domains` / `exclude_domains` (`includeDomains` / `excludeDomains` in
+TypeScript, `IncludeDomains` / `ExcludeDomains` in Go):
+
+```python
+results = keenable.search(
+    "Security Council resolution on the situation in Sudan",
+    include_domains=["press.un.org", "undocs.org", "documents.un.org"],
+    exclude_domains=["blogs.un.org"],
+)
+```
+
 Each SDK exposes the same surface: search, fetch, a `to_context()` /
 `toContext()` / `ToContext()` renderer for prompts, and OpenAI-compatible tool
 definitions for tool calling. See the per-language READMEs for the full
@@ -71,6 +83,10 @@ reference.
 
 - [`examples/cerebras/`](./examples/cerebras) - grounding a Cerebras model in
   live web results, and letting it call Keenable as a tool. Python and Node.
+- [`examples/domain-filters/`](./examples/domain-filters) - searching only
+  primary UN sources with `include_domains` (and checking every result host
+  against the list), and keeping sites out with `exclude_domains`. Python and
+  Node.
 
 ## Documentation for partners
 
