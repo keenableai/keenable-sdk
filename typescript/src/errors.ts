@@ -14,15 +14,29 @@ export class KeenableConnectionError extends KeenableError {}
 /** The arguments passed to the SDK are invalid; no request was sent. */
 export class KeenableInvalidRequestError extends KeenableError {}
 
-/** The Keenable API returned a non-2xx response. */
+/**
+ * The Keenable API returned a non-2xx response.
+ *
+ * `body` is the API's error message. `data` is the decoded JSON error body
+ * when there was one, so structured fields stay reachable: a rejected domain
+ * filter, for example, arrives as HTTP 400 with
+ * `{ error: "invalid_filter", field, value, reason }`.
+ */
 export class KeenableAPIError extends KeenableError {
   readonly statusCode: number;
   readonly body?: string;
+  readonly data?: Record<string, unknown>;
 
-  constructor(message: string, statusCode: number, body?: string) {
+  constructor(
+    message: string,
+    statusCode: number,
+    body?: string,
+    data?: Record<string, unknown>,
+  ) {
     super(message);
     this.statusCode = statusCode;
     this.body = body;
+    this.data = data;
   }
 }
 

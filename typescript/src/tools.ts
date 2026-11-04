@@ -8,7 +8,7 @@
 
 import type { Keenable } from "./client.js";
 import { KeenableInvalidRequestError } from "./errors.js";
-import { TOOL_FILTERS, toolProperties } from "./filters.js";
+import { type Filter, TOOL_FILTERS, toolProperties } from "./filters.js";
 import { nonEmpty } from "./internal.js";
 import type { SearchOptions } from "./types.js";
 
@@ -96,11 +96,28 @@ function requireString(value: unknown, message: string): string {
   return text;
 }
 
+/**
+ * One tool argument as the client expects it, or undefined to leave it unset.
+ *
+ * Models fill optional parameters with `""` or `[]` to mean "none", so both
+ * count as unset here (unlike `search()`, which sends `[]` as given). A lone
+ * string where the schema asks for a list is wrapped, since models do that
+ * too. Entries themselves are not checked: the API is the single validator.
+ */
+function toolValue(filter: Filter, value: unknown): unknown {
+  if (filter.jsonType === "array") {
+    if (Array.isArray(value)) return value.length > 0 ? value : undefined;
+    const single = nonEmpty(value);
+    return single === undefined ? undefined : [single];
+  }
+  return nonEmpty(value);
+}
+
 /** Keep only the filters the tool schema actually offers the model. */
 function toolFilterOptions(args: Record<string, unknown>): SearchOptions {
   const options: Record<string, unknown> = {};
   for (const filter of TOOL_FILTERS) {
-    const value = nonEmpty(args[filter.wire]);
+    const value = toolValue(filter, args[filter.wire]);
     if (value !== undefined) options[filter.option] = value;
   }
   return options as SearchOptions;

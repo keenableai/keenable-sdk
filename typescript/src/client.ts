@@ -481,14 +481,35 @@ export class Keenable {
   }
 }
 
+/**
+ * A one-line description of a structured validation error, when the body is
+ * one: `invalid_filter: include_domains entry "https://un.org": scheme not
+ * allowed`. Returns undefined when the body names no field and no reason.
+ */
+function structuredDetail(record: Record<string, unknown>): string | undefined {
+  const field = nonEmpty(record.field);
+  const reason = nonEmpty(record.reason);
+  if (field === undefined && reason === undefined) return undefined;
+  let subject = field ?? "";
+  if (record.value !== undefined) {
+    subject += `${subject ? " entry " : ""}${JSON.stringify(record.value)}`;
+  }
+  return [nonEmpty(record.error), subject || undefined, reason]
+    .filter((part): part is string => part !== undefined)
+    .join(": ");
+}
+
 function toApiError(status: number, text: string): KeenableAPIError {
   let detail = text.trim();
+  let data: Record<string, unknown> | undefined;
   try {
     const body: unknown = JSON.parse(text);
     if (typeof body === "object" && body !== null) {
       const record = body as Record<string, unknown>;
+      data = Array.isArray(body) ? undefined : record;
       detail =
         nonEmpty(record.message) ??
+        structuredDetail(record) ??
         nonEmpty(record.error) ??
         nonEmpty(record.detail) ??
         "";
@@ -501,10 +522,10 @@ function toApiError(status: number, text: string): KeenableAPIError {
   const message = detail ? `${label}: ${detail}` : label;
 
   if (status === 401 || status === 403) {
-    return new KeenableAuthError(message, status, detail || undefined);
+    return new KeenableAuthError(message, status, detail || undefined, data);
   }
   if (status === 429) {
-    return new KeenableRateLimitError(message, status, detail || undefined);
+    return new KeenableRateLimitError(message, status, detail || undefined, data);
   }
-  return new KeenableAPIError(message, status, detail || undefined);
+  return new KeenableAPIError(message, status, detail || undefined, data);
 }

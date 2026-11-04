@@ -15,7 +15,11 @@ export interface Filter {
   readonly option: string;
   /** Shown to the model when the filter is exposed as a tool parameter. */
   readonly description: string;
-  readonly jsonType?: "string" | "integer";
+  /**
+   * JSON-schema type of the value. Defaults to `"string"`. An `"array"` filter
+   * is a list of strings (`items: { type: "string" }` in the tool schema).
+   */
+  readonly jsonType?: "string" | "integer" | "array";
   /**
    * Whether a model may set this filter through the search tool. The subset is
    * deliberately small: a model choosing between six date and length knobs
@@ -28,7 +32,28 @@ export const SEARCH_FILTERS: readonly Filter[] = [
   {
     wire: "site",
     option: "site",
-    description: "Optional. Restrict results to one domain, e.g. 'arxiv.org'.",
+    description:
+      "Optional. Restrict results to one domain, e.g. 'arxiv.org'. " +
+      "For several domains use include_domains.",
+    toolExposed: true,
+  },
+  {
+    wire: "include_domains",
+    option: "includeDomains",
+    description:
+      "Optional. Only return results from these domains. Each entry is a domain " +
+      "('un.org', which also matches its subdomains), a domain with a path prefix " +
+      "('un.org/en/ga'), or a suffix ('.gov'). Do not combine with site.",
+    jsonType: "array",
+    toolExposed: true,
+  },
+  {
+    wire: "exclude_domains",
+    option: "excludeDomains",
+    description:
+      "Optional. Never return results from these domains. Same entry forms as " +
+      "include_domains; an entry in both lists is an error.",
+    jsonType: "array",
     toolExposed: true,
   },
   {
@@ -85,7 +110,9 @@ export function toolProperties(): Record<string, unknown> {
   return Object.fromEntries(
     TOOL_FILTERS.map((f) => [
       f.wire,
-      { type: f.jsonType ?? "string", description: f.description },
+      f.jsonType === "array"
+        ? { type: "array", items: { type: "string" }, description: f.description }
+        : { type: f.jsonType ?? "string", description: f.description },
     ]),
   );
 }

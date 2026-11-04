@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   Keenable,
+  KeenableAPIError,
   KeenableAuthError,
   KeenableConnectionError,
   KeenableInvalidRequestError,
   KeenableRateLimitError,
   runToolCall,
+  SEARCH_TOOL,
 } from "../src/index.js";
 
 const SEARCH_BODY = {
@@ -126,6 +128,43 @@ describe("search", () => {
     const payload = JSON.parse(String(seen[0]?.init.body));
     expect(payload.max_results).toBe(25);
     expect(payload.query_time).toBe("2026-05-01");
+  });
+
+  it("sends includeDomains and excludeDomains as arrays", async () => {
+    const { client, seen } = mockClient(() => json(SEARCH_BODY));
+    await client.search("security council resolution", {
+      includeDomains: ["press.un.org", "undocs.org", ".gov"],
+    });
+    await client.search("security council resolution", {
+      excludeDomains: ["blogs.un.org"],
+    });
+    await client.search("security council resolution", {
+      includeDomains: ["un.org"],
+      excludeDomains: ["blogs.un.org"],
+    });
+
+    const payloads = seen.map((s) => JSON.parse(String(s.init.body)));
+    expect(payloads[0].include_domains).toEqual(["press.un.org", "undocs.org", ".gov"]);
+    expect(payloads[0]).not.toHaveProperty("exclude_domains");
+    expect(payloads[1].exclude_domains).toEqual(["blogs.un.org"]);
+    expect(payloads[1]).not.toHaveProperty("include_domains");
+    expect(payloads[2]).toMatchObject({
+      include_domains: ["un.org"],
+      exclude_domains: ["blogs.un.org"],
+    });
+    // site is still its own single-domain filter.
+    expect(payloads[2]).not.toHaveProperty("site");
+  });
+
+  it("passes an empty list through so the API can reject it", async () => {
+    const { client, seen } = mockClient(() => json(SEARCH_BODY));
+    await client.search("q", { includeDomains: [], excludeDomains: [] });
+
+    const payload = JSON.parse(String(seen[0]?.init.body));
+    // The API is the single validator: [] include is a 400 there, not a
+    // silent "no filter" here.
+    expect(payload.include_domains).toEqual([]);
+    expect(payload.exclude_domains).toEqual([]);
   });
 
   it("uses the public endpoint and identifies itself when keyless", async () => {
@@ -320,6 +359,39 @@ describe("errors", () => {
     );
   });
 
+  it("names the field, entry and reason of a rejected domain filter", async () => {
+    const body = {
+      error: "invalid_filter",
+      field: "include_domains",
+      value: "https://un.org",
+      reason: "scheme not allowed",
+    };
+    const { client } = mockClient(() => json(body, 400));
+    const error = await client
+      .search("q", { includeDomains: ["https://un.org"] })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(KeenableAPIError);
+    const apiError = error as KeenableAPIError;
+    expect(apiError.statusCode).toBe(400);
+    expect(apiError.message).toBe(
+      'Keenable API error (400): invalid_filter: include_domains entry "https://un.org": scheme not allowed',
+    );
+    expect(apiError.data).toEqual(body);
+  });
+
+  it("prefers the API's own message over the composed one", async () => {
+    const { client } = mockClient(() =>
+      json(
+        { error: "invalid_filter", message: "include_domains must not be empty", field: "include_domains" },
+        400,
+      ),
+    );
+    const error = (await client.search("q").catch((e: unknown) => e)) as KeenableAPIError;
+    expect(error.body).toBe("include_domains must not be empty");
+    expect(error.data?.field).toBe("include_domains");
+  });
+
   it("rejects a non-https base URL", () => {
     expect(() => new Keenable({ baseUrl: "ftp://api.keenable.ai" })).toThrow(
       KeenableInvalidRequestError,
@@ -368,6 +440,45 @@ describe("runToolCall", () => {
       ).rejects.toBeInstanceOf(KeenableInvalidRequestError);
     },
   );
+
+  it("offers site and both domain lists in the search tool schema", () => {
+    const properties = SEARCH_TOOL.function.parameters.properties as Record<
+      string,
+      { type: string; items?: unknown; description: string }
+    >;
+    expect(properties.include_domains).toMatchObject({
+      type: "array",
+      items: { type: "string" },
+    });
+    expect(properties.exclude_domains).toMatchObject({
+      type: "array",
+      items: { type: "string" },
+    });
+    expect(properties.site?.type).toBe("string");
+    expect(properties.site?.description).toContain("include_domains");
+  });
+
+  it("forwards domain lists from a tool call, dropping empty ones", async () => {
+    const { client, seen } = mockClient(routed);
+    await runToolCall(client, "keenable_search", {
+      query: "q",
+      include_domains: ["press.un.org", "undocs.org"],
+      exclude_domains: [],
+    });
+    await runToolCall(client, "keenable_search", {
+      query: "q",
+      include_domains: "press.un.org",
+      exclude_domains: "",
+    });
+
+    const [first, second] = seen.map((s) => JSON.parse(String(s.init.body)));
+    expect(first.include_domains).toEqual(["press.un.org", "undocs.org"]);
+    // A model's [] or "" means "none"; it must not turn into a 400.
+    expect(first).not.toHaveProperty("exclude_domains");
+    // A lone string where the schema asks for a list is wrapped.
+    expect(second.include_domains).toEqual(["press.un.org"]);
+    expect(second).not.toHaveProperty("exclude_domains");
+  });
 
   it("forwards only the filters the schema offers the model", async () => {
     const { client, seen } = mockClient(routed);
