@@ -15,16 +15,8 @@ export class KeenableConnectionError extends KeenableError {}
 export class KeenableInvalidRequestError extends KeenableError {}
 
 /**
- * The Keenable API returned a non-2xx response.
- *
- * `body` is the API's error message. `data` is the decoded JSON error body
- * when it was a JSON object, so any field the API sends stays reachable.
- *
- * A rejected domain filter arrives as HTTP 400 with
- * `{ error: "invalid_filter", message: 'Invalid include_domains value "https://un.org": scheme is not allowed', field: "include_domains", value: "https://un.org", reason: "scheme is not allowed" }`.
- * For that body `field`, `value` and `reason` hold those keys, so code can
- * react to the rejected entry without parsing the message. They are
- * `undefined` on every other error.
+ * The Keenable API returned a non-2xx response. `data` is the decoded JSON
+ * object body; `field`, `value` and `reason` are set on a 400 invalid_filter.
  */
 export class KeenableAPIError extends KeenableError {
   readonly statusCode: number;
@@ -55,7 +47,7 @@ export class KeenableAPIError extends KeenableError {
   }
 }
 
-/** A structured error key as text: strings as is, other JSON re-encoded. */
+/** Strings as is, other JSON re-encoded, null and undefined as undefined. */
 function text(value: unknown): string | undefined {
   if (value === undefined || value === null) return undefined;
   return typeof value === "string" ? value : JSON.stringify(value);

@@ -24,8 +24,7 @@ class Filter:
     """Shown to the model when the filter is exposed as a tool parameter."""
 
     json_type: str = "string"
-    """JSON-schema type of the value. An ``"array"`` filter is a list of
-    strings (``items: {"type": "string"}`` in the tool schema)."""
+    """JSON-schema type of the value; ``"array"`` is a list of strings."""
 
     tool_exposed: bool = False
     """Whether a model may set this filter through the search tool. The subset
@@ -114,18 +113,8 @@ def tool_properties() -> dict[str, Any]:
 def tool_filter_kwargs(args: dict[str, Any]) -> dict[str, Any]:
     """Keep only the filters the tool schema actually offers the model.
 
-    Scalar filters: models fill optional parameters with ``""`` or ``null``
-    to mean "none", so falsy values count as unset.
-
-    List filters (``include_domains`` / ``exclude_domains``): only an absent
-    key or ``null`` is unset. A list is sent as given, ``[]`` included, so an
-    empty allow-list comes back from the API as a 400 instead of quietly
-    becoming an unrestricted search (``exclude_domains: []`` is the same as
-    no block-list at the API). A lone string is wrapped, since models do
-    that; ``""`` counts as unset, like any empty scalar. Anything else (a
-    number, an object, a list with a non-string entry) is sent unchanged so
-    the API rejects it with a 400: dropping it would silently widen the
-    search, and the API is the single validator.
+    Falsy scalars are unset. Lists are sent as given (a lone string wrapped)
+    so the API, not the SDK, rejects bad values.
     """
     kwargs: dict[str, Any] = {}
     for f in TOOL_FILTERS:

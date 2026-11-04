@@ -31,37 +31,11 @@ export interface SearchResult {
 export interface SearchOptions {
   /** Search mode. `"pro"` (the default) does deeper retrieval. */
   mode?: "pro";
-  /**
-   * Restrict results to one domain, e.g. `"arxiv.org"`. For several domains
-   * use `includeDomains`; the API rejects the two together.
-   */
+  /** Restrict results to one domain, e.g. `"arxiv.org"`. Not combinable with `includeDomains`. */
   site?: string;
-  /**
-   * Only return results from these domains (an allow-list).
-   *
-   * Each entry is a domain (`"un.org"`, which also matches its subdomains), a
-   * domain with a path prefix (`"un.org/en/ga"`, matched on whole path
-   * segments), or a suffix (`".gov"`, `"*.gov"`, `".gov.uk"`). Up to 200
-   * entries across both lists. A narrow list can return fewer than
-   * `maxResults`.
-   *
-   * Sent as given, including `[]`: the API validates entries and answers an
-   * empty list or a malformed entry with HTTP 400, which surfaces as a
-   * `KeenableAPIError` naming the field, the entry and the reason.
-   *
-   * ```ts
-   * await keenable.search("security council resolution on sudan", {
-   *   includeDomains: ["press.un.org", "undocs.org", "documents.un.org"],
-   * });
-   * ```
-   */
+  /** Only return results from these domains, e.g. `"un.org"`, `"un.org/en/ga"` or `".gov"`. */
   includeDomains?: readonly string[];
-  /**
-   * Never return results from these domains (a block-list). Same entry forms
-   * as `includeDomains`. With both set, a result must match the allow-list and
-   * miss the block-list; the same entry in both lists is a 400. `[]` means no
-   * block-list.
-   */
+  /** Never return results from these domains; same entry forms as `includeDomains`. */
   excludeDomains?: readonly string[];
   /** Only pages published on or after this date (`YYYY-MM-DD`). */
   publishedAfter?: string;

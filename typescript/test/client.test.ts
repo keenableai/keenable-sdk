@@ -161,8 +161,7 @@ describe("search", () => {
     await client.search("q", { includeDomains: [], excludeDomains: [] });
 
     const payload = JSON.parse(String(seen[0]?.init.body));
-    // The API is the single validator: [] include is a 400 there, not a
-    // silent "no filter" here.
+    // An empty allow-list is sent as [] for the API to reject.
     expect(payload.include_domains).toEqual([]);
     expect(payload.exclude_domains).toEqual([]);
   });
@@ -360,8 +359,7 @@ describe("errors", () => {
   });
 
   it("names the field, entry and reason of a rejected domain filter", async () => {
-    // The agreed 400 body: the orchestrator's invalid_filter error, with the
-    // field, entry and reason both in the message and as separate keys.
+    // The API's 400 body for a rejected domain filter.
     const body = {
       error: "invalid_filter",
       message: 'Invalid include_domains value "https://un.org": scheme is not allowed',
@@ -404,8 +402,7 @@ describe("errors", () => {
   });
 
   it("keeps other 400s as they were, with no filter detail", async () => {
-    // A key named like the structured ones does not count without
-    // error: "invalid_filter".
+    // A "field" key alone does not count without error: "invalid_filter".
     const body = { error: "Bad request", message: "query is required", field: "query" };
     const { client } = mockClient(() => json(body, 400));
     const error = (await client.search("q").catch((e: unknown) => e)) as KeenableAPIError;
@@ -501,13 +498,10 @@ describe("runToolCall", () => {
       JSON.parse(String(s.init.body)),
     );
     expect(first.include_domains).toEqual(["press.un.org", "undocs.org"]);
-    // An explicit [] is sent as is: the API reads exclude [] as "no
-    // block-list" ...
+    // An explicit [] is sent as is; the API rejects include [].
     expect(first.exclude_domains).toEqual([]);
-    // ... and rejects include [] with a 400 (decision D9). Dropping it here
-    // would turn an empty allow-list into an unrestricted search.
     expect(emptyInclude.include_domains).toEqual([]);
-    // A lone string where the schema asks for a list is wrapped; "" is unset.
+    // A lone string is wrapped; "" is unset.
     expect(second.include_domains).toEqual(["press.un.org"]);
     expect(second).not.toHaveProperty("exclude_domains");
     // Absent stays unset.
@@ -528,10 +522,9 @@ describe("runToolCall", () => {
     });
 
     const [first, second] = seen.map((s) => JSON.parse(String(s.init.body)));
-    // null means "none" ...
+    // null means "none".
     expect(first).not.toHaveProperty("include_domains");
-    // ... but a block-list the SDK cannot read is never dropped, which would
-    // widen the search: the API is the validator and returns the 400.
+    // Unreadable lists are sent unchanged for the API to reject.
     expect(first.exclude_domains).toBe(5);
     expect(second.exclude_domains).toEqual(["a.com", 7]);
   });

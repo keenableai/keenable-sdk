@@ -14,8 +14,7 @@ import (
 type filter struct {
 	wire        string
 	description string
-	// jsonType is the JSON-schema type. Empty means "string". "array" is a
-	// list of strings.
+	// jsonType is the JSON-schema type; empty means "string", "array" a list of strings.
 	jsonType    string
 	toolExposed bool
 }
@@ -96,7 +95,7 @@ func (f filter) value(opts *SearchOptions) (any, bool) {
 		}
 		return opts.Site, true
 	case "include_domains":
-		// nil is unset; a non-nil empty slice is sent as [] on purpose.
+		// nil is unset; a non-nil empty slice is sent as [].
 		if opts.IncludeDomains == nil {
 			return nil, false
 		}
@@ -169,21 +168,7 @@ func toolProperties() map[string]any {
 }
 
 // toolSearchOptions keeps only the filters the tool schema offers the model.
-//
-// Scalar filters: models fill optional parameters with "" or null to mean
-// "none", so falsy values count as unset.
-//
-// List filters (include_domains / exclude_domains) come back in lists, the
-// raw values to send, and never in opts. Only an absent key or null is unset.
-// A list is sent as given, [] included, so an empty allow-list comes back from
-// the API as a 400 instead of quietly becoming an unrestricted search
-// (exclude_domains: [] is the same as no block-list at the API). A lone
-// string is wrapped; "" counts as unset, like any empty scalar. Anything else
-// (a number, an object, a list with a non-string entry) is sent unchanged so
-// the API rejects it with a 400, as the Python and TypeScript SDKs do:
-// dropping it would silently widen the search, and the API is the single
-// validator. The values bypass SearchOptions because its []string fields
-// cannot carry such a value.
+// List filters come back raw in lists so the API, not the SDK, rejects bad values.
 func toolSearchOptions(args map[string]any) (*SearchOptions, map[string]any) {
 	opts := &SearchOptions{}
 	lists := map[string]any{}
@@ -205,7 +190,6 @@ func toolSearchOptions(args map[string]any) (*SearchOptions, map[string]any) {
 				}
 				lists[f.wire] = []string{t}
 			case []string:
-				// A Go caller's nil slice is unset, like a JSON null.
 				if t == nil {
 					continue
 				}

@@ -101,14 +101,9 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
 
 
 def _domain_list(value: Sequence[str] | None) -> Any:
-    """Send a domain list as a JSON array, unchanged otherwise.
+    """Send an iterable as a JSON list; ``[]``, strings, mappings and others as is.
 
-    ``[]`` is kept: the API rejects an empty allow-list rather than treating
-    it as "no filter". A bare ``str`` is passed as is so the API's error
-    names it, instead of being split into characters. A mapping or a
-    non-iterable (for example a model's ``5``) is passed as is too, so the
-    API rejects it with a 400 instead of the SDK crashing or turning a dict
-    into its keys.
+    The API validates the value, so nothing is dropped or split here.
     """
     if value is None or isinstance(value, (str, Mapping)):
         return value
@@ -320,24 +315,12 @@ class Keenable(_BaseClient):
                 language ("blog post comparing React and Vue performance")
                 rather than typing keywords; the index is semantic.
             mode: Search mode. ``"pro"`` (the default) does deeper retrieval.
-            site: Restrict results to one domain, e.g. ``"arxiv.org"``. For
-                several domains use ``include_domains``; the API rejects the
-                two together.
-            include_domains: Only return results from these domains (an
-                allow-list). Each entry is a domain (``"un.org"``, which also
-                matches its subdomains), a domain with a path prefix
-                (``"un.org/en/ga"``, matched on whole path segments), or a
-                suffix (``".gov"``, ``"*.gov"``, ``".gov.uk"``). Up to 200
-                entries across both lists. A narrow list can return fewer
-                than ``max_results``. Sent as given, including ``[]``: the
-                API rejects an empty list or a malformed entry with HTTP 400,
-                raised as :class:`KeenableAPIError` whose message names the
-                field, entry and reason.
-            exclude_domains: Never return results from these domains (a
-                block-list). Same entry forms as ``include_domains``. With
-                both set a result must match the allow-list and miss the
-                block-list; the same entry in both lists is a 400. ``[]``
-                means no block-list.
+            site: Restrict results to one domain, e.g. ``"arxiv.org"``. Not
+                combinable with ``include_domains``.
+            include_domains: Only return results from these domains, e.g.
+                ``"un.org"``, ``"un.org/en/ga"`` or ``".gov"``.
+            exclude_domains: Never return results from these domains; same
+                entry forms as ``include_domains``.
             published_after: Keep pages published on or after ``YYYY-MM-DD``.
             published_before: Keep pages published on or before ``YYYY-MM-DD``.
             acquired_after: Keep pages Keenable indexed on or after
@@ -356,13 +339,6 @@ class Keenable(_BaseClient):
         Returns:
             A :class:`SearchResponse`; iterate it for results or call
             :meth:`SearchResponse.to_context` to build a prompt block.
-
-        Example:
-            >>> keenable.search(
-            ...     "security council resolution on sudan",
-            ...     include_domains=["press.un.org", "undocs.org"],
-            ...     exclude_domains=["blogs.un.org"],
-            ... )  # doctest: +SKIP
         """
         payload = _search_payload(
             query,

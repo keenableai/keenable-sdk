@@ -22,9 +22,7 @@ results = keenable.search(
 for result in results:
     print(f"{result.url}\n  {result.title}")
 
-# Both lists combine: include_domains narrows to a set of sites and
-# exclude_domains carves pieces back out (exclude wins). Listing the same
-# entry in both is rejected with a 400.
+# exclude_domains carves pieces out of include_domains; the same entry in both is a 400.
 un_without_blogs = keenable.search(
     "UN climate finance commitments",
     include_domains=["un.org"],

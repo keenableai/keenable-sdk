@@ -145,9 +145,7 @@ func (c *Client) Search(ctx context.Context, query string, opts *SearchOptions) 
 	return c.search(ctx, query, opts, nil)
 }
 
-// search is Search with raw filter values set over opts. RunToolCall uses it
-// to send a model's list arguments as given, including values a []string
-// field cannot hold.
+// search is Search with raw wire values set over the payload built from opts.
 func (c *Client) search(ctx context.Context, query string, opts *SearchOptions, raw map[string]any) (*SearchResponse, error) {
 	if err := requireClient(c); err != nil {
 		return nil, err
@@ -518,8 +516,6 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 	case 401, 403:
 		msg += ". Check KEENABLE_API_KEY, or pass Options.APIKey."
 	case 400:
-		// A 400 is the caller's input, so a retry fails the same way. Only
-		// point at "the argument named above" when the API named one.
 		if detail != "" {
 			msg += ". Fix the argument named above; the same request will fail again."
 		} else {
@@ -578,8 +574,7 @@ func classifyStatus(status int, msg, body string, data map[string]any, header ht
 	}
 }
 
-// detailText reads one key of a structured error body: a string as is, any
-// other JSON value re-encoded, nil as "".
+// detailText returns a string as is, other JSON re-encoded, nil as "".
 func detailText(v any) string {
 	switch t := v.(type) {
 	case nil:

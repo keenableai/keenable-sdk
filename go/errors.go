@@ -59,17 +59,10 @@ func (e *ConnectionError) keenableError() {}
 type APIError struct {
 	StatusCode int
 	Body       string
-	// Data is the decoded JSON error body when it was a JSON object, so any
-	// field the API sends stays reachable. Nil when the body was not a JSON
-	// object.
+	// Data is the decoded JSON error body, or nil when it was not an object.
 	Data map[string]any
-	// Field, Value and Reason describe a rejected search filter. A rejected
-	// domain filter arrives as StatusCode 400 with
-	// {"error": "invalid_filter", "message": "Invalid include_domains value
-	// \"https://un.org\": scheme is not allowed", "field": "include_domains",
-	// "value": "https://un.org", "reason": "scheme is not allowed"}, and these
-	// hold the field, value and reason keys, so code can react to the rejected
-	// entry without parsing the message. They are empty on every other error.
+	// Field, Value and Reason name the rejected filter entry on a 400
+	// invalid_filter error; empty otherwise.
 	Field  string
 	Value  string
 	Reason string

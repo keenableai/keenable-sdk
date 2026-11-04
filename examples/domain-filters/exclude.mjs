@@ -20,9 +20,7 @@ const results = await keenable.search(
 
 for (const result of results) console.log(`${result.url}\n  ${result.title}`);
 
-// Both lists combine: includeDomains narrows to a set of sites and
-// excludeDomains carves pieces back out (exclude wins). Listing the same
-// entry in both is rejected with a 400.
+// excludeDomains carves pieces out of includeDomains; the same entry in both is a 400.
 const unWithoutBlogs = await keenable.search("UN climate finance commitments", {
   includeDomains: ["un.org"],
   excludeDomains: ["blogs.un.org"],

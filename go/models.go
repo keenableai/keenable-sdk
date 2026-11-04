@@ -11,35 +11,17 @@ import (
 //
 // Empty strings are left unset and are not sent. SnippetMaxLength uses a
 // pointer so zero can be sent; nil means unset. Mode defaults to "pro".
-//
-// IncludeDomains and ExcludeDomains tell nil from empty: a nil slice is
-// unset and not sent, while a non-nil empty slice is sent as [] (and the API
-// answers an empty IncludeDomains with HTTP 400). This matches the Python and
-// TypeScript SDKs, which also send [] as given, so an allow-list that ends up
-// empty fails loudly instead of silently searching the whole web.
 type SearchOptions struct {
 	// Mode is the search mode. Empty means "pro".
 	Mode string
 	// Site restricts results to one domain, for example "arxiv.org".
 	// For several domains use IncludeDomains; the API rejects the two together.
 	Site string
-	// IncludeDomains keeps only results from these domains (an allow-list).
-	//
-	// Each entry is a domain ("un.org", which also matches its subdomains),
-	// a domain with a path prefix ("un.org/en/ga", matched on whole path
-	// segments), or a suffix (".gov", "*.gov", ".gov.uk"). Up to 200 entries
-	// across both lists. A narrow list can return fewer than MaxResults.
-	//
-	// Nil means unset. A non-nil empty slice is sent as [] and rejected by
-	// the API. Entries are validated by the API: a malformed one comes back
-	// as an [*APIError] with StatusCode 400 whose Field, Value and Reason
-	// name the field, the entry and the reason.
+	// IncludeDomains keeps only results from these domains, e.g. "un.org",
+	// "un.org/en/ga" or ".gov". Nil is unset; an empty slice is sent as [].
 	IncludeDomains []string
-	// ExcludeDomains drops results from these domains (a block-list). Same
-	// entry forms as IncludeDomains. With both set, a result must match the
-	// allow-list and miss the block-list; the same entry in both lists is a
-	// 400. Nil means unset; an empty slice is sent as [] and means no
-	// block-list.
+	// ExcludeDomains drops results from these domains; same entry forms as
+	// IncludeDomains. Nil is unset; an empty slice is sent as [].
 	ExcludeDomains []string
 	// PublishedAfter keeps pages published on or after YYYY-MM-DD.
 	PublishedAfter string

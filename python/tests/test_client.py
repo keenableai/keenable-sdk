@@ -151,8 +151,7 @@ def test_search_sends_domain_lists_as_arrays() -> None:
 
 
 def test_search_passes_an_empty_domain_list_through() -> None:
-    """The API is the single validator: [] include is a 400 there, not a
-    silent "no filter" here."""
+    """An empty allow-list is sent as [] for the API to reject."""
     keenable, seen = _client(_ok(SEARCH_BODY))
     keenable.search("q", include_domains=[], exclude_domains=[])
 
@@ -316,9 +315,7 @@ def test_rate_limit_and_auth_errors_carry_the_api_message() -> None:
         keenable.search("q")
 
 
-# The agreed 400 body for a rejected domain filter: the orchestrator's
-# invalid_filter error, with the field, the entry and the reason both in the
-# message and as separate keys.
+# The API's 400 body for a rejected domain filter.
 INVALID_FILTER_BODY = {
     "error": "invalid_filter",
     "message": 'Invalid include_domains value "https://un.org": scheme is not allowed',
@@ -364,8 +361,7 @@ def test_invalid_filter_error_without_a_value() -> None:
 
 
 def test_other_400s_carry_no_filter_detail() -> None:
-    """Other 400s keep today's shape and leave field / value / reason unset,
-    even when a key of the same name happens to be in the body."""
+    """Other 400s leave field / value / reason unset, even with a "field" key."""
     body = {"error": "Bad request", "message": "query is required", "field": "query"}
     keenable, _ = _client(_ok(body, status=400))
     with pytest.raises(KeenableAPIError) as excinfo:
@@ -455,13 +451,10 @@ def test_tool_call_forwards_domain_lists_and_keeps_empty_ones() -> None:
 
     first, second, empty_include, absent = (json.loads(r.content) for r in seen)
     assert first["include_domains"] == ["press.un.org"]
-    # An explicit [] is sent as is: the API reads exclude [] as "no
-    # block-list" ...
+    # An explicit [] is sent as is; the API rejects include [].
     assert first["exclude_domains"] == []
-    # ... and rejects include [] with a 400 (decision D9). Dropping it here
-    # would turn an empty allow-list into an unrestricted search.
     assert empty_include["include_domains"] == []
-    # A lone string where the schema asks for a list is wrapped; "" is unset.
+    # A lone string is wrapped; "" is unset.
     assert second["include_domains"] == ["press.un.org"]
     assert "exclude_domains" not in second
     # Absent stays unset.
@@ -486,10 +479,9 @@ def test_tool_call_sends_a_malformed_domain_list_to_the_api() -> None:
     )
 
     first, second, third = (json.loads(r.content) for r in seen)
-    # null means "none" ...
+    # null means "none".
     assert "include_domains" not in first
-    # ... but a block-list the SDK cannot read is never dropped or reshaped,
-    # which would widen the search: the API is the validator and returns 400.
+    # Unreadable lists are sent unchanged for the API to reject.
     assert first["exclude_domains"] == 5
     assert second["exclude_domains"] == {"a.com": True}
     assert third["exclude_domains"] == ["a.com", 7]

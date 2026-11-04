@@ -278,8 +278,7 @@ func TestSearchSendsDomainLists(t *testing.T) {
 	}
 }
 
-// Nil is unset; a non-nil empty slice is sent as [] so the API can reject an
-// empty allow-list instead of the SDK silently dropping the filter.
+// Nil is unset; a non-nil empty slice is sent as [].
 func TestSearchDomainListNilVersusEmpty(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, searchBody), nil)
 	if _, err := c.Search(context.Background(), "q", &keenable.SearchOptions{
@@ -297,9 +296,7 @@ func TestSearchDomainListNilVersusEmpty(t *testing.T) {
 	}
 }
 
-// invalidFilterBody is the agreed 400 body for a rejected domain filter: the
-// orchestrator's invalid_filter error, with the field, entry and reason both
-// in the message and as separate keys.
+// invalidFilterBody is the API's 400 body for a rejected domain filter.
 var invalidFilterBody = map[string]any{
 	"error":   "invalid_filter",
 	"message": `Invalid include_domains value "https://un.org": scheme is not allowed`,
@@ -352,8 +349,7 @@ func TestInvalidFilterErrorWithoutValue(t *testing.T) {
 }
 
 func TestOtherBadRequestHasNoFilterDetail(t *testing.T) {
-	// Other 400s keep their shape. A key named like the structured ones does
-	// not count without "error": "invalid_filter".
+	// A "field" key alone does not count without "error": "invalid_filter".
 	body := map[string]any{"error": "Bad request", "message": "query is required", "field": "query"}
 	c, _ := startKeyless(t, jsonHandler(http.StatusBadRequest, body), nil)
 	_, err := c.Search(context.Background(), "q", nil)
@@ -422,17 +418,14 @@ func TestToolCallDomainLists(t *testing.T) {
 	if !jsonEqual(first["include_domains"], []any{"press.un.org", "undocs.org"}) {
 		t.Fatalf("include_domains: %#v", first)
 	}
-	// An explicit [] is sent as is: the API reads exclude [] as "no
-	// block-list" ...
+	// An explicit [] is sent as is; the API rejects include [].
 	if v, ok := first["exclude_domains"]; !ok || !jsonEqual(v, []any{}) {
 		t.Fatalf("empty exclude_domains not sent as []: %#v", first)
 	}
-	// ... and rejects include [] with a 400 (decision D9). Dropping it here
-	// would turn an empty allow-list into an unrestricted search.
 	if v, ok := emptyInclude["include_domains"]; !ok || !jsonEqual(v, []any{}) {
 		t.Fatalf("empty include_domains not sent as []: %#v", emptyInclude)
 	}
-	// A lone string where the schema asks for a list is wrapped; "" is unset.
+	// A lone string is wrapped; "" is unset.
 	if !jsonEqual(second["include_domains"], []any{"press.un.org"}) {
 		t.Fatalf("lone string not wrapped: %#v", second)
 	}
@@ -458,8 +451,7 @@ func TestToolCallSendsMalformedDomainListToAPI(t *testing.T) {
 			t.Fatalf("%s: a malformed list goes to the API, got local error %v", call, err)
 		}
 	}
-	// A block-list the SDK cannot read is never dropped or refused locally:
-	// the API is the validator and returns the 400, as in Python and TS.
+	// Unreadable lists are sent unchanged for the API to reject.
 	want := []any{[]any{"a.com", 7}, 5, map[string]any{"a.com": true}}
 	for i, w := range want {
 		got := payloadOf(t, (*seen)[i])["exclude_domains"]

@@ -98,19 +98,7 @@ function requireString(value: unknown, message: string): string {
 
 /**
  * One tool argument as the client expects it, or undefined to leave it unset.
- *
- * Scalar filters: models fill optional parameters with `""` or `null` to
- * mean "none", so those count as unset.
- *
- * List filters (`include_domains` / `exclude_domains`): only an absent key or
- * `null` is unset. A list is sent as given, `[]` included, so an empty
- * allow-list comes back from the API as a 400 instead of quietly becoming an
- * unrestricted search (`exclude_domains: []` is the same as no block-list at
- * the API). A lone string is wrapped, since models do that; `""` counts as
- * unset, like any empty scalar. Anything else (a number, an object, a list
- * with a non-string entry) is sent unchanged so the API rejects it with a
- * 400: dropping it would silently widen the search, and the API is the
- * single validator.
+ * Lists are sent as given (a lone string wrapped) so the API rejects bad values.
  */
 function toolValue(filter: Filter, value: unknown): unknown {
   if (filter.jsonType === "array") {

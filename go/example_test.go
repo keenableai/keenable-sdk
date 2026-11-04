@@ -37,9 +37,6 @@ func ExampleInvalidRequestError() {
 }
 
 // Restrict a search to an allow-list of domains and drop one subdomain.
-// Leave a list nil to send no filter; an empty non-nil slice is sent as [].
-// (No Output comment: this example calls the live API, so go test only
-// compiles it.)
 func ExampleClient_Search_domainFilters() {
 	client, err := keenable.New(nil)
 	if err != nil {

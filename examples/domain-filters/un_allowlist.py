@@ -28,12 +28,10 @@ keenable = Keenable()
 try:
     results = keenable.search(QUESTION, include_domains=ALLOWED, max_results=20)
 except KeenableAPIError as err:
-    # A malformed entry is a 400 whose message names the field, the entry and
-    # the reason.
+    # A malformed entry is a 400 whose message names the field, entry and reason.
     raise SystemExit(f"rejected: {err}") from err
 
-# A narrow allow-list can return fewer than max_results. When the API had to
-# remove results to honour the list, it says so in the response's warning.
+# A narrow allow-list can return fewer than max_results; the API then sets a warning.
 if warning := results.raw.get("warning"):
     print(f"warning: {warning}\n")
 

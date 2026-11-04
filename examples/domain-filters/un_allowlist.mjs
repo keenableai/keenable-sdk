@@ -25,8 +25,7 @@ let results;
 try {
   results = await keenable.search(QUESTION, { includeDomains: ALLOWED, maxResults: 20 });
 } catch (err) {
-  // A malformed entry is a 400 whose message names the field, the entry and
-  // the reason.
+  // A malformed entry is a 400 whose message names the field, entry and reason.
   if (err instanceof KeenableAPIError) {
     console.error(`rejected: ${err.message}`);
     process.exit(1);
@@ -34,8 +33,7 @@ try {
   throw err;
 }
 
-// A narrow allow-list can return fewer than maxResults. When the API had to
-// remove results to honour the list, it says so in the response's warning.
+// A narrow allow-list can return fewer than maxResults; the API then sets a warning.
 if (results.raw.warning) console.log(`warning: ${results.raw.warning}\n`);
 
 for (const result of results) console.log(`${result.url}\n  ${result.title}`);
