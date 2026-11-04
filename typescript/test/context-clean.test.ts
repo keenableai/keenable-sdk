@@ -56,6 +56,44 @@ describe("cleanContextText", () => {
     const text = "Plain  text\n\n|  a | b |\n|---|---|\n  indented\r\ntrailing  \n";
     expect(cleanContextText(text, BASE)).toBe(text);
   });
+
+  it("leaves code that looks like a link unchanged", () => {
+    const text = "Call fns[i]() or handlers[name](event).";
+    expect(cleanContextText(text, BASE)).toBe(text);
+  });
+
+  it("leaves inline code alone but resolves a link whose text is code", () => {
+    const text = "See [`foo()`](/api/foo), not `![x](y)` ![a](b.png)";
+    expect(cleanContextText(text, BASE)).toBe(
+      "See [`foo()`](https://example.com/api/foo), not `![x](y)`",
+    );
+  });
+
+  it("leaves fenced code blocks alone", () => {
+    const text = "```md\n![x](y.png)\n[a](b)\n```\n~~~\nf[i](x)\n~~~\nok ![c](d.png)";
+    expect(cleanContextText(text, BASE)).toBe(
+      "```md\n![x](y.png)\n[a](b)\n```\n~~~\nf[i](x)\n~~~\nok",
+    );
+  });
+
+  it("keeps a table header row of images", () => {
+    const text = "| ![a](x.png) | b |\n|---|---|\n| ![c](y.png) | |\n| 1 | 2 |";
+    expect(cleanContextText(text, BASE)).toBe("| | b |\n|---|---|\n| 1 | 2 |");
+  });
+
+  it("handles brackets in alt text and parentheses in URLs", () => {
+    const text = 'A ![a [b] c](File_(1).png "t (x)") x [Foo](/wiki/Foo_(bar))';
+    expect(cleanContextText(text, BASE)).toBe("A x [Foo](https://example.com/wiki/Foo_(bar))");
+  });
+
+  it("cleans hostile input in linear time", () => {
+    const started = Date.now();
+    for (const text of ["![".repeat(50_000), "![a](".repeat(20_000), "<img ".repeat(20_000)]) {
+      cleanContextText(text, BASE);
+    }
+    // Quadratic patterns took seconds on these.
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
 });
 
 describe("toContext budget counts cleaned text", () => {

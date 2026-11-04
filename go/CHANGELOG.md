@@ -5,7 +5,9 @@
 `ToContext` (on `SearchResponse` and `Page`) drops markdown images and `<img>`
 tags, and resolves relative links against the result's URL (or keeps just the
 link text when it cannot). Absolute links are unchanged, and lines left holding
-only table pipes are dropped. `MaxChars` counts the cleaned text. `Snippet` and
+only table pipes are dropped. Fenced code blocks, inline code and `name[i](x)`
+calls are left alone, as is a table's header row. `MaxChars` counts the
+cleaned text. `Snippet` and
 `Content` are untouched. No migration.
 
 ## 0.1.1

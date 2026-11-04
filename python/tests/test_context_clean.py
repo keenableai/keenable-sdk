@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from keenable.models import Page, SearchResponse, clean_context_text
+from keenable.models import Page, SearchResponse
+from keenable.models import _clean_context_text as clean_context_text
 
 BASE = "https://example.com/docs/guide?x=1"
 
@@ -60,6 +61,47 @@ def test_absolute_link_is_unchanged() -> None:
 def test_text_without_markup_is_unchanged_byte_for_byte() -> None:
     text = "Plain  text\n\n|  a | b |\n|---|---|\n  indented\r\ntrailing  \n"
     assert clean_context_text(text, BASE) == text
+
+
+def test_code_that_looks_like_a_link_is_unchanged() -> None:
+    text = "Call fns[i]() or handlers[name](event)."
+    assert clean_context_text(text, BASE) == text
+
+
+def test_inline_code_is_left_alone_but_code_link_text_resolves() -> None:
+    text = "See [`foo()`](/api/foo), not `![x](y)` ![a](b.png)"
+    assert clean_context_text(text, BASE) == (
+        "See [`foo()`](https://example.com/api/foo), not `![x](y)`"
+    )
+
+
+def test_fenced_code_block_is_left_alone() -> None:
+    text = "```md\n![x](y.png)\n[a](b)\n```\n~~~\nf[i](x)\n~~~\nok ![c](d.png)"
+    assert clean_context_text(text, BASE) == (
+        "```md\n![x](y.png)\n[a](b)\n```\n~~~\nf[i](x)\n~~~\nok"
+    )
+
+
+def test_table_header_row_of_images_is_kept() -> None:
+    text = "| ![a](x.png) | b |\n|---|---|\n| ![c](y.png) | |\n| 1 | 2 |"
+    assert clean_context_text(text, BASE) == "| | b |\n|---|---|\n| 1 | 2 |"
+
+
+def test_brackets_in_alt_and_parentheses_in_urls() -> None:
+    text = 'A ![a [b] c](File_(1).png "t (x)") x [Foo](/wiki/Foo_(bar))'
+    assert clean_context_text(text, BASE) == (
+        "A x [Foo](https://example.com/wiki/Foo_(bar))"
+    )
+
+
+def test_hostile_input_is_cleaned_in_linear_time() -> None:
+    import time
+
+    started = time.monotonic()
+    for text in ("![" * 50_000, "![a](" * 20_000, "<img " * 20_000):
+        clean_context_text(text, BASE)
+    # Quadratic patterns took tens of seconds on these.
+    assert time.monotonic() - started < 2
 
 
 def test_search_budget_counts_cleaned_length() -> None:

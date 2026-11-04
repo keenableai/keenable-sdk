@@ -217,9 +217,9 @@ export class SearchResponse {
    * Each result becomes a `[n] title (url)` header followed by its page text,
    * which lets the model cite sources by number. Results are added whole until
    * the budget is reached, so a trimmed context never ends mid-sentence.
-   * Snippets pass through `cleanContextText()` first (images dropped,
-   * relative links resolved), and the budget counts the cleaned text;
-   * `snippet` itself is left untouched.
+   * Snippets are cleaned first (images dropped, relative links resolved),
+   * and the budget counts the cleaned text; `snippet` itself is left
+   * untouched.
    */
   toContext(options: ToContextOptions = {}): string {
     const includeDates = options.includeDates ?? true;
@@ -278,9 +278,8 @@ export class Page {
    * Same shape as `SearchResponse.toContext()`, so a model can cite a fetched
    * page the way it cites a search result instead of receiving anonymous
    * markdown. Unlike search results the content is one document, so an
-   * oversized page is cut at the budget rather than dropped. The content
-   * passes through `cleanContextText()` before the cut; `content` itself is
-   * left untouched.
+   * oversized page is cut at the budget rather than dropped. The content is
+   * cleaned the same way before the cut; `content` itself is left untouched.
    */
   toContext(options: { maxChars?: number } = {}): string {
     const maxChars = options.maxChars ?? DEFAULT_CONTEXT_MAX_CHARS;

@@ -73,6 +73,36 @@ func TestCleanContextText(t *testing.T) {
 			base: cleanBase,
 			want: "Plain  text\n\n|  a | b |\n|---|---|\n  indented\r\ntrailing  \n",
 		},
+		{
+			name: "code that looks like a link unchanged",
+			text: "Call fns[i]() or handlers[name](event).",
+			base: cleanBase,
+			want: "Call fns[i]() or handlers[name](event).",
+		},
+		{
+			name: "inline code left alone, code link text resolves",
+			text: "See [`foo()`](/api/foo), not `![x](y)` ![a](b.png)",
+			base: cleanBase,
+			want: "See [`foo()`](https://example.com/api/foo), not `![x](y)`",
+		},
+		{
+			name: "fenced code block left alone",
+			text: "```md\n![x](y.png)\n[a](b)\n```\n~~~\nf[i](x)\n~~~\nok ![c](d.png)",
+			base: cleanBase,
+			want: "```md\n![x](y.png)\n[a](b)\n```\n~~~\nf[i](x)\n~~~\nok",
+		},
+		{
+			name: "table header row of images kept",
+			text: "| ![a](x.png) | b |\n|---|---|\n| ![c](y.png) | |\n| 1 | 2 |",
+			base: cleanBase,
+			want: "| | b |\n|---|---|\n| 1 | 2 |",
+		},
+		{
+			name: "brackets in alt and parentheses in URLs",
+			text: `A ![a [b] c](File_(1).png "t (x)") x [Foo](/wiki/Foo_(bar))`,
+			base: cleanBase,
+			want: "A x [Foo](https://example.com/wiki/Foo_(bar))",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
