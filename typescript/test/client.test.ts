@@ -470,6 +470,27 @@ describe("runToolCall", () => {
     expect(second).not.toHaveProperty("exclude_domains");
   });
 
+  it("sends a malformed domain-list argument to the API instead of dropping it", async () => {
+    const { client, seen } = mockClient(routed);
+    await runToolCall(client, "keenable_search", {
+      query: "q",
+      include_domains: null,
+      exclude_domains: 5,
+    });
+    await runToolCall(client, "keenable_search", {
+      query: "q",
+      exclude_domains: ["a.com", 7],
+    });
+
+    const [first, second] = seen.map((s) => JSON.parse(String(s.init.body)));
+    // null means "none" ...
+    expect(first).not.toHaveProperty("include_domains");
+    // ... but a block-list the SDK cannot read is never dropped, which would
+    // widen the search: the API is the validator and returns the 400.
+    expect(first.exclude_domains).toBe(5);
+    expect(second.exclude_domains).toEqual(["a.com", 7]);
+  });
+
   it("forwards only the filters the schema offers the model", async () => {
     const { client, seen } = mockClient(routed);
     await runToolCall(client, "keenable_search", {

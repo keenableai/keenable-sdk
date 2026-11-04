@@ -99,16 +99,23 @@ function requireString(value: unknown, message: string): string {
 /**
  * One tool argument as the client expects it, or undefined to leave it unset.
  *
- * Models fill optional parameters with `""` or `[]` to mean "none", so both
- * count as unset here (unlike `search()`, which sends `[]` as given). A lone
- * string where the schema asks for a list is wrapped, since models do that
- * too. Entries themselves are not checked: the API is the single validator.
+ * Models fill optional parameters with `""`, `[]` or `null` to mean "none",
+ * so those count as unset here (unlike `search()`, which sends `[]` as
+ * given). A lone string where the schema asks for a list is wrapped, since
+ * models do that too. Anything else (a number, an object, a list with a
+ * non-string entry) is sent unchanged so the API rejects it with a 400:
+ * dropping it would silently widen the search, and the API is the single
+ * validator.
  */
 function toolValue(filter: Filter, value: unknown): unknown {
   if (filter.jsonType === "array") {
+    if (value === undefined || value === null) return undefined;
     if (Array.isArray(value)) return value.length > 0 ? value : undefined;
-    const single = nonEmpty(value);
-    return single === undefined ? undefined : [single];
+    if (typeof value === "string") {
+      const single = nonEmpty(value);
+      return single === undefined ? undefined : [single];
+    }
+    return value;
   }
   return nonEmpty(value);
 }

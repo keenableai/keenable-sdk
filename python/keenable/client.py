@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from os import environ
 from typing import Any, Literal
@@ -105,9 +105,14 @@ def _domain_list(value: Sequence[str] | None) -> Any:
 
     ``[]`` is kept: the API rejects an empty allow-list rather than treating
     it as "no filter". A bare ``str`` is passed as is so the API's error
-    names it, instead of being split into characters.
+    names it, instead of being split into characters. A mapping or a
+    non-iterable (for example a model's ``5``) is passed as is too, so the
+    API rejects it with a 400 instead of the SDK crashing or turning a dict
+    into its keys.
     """
-    if value is None or isinstance(value, str):
+    if value is None or isinstance(value, (str, Mapping)):
+        return value
+    if not isinstance(value, Iterable):
         return value
     return list(value)
 

@@ -114,10 +114,13 @@ def tool_properties() -> dict[str, Any]:
 def tool_filter_kwargs(args: dict[str, Any]) -> dict[str, Any]:
     """Keep only the filters the tool schema actually offers the model.
 
-    Models fill optional parameters with ``""`` or ``[]`` to mean "none", so
-    falsy values count as unset here (unlike ``search()``, which sends ``[]``
-    as given). A lone string where the schema asks for a list is wrapped,
-    since models do that too. Entries are not checked: the API validates them.
+    Models fill optional parameters with ``""``, ``[]`` or ``null`` to mean
+    "none", so falsy values count as unset here (unlike ``search()``, which
+    sends ``[]`` as given). A lone string where the schema asks for a list is
+    wrapped, since models do that too. Anything else (a number, an object, a
+    list with a non-string entry) is sent unchanged so the API rejects it with
+    a 400: dropping it would silently widen the search, and the API is the
+    single validator.
     """
     kwargs: dict[str, Any] = {}
     for f in TOOL_FILTERS:

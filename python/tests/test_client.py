@@ -422,6 +422,32 @@ def test_tool_call_forwards_domain_lists_and_drops_empty_ones() -> None:
     assert "exclude_domains" not in second
 
 
+def test_tool_call_sends_a_malformed_domain_list_to_the_api() -> None:
+    keenable, seen = _client(_routed)
+    run_tool_call(
+        keenable,
+        "keenable_search",
+        {"query": "q", "include_domains": None, "exclude_domains": 5},
+    )
+    run_tool_call(
+        keenable,
+        "keenable_search",
+        {"query": "q", "exclude_domains": {"a.com": True}},
+    )
+    run_tool_call(
+        keenable, "keenable_search", {"query": "q", "exclude_domains": ["a.com", 7]}
+    )
+
+    first, second, third = (json.loads(r.content) for r in seen)
+    # null means "none" ...
+    assert "include_domains" not in first
+    # ... but a block-list the SDK cannot read is never dropped or reshaped,
+    # which would widen the search: the API is the validator and returns 400.
+    assert first["exclude_domains"] == 5
+    assert second["exclude_domains"] == {"a.com": True}
+    assert third["exclude_domains"] == ["a.com", 7]
+
+
 def test_tool_schema_keeps_max_results_and_query_time_out() -> None:
     from keenable import TOOLS
 
