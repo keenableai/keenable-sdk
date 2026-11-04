@@ -156,6 +156,15 @@ describe("search", () => {
     expect(payloads[2]).not.toHaveProperty("site");
   });
 
+  it("sends site and includeDomains together for the API to reject", async () => {
+    const { client, seen } = mockClient(() => json(SEARCH_BODY));
+    await client.search("q", { site: "un.org", includeDomains: ["press.un.org"] });
+
+    const payload = JSON.parse(String(seen[0]?.init.body));
+    expect(payload.site).toBe("un.org");
+    expect(payload.include_domains).toEqual(["press.un.org"]);
+  });
+
   it("passes an empty list through so the API can reject it", async () => {
     const { client, seen } = mockClient(() => json(SEARCH_BODY));
     await client.search("q", { includeDomains: [], excludeDomains: [] });
@@ -351,11 +360,25 @@ describe("errors", () => {
     expect(error).toBeInstanceOf(KeenableRateLimitError);
     expect((error as KeenableRateLimitError).statusCode).toBe(429);
     expect((error as KeenableRateLimitError).message).toContain("hourly cap reached");
+    expect((error as KeenableRateLimitError).data).toEqual({ message: "hourly cap reached" });
 
     const unauthorized = mockClient(() => json({ error: "bad key" }, 401));
-    await expect(unauthorized.client.search("q")).rejects.toBeInstanceOf(
-      KeenableAuthError,
-    );
+    const authError = await unauthorized.client.search("q").catch((e: unknown) => e);
+    expect(authError).toBeInstanceOf(KeenableAuthError);
+    expect((authError as KeenableAuthError).data).toEqual({ error: "bad key" });
+  });
+
+  it.each([
+    ["a JSON array", 400, '["invalid_filter"]', undefined],
+    ["plain text", 502, "Bad Gateway", "Bad Gateway"],
+  ])("leaves data unset for %s error body", async (_label, status, text, body) => {
+    const { client } = mockClient(() => new Response(text, { status }));
+    const error = (await client.search("q").catch((e: unknown) => e)) as KeenableAPIError;
+    expect(error).toBeInstanceOf(KeenableAPIError);
+    expect(error.statusCode).toBe(status);
+    expect(error.data).toBeUndefined();
+    expect(error.body).toBe(body);
+    expect(error.field).toBeUndefined();
   });
 
   it("names the field, entry and reason of a rejected domain filter", async () => {
@@ -399,6 +422,36 @@ describe("errors", () => {
     expect(error.field).toBe("include_domains");
     expect(error.value).toBeUndefined();
     expect(error.reason).toBe("must not be empty");
+  });
+
+  it.each([
+    ["a list", ["a.com", "b.com"], '["a.com","b.com"]'],
+    ["a number", 5, "5"],
+    ["an object", { host: "a.com" }, '{"host":"a.com"}'],
+    ["null", null, undefined],
+  ])("re-encodes %s in an invalid_filter body as JSON text", async (_label, raw, expected) => {
+    const body = { error: "invalid_filter", field: raw, value: raw, reason: raw };
+    const { client } = mockClient(() => json(body, 400));
+    const error = (await client.search("q").catch((e: unknown) => e)) as KeenableAPIError;
+    expect(error.field).toBe(expected);
+    expect(error.value).toBe(expected);
+    expect(error.reason).toBe(expected);
+  });
+
+  it.each([422, 500])("ignores an invalid_filter body on a %s", async (status) => {
+    const body = {
+      error: "invalid_filter",
+      field: "include_domains",
+      value: "https://un.org",
+      reason: "scheme is not allowed",
+    };
+    const { client } = mockClient(() => json(body, status));
+    const error = (await client.search("q").catch((e: unknown) => e)) as KeenableAPIError;
+    expect(error.statusCode).toBe(status);
+    expect(error.data).toEqual(body);
+    expect(error.field).toBeUndefined();
+    expect(error.value).toBeUndefined();
+    expect(error.reason).toBeUndefined();
   });
 
   it("keeps other 400s as they were, with no filter detail", async () => {
@@ -493,8 +546,13 @@ describe("runToolCall", () => {
     });
     await runToolCall(client, "keenable_search", { query: "q", include_domains: [] });
     await runToolCall(client, "keenable_search", { query: "q" });
+    await runToolCall(client, "keenable_search", {
+      query: "q",
+      include_domains: "   ",
+      exclude_domains: " a.com,b.com ",
+    });
 
-    const [first, second, emptyInclude, absent] = seen.map((s) =>
+    const [first, second, emptyInclude, absent, padded] = seen.map((s) =>
       JSON.parse(String(s.init.body)),
     );
     expect(first.include_domains).toEqual(["press.un.org", "undocs.org"]);
@@ -507,6 +565,22 @@ describe("runToolCall", () => {
     // Absent stays unset.
     expect(absent).not.toHaveProperty("include_domains");
     expect(absent).not.toHaveProperty("exclude_domains");
+    // A blank string is unset; any other string is wrapped untouched.
+    expect(padded).not.toHaveProperty("include_domains");
+    expect(padded.exclude_domains).toEqual([" a.com,b.com "]);
+  });
+
+  it("sends site and include_domains from a tool call together", async () => {
+    const { client, seen } = mockClient(routed);
+    await runToolCall(client, "keenable_search", {
+      query: "q",
+      site: "un.org",
+      include_domains: ["press.un.org"],
+    });
+
+    const payload = JSON.parse(String(seen[0]?.init.body));
+    expect(payload.site).toBe("un.org");
+    expect(payload.include_domains).toEqual(["press.un.org"]);
   });
 
   it("sends a malformed domain-list argument to the API instead of dropping it", async () => {
