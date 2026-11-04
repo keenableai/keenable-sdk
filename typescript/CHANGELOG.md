@@ -3,7 +3,7 @@
 All notable changes to the `keenable` npm package. Versions follow
 [semver](https://semver.org); releases are tagged `ts-v<version>`.
 
-## Unreleased
+## 0.1.5
 
 - `search()` accepts `includeDomains` and `excludeDomains`: lists of domains
   (`un.org`), domain path prefixes (`un.org/en/ga`) or suffixes (`.gov`) to

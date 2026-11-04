@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.2
 
 `SearchOptions` gains `IncludeDomains` and `ExcludeDomains`: lists of domains
 (`un.org`), domain path prefixes (`un.org/en/ga`) or suffixes (`.gov`) to

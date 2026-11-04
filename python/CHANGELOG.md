@@ -3,7 +3,7 @@
 All notable changes to the `keenable` Python package. Versions follow
 [semver](https://semver.org); releases are tagged `python-v<version>`.
 
-## Unreleased
+## 0.1.4
 
 - `search()` (sync and async) accepts `include_domains` and `exclude_domains`:
   lists of domains (`un.org`), domain path prefixes (`un.org/en/ga`) or
