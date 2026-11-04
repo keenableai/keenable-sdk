@@ -165,7 +165,12 @@ this SDK created, and does nothing when you passed your own `http.Client`.
 SDK errors implement `keenable.Error`. `errors.As` into that interface
 catches them. `Code()` is a stable string, and the same token is the last
 parentheses of `Error()`. `errors.As` into a concrete type catches one case.
-`AuthError` and `RateLimitError` unwrap to `APIError`.
+Every typed API error unwraps to `APIError`, and `ForbiddenError` also
+unwraps to `AuthError`, so `errors.As` into `*AuthError` matches 401 and 403.
+
+`APIError` carries `StatusCode`, `Body` (the API's message), `APIErrorCode`
+(the API's short label), `Details`, `RequestID` and `Hint` (the next step: `Error()` ends with it,
+followed only by the code). `SearchResponse` and `Page` carry `RequestID` too.
 
 A caller context that ended is not one of those errors. Check it first:
 
@@ -175,19 +180,20 @@ if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) 
 }
 var sdk keenable.Error
 if errors.As(err, &sdk) {
-    fmt.Println(sdk.Code()) // invalid_request, connection, api_error, auth, rate_limit
+    fmt.Println(sdk.Code()) // invalid_request, connection, api_error, auth, rate_limit, validation, credits, forbidden
 }
 ```
 
 | Type | Code | When |
 |---|---|---|
+| `ValidationError` | `validation` | HTTP 400/422. The API rejected the request; the message says what. Retrying unchanged fails |
+| `AuthError` | `auth` | HTTP 401. The API key is missing or invalid |
+| `ForbiddenError` | `forbidden` | HTTP 403. Not allowed for this key or tier. Unwraps to `AuthError` |
+| `CreditsError` | `credits` | HTTP 402. Out of credits; add them at keenable.ai/console |
 | `RateLimitError` | `rate_limit` | HTTP 429. The message names `X-RateLimit-Reset` when the API sent it. A keyless call is told to set `KEENABLE_API_KEY`. A keyed call is told to wait for the window |
-| `AuthError` | `auth` | HTTP 401/403, the key was rejected |
-| `APIError` | `api_error` | Any other non-2xx response; carries `StatusCode`, `Body`, and `RequestID` when the API sent `X-Request-Id` |
+| `APIError` | `api_error` | Any other non-2xx response. Follow the hint: a 5xx is safe to retry, a 404 means the URL doesn't exist |
 | `ConnectionError` | `connection` | The API could not be reached, or the client deadline elapsed |
 | `InvalidRequestError` | `invalid_request` | Bad arguments; no request was sent |
-
-HTTP 402 is an `APIError` whose message starts "Keenable: insufficient credits (402)" and tells you to add credits.
 
 ## Configuration
 

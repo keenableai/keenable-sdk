@@ -120,15 +120,25 @@ page the way it cites a search result.
 
 ## Errors
 
-All errors extend `KeenableError`:
+All errors extend `KeenableError`. Every API error message ends with the
+next step to take (also on `.hint`). When the API sent a request id, the
+message includes it just before that step (also on `.requestId`); quote it to
+support.
 
-| Error | When |
-|---|---|
-| `KeenableRateLimitError` | HTTP 429. Set `KEENABLE_API_KEY` to lift the keyless cap |
-| `KeenableAuthError` | HTTP 401/403, the key was rejected |
-| `KeenableAPIError` | Any other non-2xx response; carries `statusCode` |
-| `KeenableConnectionError` | The API could not be reached |
-| `KeenableInvalidRequestError` | Bad arguments; no request was sent |
+| Exception | When | What to do |
+|---|---|---|
+| `KeenableValidationError` | HTTP 400/422: the API rejected the request | Fix what the message names; retrying unchanged fails |
+| `KeenableAuthError` | HTTP 401: the API key is missing or invalid | Check `KEENABLE_API_KEY` |
+| `KeenableForbiddenError` | HTTP 403: not allowed for this key or tier (extends `KeenableAuthError`) | Set a key, or use a plan that includes the feature |
+| `KeenableCreditsError` | HTTP 402: out of credits | Add credits at [keenable.ai/console](https://keenable.ai/console) |
+| `KeenableRateLimitError` | HTTP 429; carries `limit`, `remaining`, `reset` | Retry after `reset`, or set `KEENABLE_API_KEY` to lift the keyless cap |
+| `KeenableAPIError` | Any other non-2xx; base class of the above | Follow the hint: a 5xx is safe to retry, a 404 means the URL doesn't exist |
+| `KeenableConnectionError` | The API could not be reached or timed out | Retry; check network and `KEENABLE_API_URL` |
+| `KeenableInvalidRequestError` | The SDK rejected the arguments; no request was sent | Fix the call |
+
+Every `KeenableAPIError` carries `statusCode`, `body` (the API's message),
+`apiError` (the API's short label), `details`, `requestId` and `hint`.
+Successful responses carry `requestId` too.
 
 ## Configuration
 
