@@ -5,7 +5,13 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
-- No changes yet.
+- `toContext()` (search results and fetched pages) drops markdown images and
+  `<img>` tags, and resolves relative links against the result's URL (or keeps
+  just the link text when it cannot). Absolute links are unchanged, and lines
+  left holding only table pipes are dropped. The `maxChars` budget counts the
+  cleaned text. Fenced code blocks, inline code and `name[i](x)` calls are
+  left alone, as is a table's header row. `snippet` and `content` are
+  untouched.
 
 ## 0.1.4
 

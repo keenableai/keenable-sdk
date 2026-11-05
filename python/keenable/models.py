@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urljoin, urlsplit
 
 # Default budget for the `to_context()` renderers. Roughly 3k tokens: large
 # enough that a handful of results keep their substance, small enough to sit in
@@ -27,6 +29,164 @@ def _collapse(text: str) -> str:
     one source ends, and the character budget gets spent on layout.
     """
     return " ".join(text.split())
+
+
+# Markup that means nothing to a model once the page is flattened into a prompt.
+# The patterns are kept in step with the TypeScript and Go SDKs. Every repeated
+# group has alternatives that start with different characters, so a match
+# attempt never backtracks into itself, and each attempt stops at the next
+# bracket or parenthesis: cleaning stays linear on hostile input.
+#
+# Image alt text may hold one level of [brackets] and the URL one level of
+# (parentheses), as in Wikipedia's File_(1).png; a title rides along inside.
+_MD_IMAGE = re.compile(
+    r"!\[(?:[^\[\]\n]|\[[^\[\]\n]*\])*\]\((?:[^()\n]|\([^()\n]*\))*\)"
+)
+_HTML_IMAGE = re.compile(r"<img\b(?:[^<>\"']|\"[^\"\n]*\"|'[^'\n]*')*>", re.IGNORECASE)
+_MD_LINK = re.compile(
+    r"\[([^\[\]\n]*)\]\(((?:[^()\s]|\([^()\s]*\))*)(?:\s+\"[^\"\n]*\")?\)"
+)
+_URL_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+_SPACE_RUN = re.compile(r"[ \t]+")
+_ONLY_TABLE_RULE = re.compile(r"^[ \t|:-]*$")
+# CommonMark: optional blockquote markers, then at most 3 spaces before a fence.
+_FENCE = re.compile(r"^(?:[ \t]{0,3}>[ \t]?)*[ \t]{0,3}(`{3,}|~{3,})(.*)$")
+_PLACEHOLDER = re.compile(r"\x00(\d+)\x00")
+_WORD_CHAR = re.compile(r"[A-Za-z0-9_]")
+_CODE_IDENT = re.compile(r"^[A-Za-z0-9_]*$")
+
+
+def _resolve_link(match: re.Match[str], base_url: str) -> str:
+    text, href = match.group(1), match.group(2)
+    start = match.start()
+    # `handlers[name](event)` and `fns[i]()` are code, not links. Ordinary
+    # adjacent links like `docs[API](/api)` still resolve.
+    if (
+        start > 0
+        and _WORD_CHAR.match(match.string[start - 1])
+        and _CODE_IDENT.match(href)
+    ):
+        return match.group(0)
+    # A code span inside the URL would not survive URL normalisation.
+    if "\x00" in href:
+        return match.group(0)
+    if not text.strip():
+        return ""
+    if _URL_SCHEME.match(href):
+        return match.group(0)
+    if not href:
+        return text
+    try:
+        base = urlsplit(base_url)
+        if base.scheme not in ("http", "https") or not base.netloc:
+            return text
+        return f"[{text}]({urljoin(base_url, href)})"
+    except ValueError:
+        return text
+
+
+def _protect_code_spans(line: str) -> tuple[str, list[str]]:
+    """Swap inline code spans for placeholders the cleanup patterns skip.
+
+    Opening and closing backtick runs must be the same length, so a shorter
+    run inside a longer span (``a ` ![x](y)``) stays protected.
+    """
+    spans: list[str] = []
+    if "\x00" in line:
+        return line, spans
+
+    out: list[str] = []
+    i = 0
+    n = len(line)
+    while i < n:
+        if line[i] != "`":
+            out.append(line[i])
+            i += 1
+            continue
+        j = i
+        while j < n and line[j] == "`":
+            j += 1
+        open_len = j - i
+        k = j
+        closer = -1
+        while k < n:
+            if line[k] != "`":
+                k += 1
+                continue
+            end = k
+            while end < n and line[end] == "`":
+                end += 1
+            if end - k == open_len:
+                closer = end
+                break
+            k = end
+        if closer < 0:
+            out.append(line[i:j])
+            i = j
+            continue
+        spans.append(line[i:closer])
+        out.append(f"\x00{len(spans) - 1}\x00")
+        i = closer
+    return "".join(out), spans
+
+
+def _restore_code_spans(text: str, spans: list[str]) -> str:
+    if not spans:
+        return text
+    return _PLACEHOLDER.sub(lambda m: spans[int(m.group(1))], text)
+
+
+def _is_table_delimiter(line: str) -> bool:
+    return "|" in line and "-" in line and bool(_ONLY_TABLE_RULE.match(line.rstrip()))
+
+
+def _clean_context_text(text: str, base_url: str) -> str:
+    """Strip markup a model cannot use from page text bound for a prompt.
+
+    Markdown images and ``<img>`` tags are removed. Links with an absolute URL
+    are kept as written; relative links are resolved against ``base_url`` (the
+    page the text came from), or reduced to their text when that is not
+    possible. Fenced code blocks and inline code spans are left alone, and so
+    is ``name[i](x)``, which is code rather than a link. Only lines that
+    changed are tidied: runs of spaces squeezed, and the line dropped if
+    nothing but table pipes and dashes is left (unless it is a table's header
+    row). Text without such markup is returned unchanged.
+    """
+    lines = text.split("\n")
+    out: list[str] = []
+    fence: str | None = None
+    for i, line in enumerate(lines):
+        marker = _FENCE.match(line)
+        if fence is not None:
+            out.append(line)
+            if (
+                marker
+                and marker.group(1)[0] == fence[0]
+                and len(marker.group(1)) >= len(fence)
+                and not marker.group(2).strip()
+            ):
+                fence = None
+            continue
+        if marker and not (marker.group(1)[0] == "`" and "`" in marker.group(2)):
+            fence = marker.group(1)
+            out.append(line)
+            continue
+
+        protected, spans = _protect_code_spans(line)
+        cleaned = _HTML_IMAGE.sub("", _MD_IMAGE.sub("", protected))
+        cleaned = _MD_LINK.sub(lambda m: _resolve_link(m, base_url), cleaned)
+        if cleaned == protected:
+            out.append(line)
+            continue
+        rest = cleaned.lstrip(" \t")
+        indent = cleaned[: len(cleaned) - len(rest)]
+        cleaned = indent + _SPACE_RUN.sub(" ", rest).rstrip()
+        if _ONLY_TABLE_RULE.match(cleaned) and not (
+            "|" in cleaned and i + 1 < len(lines) and _is_table_delimiter(lines[i + 1])
+        ):
+            continue
+        out.append(_restore_code_spans(cleaned, spans))
+    return "\n".join(out)
 
 
 def _context_block(header: str, body: str) -> str:
@@ -69,6 +229,12 @@ class SearchResult:
             acquired_at=_str_or_none(data.get("acquired_at")),
             raw=data,
         )
+
+
+def _result_body(result: SearchResult) -> str:
+    """The text rendered under a search result's header, as budgeted."""
+    text = result.snippet or result.description or ""
+    return _collapse(_clean_context_text(text, result.url))
 
 
 @dataclass
@@ -122,7 +288,7 @@ class SearchResponse:
         used = 0
 
         for index, result in enumerate(selected, start=1):
-            body = _collapse(result.snippet or result.description or "")
+            body = _result_body(result)
             header = self._header(index, result, include_dates=include_dates)
             # Measure before building: past the budget the block is discarded,
             # and each discarded snippet is kilobytes of throwaway string.
@@ -146,7 +312,9 @@ class SearchResponse:
         Each result becomes a ``[n] title (url)`` header followed by its
         snippet, which lets the model cite sources by number and lets you map
         those numbers back to URLs. Results are added whole until ``max_chars``
-        is reached, so a truncated context never ends mid-sentence.
+        is reached, so a truncated context never ends mid-sentence. Snippets
+        are cleaned first (images dropped, relative links resolved), and the
+        budget counts the cleaned text; ``snippet`` itself is left untouched.
 
         Args:
             max_chars: Approximate character budget for the whole block.
@@ -158,7 +326,7 @@ class SearchResponse:
         return "\n\n".join(
             _context_block(
                 self._header(index, result, include_dates=include_dates),
-                _collapse(result.snippet or result.description or ""),
+                _result_body(result),
             )
             for index, result in enumerate(
                 self.cited(
@@ -214,7 +382,9 @@ class Page:
         Same shape as :meth:`SearchResponse.to_context`, so a model can cite a
         fetched page the way it cites a search result instead of receiving
         anonymous markdown. Unlike search results the content is one document,
-        so an oversized page is cut at the budget rather than dropped.
+        so an oversized page is cut at the budget rather than dropped. The
+        content is cleaned the same way before the cut; ``content`` itself is
+        left untouched.
         """
         header = f"[1] {self.title} ({self.url})"
         if self.published_at:
@@ -223,4 +393,5 @@ class Page:
         budget = max_chars - len(header) - 1
         if budget <= 0:
             return header
-        return _context_block(header, self.content[:budget].rstrip())
+        content = _clean_context_text(self.content, self.url)
+        return _context_block(header, content[:budget].rstrip())
