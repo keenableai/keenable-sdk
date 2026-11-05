@@ -9,7 +9,7 @@ import { SEARCH_FILTERS } from "./filters.js";
 import { cleanContextText, collapse, nonEmpty, normalizeHost, readEnv } from "./internal.js";
 import type {
   FetchOptions,
-  Image,
+  PageImage,
   KeenableOptions,
   SearchOptions,
   SearchResult,
@@ -259,7 +259,7 @@ export class Page {
    * none were found, `null` that the page could not be inspected, and
    * `undefined` that images were not requested.
    */
-  readonly images?: Image[] | null;
+  readonly images?: PageImage[] | null;
   /** True when more images were found than `maxImages` allowed. Set only with `include: ["images"]`. */
   readonly imagesTruncated?: boolean;
   readonly raw: Record<string, unknown>;
@@ -271,7 +271,7 @@ export class Page {
     description?: string;
     author?: string;
     publishedAt?: string;
-    images?: Image[] | null;
+    images?: PageImage[] | null;
     imagesTruncated?: boolean;
     raw: Record<string, unknown>;
   }) {
@@ -325,7 +325,7 @@ function intOrUndefined(value: unknown): number | undefined {
   return Number.isInteger(value) ? (value as number) : undefined;
 }
 
-function toImage(data: Record<string, unknown>): Image {
+function toImage(data: Record<string, unknown>): PageImage {
   const sources = Array.isArray(data.sources) ? data.sources : [];
   return {
     url: String(data.url ?? ""),

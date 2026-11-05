@@ -79,7 +79,7 @@ export interface FetchOptions {
 export type ImageRole = "logo" | "cover" | "icon" | "content" | (string & {});
 
 /** An image found on a fetched page. Returned when `include: ["images"]`. */
-export interface Image {
+export interface PageImage {
   /** Absolute http(s) URL of the image. */
   url: string;
   role: ImageRole;

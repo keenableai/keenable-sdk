@@ -33,7 +33,7 @@ export type { ToolDefinition } from "./tools.js";
 export type {
   FetchInclude,
   FetchOptions,
-  Image,
+  PageImage,
   ImageRole,
   KeenableOptions,
   SearchOptions,

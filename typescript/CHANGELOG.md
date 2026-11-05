@@ -7,7 +7,7 @@ All notable changes to the `keenable` npm package. Versions follow
 
 - `fetch()` accepts `include: ["images"]` and `maxImages` (1 to 50, API
   default 5, only with `include`). `Page.images` then lists the page's images
-  as `Image` (`url`, `role`, `alt`, `width`, `height`, `mimeType`, `sources`)
+  as `PageImage` (`url`, `role`, `alt`, `width`, `height`, `mimeType`, `sources`)
   and `Page.imagesTruncated` says whether more were found. `images` is `[]`
   when the page has none, `null` when it could not be inspected, and
   `undefined` when images were not requested. `ImageRole` is `"logo"`,
