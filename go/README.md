@@ -74,10 +74,10 @@ results, err := client.Search(context.Background(), "post-training quantization 
 | `MaxResults` | How many results to return, 1 to 50. Zero means the API default of 10 |
 | `QueryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `Mode` | `"pro"` (default when empty) does deeper retrieval; `"realtime"` is the fastest |
+| `DisableCards` | Leave out cards: results Keenable writes itself for queries such as prices, exchange rates or company facts, served at a `https://cards.keenable.ai/w/<id>` URL that works for one day. Web pages take their place, so the result count stays the same. `pro` and `realtime` modes only. Nil means unset |
 
 Advanced, for agent frameworks: `SessionID` groups the calls of one agent
-session (send the same value on each call), and `EnableWizards` turns on
-experimental structured-data extraction (`"pro"` mode only).
+session (send the same value on each call).
 
 ## Ground a model in one line
 

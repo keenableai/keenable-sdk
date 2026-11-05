@@ -140,15 +140,28 @@ def test_search_sends_max_results_and_query_time() -> None:
     assert payload["query_time"] == "2026-05-01"
 
 
-def test_search_sends_realtime_mode_wizards_and_session_id() -> None:
+def test_search_sends_realtime_mode_disable_cards_and_session_id() -> None:
     keenable, seen = _client(_ok(SEARCH_BODY))
     keenable.search(
-        "q", mode="realtime", enable_wizards=False, session_id="agent-run-7"
+        "q", mode="realtime", disable_cards=True, session_id="agent-run-7"
     )
     payload = json.loads(seen[0].content)
     assert payload["mode"] == "realtime"
-    assert payload["enable_wizards"] is False
+    assert payload["disable_cards"] is True
     assert payload["session_id"] == "agent-run-7"
+
+
+def test_search_omits_disable_cards_when_unset() -> None:
+    keenable, seen = _client(_ok(SEARCH_BODY))
+    keenable.search("q")
+    assert "disable_cards" not in json.loads(seen[0].content)
+
+
+async def test_async_search_sends_disable_cards() -> None:
+    keenable, seen = _aclient(_ok(SEARCH_BODY))
+    async with keenable:
+        await keenable.search("q", disable_cards=True)
+    assert json.loads(seen[0].content)["disable_cards"] is True
 
 
 def test_search_passes_an_unnamed_mode_through() -> None:

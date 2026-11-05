@@ -15,9 +15,12 @@ All notable changes to the `keenable` npm package. Versions follow
 - `Page.truncated` reports whether fetched content was cut at the character
   limit, and `stripTruncationMarker()` removes the API's trailing note for
   callers that want bare text.
-- `search()` accepts `mode="realtime"` (the fastest mode), `enableWizards` and
-  `sessionId`. `mode` also accepts any other string, so a mode the API adds
-  later works before this SDK names it.
+- `search()` accepts `mode="realtime"` (the fastest mode) and `sessionId`.
+  `mode` also accepts any other string, so a mode the API adds later works
+  before this SDK names it.
+- `search()` accepts `disableCards`, which leaves cards (results Keenable writes
+  itself, at `https://cards.keenable.ai/w/<id>` URLs) out of the results; web
+  pages take their place.
 - `fetch()` accepts `maxChars`, `live`, `prompt` and `sessionId`.
 - New error classes by HTTP status: `KeenableValidationError` (400/422),
   `KeenableCreditsError` (402) and `KeenableForbiddenError` (403).

@@ -52,11 +52,11 @@ const results = await keenable.search("post-training quantization results", {
 | `maxResults` | How many results to return, 1 to 50 (default 10) |
 | `queryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `mode` | `"pro"` (default) does deeper retrieval; `"realtime"` is the fastest |
+| `disableCards` | Leave out cards: results Keenable writes itself for queries such as prices, exchange rates or company facts, served at a `https://cards.keenable.ai/w/<id>` URL that works for one day. Web pages take their place, so the result count stays the same. `pro` and `realtime` modes only |
 | `signal` | An `AbortSignal` to cancel the request |
 
 Advanced, for agent frameworks: `sessionId` groups the calls of one agent
-session (send the same value on each call), and `enableWizards: true` turns on
-experimental structured-data extraction (`"pro"` mode only).
+session (send the same value on each call).
 
 ## Ground a model in one line
 

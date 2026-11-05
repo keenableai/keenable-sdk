@@ -12,8 +12,10 @@
 - `Page.Truncated()` reports whether fetched content was cut at the character
   limit, and `StripTruncationMarker()` removes the API's trailing note for
   callers that want bare text.
-- `SearchOptions` gains `EnableWizards` and `SessionID`; `Mode` documents
-  `"realtime"`.
+- `SearchOptions` gains `SessionID`; `Mode` documents `"realtime"`.
+- `SearchOptions.DisableCards` leaves cards (results Keenable writes itself,
+  at `https://cards.keenable.ai/w/<id>` URLs) out of search results; web pages
+  take their place.
 - `Fetch` takes a `*FetchOptions` (`MaxChars`, `Live`, `Prompt`, `SessionID`),
   like `Search` takes `*SearchOptions`: `Fetch(ctx, url, nil)` for none. This
   changes the signature; update `Fetch(ctx, url)` calls.

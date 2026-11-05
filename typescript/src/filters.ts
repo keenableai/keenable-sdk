@@ -75,11 +75,14 @@ export const SEARCH_FILTERS: readonly Filter[] = [
       "datetime, YYYY-MM-DD, or an offset back from now such as '7d'.",
   },
   {
-    wire: "enable_wizards",
-    option: "enableWizards",
+    wire: "disable_cards",
+    option: "disableCards",
     description:
-      "Optional. Experimental structured-data extraction. Only valid in 'pro' mode, " +
-      "and not under a zero data retention policy.",
+      "Optional. Leave cards out of the results. A card is a result Keenable writes " +
+      "itself for queries such as prices, exchange rates or facts about a company, " +
+      "served at a https://cards.keenable.ai/w/<id> URL that works for one day. With " +
+      "it set, ordinary web pages take the place of cards, so you get the same number " +
+      "of results.",
     jsonType: "boolean",
   },
   {

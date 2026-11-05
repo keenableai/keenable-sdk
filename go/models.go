@@ -41,10 +41,12 @@ type SearchOptions struct {
 	// filter: use PublishedAfter for that. Accepts an ISO 8601 datetime,
 	// YYYY-MM-DD, or an offset back from now such as "7d" (as of 7 days ago).
 	QueryTime string
-	// EnableWizards turns on experimental structured-data extraction. Only
-	// valid in "pro" mode, and not under a zero data retention policy. Nil
-	// means unset.
-	EnableWizards *bool
+	// DisableCards leaves cards out of the results. A card is a result
+	// Keenable writes itself for queries such as prices, exchange rates or
+	// facts about a company, served at a https://cards.keenable.ai/w/<id> URL
+	// that works for one day. With it set, ordinary web pages take the place
+	// of cards, so you get the same number of results. Nil means unset.
+	DisableCards *bool
 	// SessionID is an id for the agent session making this call. Send the
 	// same value on every call in one session so its requests can be grouped.
 	SessionID string

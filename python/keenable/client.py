@@ -447,7 +447,7 @@ class Keenable(_BaseClient):
         snippet_max_length: int | None = None,
         max_results: int | None = None,
         query_time: str | None = None,
-        enable_wizards: bool | None = None,
+        disable_cards: bool | None = None,
         session_id: str | None = None,
     ) -> SearchResponse:
         """Search the web and return ranked results with page text.
@@ -473,8 +473,12 @@ class Keenable(_BaseClient):
                 not a recency filter: use ``published_after`` for that.
                 Accepts an ISO 8601 datetime, ``YYYY-MM-DD``, or an offset
                 back from now such as ``"7d"`` (as of 7 days ago).
-            enable_wizards: Experimental structured-data extraction. Only valid
-                in ``"pro"`` mode, and not under a zero data retention policy.
+            disable_cards: Leave cards out of the results. A card is a result
+                Keenable writes itself for queries such as prices, exchange
+                rates or facts about a company, served at a
+                ``https://cards.keenable.ai/w/<id>`` URL that works for one
+                day. With it set, ordinary web pages take the place of cards,
+                so you get the same number of results.
             session_id: An id for the agent session making this call. Send the
                 same value on every call in one session so its requests can be
                 grouped.
@@ -494,7 +498,7 @@ class Keenable(_BaseClient):
             snippet_max_length=snippet_max_length,
             max_results=max_results,
             query_time=query_time,
-            enable_wizards=enable_wizards,
+            disable_cards=disable_cards,
             session_id=session_id,
         )
         reply = self._request(_SEARCH, json=payload)
@@ -608,7 +612,7 @@ class AsyncKeenable(_BaseClient):
         snippet_max_length: int | None = None,
         max_results: int | None = None,
         query_time: str | None = None,
-        enable_wizards: bool | None = None,
+        disable_cards: bool | None = None,
         session_id: str | None = None,
     ) -> SearchResponse:
         """Search the web. See :meth:`Keenable.search` for the arguments."""
@@ -623,7 +627,7 @@ class AsyncKeenable(_BaseClient):
             snippet_max_length=snippet_max_length,
             max_results=max_results,
             query_time=query_time,
-            enable_wizards=enable_wizards,
+            disable_cards=disable_cards,
             session_id=session_id,
         )
         reply = await self._request(_SEARCH, json=payload)

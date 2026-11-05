@@ -48,10 +48,10 @@ results = keenable.search(
 | `max_results` | How many results to return, 1 to 50 (default 10) |
 | `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `mode` | `"pro"` (default) does deeper retrieval; `"realtime"` is the fastest |
+| `disable_cards` | Leave out cards: results Keenable writes itself for queries such as prices, exchange rates or company facts, served at a `https://cards.keenable.ai/w/<id>` URL that works for one day. Web pages take their place, so the result count stays the same. `pro` and `realtime` modes only |
 
 Advanced, for agent frameworks: `session_id` groups the calls of one agent
-session (send the same value on each call), and `enable_wizards=True` turns on
-experimental structured-data extraction (`"pro"` mode only).
+session (send the same value on each call).
 
 ## Ground a model in one line
 

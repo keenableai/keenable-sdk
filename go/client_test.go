@@ -452,16 +452,34 @@ func TestFetchSendsOnlyTheOptionsThatWereSet(t *testing.T) {
 
 }
 
-func TestSearchSendsRealtimeWizardsAndSessionID(t *testing.T) {
+func TestSearchSendsRealtimeDisableCardsAndSessionID(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, map[string]any{"query": "q", "results": []any{}}), nil)
-	off := false
-	_, err := c.Search(context.Background(), "q", &keenable.SearchOptions{Mode: "realtime", EnableWizards: &off, SessionID: "agent-run-7"})
+	on := true
+	_, err := c.Search(context.Background(), "q", &keenable.SearchOptions{Mode: "realtime", DisableCards: &on, SessionID: "agent-run-7"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	p := payloadOf(t, one(t, seen))
-	if p["mode"] != "realtime" || p["enable_wizards"] != false || p["session_id"] != "agent-run-7" {
+	if p["mode"] != "realtime" || p["disable_cards"] != true || p["session_id"] != "agent-run-7" {
 		t.Fatalf("payload = %v", p)
+	}
+}
+
+func TestSearchDisableCards(t *testing.T) {
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, map[string]any{"query": "q", "results": []any{}}), nil)
+	ctx := context.Background()
+	if _, err := c.Search(ctx, "q", &keenable.SearchOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := payloadOf(t, (*seen)[0])["disable_cards"]; ok {
+		t.Fatal("nil DisableCards was sent")
+	}
+	off := false
+	if _, err := c.Search(ctx, "q", &keenable.SearchOptions{DisableCards: &off}); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := payloadOf(t, (*seen)[1])["disable_cards"]; !ok || v != false {
+		t.Fatalf("disable_cards = %v (sent %v)", v, ok)
 	}
 }
 

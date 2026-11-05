@@ -15,9 +15,12 @@ All notable changes to the `keenable` Python package. Versions follow
 - `Page.truncated` reports whether fetched content was cut at the character
   limit, and `strip_truncation_marker()` removes the API's trailing note for
   callers that want bare text.
-- `search()` accepts `mode="realtime"` (the fastest mode), `enable_wizards` and
-  `session_id`. `mode` also accepts any other string, so a mode the API adds
-  later works before this SDK names it.
+- `search()` accepts `mode="realtime"` (the fastest mode) and `session_id`.
+  `mode` also accepts any other string, so a mode the API adds later works
+  before this SDK names it.
+- `search()` accepts `disable_cards`, which leaves cards (results Keenable writes
+  itself, at `https://cards.keenable.ai/w/<id>` URLs) out of the results; web
+  pages take their place.
 - `fetch()` accepts `max_chars`, `live`, `prompt` and `session_id`.
 - New error classes by HTTP status: `KeenableValidationError` (400/422),
   `KeenableCreditsError` (402) and `KeenableForbiddenError` (403).

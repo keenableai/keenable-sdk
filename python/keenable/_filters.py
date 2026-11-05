@@ -72,9 +72,12 @@ SEARCH_FILTERS: tuple[Filter, ...] = (
         "such as '7d'.",
     ),
     Filter(
-        "enable_wizards",
-        "Optional. Experimental structured-data extraction. Only valid in "
-        "'pro' mode, and not under a zero data retention policy.",
+        "disable_cards",
+        "Optional. Leave cards out of the results. A card is a result Keenable "
+        "writes itself for queries such as prices, exchange rates or facts "
+        "about a company, served at a https://cards.keenable.ai/w/<id> URL "
+        "that works for one day. With it set, ordinary web pages take the "
+        "place of cards, so you get the same number of results.",
         json_type="boolean",
     ),
     Filter(

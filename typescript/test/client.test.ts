@@ -152,13 +152,20 @@ describe("search", () => {
     expect((await client.search("q")).results[0]?.description).toBeUndefined();
   });
 
-  it("sends realtime mode, enableWizards and sessionId", async () => {
+  it("sends realtime mode, disableCards and sessionId", async () => {
     const { client, seen } = mockClient(() => json(SEARCH_BODY));
-    await client.search("q", { mode: "realtime", enableWizards: false, sessionId: "agent-run-7" });
+    await client.search("q", { mode: "realtime", disableCards: true, sessionId: "agent-run-7" });
     const payload = JSON.parse(String(seen[0]?.init.body));
     expect(payload.mode).toBe("realtime");
-    expect(payload.enable_wizards).toBe(false);
+    expect(payload.disable_cards).toBe(true);
     expect(payload.session_id).toBe("agent-run-7");
+  });
+
+  it("omits disable_cards when disableCards is unset", async () => {
+    const { client, seen } = mockClient(() => json(SEARCH_BODY));
+    await client.search("q");
+    const payload = JSON.parse(String(seen[0]?.init.body));
+    expect("disable_cards" in payload).toBe(false);
   });
 
   it("passes a mode it does not name through", async () => {
