@@ -77,7 +77,7 @@ type Image struct {
 	URL  string    `json:"url"`
 	Role ImageRole `json:"role"`
 	// Alt is the alt text. Nil when the page gave none.
-	Alt      *string `json:"alt"`
+	Alt      *string `json:"alt,omitempty"`
 	Width    *int    `json:"width,omitempty"`
 	Height   *int    `json:"height,omitempty"`
 	MimeType *string `json:"mime_type,omitempty"`

@@ -83,8 +83,8 @@ export interface PageImage {
   /** Absolute http(s) URL of the image. */
   url: string;
   role: ImageRole;
-  /** Alt text, or `null` when the page gave none. */
-  alt: string | null;
+  /** Alt text. Absent when the page gave none. */
+  alt?: string;
   width?: number;
   height?: number;
   mimeType?: string;

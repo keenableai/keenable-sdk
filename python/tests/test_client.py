@@ -245,7 +245,6 @@ LOGO: dict[str, Any] = {
 COVER: dict[str, Any] = {
     "url": "https://acme.com/og.png",
     "role": "cover",
-    "alt": None,
     "sources": ["og:image"],
 }
 
@@ -311,6 +310,15 @@ def test_page_images_decode_every_field() -> None:
     assert cover.width is None and cover.height is None
     assert cover.mime_type is None
     assert cover.sources == ["og:image"]
+
+
+def test_page_images_legacy_null_alt() -> None:
+    legacy = {**COVER, "alt": None}
+    body = {**FETCH_BODY, "images": [legacy], "images_truncated": False}
+    keenable, _ = _client(_ok(body))
+    page = keenable.fetch("https://acme.com", include=["images"])
+    assert page.images is not None
+    assert page.images[0].alt is None
 
 
 def test_page_images_accept_unknown_role() -> None:

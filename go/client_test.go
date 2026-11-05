@@ -437,7 +437,6 @@ var (
 	coverImage = map[string]any{
 		"url":     "https://acme.com/og.png",
 		"role":    "cover",
-		"alt":     nil,
 		"sources": []any{"og:image"},
 	}
 )
@@ -573,8 +572,21 @@ func TestPageImagesDecodeEveryField(t *testing.T) {
 	}
 }
 
+func TestPageImagesLegacyNullAlt(t *testing.T) {
+	legacy := map[string]any{"url": "https://acme.com/og.png", "role": "cover", "alt": nil, "sources": []any{"og:image"}}
+	body := fetchBodyWith(map[string]any{"images": []any{legacy}, "images_truncated": false})
+	c, _ := startKeyless(t, jsonHandler(http.StatusOK, body), nil)
+	page, err := c.Fetch(context.Background(), "https://acme.com", &keenable.FetchOptions{Include: []string{"images"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Images) != 1 || page.Images[0].Alt != nil {
+		t.Fatalf("%#v", page.Images)
+	}
+}
+
 func TestPageImagesAcceptUnknownRole(t *testing.T) {
-	hero := map[string]any{"url": "https://acme.com/hero.webp", "role": "hero", "alt": nil, "sources": []any{"img"}}
+	hero := map[string]any{"url": "https://acme.com/hero.webp", "role": "hero", "sources": []any{"img"}}
 	body := fetchBodyWith(map[string]any{"images": []any{hero}, "images_truncated": false})
 	c, _ := startKeyless(t, jsonHandler(http.StatusOK, body), nil)
 	page, err := c.Fetch(context.Background(), "https://acme.com", &keenable.FetchOptions{Include: []string{"images"}})

@@ -6,7 +6,8 @@
 50, API default 5, only with `Include` "images"). Existing calls compile
 unchanged. `Page.Images` then lists the page's images as `Image` (`URL`,
 `Role`, `Alt`, `Width`, `Height`, `MimeType`, `Sources`) and
-`Page.ImagesTruncated` says whether more were found. `Images` is a non-nil
+`Page.ImagesTruncated` says whether more were found. `Alt`, `Width`, `Height`
+and `MimeType` are nil when the page gave none. `Images` is a non-nil
 empty slice when the page has none and nil when it could not be inspected;
 `ImagesTruncated` is nil when images were not requested. `ImageRole` is an
 open string type with `ImageRoleLogo`, `ImageRoleCover`, `ImageRoleIcon` and

@@ -286,7 +286,6 @@ const LOGO = {
 const COVER = {
   url: "https://acme.com/og.png",
   role: "cover",
-  alt: null,
   sources: ["og:image"],
 };
 
@@ -352,11 +351,19 @@ describe("fetch images", () => {
       raw: LOGO,
     });
     expect(cover?.role).toBe("cover");
-    expect(cover?.alt).toBeNull();
+    expect(cover?.alt).toBeUndefined();
     expect(cover?.width).toBeUndefined();
     expect(cover?.height).toBeUndefined();
     expect(cover?.mimeType).toBeUndefined();
     expect(cover?.sources).toEqual(["og:image"]);
+  });
+
+  it("decodes a legacy null alt as missing", async () => {
+    const { client } = mockClient(() =>
+      json({ ...FETCH_BODY, images: [{ ...COVER, alt: null }], images_truncated: false }),
+    );
+    const page = await client.fetch("https://acme.com", { include: ["images"] });
+    expect(page.images?.[0]?.alt).toBeUndefined();
   });
 
   it("accepts an unknown role", async () => {

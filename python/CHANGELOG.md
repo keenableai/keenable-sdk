@@ -9,7 +9,8 @@ All notable changes to the `keenable` Python package. Versions follow
   (1 to 50, API default 5, only with `include`). `Page.images` then lists the
   page's images as `Image` (`url`, `role`, `alt`, `width`, `height`,
   `mime_type`, `sources`) and `Page.images_truncated` says whether more were
-  found. `images` is `[]` when the page has none and `None` when it could not
+  found. `alt`, `width`, `height` and `mime_type` are `None` when the page
+  gave none. `images` is `[]` when the page has none and `None` when it could not
   be inspected; both stay `None` when images were not requested. `role` is
   `"logo"`, `"cover"`, `"icon"` or `"content"`, and the set is open. The API
   rejects a bad `include` or `max_images` with a 400.

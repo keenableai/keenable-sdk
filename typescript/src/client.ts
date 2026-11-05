@@ -330,7 +330,8 @@ function toImage(data: Record<string, unknown>): PageImage {
   return {
     url: String(data.url ?? ""),
     role: String(data.role ?? ""),
-    alt: typeof data.alt === "string" ? data.alt : null,
+    // Older servers send null for no alt.
+    alt: typeof data.alt === "string" ? data.alt : undefined,
     width: intOrUndefined(data.width),
     height: intOrUndefined(data.height),
     mimeType: nonEmpty(data.mime_type),
