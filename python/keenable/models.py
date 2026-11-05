@@ -49,17 +49,23 @@ _MD_LINK = re.compile(
 _URL_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 _SPACE_RUN = re.compile(r"[ \t]+")
 _ONLY_TABLE_RULE = re.compile(r"^[ \t|:-]*$")
-_FENCE = re.compile(r"^[ \t]*(`{3,}|~{3,})(.*)$")
-_CODE_SPAN = re.compile(r"`+[^`\n]*`+")
+# CommonMark: optional blockquote markers, then at most 3 spaces before a fence.
+_FENCE = re.compile(r"^(?:[ \t]{0,3}>[ \t]?)*[ \t]{0,3}(`{3,}|~{3,})(.*)$")
 _PLACEHOLDER = re.compile(r"\x00(\d+)\x00")
 _WORD_CHAR = re.compile(r"[A-Za-z0-9_]")
+_CODE_IDENT = re.compile(r"^[A-Za-z0-9_]*$")
 
 
 def _resolve_link(match: re.Match[str], base_url: str) -> str:
     text, href = match.group(1), match.group(2)
     start = match.start()
-    # `handlers[name](event)` and `fns[i]()` are code, not links.
-    if start > 0 and _WORD_CHAR.match(match.string[start - 1]):
+    # `handlers[name](event)` and `fns[i]()` are code, not links. Ordinary
+    # adjacent links like `docs[API](/api)` still resolve.
+    if (
+        start > 0
+        and _WORD_CHAR.match(match.string[start - 1])
+        and _CODE_IDENT.match(href)
+    ):
         return match.group(0)
     # A code span inside the URL would not survive URL normalisation.
     if "\x00" in href:
@@ -80,16 +86,48 @@ def _resolve_link(match: re.Match[str], base_url: str) -> str:
 
 
 def _protect_code_spans(line: str) -> tuple[str, list[str]]:
-    """Swap inline code spans for placeholders the cleanup patterns skip."""
+    """Swap inline code spans for placeholders the cleanup patterns skip.
+
+    Opening and closing backtick runs must be the same length, so a shorter
+    run inside a longer span (``a ` ![x](y)``) stays protected.
+    """
     spans: list[str] = []
     if "\x00" in line:
         return line, spans
 
-    def stash(match: re.Match[str]) -> str:
-        spans.append(match.group(0))
-        return f"\x00{len(spans) - 1}\x00"
-
-    return _CODE_SPAN.sub(stash, line), spans
+    out: list[str] = []
+    i = 0
+    n = len(line)
+    while i < n:
+        if line[i] != "`":
+            out.append(line[i])
+            i += 1
+            continue
+        j = i
+        while j < n and line[j] == "`":
+            j += 1
+        open_len = j - i
+        k = j
+        closer = -1
+        while k < n:
+            if line[k] != "`":
+                k += 1
+                continue
+            end = k
+            while end < n and line[end] == "`":
+                end += 1
+            if end - k == open_len:
+                closer = end
+                break
+            k = end
+        if closer < 0:
+            out.append(line[i:j])
+            i = j
+            continue
+        spans.append(line[i:closer])
+        out.append(f"\x00{len(spans) - 1}\x00")
+        i = closer
+    return "".join(out), spans
 
 
 def _restore_code_spans(text: str, spans: list[str]) -> str:

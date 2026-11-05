@@ -76,6 +76,31 @@ describe("cleanContextText", () => {
     );
   });
 
+  it("does not treat four-space-indented backticks as a fence opener", () => {
+    // Four spaces make indented code in CommonMark, not a fence opener.
+    const text = "    ```\n![x](y.png)\nlater";
+    expect(cleanContextText(text, BASE)).toBe("    ```\nlater");
+  });
+
+  it("leaves blockquoted fenced code alone", () => {
+    const text = "> ```md\n> ![x](y.png)\n> [a](/rel)\n> ```\nok ![c](d.png)";
+    expect(cleanContextText(text, BASE)).toBe(
+      "> ```md\n> ![x](y.png)\n> [a](/rel)\n> ```\nok",
+    );
+  });
+
+  it("protects a code span that contains a shorter backtick run", () => {
+    const text = "See ``a ` ![x](y.png)`` and more ![z](w.png)";
+    expect(cleanContextText(text, BASE)).toBe("See ``a ` ![x](y.png)`` and more");
+  });
+
+  it("resolves an adjacent path link but leaves callable code alone", () => {
+    const text = "See docs[API](/api) or call handlers[name](event).";
+    expect(cleanContextText(text, BASE)).toBe(
+      "See docs[API](https://example.com/api) or call handlers[name](event).",
+    );
+  });
+
   it("keeps a table header row of images", () => {
     const text = "| ![a](x.png) | b |\n|---|---|\n| ![c](y.png) | |\n| 1 | 2 |";
     expect(cleanContextText(text, BASE)).toBe("| | b |\n|---|---|\n| 1 | 2 |");

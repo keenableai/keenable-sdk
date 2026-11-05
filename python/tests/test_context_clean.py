@@ -82,6 +82,31 @@ def test_fenced_code_block_is_left_alone() -> None:
     )
 
 
+def test_indented_backticks_do_not_open_a_fence() -> None:
+    # Four spaces make indented code in CommonMark, not a fence opener.
+    text = "    ```\n![x](y.png)\nlater"
+    assert clean_context_text(text, BASE) == "    ```\nlater"
+
+
+def test_blockquoted_fenced_code_is_left_alone() -> None:
+    text = "> ```md\n> ![x](y.png)\n> [a](/rel)\n> ```\nok ![c](d.png)"
+    assert clean_context_text(text, BASE) == (
+        "> ```md\n> ![x](y.png)\n> [a](/rel)\n> ```\nok"
+    )
+
+
+def test_code_span_with_shorter_inner_backticks_is_protected() -> None:
+    text = "See ``a ` ![x](y.png)`` and more ![z](w.png)"
+    assert clean_context_text(text, BASE) == "See ``a ` ![x](y.png)`` and more"
+
+
+def test_adjacent_path_link_is_resolved() -> None:
+    text = "See docs[API](/api) or call handlers[name](event)."
+    assert clean_context_text(text, BASE) == (
+        "See docs[API](https://example.com/api) or call handlers[name](event)."
+    )
+
+
 def test_table_header_row_of_images_is_kept() -> None:
     text = "| ![a](x.png) | b |\n|---|---|\n| ![c](y.png) | |\n| 1 | 2 |"
     assert clean_context_text(text, BASE) == "| | b |\n|---|---|\n| 1 | 2 |"

@@ -92,6 +92,30 @@ func TestCleanContextText(t *testing.T) {
 			want: "```md\n![x](y.png)\n[a](b)\n```\n~~~\nf[i](x)\n~~~\nok",
 		},
 		{
+			name: "indented backticks do not open a fence",
+			text: "    ```\n![x](y.png)\nlater",
+			base: cleanBase,
+			want: "    ```\nlater",
+		},
+		{
+			name: "blockquoted fenced code left alone",
+			text: "> ```md\n> ![x](y.png)\n> [a](/rel)\n> ```\nok ![c](d.png)",
+			base: cleanBase,
+			want: "> ```md\n> ![x](y.png)\n> [a](/rel)\n> ```\nok",
+		},
+		{
+			name: "code span with shorter inner backticks protected",
+			text: "See ``a ` ![x](y.png)`` and more ![z](w.png)",
+			base: cleanBase,
+			want: "See ``a ` ![x](y.png)`` and more",
+		},
+		{
+			name: "adjacent path link resolved, callable code left alone",
+			text: "See docs[API](/api) or call handlers[name](event).",
+			base: cleanBase,
+			want: "See docs[API](https://example.com/api) or call handlers[name](event).",
+		},
+		{
 			name: "table header row of images kept",
 			text: "| ![a](x.png) | b |\n|---|---|\n| ![c](y.png) | |\n| 1 | 2 |",
 			base: cleanBase,

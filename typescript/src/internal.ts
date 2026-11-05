@@ -52,10 +52,11 @@ const HTML_IMAGE = /<img\b(?:[^<>"']|"[^"\n]*"|'[^'\n]*')*>/gi;
 const MD_LINK = /\[([^[\]\n]*)\]\(((?:[^()\s]|\([^()\s]*\))*)(?:\s+"[^"\n]*")?\)/g;
 const URL_SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*:/;
 const ONLY_TABLE_RULE = /^[ \t|:-]*$/;
-const FENCE = /^[ \t]*(`{3,}|~{3,})(.*)$/;
-const CODE_SPAN = /`+[^`\n]*`+/g;
+// CommonMark: optional blockquote markers, then at most 3 spaces before a fence.
+const FENCE = /^(?:[ \t]{0,3}>[ \t]?)*[ \t]{0,3}(`{3,}|~{3,})(.*)$/;
 const PLACEHOLDER = /\x00(\d+)\x00/g;
 const WORD_CHAR = /[A-Za-z0-9_]/;
+const CODE_IDENT = /^[A-Za-z0-9_]*$/;
 
 function resolveLink(
   match: string,
@@ -65,8 +66,11 @@ function resolveLink(
   line: string,
   baseUrl: string,
 ): string {
-  // `handlers[name](event)` and `fns[i]()` are code, not links.
-  if (offset > 0 && WORD_CHAR.test(line.charAt(offset - 1))) return match;
+  // `handlers[name](event)` and `fns[i]()` are code, not links. Ordinary
+  // adjacent links like `docs[API](/api)` still resolve.
+  if (offset > 0 && WORD_CHAR.test(line.charAt(offset - 1)) && CODE_IDENT.test(href)) {
+    return match;
+  }
   // A code span inside the URL would not survive URL normalisation.
   if (href.includes("\x00")) return match;
   if (!text.trim()) return "";
@@ -83,6 +87,53 @@ function resolveLink(
 
 function isTableDelimiter(line: string): boolean {
   return line.includes("|") && line.includes("-") && ONLY_TABLE_RULE.test(line.trimEnd());
+}
+
+/**
+ * Swap inline code spans for placeholders the cleanup patterns skip.
+ * Opening and closing backtick runs must be the same length, so a shorter
+ * run inside a longer span (``a ` ![x](y)``) stays protected.
+ */
+function protectCodeSpans(line: string): { protected: string; spans: string[] } {
+  const spans: string[] = [];
+  if (line.includes("\x00")) return { protected: line, spans };
+
+  let out = "";
+  let i = 0;
+  while (i < line.length) {
+    if (line.charAt(i) !== "`") {
+      out += line.charAt(i);
+      i += 1;
+      continue;
+    }
+    let j = i;
+    while (j < line.length && line.charAt(j) === "`") j += 1;
+    const openLen = j - i;
+    let k = j;
+    let closer = -1;
+    while (k < line.length) {
+      if (line.charAt(k) !== "`") {
+        k += 1;
+        continue;
+      }
+      let end = k;
+      while (end < line.length && line.charAt(end) === "`") end += 1;
+      if (end - k === openLen) {
+        closer = end;
+        break;
+      }
+      k = end;
+    }
+    if (closer < 0) {
+      out += line.slice(i, j);
+      i = j;
+      continue;
+    }
+    spans.push(line.slice(i, closer));
+    out += `\x00${spans.length - 1}\x00`;
+    i = closer;
+  }
+  return { protected: out, spans };
 }
 
 /**
@@ -118,14 +169,7 @@ export function cleanContextText(text: string, baseUrl: string): string {
       return;
     }
 
-    const spans: string[] = [];
-    let protectedLine = line;
-    if (!line.includes("\x00")) {
-      protectedLine = line.replace(CODE_SPAN, (span) => {
-        spans.push(span);
-        return `\x00${spans.length - 1}\x00`;
-      });
-    }
+    const { protected: protectedLine, spans } = protectCodeSpans(line);
     let cleaned = protectedLine.replace(MD_IMAGE, "").replace(HTML_IMAGE, "");
     cleaned = cleaned.replace(
       MD_LINK,

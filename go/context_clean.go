@@ -22,9 +22,10 @@ var (
 	urlScheme     = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*:`)
 	spaceRun      = regexp.MustCompile(`[ \t]+`)
 	onlyTableRule = regexp.MustCompile(`^[ \t|:-]*$`)
-	fenceLine     = regexp.MustCompile("^[ \t]*(`{3,}|~{3,})(.*)$")
-	codeSpan      = regexp.MustCompile("`+[^`\n]*`+")
-	placeholder   = regexp.MustCompile("\x00([0-9]+)\x00")
+	// CommonMark: optional blockquote markers, then at most 3 spaces before a fence.
+	fenceLine   = regexp.MustCompile("^(?:[ \t]{0,3}>[ \t]?)*[ \t]{0,3}(`{3,}|~{3,})(.*)$")
+	placeholder = regexp.MustCompile("\x00([0-9]+)\x00")
+	codeIdent   = regexp.MustCompile(`^[A-Za-z0-9_]*$`)
 )
 
 // cleanContextText strips markup a model cannot use from page text bound for
@@ -65,14 +66,7 @@ func cleanContextText(text, baseURL string) string {
 			continue
 		}
 
-		var spans []string
-		protected := line
-		if !strings.Contains(line, "\x00") {
-			protected = codeSpan.ReplaceAllStringFunc(line, func(span string) string {
-				spans = append(spans, span)
-				return "\x00" + strconv.Itoa(len(spans)-1) + "\x00"
-			})
-		}
+		protected, spans := protectCodeSpans(line)
 		cleaned := htmlImage.ReplaceAllString(mdImage.ReplaceAllString(protected, ""), "")
 		cleaned = replaceLinks(cleaned, base)
 		if cleaned == protected {
@@ -100,6 +94,58 @@ func cleanContextText(text, baseURL string) string {
 	return strings.Join(out, "\n")
 }
 
+// protectCodeSpans swaps inline code spans for placeholders. Opening and
+// closing backtick runs must be the same length, so a shorter run inside a
+// longer span stays protected.
+func protectCodeSpans(line string) (string, []string) {
+	var spans []string
+	if strings.Contains(line, "\x00") {
+		return line, spans
+	}
+	var b strings.Builder
+	i := 0
+	for i < len(line) {
+		if line[i] != '`' {
+			b.WriteByte(line[i])
+			i++
+			continue
+		}
+		j := i
+		for j < len(line) && line[j] == '`' {
+			j++
+		}
+		openLen := j - i
+		k := j
+		closer := -1
+		for k < len(line) {
+			if line[k] != '`' {
+				k++
+				continue
+			}
+			end := k
+			for end < len(line) && line[end] == '`' {
+				end++
+			}
+			if end-k == openLen {
+				closer = end
+				break
+			}
+			k = end
+		}
+		if closer < 0 {
+			b.WriteString(line[i:j])
+			i = j
+			continue
+		}
+		spans = append(spans, line[i:closer])
+		b.WriteByte(0)
+		b.WriteString(strconv.Itoa(len(spans) - 1))
+		b.WriteByte(0)
+		i = closer
+	}
+	return b.String(), spans
+}
+
 func isTableDelimiter(line string) bool {
 	return strings.Contains(line, "|") && strings.Contains(line, "-") &&
 		onlyTableRule.MatchString(strings.TrimRightFunc(line, unicode.IsSpace))
@@ -120,11 +166,13 @@ func replaceLinks(line string, base *url.URL) string {
 	for _, m := range matches {
 		b.WriteString(line[last:m[0]])
 		match := line[m[0]:m[1]]
-		// handlers[name](event) and fns[i]() are code, not links.
-		if m[0] > 0 && isWordByte(line[m[0]-1]) {
+		href := line[m[4]:m[5]]
+		// handlers[name](event) and fns[i]() are code, not links. Ordinary
+		// adjacent links like docs[API](/api) still resolve.
+		if m[0] > 0 && isWordByte(line[m[0]-1]) && codeIdent.MatchString(href) {
 			b.WriteString(match)
 		} else {
-			b.WriteString(resolveLink(match, line[m[2]:m[3]], line[m[4]:m[5]], base))
+			b.WriteString(resolveLink(match, line[m[2]:m[3]], href, base))
 		}
 		last = m[1]
 	}
