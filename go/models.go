@@ -1,8 +1,12 @@
 package keenable
 
 import (
+	"errors"
+	"math"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -12,7 +16,9 @@ import (
 // Empty strings are left unset and are not sent. SnippetMaxLength uses a
 // pointer so zero can be sent; nil means unset. Mode defaults to "pro".
 type SearchOptions struct {
-	// Mode is the search mode. Empty means "pro".
+	// Mode is "pro" (deeper retrieval, the default when empty) or "realtime"
+	// (fastest, for latency-sensitive calls). Other strings are passed
+	// through, so a mode the API adds later works before this SDK names it.
 	Mode string
 	// Site restricts results to one domain, for example "arxiv.org".
 	Site string
@@ -35,6 +41,34 @@ type SearchOptions struct {
 	// filter: use PublishedAfter for that. Accepts an ISO 8601 datetime,
 	// YYYY-MM-DD, or an offset back from now such as "7d" (as of 7 days ago).
 	QueryTime string
+	// DisableCards leaves cards out of the results. A card is a result
+	// Keenable writes itself for queries such as prices, exchange rates or
+	// facts about a company, served at a https://cards.keenable.ai/w/<id> URL
+	// that works for one day. With it set, ordinary web pages take the place
+	// of cards, so you get the same number of results. Nil means unset.
+	DisableCards *bool
+	// SessionID is an id for the agent session making this call. Send the
+	// same value on every call in one session so its requests can be grouped.
+	SessionID string
+}
+
+// FetchOptions are the optional arguments to [Client.Fetch].
+//
+// Nil pointers and empty strings are left unset and are not sent.
+type FetchOptions struct {
+	// MaxChars caps the content at this many characters (the API default is
+	// 50,000). A cut page ends with a short note saying it was truncated. Nil
+	// means unset; like SearchOptions.SnippetMaxLength, a pointer to zero is
+	// sent (and the API rejects it).
+	MaxChars *int
+	// Live fetches from the source when the page is not in the index.
+	// Without it, an unindexed URL fails. Nil means unset.
+	Live *bool
+	// Prompt returns the answer to this instruction, extracted from the page
+	// by a model, instead of the full page.
+	Prompt string
+	// SessionID is the same as [SearchOptions.SessionID].
+	SessionID string
 }
 
 // ContextOptions controls [SearchResponse.ToContext] and [SearchResponse.Cited].
@@ -57,8 +91,11 @@ type SearchResult struct {
 	Title   string `json:"title"`
 	URL     string `json:"url"`
 	Snippet string `json:"snippet"`
-	// Description is the page's meta description. Often absent. Prefer Snippet
-	// in prompts. Nil when the API omitted it or sent an empty string.
+	// Description mirrors Snippet: the API no longer fills it, so the SDK
+	// copies Snippet in for code written against it. Do not render both
+	// fields, or the text appears twice. Nil when Snippet is empty too.
+	//
+	// Deprecated: read Snippet.
 	Description *string `json:"description,omitempty"`
 	// PublishedAt is the ISO-8601 publication time, when the page exposes one.
 	PublishedAt *string `json:"published_at,omitempty"`
@@ -76,18 +113,28 @@ type SearchResponse struct {
 	Query   string         `json:"query"`
 	Mode    *string        `json:"mode,omitempty"`
 	Results []SearchResult `json:"results"`
-	Raw     map[string]any `json:"-"`
+	// RequestID is the API's X-Request-Id for this call. Quote it to support.
+	RequestID string         `json:"-"`
+	Raw       map[string]any `json:"-"`
 }
 
 // Page is a URL fetched by [Client.Fetch], with main content as markdown.
 type Page struct {
-	URL         string         `json:"url"`
-	Title       string         `json:"title"`
-	Content     string         `json:"content"`
-	Description *string        `json:"description,omitempty"`
-	Author      *string        `json:"author,omitempty"`
-	PublishedAt *string        `json:"published_at,omitempty"`
-	Raw         map[string]any `json:"-"`
+	URL     string `json:"url"`
+	Title   string `json:"title"`
+	Content string `json:"content"`
+	// Description is always nil: the API no longer fills it.
+	//
+	// Deprecated: read Content.
+	Description *string `json:"description,omitempty"`
+	Author      *string `json:"author,omitempty"`
+	// PublishedAt is the ISO-8601 publication time in UTC. The API sends a
+	// Unix timestamp here; the SDK converts it so it matches
+	// SearchResult.PublishedAt.
+	PublishedAt *string `json:"published_at,omitempty"`
+	// RequestID is the API's X-Request-Id for this call. Quote it to support.
+	RequestID string         `json:"-"`
+	Raw       map[string]any `json:"-"`
 }
 
 // Cited returns the results ToContext would render, in citation order.
@@ -262,8 +309,8 @@ func searchResultFromJSON(data map[string]any) SearchResult {
 		Title:       asString(data["title"]),
 		URL:         asString(data["url"]),
 		Snippet:     asString(data["snippet"]),
-		Description: nonEmptyString(data["description"]),
-		PublishedAt: nonEmptyString(data["published_at"]),
+		Description: firstNonEmpty(data["description"], data["snippet"]),
+		PublishedAt: isoTimestamp(data["published_at"]),
 		AcquiredAt:  nonEmptyString(data["acquired_at"]),
 		Raw:         data,
 	}
@@ -280,9 +327,94 @@ func pageFromJSON(data map[string]any, fallbackURL string) *Page {
 		Content:     asString(data["content"]),
 		Description: nonEmptyString(data["description"]),
 		Author:      nonEmptyString(data["author"]),
-		PublishedAt: nonEmptyString(data["published_at"]),
+		PublishedAt: isoTimestamp(data["published_at"]),
 		Raw:         data,
 	}
+}
+
+// TruncationMarker matches the note the API appends to fetched content cut at
+// MaxChars. Best-effort: it matches the API's current wording, and
+// [Page.Truncated] reports false if the wording changes.
+var TruncationMarker = regexp.MustCompile(`\.{3}_This content has been truncated to stay below \d+ characters_\.{3}\s*$`)
+
+// StripTruncationMarker returns s without a trailing truncation note, if it
+// has one. For scorers and pipelines that want only page text. A model usually
+// benefits from seeing the note, so [Page.ToContext] keeps it.
+func StripTruncationMarker(s string) string {
+	loc := TruncationMarker.FindStringIndex(s)
+	if loc == nil {
+		return s
+	}
+	return strings.TrimRightFunc(s[:loc[0]], unicode.IsSpace)
+}
+
+// Truncated reports whether the API cut Content at MaxChars. Content keeps the
+// API's trailing note; use [StripTruncationMarker] for the bare text.
+func (p *Page) Truncated() bool {
+	return p != nil && TruncationMarker.MatchString(p.Content)
+}
+
+// epochMillisThreshold: epoch values at or above it are milliseconds. 1e11
+// seconds is the year 5138, while 1e11 milliseconds is 1973, so no real date
+// is ambiguous. Values below epochMin (1973-03-03 in seconds) are not read as
+// epochs: a compact date such as "20261022", a bare year, or 0 for "unknown"
+// is far more likely. The Python and TypeScript SDKs apply the same rules.
+const (
+	epochMillisThreshold = 1e11
+	epochMin             = 1e8
+	// epochMax is 9999-12-31T23:59:59Z: past it a "date" is garbage.
+	epochMax = 253402300799
+)
+
+// isoTimestamp normalizes a timestamp to ISO-8601. Search returns ISO strings,
+// which pass through untouched. Fetch returns a Unix epoch number (seconds, or
+// milliseconds past the threshold), which becomes YYYY-MM-DDTHH:MM:SSZ in UTC.
+func isoTimestamp(v any) *string {
+	var epoch float64
+	switch t := v.(type) {
+	case string:
+		text := strings.TrimSpace(t)
+		if text == "" {
+			return nil
+		}
+		n, err := strconv.ParseUint(text, 10, 64)
+		if errors.Is(err, strconv.ErrRange) {
+			// All digits but too large for any epoch: unset, as in Python and TS.
+			return nil
+		}
+		if err != nil || float64(n) < epochMin {
+			// Not an epoch: return it as given.
+			return &t
+		}
+		epoch = float64(n)
+	case float64:
+		if t < epochMin {
+			return nil
+		}
+		epoch = t
+	default:
+		return nil
+	}
+	if math.IsNaN(epoch) || math.IsInf(epoch, 0) {
+		return nil
+	}
+	if epoch >= epochMillisThreshold {
+		epoch /= 1000
+	}
+	if epoch > epochMax {
+		return nil
+	}
+	s := time.Unix(int64(math.Floor(epoch)), 0).UTC().Format("2006-01-02T15:04:05Z")
+	return &s
+}
+
+func firstNonEmpty(values ...any) *string {
+	for _, v := range values {
+		if s := nonEmptyString(v); s != nil {
+			return s
+		}
+	}
+	return nil
 }
 
 func nonEmptyString(v any) *string {

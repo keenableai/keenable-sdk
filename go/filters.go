@@ -55,6 +55,20 @@ var searchFilters = []filter{
 			"excluded. Not a recency filter (use published_after for that). An ISO 8601 " +
 			"datetime, YYYY-MM-DD, or an offset back from now such as '7d'.",
 	},
+	{
+		wire: "disable_cards",
+		description: "Optional. Leave cards out of the results. A card is a result Keenable writes " +
+			"itself for queries such as prices, exchange rates or facts about a company, " +
+			"served at a https://cards.keenable.ai/w/<id> URL that works for one day. With " +
+			"it set, ordinary web pages take the place of cards, so you get the same number " +
+			"of results.",
+		jsonType: "boolean",
+	},
+	{
+		wire: "session_id",
+		description: "Optional. An id for the agent session making this call. Send the same value " +
+			"on every call in one session so its requests can be grouped.",
+	},
 }
 
 func applyFilters(payload map[string]any, opts *SearchOptions) {
@@ -110,6 +124,16 @@ func (f filter) value(opts *SearchOptions) (any, bool) {
 			return nil, false
 		}
 		return opts.QueryTime, true
+	case "disable_cards":
+		if opts.DisableCards == nil {
+			return nil, false
+		}
+		return *opts.DisableCards, true
+	case "session_id":
+		if opts.SessionID == "" {
+			return nil, false
+		}
+		return opts.SessionID, true
 	default:
 		return nil, false
 	}

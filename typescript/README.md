@@ -30,8 +30,8 @@ for (const result of results) {
 }
 ```
 
-Results carry the page text in `snippet`. (`description` is the page's meta
-description and is absent for most pages, so build prompts from `snippet`.)
+Results carry the page text in `snippet`; build prompts from it. See
+[Response shape](#response-shape) for every field.
 
 Filters are optional and combine freely:
 
@@ -51,8 +51,12 @@ const results = await keenable.search("post-training quantization results", {
 | `snippetMaxLength` | Cap the page text returned per result |
 | `maxResults` | How many results to return, 1 to 50 (default 10) |
 | `queryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `mode` | Search mode; `"pro"` (default) does deeper retrieval |
+| `mode` | `"pro"` (default) does deeper retrieval; `"realtime"` is the fastest |
+| `disableCards` | Leave out cards: results Keenable writes itself for queries such as prices, exchange rates or company facts, served at a `https://cards.keenable.ai/w/<id>` URL that works for one day. Web pages take their place, so the result count stays the same. `pro` and `realtime` modes only |
 | `signal` | An `AbortSignal` to cancel the request |
+
+Advanced, for agent frameworks: `sessionId` groups the calls of one agent
+session (send the same value on each call).
 
 ## Ground a model in one line
 
@@ -93,6 +97,56 @@ console.log(page.content); // markdown, boilerplate stripped
 console.log(page.toContext()); // same citable block shape as search results
 ```
 
+| Option | What it does |
+|---|---|
+| `maxChars` | Cap the content (API default 50,000). A cut page ends with a note saying so |
+| `live` | Fetch from the source when the page is not in the index yet |
+| `prompt` | Return the answer to this instruction, extracted from the page, instead of the full page |
+| `sessionId` | Same as on `search()` |
+| `signal` | An `AbortSignal` to cancel the request |
+
+## Going further
+
+More results, faster, and only recent pages:
+
+```ts
+const results = await keenable.search("open-weight model releases", {
+  mode: "realtime", // fastest mode, for latency-sensitive calls
+  maxResults: 25, // up to 50; the default is 10
+  publishedAfter: "2026-10-01", // recency filter
+});
+```
+
+Read just the part of a page you need, from the source if it is not indexed
+yet:
+
+```ts
+const page = await keenable.fetch("https://example.com/", {
+  live: true,
+  prompt: "What is this domain for? One sentence.",
+});
+console.log(page.content);
+```
+
+`queryTime` is the opposite of a recency filter: it searches the index as it
+stood at that moment and excludes everything newer, which is useful for
+reproducing past results.
+
+## Response shape
+
+What each field holds, so a pipeline or benchmark harness can map it without
+special cases:
+
+| Field | Holds |
+|---|---|
+| `SearchResult.snippet` | The page text extracted for this query. The field to score or prompt with |
+| `SearchResult.description` | Deprecated. The API leaves it empty, so the SDK mirrors `snippet` into it. Do not render both |
+| `SearchResult.publishedAt`, `Page.publishedAt` | ISO-8601 strings. Fetch sends a Unix timestamp on the wire; the SDK converts it to `YYYY-MM-DDTHH:MM:SSZ` (UTC) |
+| `Page.content` | The page as markdown, exactly as the API sent it. When cut at `maxChars` it ends with a short truncation note |
+| `Page.truncated` | `true` when that note is present. `stripTruncationMarker(page.content)` returns the text without it |
+| `requestId` | The API's request id, on responses and errors. Quote it to support |
+| `raw` | The unmodified JSON, for fields this SDK does not model yet |
+
 ## Tool calling
 
 The SDK ships OpenAI-compatible tool definitions, so any inference API that
@@ -120,15 +174,25 @@ page the way it cites a search result.
 
 ## Errors
 
-All errors extend `KeenableError`:
+All errors extend `KeenableError`. Every API error message ends with the
+next step to take (also on `.hint`). When the API sent a request id, the
+message includes it just before that step (also on `.requestId`); quote it to
+support.
 
-| Error | When |
-|---|---|
-| `KeenableRateLimitError` | HTTP 429. Set `KEENABLE_API_KEY` to lift the keyless cap |
-| `KeenableAuthError` | HTTP 401/403, the key was rejected |
-| `KeenableAPIError` | Any other non-2xx response; carries `statusCode` |
-| `KeenableConnectionError` | The API could not be reached |
-| `KeenableInvalidRequestError` | Bad arguments; no request was sent |
+| Exception | When | What to do |
+|---|---|---|
+| `KeenableValidationError` | HTTP 400/422: the API rejected the request | Fix what the message names; retrying unchanged fails |
+| `KeenableAuthError` | HTTP 401: the API key is missing or invalid | Check `KEENABLE_API_KEY` |
+| `KeenableForbiddenError` | HTTP 403: not allowed for this key or tier (extends `KeenableAuthError`) | Set a key, or use a plan that includes the feature |
+| `KeenableCreditsError` | HTTP 402: out of credits | Add credits at [keenable.ai/console](https://keenable.ai/console) |
+| `KeenableRateLimitError` | HTTP 429; carries `limit`, `remaining`, `reset` | Retry after `reset`, or set `KEENABLE_API_KEY` to lift the keyless cap |
+| `KeenableAPIError` | Any other non-2xx; base class of the above | Follow the hint: a 5xx is safe to retry, a 404 means the URL doesn't exist |
+| `KeenableConnectionError` | The API could not be reached or timed out | Retry; check network and `KEENABLE_API_URL` |
+| `KeenableInvalidRequestError` | The SDK rejected the arguments; no request was sent | Fix the call |
+
+Every `KeenableAPIError` carries `statusCode`, `body` (the API's message),
+`apiError` (the API's short label), `details`, `requestId` and `hint`.
+Successful responses carry `requestId` too.
 
 ## Configuration
 

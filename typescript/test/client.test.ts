@@ -2,11 +2,18 @@ import { describe, expect, it } from "vitest";
 
 import {
   Keenable,
+  KeenableAPIError,
   KeenableAuthError,
   KeenableConnectionError,
+  KeenableCreditsError,
+  KeenableForbiddenError,
   KeenableInvalidRequestError,
   KeenableRateLimitError,
+  KeenableValidationError,
+  TOOLS,
+  TRUNCATION_MARKER,
   runToolCall,
+  stripTruncationMarker,
 } from "../src/index.js";
 
 const SEARCH_BODY = {
@@ -96,8 +103,9 @@ describe("search", () => {
     expect(response.length).toBe(2);
     expect(response.results[0]?.title).toBe("How Cerebras works");
     expect(response.results[0]?.snippet).toContain("on-chip memory");
-    // The API sends description="" for most pages; it must not survive as "".
-    expect(response.results[0]?.description).toBeUndefined();
+    // The API sends description=""; the SDK mirrors snippet so code written
+    // against description still gets text (and never a bare "").
+    expect(response.results[0]?.description).toBe(response.results[0]?.snippet);
     expect(response.results[0]?.publishedAt).toBe("2026-05-31T23:57:19Z");
     expect([...response].map((r) => r.title)).toEqual(["How Cerebras works", "MoE guide"]);
   });
@@ -126,6 +134,44 @@ describe("search", () => {
     const payload = JSON.parse(String(seen[0]?.init.body));
     expect(payload.max_results).toBe(25);
     expect(payload.query_time).toBe("2026-05-01");
+  });
+
+  it.each([
+    ["", "page text"],
+    [undefined, "page text"],
+    ["A real meta description", "A real meta description"],
+  ])("falls back from description %j to the snippet", async (wire, expected) => {
+    const result = { title: "t", url: "https://a.example/", snippet: "page text", description: wire };
+    const { client } = mockClient(() => json({ query: "q", results: [result] }));
+    expect((await client.search("q")).results[0]?.description).toBe(expected);
+  });
+
+  it("leaves description unset without a snippet", async () => {
+    const result = { title: "t", url: "https://a.example/", snippet: "" };
+    const { client } = mockClient(() => json({ query: "q", results: [result] }));
+    expect((await client.search("q")).results[0]?.description).toBeUndefined();
+  });
+
+  it("sends realtime mode, disableCards and sessionId", async () => {
+    const { client, seen } = mockClient(() => json(SEARCH_BODY));
+    await client.search("q", { mode: "realtime", disableCards: true, sessionId: "agent-run-7" });
+    const payload = JSON.parse(String(seen[0]?.init.body));
+    expect(payload.mode).toBe("realtime");
+    expect(payload.disable_cards).toBe(true);
+    expect(payload.session_id).toBe("agent-run-7");
+  });
+
+  it("omits disable_cards when disableCards is unset", async () => {
+    const { client, seen } = mockClient(() => json(SEARCH_BODY));
+    await client.search("q");
+    const payload = JSON.parse(String(seen[0]?.init.body));
+    expect("disable_cards" in payload).toBe(false);
+  });
+
+  it("passes a mode it does not name through", async () => {
+    const { client, seen } = mockClient(() => json(SEARCH_BODY));
+    await client.search("q", { mode: "some-future-mode" });
+    expect(JSON.parse(String(seen[0]?.init.body)).mode).toBe("some-future-mode");
   });
 
   it("uses the public endpoint and identifies itself when keyless", async () => {
@@ -238,6 +284,95 @@ describe("fetch", () => {
     expect(page.content.startsWith("# Example Domain")).toBe(true);
   });
 
+  it("sends only the fetch options that were set", async () => {
+    const { client, seen } = mockClient(() => json(FETCH_BODY));
+    await client.fetch("https://example.com/");
+    expect(Object.fromEntries(new URL(seen[0]!.url).searchParams)).toEqual({
+      url: "https://example.com/",
+    });
+
+    await client.fetch("https://example.com/", {
+      maxChars: 300,
+      live: true,
+      prompt: "What is this domain for?",
+      sessionId: "agent-run-7",
+    });
+    expect(Object.fromEntries(new URL(seen[1]!.url).searchParams)).toEqual({
+      url: "https://example.com/",
+      max_chars: "300",
+      live: "true",
+      prompt: "What is this domain for?",
+      session_id: "agent-run-7",
+    });
+
+    await client.fetch("https://example.com/", { live: false });
+    expect(new URL(seen[2]!.url).searchParams.get("live")).toBe("false");
+  });
+
+  it("rejects a non-integer maxChars before sending", async () => {
+    const { client, seen } = mockClient(() => json(FETCH_BODY));
+    await expect(client.fetch("https://example.com/", { maxChars: 1.5 })).rejects.toThrow(
+      KeenableInvalidRequestError,
+    );
+    expect(seen).toHaveLength(0);
+  });
+
+  it.each([
+    [1792695600, "2026-10-22T19:00:00Z"],
+    [1792695600000, "2026-10-22T19:00:00Z"],
+    ["1792695600", "2026-10-22T19:00:00Z"],
+    [1792695600.5, "2026-10-22T19:00:00Z"],
+    [946684800000, "2000-01-01T00:00:00Z"],
+    ["20261022", "20261022"],
+    ["2026", "2026"],
+    [0, undefined],
+    ["²", "²"],
+    [1e23, undefined],
+    ["99999999999999999999999", undefined],
+    [253402300800000, undefined],
+    ["2026-10-22T19:00:00Z", "2026-10-22T19:00:00Z"],
+    ["2026-10-22T19:00:00+00:00", "2026-10-22T19:00:00+00:00"],
+    ["", undefined],
+    [null, undefined],
+    [true, undefined],
+    [{ nested: 1 }, undefined],
+  ])("turns published_at %j into %j", async (wire, expected) => {
+    const { client } = mockClient(() => json({ ...FETCH_BODY, published_at: wire }));
+    expect((await client.fetch("https://example.com/")).publishedAt).toBe(expected);
+  });
+
+  it("reports and strips the truncation note", async () => {
+    const cut =
+      "# Example\n\nSome text\n\n" +
+      "..._This content has been truncated to stay below 300 characters_...";
+    const { client } = mockClient(() => json({ ...FETCH_BODY, content: cut }));
+    const page = await client.fetch("https://example.com/");
+    expect(page.truncated).toBe(true);
+    expect(page.content).toBe(cut); // verbatim: the note is useful to a model
+    expect(stripTruncationMarker(page.content)).toBe("# Example\n\nSome text");
+    expect(TRUNCATION_MARKER.test(page.toContext())).toBe(true);
+
+    const spaced = "x" + " ".repeat(100_000) + "y";
+    const pageWs = await mockClient(() => json({ ...FETCH_BODY, content: spaced })).client.fetch(
+      "https://example.com/",
+    );
+    const start = performance.now();
+    expect(pageWs.truncated).toBe(false);
+    expect(stripTruncationMarker(spaced)).toBe(spaced);
+    // The old pattern took ~16 s here; a generous budget keeps CI stable.
+    expect(performance.now() - start).toBeLessThan(5000);
+
+    const authored = "Notes\n\n..._This content has been truncated by the author_...";
+    const byAuthor = await mockClient(() => json({ ...FETCH_BODY, content: authored })).client.fetch(
+      "https://example.com/",
+    );
+    expect(byAuthor.truncated).toBe(false);
+
+    const whole = await mockClient(() => json(FETCH_BODY)).client.fetch("https://example.com/");
+    expect(whole.truncated).toBe(false);
+    expect(stripTruncationMarker(whole.content)).toBe(whole.content);
+  });
+
   it("renders a citable block like search results do", async () => {
     const { client } = mockClient(() => json(FETCH_BODY));
     const page = await client.fetch("https://example.com");
@@ -320,6 +455,136 @@ describe("errors", () => {
     );
   });
 
+  const withHeaders = (body: unknown, status: number, headers: Record<string, string>) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json", ...headers },
+    });
+
+  const thrown = async (promise: Promise<unknown>) => {
+    try {
+      await promise;
+    } catch (error) {
+      return error as KeenableAPIError;
+    }
+    throw new Error("expected the call to throw");
+  };
+
+  it.each([
+    [400, "Invalid parameter", KeenableValidationError, "retrying unchanged fails"],
+    [422, "Unprocessable", KeenableValidationError, "Fix the"],
+    [401, "Authentication failed", KeenableAuthError, "KEENABLE_API_KEY"],
+    [402, "Payment required", KeenableCreditsError, "Add credits"],
+    [403, "Forbidden", KeenableForbiddenError, "This needs an API key"],
+    [503, "Unavailable", KeenableAPIError, "safe to repeat"],
+  ] as const)(
+    "maps %i to the right error and carries the API fields",
+    async (status, apiError, expected, hintPart) => {
+      const body = { error: apiError, message: "the api message", details: { param: "x" } };
+      const { client } = mockClient(() =>
+        withHeaders(body, status, { "X-Request-Id": "req-123" }),
+      );
+      const error = await thrown(client.search("q"));
+      expect(error.constructor).toBe(expected);
+      expect(error.statusCode).toBe(status);
+      expect(error.body).toBe("the api message");
+      expect(error.apiError).toBe(apiError);
+      expect(error.details).toEqual({ param: "x" });
+      expect(error.requestId).toBe("req-123");
+      expect(error.hint).toContain(hintPart);
+      expect(error.message).toContain("(request_id: req-123)");
+      expect(error.message.endsWith(error.hint ?? "")).toBe(true);
+    },
+  );
+
+  it("tells a missing page to check the URL, without a double period", async () => {
+    const { client } = mockClient(() =>
+      json({ error: "Not found", message: "The page does not exist at this URL." }, 404),
+    );
+    const error = await thrown(client.fetch("https://example.com/missing"));
+    expect(error.hint).toBe("Check the URL; retrying unchanged fails the same way.");
+    expect(error.message).toBe(
+      "Keenable API error (404): The page does not exist at this URL. " +
+        "Check the URL; retrying unchanged fails the same way.",
+    );
+    expect(error.body).toBe("The page does not exist at this URL.");
+  });
+
+  it("keeps 403 an auth error for existing instanceof checks", async () => {
+    const { client } = mockClient(() => json({ error: "Forbidden", message: "no" }, 403));
+    const error = await thrown(client.search("q"));
+    expect(error).toBeInstanceOf(KeenableAuthError);
+    expect(error).toBeInstanceOf(KeenableForbiddenError);
+    expect(error.message).not.toContain("authentication failed");
+  });
+
+  it("tells keyed callers about their plan, not about setting a key", async () => {
+    const { client } = mockClient(() => json({ message: "no" }, 403), { apiKey: "keen_x" });
+    const error = await thrown(client.search("q"));
+    expect(error.hint).not.toContain("KEENABLE_API_KEY");
+    expect(error.hint).toContain("plan");
+  });
+
+  it("reads the rate-limit headers and words the hint by key state", async () => {
+    const headers = {
+      "X-RateLimit-Limit": "1000",
+      "X-RateLimit-Remaining": "0",
+      "X-RateLimit-Reset": "2026-11-02T19:48:53.100Z",
+    };
+    const keyless = mockClient(() => withHeaders({ message: "cap" }, 429, headers)).client;
+    const error = (await thrown(keyless.search("q"))) as KeenableRateLimitError;
+    expect([error.limit, error.remaining, error.reset]).toEqual([
+      1000,
+      0,
+      "2026-11-02T19:48:53.100Z",
+    ]);
+    expect(error.message).toContain("Retry after 2026-11-02T19:48:53.100Z");
+    expect(error.message).toContain("KEENABLE_API_KEY");
+
+    const keyed = mockClient(() => withHeaders({ message: "cap" }, 429, headers), {
+      apiKey: "keen_x",
+    }).client;
+    const keyedError = await thrown(keyed.search("q"));
+    expect(keyedError.message).not.toContain("KEENABLE_API_KEY");
+  });
+
+  it("never puts the API key in an error message", async () => {
+    const { client } = mockClient(() => json({ message: "bad" }, 401), {
+      apiKey: "keen_secret",
+    });
+    const error = await thrown(client.search("q"));
+    expect(error.message).not.toContain("keen_secret");
+  });
+
+  it("puts the request id on successful responses", async () => {
+    const { client } = mockClient((url) =>
+      withHeaders(url.includes("/v1/search") ? SEARCH_BODY : FETCH_BODY, 200, {
+        "X-Request-Id": "req-ok",
+      }),
+    );
+    expect((await client.search("q")).requestId).toBe("req-ok");
+    expect((await client.fetch("https://example.com/")).requestId).toBe("req-ok");
+  });
+
+  it("keeps the request id in the message of an undecodable 2xx reply", async () => {
+    const { client } = mockClient(
+      () => new Response("<html>", { status: 200, headers: { "X-Request-Id": "req-bad" } }),
+    );
+    const error = await thrown(client.search("q"));
+    expect(error.message).toContain("(request_id: req-bad)");
+    expect(error.requestId).toBe("req-bad");
+  });
+
+  it("says a failed connection is safe to retry", async () => {
+    const client = new Keenable({
+      fetch: (async () => {
+        throw new TypeError("fetch failed");
+      }) as unknown as typeof globalThis.fetch,
+    });
+    await expect(client.search("q")).rejects.toThrow(KeenableConnectionError);
+    await expect(client.search("q")).rejects.toThrow(/Retrying is safe/);
+  });
+
   it("rejects a non-https base URL", () => {
     expect(() => new Keenable({ baseUrl: "ftp://api.keenable.ai" })).toThrow(
       KeenableInvalidRequestError,
@@ -329,6 +594,23 @@ describe("errors", () => {
     );
     // Plain http is allowed against localhost for local development.
     expect(() => new Keenable({ baseUrl: "http://localhost:8000" })).not.toThrow();
+  });
+});
+
+describe("tool schemas", () => {
+  // Pinned on purpose: a model chooses worse among many knobs, so new search
+  // parameters stay SDK-only unless deliberately exposed here.
+  it("offer the model exactly these arguments", () => {
+    const props = Object.fromEntries(
+      TOOLS.map((t) => [
+        t.function.name,
+        Object.keys((t.function.parameters as { properties: object }).properties).sort(),
+      ]),
+    );
+    expect(props).toEqual({
+      keenable_search: ["published_after", "query", "site"],
+      keenable_fetch: ["url"],
+    });
   });
 });
 

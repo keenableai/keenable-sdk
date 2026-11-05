@@ -17,7 +17,7 @@ markdown.
 ```bash
 pip install keenable
 npm install keenable
-go get github.com/keenableai/keenable-sdk/go@v0.1.0
+go get github.com/keenableai/keenable-sdk/go@v0.2.0
 ```
 
 ```python
@@ -76,6 +76,18 @@ reference.
 
 - [`docs/partners/cerebras/keenable.mdx`](./docs/partners/cerebras/keenable.mdx) -
   integration page written for the Cerebras Inference docs.
+
+## Contributing
+
+When you change the SDK's public behaviour (a new or removed option, a renamed
+method, a changed signature, a new error type, a version bump), update the docs
+in [keenable-external-docs](https://github.com/keenableai/keenable-external-docs)
+in the same change set:
+
+- the code samples under `samples/`, then regenerate them with
+  `node scripts/samples-generate.mjs`
+- `sdks.mdx` and the product pages
+- the install pins in `index.mdx`, `sdks.mdx`, `skill.md` and `llms.txt`
 
 ## License
 

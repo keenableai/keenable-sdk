@@ -2,12 +2,16 @@ import {
   KeenableAPIError,
   KeenableAuthError,
   KeenableConnectionError,
+  KeenableCreditsError,
+  KeenableForbiddenError,
   KeenableInvalidRequestError,
   KeenableRateLimitError,
+  KeenableValidationError,
 } from "./errors.js";
 import { SEARCH_FILTERS } from "./filters.js";
-import { collapse, nonEmpty, normalizeHost, readEnv } from "./internal.js";
+import { collapse, isoTimestamp, nonEmpty, normalizeHost, readEnv } from "./internal.js";
 import type {
+  FetchOptions,
   KeenableOptions,
   SearchOptions,
   SearchResult,
@@ -32,11 +36,22 @@ const BLOCKED_HOSTS = new Set(["localhost", "metadata.google.internal"]);
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
 const STATUS_LABELS: Record<number, string> = {
+  400: "Keenable rejected the request (400)",
   401: "Keenable authentication failed (401)",
-  403: "Keenable authentication failed (403)",
   402: "Keenable: insufficient credits (402)",
+  403: "Keenable: forbidden (403)",
+  422: "Keenable rejected the request (422)",
   429: "Keenable rate limit exceeded (429)",
 };
+
+const CONSOLE_URL = "https://keenable.ai/console";
+const RETRY_HINT = "Retry the request; if it keeps failing, confirm KEENABLE_API_URL.";
+
+/** A decoded response body and the request id the API assigned to it. */
+interface Reply {
+  data: Record<string, unknown>;
+  requestId?: string;
+}
 
 function resolveBaseUrl(baseUrl: string | undefined): string {
   const raw = (baseUrl ?? readEnv("KEENABLE_API_URL") ?? DEFAULT_BASE_URL).replace(
@@ -135,6 +150,28 @@ function sourceHeader(index: number, title: string, url: string, date?: string):
   return date ? `${header} - published ${date}` : header;
 }
 
+/**
+ * The note the API appends to fetched content cut at `maxChars`.
+ *
+ * Best-effort: it matches the API's current wording, and `Page.truncated`
+ * reads `false` if the wording changes.
+ */
+// No leading \s*: an unanchored one rescans every whitespace run in the page
+// (seconds on a 50,000-character page). stripTruncationMarker trims instead.
+export const TRUNCATION_MARKER =
+  /\.{3}_This content has been truncated to stay below \d+ characters_\.{3}\s*$/;
+
+/**
+ * Return `text` without a trailing truncation note, if it has one.
+ *
+ * For scorers and pipelines that want only page text. A model usually benefits
+ * from seeing the note, so `Page.toContext()` keeps it.
+ */
+export function stripTruncationMarker(text: string): string {
+  const match = TRUNCATION_MARKER.exec(text);
+  return match ? text.slice(0, match.index).trimEnd() : text;
+}
+
 /** One rendered source: its header line, then its text. */
 function contextBlock(header: string, body: string): string {
   return body ? `${header}\n${body}` : header;
@@ -144,17 +181,21 @@ function contextBlock(header: string, body: string): string {
 export class SearchResponse {
   readonly query: string;
   readonly mode?: string;
+  /** The API's `X-Request-Id` for this call. Quote it to support. */
+  readonly requestId?: string;
   readonly results: SearchResult[];
   readonly raw: Record<string, unknown>;
 
   constructor(init: {
     query: string;
     mode?: string;
+    requestId?: string;
     results: SearchResult[];
     raw: Record<string, unknown>;
   }) {
     this.query = init.query;
     this.mode = init.mode;
+    this.requestId = init.requestId;
     this.results = init.results;
     this.raw = init.raw;
   }
@@ -243,7 +284,13 @@ export class Page {
    */
   readonly description?: string;
   readonly author?: string;
+  /**
+   * ISO-8601 publication time in UTC. The API sends a Unix timestamp here; the
+   * SDK converts it so it matches `SearchResult.publishedAt`.
+   */
   readonly publishedAt?: string;
+  /** The API's `X-Request-Id` for this call. Quote it to support. */
+  readonly requestId?: string;
   readonly raw: Record<string, unknown>;
 
   constructor(init: {
@@ -253,6 +300,7 @@ export class Page {
     description?: string;
     author?: string;
     publishedAt?: string;
+    requestId?: string;
     raw: Record<string, unknown>;
   }) {
     this.url = init.url;
@@ -261,7 +309,16 @@ export class Page {
     this.description = init.description;
     this.author = init.author;
     this.publishedAt = init.publishedAt;
+    this.requestId = init.requestId;
     this.raw = init.raw;
+  }
+
+  /**
+   * True when the API cut `content` at `maxChars`. `content` keeps the API's
+   * trailing note; use `stripTruncationMarker()` for the bare text.
+   */
+  get truncated(): boolean {
+    return TRUNCATION_MARKER.test(this.content);
   }
 
   /**
@@ -286,21 +343,22 @@ function toSearchResult(data: Record<string, unknown>): SearchResult {
     title: String(data.title ?? ""),
     url: String(data.url ?? ""),
     snippet: String(data.snippet ?? ""),
-    description: nonEmpty(data.description),
-    publishedAt: nonEmpty(data.published_at),
+    description: nonEmpty(data.description) ?? nonEmpty(data.snippet),
+    publishedAt: isoTimestamp(data.published_at),
     acquiredAt: nonEmpty(data.acquired_at),
     raw: data,
   };
 }
 
-function toPage(data: Record<string, unknown>, url: string): Page {
+function toPage(data: Record<string, unknown>, url: string, requestId?: string): Page {
   return new Page({
     url: String(data.url ?? url),
     title: String(data.title ?? ""),
     content: String(data.content ?? ""),
     description: nonEmpty(data.description),
     author: nonEmpty(data.author),
-    publishedAt: nonEmpty(data.published_at),
+    publishedAt: isoTimestamp(data.published_at),
+    requestId,
     raw: data,
   });
 }
@@ -380,7 +438,7 @@ export class Keenable {
       if (value !== undefined) payload[filter.wire] = value;
     }
 
-    const data = await this.request("search", {
+    const { data, requestId } = await this.request("search", {
       method: "POST",
       headers: { ...this.headers(), "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -391,6 +449,7 @@ export class Keenable {
     return new SearchResponse({
       query: nonEmpty(data.query) ?? query,
       mode: nonEmpty(data.mode),
+      requestId,
       results: rawResults
         .filter(
           (item): item is Record<string, unknown> =>
@@ -407,18 +466,30 @@ export class Keenable {
    * Use this after `search()` when a snippet is not enough and the model needs
    * the full page.
    */
-  async fetch(url: string, options: { signal?: AbortSignal } = {}): Promise<Page> {
+  async fetch(url: string, options: FetchOptions = {}): Promise<Page> {
     rejectPrivateFetchTarget(url);
+    const { maxChars, live, prompt, sessionId } = options;
+    // Ranges are the API's to enforce; a bad value comes back as a
+    // KeenableValidationError naming the parameter.
+    if (maxChars !== undefined && !Number.isInteger(maxChars)) {
+      throw new KeenableInvalidRequestError(
+        `maxChars must be an integer, got ${JSON.stringify(maxChars)}`,
+      );
+    }
 
     const target = new URL(this.url("fetch"));
     target.searchParams.set("url", url);
+    if (maxChars !== undefined) target.searchParams.set("max_chars", String(maxChars));
+    if (live !== undefined) target.searchParams.set("live", live ? "true" : "false");
+    if (prompt) target.searchParams.set("prompt", prompt);
+    if (sessionId) target.searchParams.set("session_id", sessionId);
 
-    const data = await this.request(
+    const { data, requestId } = await this.request(
       "fetch",
       { method: "GET", headers: this.headers(), signal: options.signal },
       target.toString(),
     );
-    return toPage(data, url);
+    return toPage(data, url, requestId);
   }
 
   /**
@@ -431,7 +502,7 @@ export class Keenable {
     endpoint: Endpoint,
     init: RequestInit,
     url: string = this.url(endpoint),
-  ): Promise<Record<string, unknown>> {
+  ): Promise<Reply> {
     const { signal: callerSignal, ...rest } = init;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -449,40 +520,86 @@ export class Keenable {
       if (callerSignal?.aborted) throw cause;
       if (controller.signal.aborted) {
         throw new KeenableConnectionError(
-          `the Keenable API did not respond within ${this.timeoutMs} ms`,
+          `the Keenable API did not respond within ${this.timeoutMs} ms. ` +
+            "Retrying is safe; raise timeoutMs if it keeps happening.",
         );
       }
       throw new KeenableConnectionError(
-        `could not reach the Keenable API: ${String(cause)}`,
+        `could not reach the Keenable API: ${String(cause)}. ` +
+          "Retrying is safe; check your network and KEENABLE_API_URL.",
       );
     } finally {
       clearTimeout(timer);
       callerSignal?.removeEventListener("abort", onAbort);
     }
 
-    if (!response.ok) throw toApiError(response.status, text);
+    if (!response.ok) throw toApiError(response, text, this.keyless);
 
+    const requestId = response.headers.get("X-Request-Id") || undefined;
     let data: unknown;
     try {
       data = JSON.parse(text);
     } catch {
       throw new KeenableAPIError(
-        `Keenable API returned a non-JSON response: ${JSON.stringify(text.slice(0, 200))}`,
+        `Keenable API returned a non-JSON response: ${JSON.stringify(text.slice(0, 200))}` +
+          `${requestId ? ` (request_id: ${requestId})` : ""}. ${RETRY_HINT}`,
         response.status,
+        undefined,
+        { requestId, hint: RETRY_HINT },
       );
     }
     if (typeof data !== "object" || data === null || Array.isArray(data)) {
       throw new KeenableAPIError(
-        `unexpected response from the Keenable API: ${JSON.stringify(data)}`,
+        `unexpected response from the Keenable API: ${JSON.stringify(data)}` +
+          `${requestId ? ` (request_id: ${requestId})` : ""}. ${RETRY_HINT}`,
         response.status,
+        undefined,
+        { requestId, hint: RETRY_HINT },
       );
     }
-    return data as Record<string, unknown>;
+    return { data: data as Record<string, unknown>, requestId };
   }
 }
 
-function toApiError(status: number, text: string): KeenableAPIError {
+/** The one next step that ends an API error message. */
+function errorHint(status: number, keyless: boolean, reset?: string): string {
+  if (status === 400 || status === 422) {
+    return "Fix the request (the message says what was rejected); retrying unchanged fails the same way.";
+  }
+  if (status === 401) {
+    return "Check KEENABLE_API_KEY or the apiKey you passed; unset both to use the keyless tier.";
+  }
+  if (status === 402) {
+    return `Add credits at ${CONSOLE_URL}; retrying before that fails the same way.`;
+  }
+  if (status === 403) {
+    return keyless
+      ? `This needs an API key: set KEENABLE_API_KEY (create one at ${CONSOLE_URL}).`
+      : `Your plan does not include this; check it at ${CONSOLE_URL}.`;
+  }
+  if (status === 429) {
+    const when = reset ? `Retry after ${reset}` : "Retry after the rate limit window resets";
+    return keyless
+      ? `${when}, or set KEENABLE_API_KEY to lift the keyless hourly cap.`
+      : `${when}.`;
+  }
+  if (status === 404) return "Check the URL; retrying unchanged fails the same way.";
+  if (status >= 500) return "Retry the request; search and fetch are safe to repeat.";
+  return "If it keeps failing, confirm KEENABLE_API_URL.";
+}
+
+function headerInt(headers: Headers, name: string): number | undefined {
+  const raw = headers.get(name);
+  if (raw === null || raw.trim() === "") return undefined;
+  const value = Number(raw);
+  return Number.isInteger(value) ? value : undefined;
+}
+
+function toApiError(response: Response, text: string, keyless: boolean): KeenableAPIError {
+  const status = response.status;
   let detail = text.trim();
+  let apiError: string | undefined;
+  let details: unknown;
   try {
     const body: unknown = JSON.parse(text);
     if (typeof body === "object" && body !== null) {
@@ -492,19 +609,39 @@ function toApiError(status: number, text: string): KeenableAPIError {
         nonEmpty(record.error) ??
         nonEmpty(record.detail) ??
         "";
+      apiError = nonEmpty(record.error);
+      details = record.details;
     }
   } catch {
     // Not JSON; the raw body is the best detail we have.
   }
 
+  const requestId = response.headers.get("X-Request-Id") || undefined;
+  const reset = response.headers.get("X-RateLimit-Reset") || undefined;
+  const hint = errorHint(status, keyless, reset);
   const label = STATUS_LABELS[status] ?? `Keenable API error (${status})`;
-  const message = detail ? `${label}: ${detail}` : label;
+  // The API's messages often end in a period; drop one so the ". <hint>"
+  // below doesn't produce "..".
+  const shown = detail.endsWith(".") ? detail.slice(0, -1) : detail;
+  let message = detail ? `${label}: ${shown}` : label;
+  if (requestId) message += ` (request_id: ${requestId})`;
+  message += `. ${hint}`;
 
-  if (status === 401 || status === 403) {
-    return new KeenableAuthError(message, status, detail || undefined);
+  const fields = { apiError, details, requestId, hint };
+  const body = detail || undefined;
+  if (status === 400 || status === 422) {
+    return new KeenableValidationError(message, status, body, fields);
   }
+  if (status === 401) return new KeenableAuthError(message, status, body, fields);
+  if (status === 402) return new KeenableCreditsError(message, status, body, fields);
+  if (status === 403) return new KeenableForbiddenError(message, status, body, fields);
   if (status === 429) {
-    return new KeenableRateLimitError(message, status, detail || undefined);
+    return new KeenableRateLimitError(message, status, body, {
+      ...fields,
+      limit: headerInt(response.headers, "X-RateLimit-Limit"),
+      remaining: headerInt(response.headers, "X-RateLimit-Remaining"),
+      reset,
+    });
   }
-  return new KeenableAPIError(message, status, detail || undefined);
+  return new KeenableAPIError(message, status, body, fields);
 }

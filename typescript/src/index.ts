@@ -19,19 +19,27 @@ export {
   Keenable,
   Page,
   SearchResponse,
+  TRUNCATION_MARKER,
+  stripTruncationMarker,
 } from "./client.js";
 export {
   KeenableAPIError,
   KeenableAuthError,
   KeenableConnectionError,
+  KeenableCreditsError,
   KeenableError,
+  KeenableForbiddenError,
   KeenableInvalidRequestError,
   KeenableRateLimitError,
+  KeenableValidationError,
 } from "./errors.js";
+export type { KeenableAPIErrorFields, RateLimitFields } from "./errors.js";
 export { FETCH_TOOL, SEARCH_TOOL, TOOLS, runToolCall } from "./tools.js";
 export type { ToolDefinition } from "./tools.js";
 export type {
+  FetchOptions,
   KeenableOptions,
+  SearchMode,
   SearchOptions,
   SearchResult,
   ToContextOptions,

@@ -71,6 +71,21 @@ SEARCH_FILTERS: tuple[Filter, ...] = (
         "that). An ISO 8601 datetime, YYYY-MM-DD, or an offset back from now "
         "such as '7d'.",
     ),
+    Filter(
+        "disable_cards",
+        "Optional. Leave cards out of the results. A card is a result Keenable "
+        "writes itself for queries such as prices, exchange rates or facts "
+        "about a company, served at a https://cards.keenable.ai/w/<id> URL "
+        "that works for one day. With it set, ordinary web pages take the "
+        "place of cards, so you get the same number of results.",
+        json_type="boolean",
+    ),
+    Filter(
+        "session_id",
+        "Optional. An id for the agent session making this call. Send the "
+        "same value on every call in one session so its requests can be "
+        "grouped.",
+    ),
 )
 
 TOOL_FILTERS: tuple[Filter, ...] = tuple(f for f in SEARCH_FILTERS if f.tool_exposed)

@@ -164,18 +164,20 @@ func (c *Client) Search(ctx context.Context, query string, opts *SearchOptions) 
 	if err != nil {
 		return nil, &InvalidRequestError{msg: "could not encode the search request. Retry with a string query."}
 	}
-	data, err := c.do(ctx, http.MethodPost, "search", body, "")
+	data, requestID, err := c.do(ctx, http.MethodPost, "search", body, nil)
 	if err != nil {
 		return nil, err
 	}
-	return searchResponseFromJSON(data, query), nil
+	resp := searchResponseFromJSON(data, query)
+	resp.RequestID = requestID
+	return resp, nil
 }
 
 // Fetch returns one URL's main content as markdown.
 //
 // Use it after Search when a snippet is not enough. Internal hosts and private
-// addresses are refused here, before a request is sent.
-func (c *Client) Fetch(ctx context.Context, pageURL string) (*Page, error) {
+// addresses are refused here, before a request is sent. opts may be nil.
+func (c *Client) Fetch(ctx context.Context, pageURL string, opts *FetchOptions) (*Page, error) {
 	if err := requireClient(c); err != nil {
 		return nil, err
 	}
@@ -185,11 +187,29 @@ func (c *Client) Fetch(ctx context.Context, pageURL string) (*Page, error) {
 	if err := rejectPrivateFetchTarget(pageURL); err != nil {
 		return nil, err
 	}
-	data, err := c.do(ctx, http.MethodGet, "fetch", nil, pageURL)
+	query := url.Values{}
+	query.Set("url", pageURL)
+	if o := opts; o != nil {
+		if o.MaxChars != nil {
+			query.Set("max_chars", strconv.Itoa(*o.MaxChars))
+		}
+		if o.Live != nil {
+			query.Set("live", strconv.FormatBool(*o.Live))
+		}
+		if o.Prompt != "" {
+			query.Set("prompt", o.Prompt)
+		}
+		if o.SessionID != "" {
+			query.Set("session_id", o.SessionID)
+		}
+	}
+	data, requestID, err := c.do(ctx, http.MethodGet, "fetch", nil, query)
 	if err != nil {
 		return nil, err
 	}
-	return pageFromJSON(data, pageURL), nil
+	page := pageFromJSON(data, pageURL)
+	page.RequestID = requestID
+	return page, nil
 }
 
 func requireClient(c *Client) error {
@@ -206,10 +226,19 @@ func requireContext(ctx context.Context) error {
 	return nil
 }
 
-func (c *Client) do(ctx context.Context, method, endpoint string, body []byte, fetchURL string) (map[string]any, error) {
-	rawURL, err := c.endpointURL(endpoint, fetchURL)
+// do sends one request and returns the decoded body and the API's request id.
+func (c *Client) do(ctx context.Context, method, endpoint string, body []byte, query url.Values) (map[string]any, string, error) {
+	data, header, err := c.send(ctx, method, endpoint, body, query)
 	if err != nil {
-		return nil, err
+		return nil, "", err
+	}
+	return data, headerValue(header, "X-Request-Id"), nil
+}
+
+func (c *Client) send(ctx context.Context, method, endpoint string, body []byte, query url.Values) (map[string]any, http.Header, error) {
+	rawURL, err := c.endpointURL(endpoint, query)
+	if err != nil {
+		return nil, nil, err
 	}
 	var reader io.Reader
 	if body != nil {
@@ -223,23 +252,24 @@ func (c *Client) do(ctx context.Context, method, endpoint string, body []byte, f
 	}
 	req, err := http.NewRequestWithContext(reqCtx, method, rawURL, reader)
 	if err != nil {
-		return nil, &InvalidRequestError{msg: "could not build the request: " + err.Error() + ". Check Options.BaseURL or KEENABLE_API_URL."}
+		return nil, nil, &InvalidRequestError{msg: "could not build the request: " + err.Error() + ". Check Options.BaseURL or KEENABLE_API_URL."}
 	}
 	req.Header = c.headers(body != nil)
 
 	resp, err := c.requestClient().Do(req)
 	if err != nil {
-		return nil, c.transportError(ctx, reqCtx, err)
+		return nil, nil, c.transportError(ctx, reqCtx, err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, c.transportError(ctx, reqCtx, err)
+		return nil, nil, c.transportError(ctx, reqCtx, err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, toAPIError(resp.StatusCode, raw, resp.Header, c.Keyless())
+		return nil, nil, toAPIError(resp.StatusCode, raw, resp.Header, c.Keyless())
 	}
-	return decodeObject(resp.StatusCode, raw, resp.Header)
+	data, err := decodeObject(resp.StatusCode, raw, resp.Header)
+	return data, resp.Header, err
 }
 
 // requestClient applies the redirect guard. A caller-supplied client is cloned
@@ -353,7 +383,7 @@ func (c *Client) headers(jsonBody bool) http.Header {
 	return h
 }
 
-func (c *Client) endpointURL(endpoint, fetchURL string) (string, error) {
+func (c *Client) endpointURL(endpoint string, query url.Values) (string, error) {
 	u, err := url.Parse(c.baseURL)
 	if err != nil || u.Host == "" {
 		return "", &InvalidRequestError{msg: fmt.Sprintf("baseURL %q is not a valid URL. Pass an https URL with a host.", c.baseURL)}
@@ -364,10 +394,8 @@ func (c *Client) endpointURL(endpoint, fetchURL string) (string, error) {
 	}
 	u.RawQuery = ""
 	u.Fragment = ""
-	if fetchURL != "" {
-		q := url.Values{}
-		q.Set("url", fetchURL)
-		u.RawQuery = q.Encode()
+	if len(query) > 0 {
+		u.RawQuery = query.Encode()
 	}
 	return u.String(), nil
 }
@@ -480,19 +508,61 @@ func isNonPublic(addr netip.Addr) bool {
 }
 
 var statusLabels = map[int]string{
+	400: "Keenable rejected the request (400)",
 	401: "Keenable authentication failed (401)",
-	403: "Keenable authentication failed (403)",
 	402: "Keenable: insufficient credits (402)",
+	403: "Keenable: forbidden (403)",
+	422: "Keenable rejected the request (422)",
 	429: "Keenable rate limit exceeded (429)",
 }
 
+const consoleURL = "https://keenable.ai/console"
+
+// retryHint is the next step for a 2xx reply the SDK could not decode.
+const retryHint = "Retry the request; if it keeps failing, confirm KEENABLE_API_URL."
+
+// errorHint is the one next step that ends an API error message.
+func errorHint(status int, keyless bool, reset string) string {
+	switch {
+	case status == 400 || status == 422:
+		return "Fix the request (the message says what was rejected); retrying unchanged fails the same way."
+	case status == 401:
+		return "Check KEENABLE_API_KEY or Options.APIKey; unset both to use the keyless tier."
+	case status == 402:
+		return "Add credits at " + consoleURL + "; retrying before that fails the same way."
+	case status == 403:
+		if keyless {
+			return "This needs an API key: set KEENABLE_API_KEY (create one at " + consoleURL + ")."
+		}
+		return "Your plan does not include this; check it at " + consoleURL + "."
+	case status == 429:
+		when := "Retry after the rate limit window resets"
+		if reset != "" {
+			when = "Retry after " + reset
+		}
+		if keyless {
+			return when + ", or set KEENABLE_API_KEY to lift the keyless hourly cap."
+		}
+		return when + "."
+	case status == 404:
+		return "Check the URL; retrying unchanged fails the same way."
+	case status >= 500:
+		return "Retry the request; search and fetch are safe to repeat."
+	default:
+		return "If it keeps failing, confirm KEENABLE_API_URL."
+	}
+}
+
 func toAPIError(status int, raw []byte, header http.Header, keyless bool) error {
-	detail := ""
+	detail, apiCode := "", ""
+	var details any
 	var body any
 	if err := json.Unmarshal(raw, &body); err != nil {
 		detail = strings.TrimSpace(string(raw))
 	} else if m, ok := body.(map[string]any); ok {
 		detail = firstDetail(m, "message", "error", "detail")
+		apiCode = firstDetail(m, "error")
+		details = m["details"]
 	}
 	label, ok := statusLabels[status]
 	if !ok {
@@ -500,46 +570,53 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 	}
 	msg := label
 	if detail != "" {
-		msg = label + ": " + detail
+		// The API's messages often end in a period; drop one so the
+		// ". <hint>" Error() appends doesn't produce "..".
+		msg = label + ": " + strings.TrimSuffix(detail, ".")
 	}
-	switch status {
-	case 401, 403:
-		msg += ". Check KEENABLE_API_KEY, or pass Options.APIKey."
-	case 402:
-		msg += ". Add credits at https://keenable.ai/console."
-	case 429:
-		if keyless {
-			msg += ". Set KEENABLE_API_KEY to lift the keyless hourly cap. Create a key at https://keenable.ai/console."
-		} else {
-			msg += ". Wait for the rate limit window to reset, then retry."
-		}
-		if reset := headerValue(header, "X-RateLimit-Reset"); reset != "" {
-			msg += " Retry after " + reset + "."
-		}
-	default:
-		msg += ". Retry the request. If it keeps failing, confirm KEENABLE_API_URL."
-	}
-	return classifyStatus(status, msg, detail, header)
+	hint := errorHint(status, keyless, headerValue(header, "X-RateLimit-Reset"))
+	return classifyStatus(status, msg, detail, header, apiErrorFields{code: apiCode, details: details, hint: hint})
 }
 
-func classifyStatus(status int, msg, body string, header http.Header) error {
+type apiErrorFields struct {
+	code    string
+	details any
+	hint    string
+}
+
+func classifyStatus(status int, msg, body string, header http.Header, f apiErrorFields) error {
 	code := CodeAPI
 	switch status {
-	case 401, 403:
+	case 400, 422:
+		code = CodeValidation
+	case 401:
 		code = CodeAuth
+	case 402:
+		code = CodeCredits
+	case 403:
+		code = CodeForbidden
 	case 429:
 		code = CodeRateLimit
 	}
 	api := &APIError{
-		StatusCode: status,
-		Body:       body,
-		RequestID:  headerValue(header, "X-Request-Id"),
-		msg:        msg,
-		code:       code,
+		StatusCode:   status,
+		Body:         body,
+		RequestID:    headerValue(header, "X-Request-Id"),
+		APIErrorCode: f.code,
+		Details:      f.details,
+		Hint:         f.hint,
+		msg:          msg,
+		code:         code,
 	}
 	switch status {
-	case 401, 403:
+	case 400, 422:
+		return &ValidationError{APIError: api}
+	case 401:
 		return &AuthError{APIError: api}
+	case 402:
+		return &CreditsError{APIError: api}
+	case 403:
+		return &ForbiddenError{AuthError: &AuthError{APIError: api}}
 	case 429:
 		return &RateLimitError{
 			APIError:  api,
@@ -599,7 +676,8 @@ func decodeObject(status int, raw []byte, header http.Header) (map[string]any, e
 			StatusCode: status,
 			RequestID:  id,
 			code:       CodeAPI,
-			msg:        fmt.Sprintf("Keenable API returned a non-JSON response: %q. Retry the request. If it keeps failing, confirm KEENABLE_API_URL.", string(snippet)),
+			Hint:       retryHint,
+			msg:        fmt.Sprintf("Keenable API returned a non-JSON response: %q", string(snippet)),
 		}
 	}
 	obj, ok := data.(map[string]any)
@@ -608,7 +686,8 @@ func decodeObject(status int, raw []byte, header http.Header) (map[string]any, e
 			StatusCode: status,
 			RequestID:  id,
 			code:       CodeAPI,
-			msg:        fmt.Sprintf("Unexpected response from the Keenable API: %q. Retry the request. If it keeps failing, confirm KEENABLE_API_URL.", string(snippet)),
+			Hint:       retryHint,
+			msg:        fmt.Sprintf("Unexpected response from the Keenable API: %q", string(snippet)),
 		}
 	}
 	return obj, nil

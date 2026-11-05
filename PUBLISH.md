@@ -1,6 +1,9 @@
 # Publishing
 
-Three SDKs ship from this repo, on independent version numbers.
+Three SDKs ship from this repo under **one version number**. Python, TypeScript
+and Go have the same feature surface and release together: a release bumps all
+four version strings below to the same value and cuts all three tags.
+`scripts/check-versions.py` (run in CI) fails when they disagree.
 
 ## Python (`keenable` on PyPI)
 
@@ -15,7 +18,7 @@ To release:
 1. Bump `version` in `python/pyproject.toml` and `__version__` in
    `python/keenable/_version.py` (the only two places it appears; `__init__`
    and the User-Agent both read the latter).
-2. Create a GitHub Release tagged `python-v<version>` (e.g. `python-v0.1.1`).
+2. Create a GitHub Release tagged `python-v<version>` (e.g. `python-v0.2.0`).
 3. `publish-python.yml` builds with `uv` and publishes. The workflow ignores
    releases whose tag does not start with `python-v`.
 
@@ -45,9 +48,9 @@ pkg.go.dev follow a git tag.
 
 1. Bump `Version` in `go/version.go`. That constant is the only copy. The
    User-Agent reads it.
-2. Tag `go/v<version>` (for example `go/v0.1.0`) on the commit that contains
+2. Tag `go/v<version>` (for example `go/v0.2.0`) on the commit that contains
    that constant. The tag prefix is the module directory. Users install with
-   `go get github.com/keenableai/keenable-sdk/go@v0.1.0`. The `@` version does
+   `go get github.com/keenableai/keenable-sdk/go@v0.2.0`. The `@` version does
    not repeat the `go/` prefix.
 3. The module proxy indexes the tag the first time someone fetches it.
 
@@ -56,6 +59,10 @@ not publish it either.
 
 ## Version sync
 
-The three SDKs keep the same feature surface but version independently. When a
-change touches more than one, release each and note it in the same GitHub
+Every release bumps Python, TypeScript and Go to the same version, even when a
+change touches only one of them; the changelog entry says "no changes" for the
+others. One number means a user can match SDKs across languages, and a reader of
+any changelog knows which feature set they have. Note all three in one GitHub
 Release description.
+
+Before tagging, run `python3 scripts/check-versions.py`.

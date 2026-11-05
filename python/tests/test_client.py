@@ -3,19 +3,27 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 import httpx
 import pytest
 
 from keenable import (
+    TRUNCATION_MARKER,
     AsyncKeenable,
     Keenable,
+    KeenableAPIError,
     KeenableAuthError,
+    KeenableConnectionError,
+    KeenableCreditsError,
+    KeenableForbiddenError,
     KeenableInvalidRequestError,
     KeenableRateLimitError,
+    KeenableValidationError,
     arun_tool_call,
     run_tool_call,
+    strip_truncation_marker,
 )
 
 SEARCH_BODY: dict[str, Any] = {
@@ -102,8 +110,9 @@ def test_search_parses_results_and_prefers_snippet() -> None:
     assert len(response) == 2
     assert response[0].title == "How Cerebras works"
     assert response[0].snippet.startswith("The WSE")
-    # The API sends description="" for most pages; it must not become a str "".
-    assert response[0].description is None
+    # The API sends description=""; the SDK mirrors snippet so code written
+    # against description still gets text (and never a bare "").
+    assert response[0].description == response[0].snippet
     assert response[0].published_at == "2026-05-31T23:57:19Z"
 
 
@@ -129,6 +138,68 @@ def test_search_sends_max_results_and_query_time() -> None:
     payload = json.loads(seen[0].content)
     assert payload["max_results"] == 25
     assert payload["query_time"] == "2026-05-01"
+
+
+def test_search_sends_realtime_mode_disable_cards_and_session_id() -> None:
+    keenable, seen = _client(_ok(SEARCH_BODY))
+    keenable.search(
+        "q", mode="realtime", disable_cards=True, session_id="agent-run-7"
+    )
+    payload = json.loads(seen[0].content)
+    assert payload["mode"] == "realtime"
+    assert payload["disable_cards"] is True
+    assert payload["session_id"] == "agent-run-7"
+
+
+def test_search_omits_disable_cards_when_unset() -> None:
+    keenable, seen = _client(_ok(SEARCH_BODY))
+    keenable.search("q")
+    assert "disable_cards" not in json.loads(seen[0].content)
+
+
+async def test_async_search_sends_disable_cards() -> None:
+    keenable, seen = _aclient(_ok(SEARCH_BODY))
+    async with keenable:
+        await keenable.search("q", disable_cards=True)
+    assert json.loads(seen[0].content)["disable_cards"] is True
+
+
+def test_search_passes_an_unnamed_mode_through() -> None:
+    keenable, seen = _client(_ok(SEARCH_BODY))
+    keenable.search("q", mode="some-future-mode")
+    assert json.loads(seen[0].content)["mode"] == "some-future-mode"
+
+
+def test_fetch_sends_only_the_options_that_were_set() -> None:
+    keenable, seen = _client(_ok(FETCH_BODY))
+    keenable.fetch("https://example.com/")
+    assert dict(seen[0].url.params) == {"url": "https://example.com/"}
+
+    keenable.fetch(
+        "https://example.com/",
+        max_chars=300,
+        live=True,
+        prompt="What is this domain for?",
+        session_id="agent-run-7",
+    )
+    assert dict(seen[1].url.params) == {
+        "url": "https://example.com/",
+        "max_chars": "300",
+        "live": "true",
+        "prompt": "What is this domain for?",
+        "session_id": "agent-run-7",
+    }
+
+    keenable.fetch("https://example.com/", live=False)
+    assert seen[2].url.params["live"] == "false"
+
+
+@pytest.mark.parametrize("bad", [True, 1.5, "300"])
+def test_fetch_rejects_a_non_integer_max_chars_locally(bad: Any) -> None:
+    keenable, seen = _client(_ok(FETCH_BODY))
+    with pytest.raises(KeenableInvalidRequestError, match="max_chars"):
+        keenable.fetch("https://example.com/", max_chars=bad)
+    assert seen == []
 
 
 def test_keyless_client_uses_public_endpoint_and_identifies_itself() -> None:
@@ -222,6 +293,91 @@ def test_fetch_returns_markdown() -> None:
     assert page.content.startswith("# Example Domain")
 
 
+@pytest.mark.parametrize(
+    ("wire", "description"),
+    [
+        ("", "page text"),
+        (None, "page text"),
+        ("A real meta description", "A real meta description"),
+    ],
+)
+def test_search_description_falls_back_to_snippet(
+    wire: str | None, description: str
+) -> None:
+    result = {"title": "t", "url": "https://a.example/", "snippet": "page text"}
+    if wire is not None:
+        result["description"] = wire
+    keenable, _ = _client(_ok({"query": "q", "results": [result]}))
+    assert keenable.search("q")[0].description == description
+
+
+def test_search_description_stays_none_without_a_snippet() -> None:
+    result = {"title": "t", "url": "https://a.example/", "snippet": ""}
+    keenable, _ = _client(_ok({"query": "q", "results": [result]}))
+    assert keenable.search("q")[0].description is None
+
+
+@pytest.mark.parametrize(
+    ("wire", "expected"),
+    [
+        (1792695600, "2026-10-22T19:00:00Z"),
+        (1792695600000, "2026-10-22T19:00:00Z"),
+        ("1792695600", "2026-10-22T19:00:00Z"),
+        (1792695600.5, "2026-10-22T19:00:00Z"),
+        (946684800000, "2000-01-01T00:00:00Z"),  # ms before 2001
+        ("20261022", "20261022"),  # compact date, not an epoch
+        ("2026", "2026"),
+        (0, None),  # "unknown", not 1970
+        ("²", "²"),  # str.isdigit() is True, int() would raise
+        (1e23, None),  # past year 9999
+        ("9" * 5000, None),  # beyond int()'s digit limit
+        ("99999999999999999999999", None),
+        (253402300800000, None),  # ms past year 9999
+        ("2026-10-22T19:00:00Z", "2026-10-22T19:00:00Z"),
+        ("2026-10-22T19:00:00+00:00", "2026-10-22T19:00:00+00:00"),
+        ("", None),
+        (None, None),
+        (True, None),
+        ({"nested": 1}, None),
+    ],
+)
+def test_fetch_published_at_becomes_iso(wire: Any, expected: str | None) -> None:
+    keenable, _ = _client(_ok({**FETCH_BODY, "published_at": wire}))
+    assert keenable.fetch("https://example.com/").published_at == expected
+
+
+def test_fetch_reports_and_strips_the_truncation_note() -> None:
+    cut = (
+        "# Example\n\nSome text\n\n"
+        "..._This content has been truncated to stay below 300 characters_..."
+    )
+    keenable, _ = _client(_ok({**FETCH_BODY, "content": cut}))
+    page = keenable.fetch("https://example.com/")
+    assert page.truncated
+    assert page.content == cut  # verbatim: the note is useful to a model
+    assert strip_truncation_marker(page.content) == "# Example\n\nSome text"
+    assert TRUNCATION_MARKER.search(page.to_context())
+
+    # A long whitespace run without the note must stay cheap to check.
+    spaced = "x" + " " * 100_000 + "y"
+    keenable, _ = _client(_ok({**FETCH_BODY, "content": spaced}))
+    page_ws = keenable.fetch("https://example.com/")
+    start = time.perf_counter()
+    assert not page_ws.truncated
+    assert strip_truncation_marker(spaced) == spaced
+    # The old pattern took ~45 s here; a generous budget keeps CI stable.
+    assert time.perf_counter() - start < 5
+
+    authored = "Notes\n\n..._This content has been truncated by the author_..."
+    keenable, _ = _client(_ok({**FETCH_BODY, "content": authored}))
+    assert not keenable.fetch("https://example.com/").truncated
+
+    keenable, _ = _client(_ok(FETCH_BODY))
+    whole = keenable.fetch("https://example.com/")
+    assert not whole.truncated
+    assert strip_truncation_marker(whole.content) == whole.content
+
+
 def test_page_to_context_is_citable_like_search_results() -> None:
     keenable, _ = _client(_ok(FETCH_BODY))
     page = keenable.fetch("https://example.com")
@@ -277,6 +433,197 @@ def test_rate_limit_and_auth_errors_carry_the_api_message() -> None:
         keenable.search("q")
 
 
+def _replying(
+    status: int, body: dict[str, Any], headers: dict[str, str] | None = None
+) -> Handler:
+    def _reply(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, json=body, headers=headers or {})
+
+    return _reply
+
+
+@pytest.mark.parametrize(
+    ("status", "error", "message", "expected", "hint_part"),
+    [
+        (
+            400,
+            "Invalid parameter",
+            '"max_results": must be an integer between 1 and 50',
+            KeenableValidationError,
+            "retrying unchanged fails",
+        ),
+        (422, "Unprocessable", "bad body", KeenableValidationError, "Fix the"),
+        (
+            401,
+            "Authentication failed",
+            "Malformed API key",
+            KeenableAuthError,
+            "KEENABLE_API_KEY",
+        ),
+        (
+            402,
+            "Payment required",
+            "out of credits",
+            KeenableCreditsError,
+            "Add credits",
+        ),
+        (
+            403,
+            "Forbidden",
+            'mode "webql" requires authentication',
+            KeenableForbiddenError,
+            "This needs an API key",
+        ),
+        (503, "Unavailable", "try later", KeenableAPIError, "safe to repeat"),
+    ],
+)
+def test_api_errors_map_by_status_and_carry_the_api_fields(
+    status: int,
+    error: str,
+    message: str,
+    expected: type[KeenableAPIError],
+    hint_part: str,
+) -> None:
+    body = {"error": error, "message": message, "details": {"param": "x"}}
+    keenable, _ = _client(_replying(status, body, {"X-Request-Id": "req-123"}))
+    with pytest.raises(expected) as excinfo:
+        keenable.search("q")
+    err = excinfo.value
+    assert type(err) is expected
+    assert err.status_code == status
+    assert err.body == message
+    assert err.api_error == error
+    assert err.details == {"param": "x"}
+    assert err.request_id == "req-123"
+    assert err.hint is not None and hint_part in err.hint
+    # One line a reader can act on: what failed, the request id, the next step.
+    text = str(err)
+    assert message in text and "(request_id: req-123)" in text
+    assert text.endswith(err.hint)
+
+
+def test_missing_page_says_check_the_url_without_a_double_period() -> None:
+    body = {"error": "Not found", "message": "The page does not exist at this URL."}
+    keenable, _ = _client(_replying(404, body))
+    with pytest.raises(KeenableAPIError) as excinfo:
+        keenable.fetch("https://example.com/missing")
+    err = excinfo.value
+    assert err.hint == "Check the URL; retrying unchanged fails the same way."
+    assert str(err) == (
+        "Keenable API error (404): The page does not exist at this URL. "
+        "Check the URL; retrying unchanged fails the same way."
+    )
+    assert err.body == "The page does not exist at this URL."  # body untouched
+
+
+def test_forbidden_is_still_an_auth_error_for_existing_handlers() -> None:
+    keenable, _ = _client(_replying(403, {"error": "Forbidden", "message": "no"}))
+    with pytest.raises(KeenableAuthError) as excinfo:
+        keenable.search("q")
+    assert isinstance(excinfo.value, KeenableForbiddenError)
+    assert "authentication failed" not in str(excinfo.value)
+
+
+def test_forbidden_hint_depends_on_whether_a_key_is_set() -> None:
+    keyed, _ = _client(_replying(403, {"message": "no"}), api_key="keen_x")
+    with pytest.raises(KeenableForbiddenError) as excinfo:
+        keyed.search("q")
+    assert "KEENABLE_API_KEY" not in (excinfo.value.hint or "")
+    assert "plan" in (excinfo.value.hint or "")
+
+
+def test_rate_limit_error_reads_the_rate_limit_headers() -> None:
+    headers = {
+        "X-RateLimit-Limit": "1000",
+        "X-RateLimit-Remaining": "0",
+        "X-RateLimit-Reset": "2026-11-02T19:48:53.100Z",
+    }
+    keyless, _ = _client(_replying(429, {"message": "cap"}, headers))
+    with pytest.raises(KeenableRateLimitError) as excinfo:
+        keyless.search("q")
+    err = excinfo.value
+    assert (err.limit, err.remaining, err.reset) == (
+        1000,
+        0,
+        "2026-11-02T19:48:53.100Z",
+    )
+    assert "Retry after 2026-11-02T19:48:53.100Z" in str(err)
+    assert "KEENABLE_API_KEY" in str(err)
+
+    keyed, _ = _client(_replying(429, {"message": "cap"}, headers), api_key="keen_x")
+    with pytest.raises(KeenableRateLimitError) as excinfo:
+        keyed.search("q")
+    # A caller who already has a key must not be told to set one.
+    assert "KEENABLE_API_KEY" not in str(excinfo.value)
+
+
+def test_api_key_never_appears_in_error_messages() -> None:
+    keenable, _ = _client(_replying(401, {"message": "bad"}), api_key="keen_secret")
+    with pytest.raises(KeenableAuthError) as excinfo:
+        keenable.search("q")
+    assert "keen_secret" not in str(excinfo.value)
+
+
+def test_responses_carry_the_request_id() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = SEARCH_BODY if request.url.path.endswith("search/public") else FETCH_BODY
+        return httpx.Response(200, json=body, headers={"X-Request-Id": "req-ok"})
+
+    keenable, _ = _client(handler)
+    assert keenable.search("q").request_id == "req-ok"
+    assert keenable.fetch("https://example.com/").request_id == "req-ok"
+
+
+def test_connection_errors_say_retrying_is_safe() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("dns failure", request=request)
+
+    keenable, _ = _client(handler)
+    with pytest.raises(KeenableConnectionError, match="Retrying is safe"):
+        keenable.search("q")
+
+    def slow(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("slow", request=request)
+
+    # A client the SDK built itself: its own timeout= is the knob to raise.
+    keenable = Keenable(timeout=5)
+    keenable._client = httpx.Client(transport=httpx.MockTransport(slow))
+    with pytest.raises(KeenableConnectionError, match=r"within 5s.*raise timeout="):
+        keenable.search("q")
+
+
+def test_response_dataclasses_keep_their_positional_order() -> None:
+    # raw stays the fifth/eighth positional field, as before request_id existed.
+    from keenable import Page, SearchResponse
+
+    resp = SearchResponse("q", [], "pro", {"k": 1})
+    assert resp.raw == {"k": 1} and resp.request_id is None
+    page = Page("https://a.example/", "t", "c", None, None, None, {"k": 1})
+    assert page.raw == {"k": 1} and page.request_id is None
+
+
+def test_malformed_success_reply_keeps_the_request_id_in_the_message() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="<html>", headers={"X-Request-Id": "req-bad"})
+
+    keenable, _ = _client(handler)
+    with pytest.raises(KeenableAPIError) as excinfo:
+        keenable.search("q")
+    assert "(request_id: req-bad)" in str(excinfo.value)
+    assert excinfo.value.request_id == "req-bad"
+
+
+def test_timeout_message_points_at_the_callers_own_client() -> None:
+    def slow(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("slow", request=request)
+
+    keenable = Keenable(client=httpx.Client(transport=httpx.MockTransport(slow)))
+    with pytest.raises(KeenableConnectionError) as excinfo:
+        keenable.search("q")
+    assert "httpx client you passed" in str(excinfo.value)
+    assert "timeout=" not in str(excinfo.value)
+
+
 def test_bad_base_url_is_rejected() -> None:
     with pytest.raises(KeenableInvalidRequestError):
         Keenable(base_url="ftp://api.keenable.ai")
@@ -328,13 +675,26 @@ def test_tool_call_forwards_only_the_filters_the_schema_offers() -> None:
     assert "acquired_after" not in payload
 
 
-def test_tool_schema_keeps_max_results_and_query_time_out() -> None:
+def test_tool_schemas_offer_the_model_exactly_these_arguments() -> None:
+    # Pinned on purpose: a model chooses worse among many knobs, so new search
+    # parameters stay SDK-only unless deliberately exposed here.
     from keenable import TOOLS
 
-    search = next(t for t in TOOLS if t["function"]["name"] == "keenable_search")
-    props = search["function"]["parameters"]["properties"]
-    assert "max_results" not in props
-    assert "query_time" not in props
+    props = {
+        t["function"]["name"]: set(t["function"]["parameters"]["properties"])
+        for t in TOOLS
+    }
+    assert props == {
+        "keenable_search": {"query", "site", "published_after"},
+        "keenable_fetch": {"url"},
+    }
+
+
+async def test_async_fetch_sends_the_same_options() -> None:
+    keenable, seen = _aclient(_ok(FETCH_BODY))
+    await keenable.fetch("https://example.com/", max_chars=10, live=True)
+    assert seen[0].url.params["max_chars"] == "10"
+    assert seen[0].url.params["live"] == "true"
 
 
 async def test_async_client_mirrors_the_sync_one() -> None:

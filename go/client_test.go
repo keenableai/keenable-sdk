@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -153,8 +154,10 @@ func TestSearchParsesResults(t *testing.T) {
 	if !strings.HasPrefix(first.Snippet, "The WSE") {
 		t.Fatal(first.Snippet)
 	}
-	if first.Description != nil {
-		t.Fatalf("description %q, want absent", *first.Description)
+	// The API sends description=""; the SDK mirrors Snippet so code written
+	// against Description still gets text.
+	if first.Description == nil || *first.Description != first.Snippet {
+		t.Fatalf("description %#v, want the snippet", first.Description)
 	}
 	if first.PublishedAt == nil || *first.PublishedAt != "2026-05-31T23:57:19Z" {
 		t.Fatalf("published %#v", first.PublishedAt)
@@ -162,7 +165,7 @@ func TestSearchParsesResults(t *testing.T) {
 	if first.AcquiredAt == nil || *first.AcquiredAt != "2026-07-24T01:32:23Z" {
 		t.Fatalf("acquired %#v", first.AcquiredAt)
 	}
-	if resp.Results[1].Description != nil || resp.Results[1].AcquiredAt != nil {
+	if resp.Results[1].AcquiredAt != nil || resp.Results[1].PublishedAt != nil {
 		t.Fatal("second result should omit empty fields")
 	}
 }
@@ -392,7 +395,7 @@ func TestCitedMatchesRendered(t *testing.T) {
 
 func TestFetchReturnsMarkdown(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
-	page, err := c.Fetch(context.Background(), "https://example.com")
+	page, err := c.Fetch(context.Background(), "https://example.com", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -414,9 +417,172 @@ func TestFetchReturnsMarkdown(t *testing.T) {
 	}
 }
 
+func TestFetchSendsOnlyTheOptionsThatWereSet(t *testing.T) {
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
+	ctx := context.Background()
+	if _, err := c.Fetch(ctx, "https://example.com/", nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := (*seen)[0].Query; len(got) != 1 || got.Get("url") != "https://example.com/" {
+		t.Fatalf("unset options were sent: %v", got)
+	}
+
+	live, maxChars := true, 300
+	_, err := c.Fetch(ctx, "https://example.com/", &keenable.FetchOptions{
+		MaxChars:  &maxChars,
+		Live:      &live,
+		Prompt:    "What is this domain for?",
+		SessionID: "agent-run-7",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := (*seen)[1].Query
+	if q.Get("max_chars") != "300" || q.Get("live") != "true" || q.Get("prompt") != "What is this domain for?" || q.Get("session_id") != "agent-run-7" {
+		t.Fatalf("query = %v", q)
+	}
+
+	notLive := false
+	if _, err := c.Fetch(ctx, "https://example.com/", &keenable.FetchOptions{Live: &notLive}); err != nil {
+		t.Fatal(err)
+	}
+	if (*seen)[2].Query.Get("live") != "false" {
+		t.Fatal((*seen)[2].Query)
+	}
+
+}
+
+func TestSearchSendsRealtimeDisableCardsAndSessionID(t *testing.T) {
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, map[string]any{"query": "q", "results": []any{}}), nil)
+	on := true
+	_, err := c.Search(context.Background(), "q", &keenable.SearchOptions{Mode: "realtime", DisableCards: &on, SessionID: "agent-run-7"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := payloadOf(t, one(t, seen))
+	if p["mode"] != "realtime" || p["disable_cards"] != true || p["session_id"] != "agent-run-7" {
+		t.Fatalf("payload = %v", p)
+	}
+}
+
+func TestSearchDisableCards(t *testing.T) {
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, map[string]any{"query": "q", "results": []any{}}), nil)
+	ctx := context.Background()
+	if _, err := c.Search(ctx, "q", &keenable.SearchOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := payloadOf(t, (*seen)[0])["disable_cards"]; ok {
+		t.Fatal("nil DisableCards was sent")
+	}
+	off := false
+	if _, err := c.Search(ctx, "q", &keenable.SearchOptions{DisableCards: &off}); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := payloadOf(t, (*seen)[1])["disable_cards"]; !ok || v != false {
+		t.Fatalf("disable_cards = %v (sent %v)", v, ok)
+	}
+}
+
+func TestFetchPublishedAtBecomesISO(t *testing.T) {
+	cases := []struct {
+		wire any
+		want string // "" means nil
+	}{
+		{1792695600, "2026-10-22T19:00:00Z"},
+		{1792695600000, "2026-10-22T19:00:00Z"},
+		{"1792695600", "2026-10-22T19:00:00Z"},
+		{1792695600.5, "2026-10-22T19:00:00Z"},
+		{946684800000, "2000-01-01T00:00:00Z"},
+		{"20261022", "20261022"},
+		{"2026", "2026"},
+		{0, ""},
+		{"²", "²"},
+		{1e23, ""},
+		{"99999999999999999999999", ""},
+		{253402300800000, ""},
+		{"2026-10-22T19:00:00Z", "2026-10-22T19:00:00Z"},
+		{"2026-10-22T19:00:00+00:00", "2026-10-22T19:00:00+00:00"},
+		{"", ""},
+		{nil, ""},
+		{true, ""},
+		{map[string]any{"nested": 1}, ""},
+	}
+	for _, tc := range cases {
+		body := map[string]any{"url": "https://example.com/", "title": "t", "content": "c", "published_at": tc.wire}
+		c, _ := startKeyless(t, jsonHandler(http.StatusOK, body), nil)
+		page, err := c.Fetch(context.Background(), "https://example.com/", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := ""
+		if page.PublishedAt != nil {
+			got = *page.PublishedAt
+		}
+		if got != tc.want {
+			t.Errorf("published_at %#v: got %q, want %q", tc.wire, got, tc.want)
+		}
+	}
+}
+
+func TestSearchDescriptionFallsBackToSnippet(t *testing.T) {
+	for wire, want := range map[string]string{"": "page text", "A real meta description": "A real meta description"} {
+		result := map[string]any{"title": "t", "url": "https://a.example/", "snippet": "page text", "description": wire}
+		c, _ := startKeyless(t, jsonHandler(http.StatusOK, map[string]any{"query": "q", "results": []any{result}}), nil)
+		res, err := c.Search(context.Background(), "q", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d := res.Results[0].Description; d == nil || *d != want {
+			t.Errorf("description %q: got %#v, want %q", wire, d, want)
+		}
+	}
+	result := map[string]any{"title": "t", "url": "https://a.example/", "snippet": ""}
+	c, _ := startKeyless(t, jsonHandler(http.StatusOK, map[string]any{"query": "q", "results": []any{result}}), nil)
+	res, err := c.Search(context.Background(), "q", nil)
+	if err != nil || res.Results[0].Description != nil {
+		t.Fatalf("no snippet should leave Description nil: %v %#v", err, res)
+	}
+}
+
+func TestFetchReportsAndStripsTheTruncationNote(t *testing.T) {
+	cut := "# Example\n\nSome text\n\n..._This content has been truncated to stay below 300 characters_..."
+	body := map[string]any{"url": "https://example.com/", "title": "t", "content": cut}
+	c, _ := startKeyless(t, jsonHandler(http.StatusOK, body), nil)
+	page, err := c.Fetch(context.Background(), "https://example.com/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !page.Truncated() || page.Content != cut {
+		t.Fatalf("truncated=%v content=%q", page.Truncated(), page.Content)
+	}
+	if got := keenable.StripTruncationMarker(page.Content); got != "# Example\n\nSome text" {
+		t.Fatalf("stripped = %q", got)
+	}
+	if !keenable.TruncationMarker.MatchString(page.ToContext(nil)) {
+		t.Fatal("ToContext should keep the note for the model")
+	}
+
+	authored := map[string]any{"url": "https://example.com/", "title": "t", "content": "Notes\n\n..._This content has been truncated by the author_..."}
+	c, _ = startKeyless(t, jsonHandler(http.StatusOK, authored), nil)
+	byAuthor, err := c.Fetch(context.Background(), "https://example.com/", nil)
+	if err != nil || byAuthor.Truncated() {
+		t.Fatalf("author text must not count as truncation: %v", err)
+	}
+
+	c, _ = startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
+	whole, err := c.Fetch(context.Background(), "https://example.com/", nil)
+	if err != nil || whole.Truncated() || keenable.StripTruncationMarker(whole.Content) != whole.Content {
+		t.Fatalf("an uncut page: %v %q", err, whole.Content)
+	}
+	var nilPage *keenable.Page
+	if nilPage.Truncated() {
+		t.Fatal("nil page")
+	}
+}
+
 func TestFetchAllowsPublicAddress(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
-	if _, err := c.Fetch(context.Background(), "https://8.8.8.8/path"); err != nil {
+	if _, err := c.Fetch(context.Background(), "https://8.8.8.8/path", nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(*seen) != 1 {
@@ -426,7 +592,7 @@ func TestFetchAllowsPublicAddress(t *testing.T) {
 
 func TestPageToContextCuts(t *testing.T) {
 	c, _ := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
-	page, err := c.Fetch(context.Background(), "https://example.com")
+	page, err := c.Fetch(context.Background(), "https://example.com", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -462,7 +628,7 @@ func TestFetchRefusesInternalTargets(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
 	for _, raw := range urls {
 		before := len(*seen)
-		_, err := c.Fetch(context.Background(), raw)
+		_, err := c.Fetch(context.Background(), raw, nil)
 		var inv *keenable.InvalidRequestError
 		if !errors.As(err, &inv) {
 			t.Fatalf("%s: %v", raw, err)
@@ -494,7 +660,7 @@ func TestNilContext(t *testing.T) {
 	if _, err := c.Search(nil, "q", nil); !errors.As(err, new(*keenable.InvalidRequestError)) {
 		t.Fatal(err)
 	}
-	if _, err := c.Fetch(nil, "https://example.com"); !errors.As(err, new(*keenable.InvalidRequestError)) {
+	if _, err := c.Fetch(nil, "https://example.com", nil); !errors.As(err, new(*keenable.InvalidRequestError)) {
 		t.Fatal(err)
 	}
 	if len(*seen) != 0 {
@@ -540,8 +706,12 @@ func TestStatusErrors(t *testing.T) {
 		if !errors.As(err, &api) || api.StatusCode != 402 {
 			t.Fatal(err)
 		}
+		var credits *keenable.CreditsError
+		if !errors.As(err, &credits) || credits.Code() != keenable.CodeCredits {
+			t.Fatal(err)
+		}
 		if errors.As(err, new(*keenable.AuthError)) || errors.As(err, new(*keenable.RateLimitError)) {
-			t.Fatal("402 should stay a plain APIError")
+			t.Fatal("402 is a credits error, not an auth or rate-limit error")
 		}
 		if !strings.Contains(err.Error(), "insufficient credits") || !strings.Contains(err.Error(), "no credits") {
 			t.Fatal(err)
@@ -555,6 +725,110 @@ func TestStatusErrors(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+func TestTypedAPIErrors(t *testing.T) {
+	cases := []struct {
+		status   int
+		apiError string
+		code     string
+		hint     string
+		is       func(error) bool
+	}{
+		{400, "Invalid parameter", keenable.CodeValidation, "retrying unchanged fails", func(err error) bool { return errors.As(err, new(*keenable.ValidationError)) }},
+		{422, "Unprocessable", keenable.CodeValidation, "Fix the", func(err error) bool { return errors.As(err, new(*keenable.ValidationError)) }},
+		{401, "Authentication failed", keenable.CodeAuth, "KEENABLE_API_KEY", func(err error) bool { return errors.As(err, new(*keenable.AuthError)) }},
+		{402, "Payment required", keenable.CodeCredits, "Add credits", func(err error) bool { return errors.As(err, new(*keenable.CreditsError)) }},
+		{403, "Forbidden", keenable.CodeForbidden, "This needs an API key", func(err error) bool { return errors.As(err, new(*keenable.ForbiddenError)) }},
+		{503, "Unavailable", keenable.CodeAPI, "safe to repeat", func(err error) bool { return errors.As(err, new(*keenable.APIError)) }},
+	}
+	for _, tc := range cases {
+		t.Run(http.StatusText(tc.status), func(t *testing.T) {
+			h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("X-Request-Id", "req-123")
+				jsonHandler(tc.status, map[string]any{"error": tc.apiError, "message": "the api message", "details": map[string]any{"param": "x"}}).ServeHTTP(w, r)
+			})
+			c, _ := startKeyless(t, h, nil)
+			_, err := c.Search(context.Background(), "q", nil)
+			if !tc.is(err) {
+				t.Fatalf("wrong type: %T %v", err, err)
+			}
+			var api *keenable.APIError
+			if !errors.As(err, &api) {
+				t.Fatal("every API error unwraps to APIError")
+			}
+			if api.Code() != tc.code || api.Body != "the api message" || api.APIErrorCode != tc.apiError || api.RequestID != "req-123" {
+				t.Fatalf("code=%q body=%q apiErr=%q id=%q", api.Code(), api.Body, api.APIErrorCode, api.RequestID)
+			}
+			if d, ok := api.Details.(map[string]any); !ok || d["param"] != "x" {
+				t.Fatalf("details = %#v", api.Details)
+			}
+			if !strings.Contains(api.Hint, tc.hint) {
+				t.Fatalf("hint %q lacks %q", api.Hint, tc.hint)
+			}
+			// "<what> (request_id: <id>). <hint> (<code>)", as in Python and TS.
+			if !strings.HasSuffix(err.Error(), " (request_id: req-123). "+api.Hint+" ("+tc.code+")") {
+				t.Fatalf("layout: %q", err.Error())
+			}
+		})
+	}
+}
+
+func TestMissingPageSaysCheckTheURL(t *testing.T) {
+	c, _ := startKeyless(t, jsonHandler(http.StatusNotFound, map[string]any{"error": "Not found", "message": "The page does not exist at this URL."}), nil)
+	_, err := c.Fetch(context.Background(), "https://example.com/missing", nil)
+	var api *keenable.APIError
+	if !errors.As(err, &api) || api.Hint != "Check the URL; retrying unchanged fails the same way." {
+		t.Fatalf("%v", err)
+	}
+	want := "Keenable API error (404): The page does not exist at this URL. Check the URL; retrying unchanged fails the same way. (api_error)"
+	if err.Error() != want || api.Body != "The page does not exist at this URL." {
+		t.Fatalf("got %q", err.Error())
+	}
+}
+
+func TestForbiddenStillMatchesAuthError(t *testing.T) {
+	c, _ := startKeyless(t, jsonHandler(http.StatusForbidden, map[string]any{"message": "no"}), nil)
+	_, err := c.Search(context.Background(), "q", nil)
+	var auth *keenable.AuthError
+	if !errors.As(err, &auth) || auth.StatusCode != 403 {
+		t.Fatalf("existing errors.As(*AuthError) callers must keep matching 403: %v", err)
+	}
+	if strings.Contains(err.Error(), "authentication failed") {
+		t.Fatal(err)
+	}
+}
+
+func TestForbiddenHintForKeyedCaller(t *testing.T) {
+	key := "keen_x"
+	c, _ := start(t, jsonHandler(http.StatusForbidden, map[string]any{"message": "no"}), &keenable.Options{APIKey: &key})
+	_, err := c.Search(context.Background(), "q", nil)
+	if strings.Contains(err.Error(), "set KEENABLE_API_KEY") || !strings.Contains(err.Error(), "plan") {
+		t.Fatal(err)
+	}
+	if strings.Contains(err.Error(), key) {
+		t.Fatal("the API key must never appear in an error")
+	}
+}
+
+func TestResponsesCarryRequestID(t *testing.T) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Request-Id", "req-ok")
+		if strings.Contains(r.URL.Path, "search") {
+			jsonHandler(http.StatusOK, map[string]any{"query": "q", "results": []any{}}).ServeHTTP(w, r)
+			return
+		}
+		jsonHandler(http.StatusOK, map[string]any{"url": "https://example.com/", "title": "t", "content": "c"}).ServeHTTP(w, r)
+	})
+	c, _ := startKeyless(t, h, nil)
+	res, err := c.Search(context.Background(), "q", nil)
+	if err != nil || res.RequestID != "req-ok" {
+		t.Fatalf("search: %v id=%q", err, res.RequestID)
+	}
+	page, err := c.Fetch(context.Background(), "https://example.com/", nil)
+	if err != nil || page.RequestID != "req-ok" {
+		t.Fatalf("fetch: %v", err)
+	}
 }
 
 func TestNonJSONAndNonObjectBodies(t *testing.T) {
@@ -634,6 +908,31 @@ func TestToolArgumentTypes(t *testing.T) {
 		if errors.As(err, &syntax) {
 			t.Fatalf("%#v leaked json.SyntaxError", args)
 		}
+	}
+}
+
+// Pinned on purpose: a model chooses worse among many knobs, so new search
+// parameters stay SDK-only unless deliberately exposed here.
+func TestToolSchemaOffersExactlyTheseArguments(t *testing.T) {
+	props := searchToolProperties(t)
+	var names []string
+	for name := range props {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	if strings.Join(names, ",") != "published_after,query,site" {
+		t.Fatalf("keenable_search properties = %v", names)
+	}
+}
+
+func TestFetchSendsMaxCharsZero(t *testing.T) {
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
+	zero := 0
+	if _, err := c.Fetch(context.Background(), "https://example.com/", &keenable.FetchOptions{MaxChars: &zero}); err != nil {
+		t.Fatal(err)
+	}
+	if got := one(t, seen).Query.Get("max_chars"); got != "0" {
+		t.Fatalf("max_chars = %q, want it sent so the API can reject it", got)
 	}
 }
 
@@ -762,6 +1061,28 @@ func TestErrorCarriesCodeAndRequestID(t *testing.T) {
 	}
 }
 
+func TestUndecodableSuccessReplyCarriesHint(t *testing.T) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Request-Id", "req-bad")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("<html>"))
+	})
+	c, _ := startKeyless(t, h, nil)
+	_, err := c.Search(context.Background(), "q", nil)
+	var api *keenable.APIError
+	if !errors.As(err, &api) || api.Hint == "" || api.RequestID != "req-bad" {
+		t.Fatalf("%#v", err)
+	}
+	if !strings.Contains(err.Error(), api.Hint) || !strings.Contains(err.Error(), "req-bad") {
+		t.Fatal(err)
+	}
+	// Same layout as the Python and TypeScript SDKs, then the stable code.
+	want := `Keenable API returned a non-JSON response: "<html>" (request_id: req-bad). ` + api.Hint + " (api_error)"
+	if err.Error() != want {
+		t.Fatalf("got  %q\nwant %q", err.Error(), want)
+	}
+}
+
 func TestNilClientDoesNotPanic(t *testing.T) {
 	var client *keenable.Client
 	if client.Keyless() {
@@ -770,7 +1091,7 @@ func TestNilClientDoesNotPanic(t *testing.T) {
 	if _, err := client.Search(context.Background(), "q", nil); !errors.As(err, new(*keenable.InvalidRequestError)) {
 		t.Fatal(err)
 	}
-	if _, err := client.Fetch(context.Background(), "https://example.com"); !errors.As(err, new(*keenable.InvalidRequestError)) {
+	if _, err := client.Fetch(context.Background(), "https://example.com", nil); !errors.As(err, new(*keenable.InvalidRequestError)) {
 		t.Fatal(err)
 	}
 	if (*keenable.SearchResponse)(nil).ToContext(nil) != "" {
@@ -950,7 +1271,7 @@ func TestLocalErrorsNameTheFix(t *testing.T) {
 	if !strings.Contains(err.Error(), "query argument") {
 		t.Fatal(err)
 	}
-	_, err = c.Fetch(context.Background(), "http://127.0.0.1/")
+	_, err = c.Fetch(context.Background(), "http://127.0.0.1/", nil)
 	if !strings.Contains(err.Error(), "public http(s) URL") {
 		t.Fatal(err)
 	}

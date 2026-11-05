@@ -13,6 +13,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The three SDKs release in lockstep under one version (PUBLISH.md).
+  versions:
+    name: SDK versions match
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/check-versions.py
+
   # Version-independent checks, so they run once rather than once per matrix leg.
   lint:
     name: Lint and type check

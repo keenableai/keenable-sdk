@@ -8,6 +8,9 @@ const (
 	CodeAPI            = "api_error"
 	CodeAuth           = "auth"
 	CodeRateLimit      = "rate_limit"
+	CodeValidation     = "validation"
+	CodeCredits        = "credits"
+	CodeForbidden      = "forbidden"
 )
 
 // Error is implemented by every error this package returns.
@@ -55,23 +58,37 @@ func (e *ConnectionError) keenableError() {}
 // APIError is a non-2xx response.
 //
 // StatusCode is the HTTP status. Body is the API's error message when it sent
-// one, otherwise empty. AuthError and RateLimitError unwrap to APIError.
+// one, otherwise empty. Every typed API error below unwraps to APIError.
 type APIError struct {
 	StatusCode int
 	Body       string
 	// RequestID is the API's X-Request-Id, when the response sent one.
 	RequestID string
-	msg       string
-	code      string
+	// APIErrorCode is the API's short error label, e.g. "Invalid parameter".
+	// Code() is the SDK's stable code; this is the server's own string.
+	APIErrorCode string
+	// Details is any structured "details" the API attached, unmodified.
+	Details any
+	// Hint is the one-line next step. Error() ends with it, followed only by
+	// the stable code in parentheses. It is exposed separately so a harness
+	// can drop it before showing the error to a model.
+	Hint string
+	msg  string
+	code string
 }
 
 func (e *APIError) Error() string {
 	if e == nil {
 		return ""
 	}
+	// Same layout as the Python and TypeScript SDKs, plus the stable code:
+	// "<what failed> (request_id: <id>). <next step> (<code>)".
 	msg := e.msg
 	if e.RequestID != "" {
 		msg += " (request_id: " + e.RequestID + ")"
+	}
+	if e.Hint != "" {
+		msg += ". " + e.Hint
 	}
 	return msg + " (" + e.Code() + ")"
 }
@@ -86,7 +103,37 @@ func (e *APIError) Code() string {
 }
 func (e *APIError) keenableError() {}
 
-// AuthError means the API key was rejected (HTTP 401 or 403).
+// ValidationError means the API rejected the request (HTTP 400 or 422). Body
+// says what was rejected, usually naming the parameter. Retrying unchanged
+// fails the same way.
+type ValidationError struct {
+	*APIError
+}
+
+func (e *ValidationError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.APIError
+}
+
+// CreditsError means the account has no credits left (HTTP 402). Retrying
+// does not help until credits are added.
+type CreditsError struct {
+	*APIError
+}
+
+func (e *CreditsError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.APIError
+}
+
+// AuthError means the API key is missing or was rejected (HTTP 401).
+//
+// ForbiddenError (403) unwraps to AuthError, so errors.As into *AuthError
+// keeps matching both.
 type AuthError struct {
 	*APIError
 }
@@ -96,6 +143,19 @@ func (e *AuthError) Unwrap() error {
 		return nil
 	}
 	return e.APIError
+}
+
+// ForbiddenError means the request is not allowed for this caller (HTTP 403):
+// typically a mode or feature that needs an API key, or a plan that includes it.
+type ForbiddenError struct {
+	*AuthError
+}
+
+func (e *ForbiddenError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.AuthError
 }
 
 // RateLimitError means the rate limit was exceeded (HTTP 429).
@@ -124,4 +184,7 @@ var (
 	_ Error = (*APIError)(nil)
 	_ Error = (*AuthError)(nil)
 	_ Error = (*RateLimitError)(nil)
+	_ Error = (*ValidationError)(nil)
+	_ Error = (*CreditsError)(nil)
+	_ Error = (*ForbiddenError)(nil)
 )

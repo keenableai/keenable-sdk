@@ -11,16 +11,26 @@ the hourly rate limit.
 """
 
 from ._version import __version__
-from .client import DEFAULT_BASE_URL, AsyncKeenable, Keenable
+from .client import DEFAULT_BASE_URL, AsyncKeenable, Keenable, Mode
 from .errors import (
     KeenableAPIError,
     KeenableAuthError,
     KeenableConnectionError,
+    KeenableCreditsError,
     KeenableError,
+    KeenableForbiddenError,
     KeenableInvalidRequestError,
     KeenableRateLimitError,
+    KeenableValidationError,
 )
-from .models import DEFAULT_CONTEXT_MAX_CHARS, Page, SearchResponse, SearchResult
+from .models import (
+    DEFAULT_CONTEXT_MAX_CHARS,
+    TRUNCATION_MARKER,
+    Page,
+    SearchResponse,
+    SearchResult,
+    strip_truncation_marker,
+)
 from .tools import FETCH_TOOL, SEARCH_TOOL, TOOLS, arun_tool_call, run_tool_call
 
 __all__ = [
@@ -32,15 +42,21 @@ __all__ = [
     "KeenableAPIError",
     "KeenableAuthError",
     "KeenableConnectionError",
+    "KeenableCreditsError",
     "KeenableError",
+    "KeenableForbiddenError",
     "KeenableInvalidRequestError",
     "KeenableRateLimitError",
+    "KeenableValidationError",
+    "Mode",
     "Page",
     "SEARCH_TOOL",
     "SearchResponse",
     "SearchResult",
     "TOOLS",
+    "TRUNCATION_MARKER",
     "__version__",
     "arun_tool_call",
     "run_tool_call",
+    "strip_truncation_marker",
 ]

@@ -3,8 +3,36 @@
 All notable changes to the `keenable` Python package. Versions follow
 [semver](https://semver.org); releases are tagged `python-v<version>`.
 
-## Unreleased
+## 0.2.0
 
+- From 0.2.0 the Python, TypeScript and Go SDKs share one version number and
+  release together.
+- Fetch's `published_at` was silently dropped because the API sends a Unix
+  timestamp. It is now converted to an ISO-8601 UTC string, matching search.
+- `description` on search results mirrors `snippet` when the API leaves it
+  empty (it always does today), for code written against `description`. It
+  stays deprecated: if you render both fields, the text now appears twice.
+- `Page.truncated` reports whether fetched content was cut at the character
+  limit, and `strip_truncation_marker()` removes the API's trailing note for
+  callers that want bare text.
+- `search()` accepts `mode="realtime"` (the fastest mode) and `session_id`.
+  `mode` also accepts any other string, so a mode the API adds later works
+  before this SDK names it.
+- `search()` accepts `disable_cards`, which leaves cards (results Keenable writes
+  itself, at `https://cards.keenable.ai/w/<id>` URLs) out of the results; web
+  pages take their place.
+- `fetch()` accepts `max_chars`, `live`, `prompt` and `session_id`.
+- New error classes by HTTP status: `KeenableValidationError` (400/422),
+  `KeenableCreditsError` (402) and `KeenableForbiddenError` (403).
+  `KeenableForbiddenError` subclasses `KeenableAuthError`, so existing handlers
+  keep catching 403s, but its message no longer says "authentication failed".
+- Every API error carries the API's short label, any `details`, the request id
+  and a one-line next step (`.hint`). The message now ends with that step, e.g.
+  "Retry after 2026-11-02T19:48:53Z." If you match on error text, update the
+  match.
+- A 404 says to check the URL instead of suggesting a base-URL problem.
+- 429 errors expose `limit`, `remaining` and `reset`.
+- Search and fetch responses carry `request_id`.
 - The wheel now ships a `py.typed` marker, so mypy and pyright read the SDK's
   type hints instead of treating `keenable` as untyped. If you run a strict
   type checker, you may see new (correct) errors where your code passed values

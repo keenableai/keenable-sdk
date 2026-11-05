@@ -8,14 +8,14 @@ plus a fetch endpoint that returns any URL as clean markdown.
 `KEENABLE_API_KEY` only lifts the hourly rate limit.
 
 ```bash
-go get github.com/keenableai/keenable-sdk/go@v0.1.0
+go get github.com/keenableai/keenable-sdk/go@v0.2.0
 ```
 
 Go 1.22 or newer. The module uses only the standard library.
 
-That version is the git tag `go/v0.1.0` on `github.com/keenableai/keenable-sdk`
-(the `go/` prefix is the directory, and it is not part of the `@v0.1.0` you
-pass to `go get`). Until that tag exists, `go get` cannot resolve the module.
+That version is the git tag `go/v0.2.0` on `github.com/keenableai/keenable-sdk`
+(the `go/` prefix is the directory, and it is not part of the `@v0.2.0` you
+pass to `go get`).
 From a checkout of this repo, the same program is `example/hello`:
 
 ```bash
@@ -50,8 +50,8 @@ func main() {
 }
 ```
 
-Results carry the page text in `Snippet`. (`Description` is the page's meta
-description and is nil for most pages, so build prompts from `Snippet`.)
+Results carry the page text in `Snippet`; build prompts from it. See
+[Response shape](#response-shape) for every field.
 
 Filters are optional and combine freely. Empty strings are left unset. A
 pointer is used where zero or false is a real value:
@@ -73,7 +73,11 @@ results, err := client.Search(context.Background(), "post-training quantization 
 | `SnippetMaxLength` | Cap the page text returned per result. Nil means unset; a pointer to zero is sent |
 | `MaxResults` | How many results to return, 1 to 50. Zero means the API default of 10 |
 | `QueryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `Mode` | Search mode; empty means `"pro"` |
+| `Mode` | `"pro"` (default when empty) does deeper retrieval; `"realtime"` is the fastest |
+| `DisableCards` | Leave out cards: results Keenable writes itself for queries such as prices, exchange rates or company facts, served at a `https://cards.keenable.ai/w/<id>` URL that works for one day. Web pages take their place, so the result count stays the same. `pro` and `realtime` modes only. Nil means unset |
+
+Advanced, for agent frameworks: `SessionID` groups the calls of one agent
+session (send the same value on each call).
 
 ## Ground a model in one line
 
@@ -103,7 +107,7 @@ for i, result := range results.Cited(nil) {
 ## Read a full page
 
 ```go
-page, err := client.Fetch(context.Background(), "https://cerebras.ai/chip")
+page, err := client.Fetch(context.Background(), "https://cerebras.ai/chip", nil)
 if err != nil {
 	log.Fatal(err)
 }
@@ -113,6 +117,57 @@ fmt.Println(page.ToContext(nil)) // same citable block shape as search results
 ```
 
 Internal hosts and private addresses are refused before a request is sent.
+
+`Fetch` takes a `*keenable.FetchOptions` (nil for none):
+
+| Field | What it does |
+|---|---|
+| `MaxChars` | Cap the content (API default 50,000). A cut page ends with a note saying so |
+| `Live` | Fetch from the source when the page is not in the index yet |
+| `Prompt` | Return the answer to this instruction, extracted from the page, instead of the full page |
+| `SessionID` | Same as on `SearchOptions` |
+
+## Going further
+
+More results, faster, and only recent pages:
+
+```go
+results, err := client.Search(ctx, "open-weight model releases", &keenable.SearchOptions{
+	Mode:           "realtime",   // fastest mode, for latency-sensitive calls
+	MaxResults:     25,           // up to 50; the default is 10
+	PublishedAfter: "2026-10-01", // recency filter
+})
+```
+
+Read just the part of a page you need, from the source if it is not indexed
+yet:
+
+```go
+live := true
+page, err := client.Fetch(ctx, "https://example.com/", &keenable.FetchOptions{
+	Live:   &live,
+	Prompt: "What is this domain for? One sentence.",
+})
+```
+
+`QueryTime` is the opposite of a recency filter: it searches the index as it
+stood at that moment and excludes everything newer, which is useful for
+reproducing past results.
+
+## Response shape
+
+What each field holds, so a pipeline or benchmark harness can map it without
+special cases:
+
+| Field | Holds |
+|---|---|
+| `SearchResult.Snippet` | The page text extracted for this query. The field to score or prompt with |
+| `SearchResult.Description` | Deprecated. The API leaves it empty, so the SDK mirrors `Snippet` into it. Do not render both |
+| `SearchResult.PublishedAt`, `Page.PublishedAt` | ISO-8601 strings. Fetch sends a Unix timestamp on the wire; the SDK converts it to `YYYY-MM-DDTHH:MM:SSZ` (UTC) |
+| `Page.Content` | The page as markdown, exactly as the API sent it. When cut at `MaxChars` it ends with a short truncation note |
+| `Page.Truncated()` | `true` when that note is present. `keenable.StripTruncationMarker(page.Content)` returns the text without it |
+| `RequestID` | The API's request id, on responses and errors. Quote it to support |
+| `Raw` | The unmodified JSON, for fields this SDK does not model yet |
 
 ## Tool calling
 
@@ -165,7 +220,12 @@ this SDK created, and does nothing when you passed your own `http.Client`.
 SDK errors implement `keenable.Error`. `errors.As` into that interface
 catches them. `Code()` is a stable string, and the same token is the last
 parentheses of `Error()`. `errors.As` into a concrete type catches one case.
-`AuthError` and `RateLimitError` unwrap to `APIError`.
+Every typed API error unwraps to `APIError`, and `ForbiddenError` also
+unwraps to `AuthError`, so `errors.As` into `*AuthError` matches 401 and 403.
+
+`APIError` carries `StatusCode`, `Body` (the API's message), `APIErrorCode`
+(the API's short label), `Details`, `RequestID` and `Hint` (the next step: `Error()` ends with it,
+followed only by the code). `SearchResponse` and `Page` carry `RequestID` too.
 
 A caller context that ended is not one of those errors. Check it first:
 
@@ -175,19 +235,20 @@ if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) 
 }
 var sdk keenable.Error
 if errors.As(err, &sdk) {
-    fmt.Println(sdk.Code()) // invalid_request, connection, api_error, auth, rate_limit
+    fmt.Println(sdk.Code()) // invalid_request, connection, api_error, auth, rate_limit, validation, credits, forbidden
 }
 ```
 
 | Type | Code | When |
 |---|---|---|
+| `ValidationError` | `validation` | HTTP 400/422. The API rejected the request; the message says what. Retrying unchanged fails |
+| `AuthError` | `auth` | HTTP 401. The API key is missing or invalid |
+| `ForbiddenError` | `forbidden` | HTTP 403. Not allowed for this key or tier. Unwraps to `AuthError` |
+| `CreditsError` | `credits` | HTTP 402. Out of credits; add them at keenable.ai/console |
 | `RateLimitError` | `rate_limit` | HTTP 429. The message names `X-RateLimit-Reset` when the API sent it. A keyless call is told to set `KEENABLE_API_KEY`. A keyed call is told to wait for the window |
-| `AuthError` | `auth` | HTTP 401/403, the key was rejected |
-| `APIError` | `api_error` | Any other non-2xx response; carries `StatusCode`, `Body`, and `RequestID` when the API sent `X-Request-Id` |
+| `APIError` | `api_error` | Any other non-2xx response. Follow the hint: a 5xx is safe to retry, a 404 means the URL doesn't exist |
 | `ConnectionError` | `connection` | The API could not be reached, or the client deadline elapsed |
 | `InvalidRequestError` | `invalid_request` | Bad arguments; no request was sent |
-
-HTTP 402 is an `APIError` whose message starts "Keenable: insufficient credits (402)" and tells you to add credits.
 
 ## Configuration
 
