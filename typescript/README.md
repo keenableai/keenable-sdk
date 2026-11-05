@@ -93,6 +93,31 @@ console.log(page.content); // markdown, boilerplate stripped
 console.log(page.toContext()); // same citable block shape as search results
 ```
 
+## Get a site's logo and cover image
+
+Pass `include: ["images"]` to also get the page's images, each with a `role`:
+`"logo"`, `"cover"` (the social preview image), `"icon"` or `"content"`. The
+role set is open, so skip values you do not know.
+
+```ts
+const page = await keenable.fetch("https://stripe.com", {
+  include: ["images"],
+  maxImages: 10,
+});
+
+if (page.images == null) {
+  console.log("could not inspect the page's images");
+} else {
+  const logo = page.images.find((image) => image.role === "logo");
+  const cover = page.images.find((image) => image.role === "cover");
+  console.log(logo?.url ?? "no logo", cover?.url ?? "no cover");
+}
+```
+
+`page.images` is `[]` when the page has no images, and `null` when they could
+not be read. Image URLs are absolute. `maxImages` (1 to 50, default 5) needs
+`include: ["images"]`; `page.imagesTruncated` says whether more were found.
+
 ## Tool calling
 
 The SDK ships OpenAI-compatible tool definitions, so any inference API that

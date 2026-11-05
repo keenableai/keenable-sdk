@@ -274,6 +274,102 @@ describe("fetch", () => {
   });
 });
 
+const LOGO = {
+  url: "https://acme.com/logo.svg",
+  role: "logo",
+  alt: "Acme logo",
+  width: 120,
+  height: 40,
+  mime_type: "image/svg+xml",
+  sources: ["json-ld", "img"],
+};
+const COVER = {
+  url: "https://acme.com/og.png",
+  role: "cover",
+  alt: null,
+  sources: ["og:image"],
+};
+
+describe("fetch images", () => {
+  it("sends include and max_images", async () => {
+    const { client, seen } = mockClient(() => json(FETCH_BODY));
+    await client.fetch("https://acme.com", { include: ["images"], maxImages: 10 });
+    await client.fetch("https://acme.com", { include: ["images"] });
+    await client.fetch("https://acme.com");
+
+    const params = seen.map((s) => new URL(s.url).searchParams);
+    expect(params[0]?.get("include")).toBe("images");
+    expect(params[0]?.get("max_images")).toBe("10");
+    expect(params[1]?.get("include")).toBe("images");
+    expect(params[1]?.has("max_images")).toBe(false);
+    expect(params[2]?.has("include")).toBe(false);
+    expect(params[2]?.has("max_images")).toBe(false);
+  });
+
+  it("leaves max_images without include to the API", async () => {
+    const { client, seen } = mockClient(() => json(FETCH_BODY));
+    await client.fetch("https://acme.com", { maxImages: 3 });
+    expect(new URL(seen[0]!.url).searchParams.get("max_images")).toBe("3");
+  });
+
+  it("leaves images undefined when they were not requested", async () => {
+    const { client } = mockClient(() => json(FETCH_BODY));
+    const page = await client.fetch("https://example.com");
+    expect(page.images).toBeUndefined();
+    expect(page.imagesTruncated).toBeUndefined();
+  });
+
+  it("keeps null and [] distinct", async () => {
+    const nullPage = await mockClient(() =>
+      json({ ...FETCH_BODY, images: null, images_truncated: false }),
+    ).client.fetch("https://example.com", { include: ["images"] });
+    expect(nullPage.images).toBeNull();
+    expect(nullPage.imagesTruncated).toBe(false);
+
+    const emptyPage = await mockClient(() =>
+      json({ ...FETCH_BODY, images: [], images_truncated: false }),
+    ).client.fetch("https://example.com", { include: ["images"] });
+    expect(emptyPage.images).toEqual([]);
+    expect(emptyPage.imagesTruncated).toBe(false);
+  });
+
+  it("decodes every image field", async () => {
+    const { client } = mockClient(() =>
+      json({ ...FETCH_BODY, images: [LOGO, COVER], images_truncated: true }),
+    );
+    const page = await client.fetch("https://acme.com", { include: ["images"] });
+
+    expect(page.imagesTruncated).toBe(true);
+    const [logo, cover] = page.images ?? [];
+    expect(logo).toEqual({
+      url: "https://acme.com/logo.svg",
+      role: "logo",
+      alt: "Acme logo",
+      width: 120,
+      height: 40,
+      mimeType: "image/svg+xml",
+      sources: ["json-ld", "img"],
+      raw: LOGO,
+    });
+    expect(cover?.role).toBe("cover");
+    expect(cover?.alt).toBeNull();
+    expect(cover?.width).toBeUndefined();
+    expect(cover?.height).toBeUndefined();
+    expect(cover?.mimeType).toBeUndefined();
+    expect(cover?.sources).toEqual(["og:image"]);
+  });
+
+  it("accepts an unknown role", async () => {
+    const hero = { ...COVER, role: "hero", url: "https://acme.com/hero.webp" };
+    const { client } = mockClient(() =>
+      json({ ...FETCH_BODY, images: [hero], images_truncated: false }),
+    );
+    const page = await client.fetch("https://acme.com", { include: ["images"] });
+    expect(page.images?.[0]?.role).toBe("hero");
+    expect(page.images?.[0]?.raw).toEqual(hero);
+  });
+});
+
 describe("deadline", () => {
   it("applies the timeout to a body that arrives after the headers", async () => {
     const { client } = mockClient(

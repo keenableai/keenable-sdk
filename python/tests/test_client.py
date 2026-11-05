@@ -233,6 +233,107 @@ def test_page_to_context_is_citable_like_search_results() -> None:
     assert page.to_context(max_chars=60).startswith("[1] Example Domain")
 
 
+LOGO: dict[str, Any] = {
+    "url": "https://acme.com/logo.svg",
+    "role": "logo",
+    "alt": "Acme logo",
+    "width": 120,
+    "height": 40,
+    "mime_type": "image/svg+xml",
+    "sources": ["json-ld", "img"],
+}
+COVER: dict[str, Any] = {
+    "url": "https://acme.com/og.png",
+    "role": "cover",
+    "alt": None,
+    "sources": ["og:image"],
+}
+
+
+def test_fetch_sends_include_and_max_images() -> None:
+    keenable, seen = _client(_ok(FETCH_BODY))
+    keenable.fetch("https://acme.com", include=["images"], max_images=10)
+    keenable.fetch("https://acme.com", include="images")
+    keenable.fetch("https://acme.com")
+
+    assert seen[0].url.params["include"] == "images"
+    assert seen[0].url.params["max_images"] == "10"
+    assert seen[1].url.params["include"] == "images"
+    assert "max_images" not in seen[1].url.params
+    assert "include" not in seen[2].url.params
+    assert "max_images" not in seen[2].url.params
+
+
+def test_fetch_passes_max_images_without_include_to_the_api() -> None:
+    keenable, seen = _client(_ok(FETCH_BODY))
+    keenable.fetch("https://acme.com", max_images=3)
+    assert seen[0].url.params["max_images"] == "3"
+
+
+def test_page_images_absent_when_not_requested() -> None:
+    keenable, _ = _client(_ok(FETCH_BODY))
+    page = keenable.fetch("https://example.com")
+    assert page.images is None
+    assert page.images_truncated is None
+
+
+def test_page_images_null_and_empty_stay_distinct() -> None:
+    null_body = {**FETCH_BODY, "images": None, "images_truncated": False}
+    empty_body = {**FETCH_BODY, "images": [], "images_truncated": False}
+
+    keenable, _ = _client(_ok(null_body))
+    page = keenable.fetch("https://example.com", include=["images"])
+    assert page.images is None
+    assert page.images_truncated is False
+
+    keenable, _ = _client(_ok(empty_body))
+    page = keenable.fetch("https://example.com", include=["images"])
+    assert page.images == []
+    assert page.images_truncated is False
+
+
+def test_page_images_decode_every_field() -> None:
+    body = {**FETCH_BODY, "images": [LOGO, COVER], "images_truncated": True}
+    keenable, _ = _client(_ok(body))
+    page = keenable.fetch("https://acme.com", include=["images"])
+
+    assert page.images_truncated is True
+    assert page.images is not None
+    logo, cover = page.images
+    assert logo.url == "https://acme.com/logo.svg"
+    assert logo.role == "logo"
+    assert logo.alt == "Acme logo"
+    assert (logo.width, logo.height) == (120, 40)
+    assert logo.mime_type == "image/svg+xml"
+    assert logo.sources == ["json-ld", "img"]
+    assert cover.role == "cover"
+    assert cover.alt is None
+    assert cover.width is None and cover.height is None
+    assert cover.mime_type is None
+    assert cover.sources == ["og:image"]
+
+
+def test_page_images_accept_unknown_role() -> None:
+    hero = {**COVER, "role": "hero", "url": "https://acme.com/hero.webp"}
+    body = {**FETCH_BODY, "images": [hero], "images_truncated": False}
+    keenable, _ = _client(_ok(body))
+    page = keenable.fetch("https://acme.com", include=["images"])
+    assert page.images is not None
+    assert page.images[0].role == "hero"
+    assert page.images[0].raw == hero
+
+
+async def test_async_fetch_sends_include_and_decodes_images() -> None:
+    body = {**FETCH_BODY, "images": [LOGO], "images_truncated": False}
+    keenable, seen = _aclient(_ok(body))
+    page = await keenable.fetch("https://acme.com", include=["images"], max_images=1)
+
+    assert seen[0].url.params["include"] == "images"
+    assert seen[0].url.params["max_images"] == "1"
+    assert page.images is not None
+    assert page.images[0].role == "logo"
+
+
 @pytest.mark.parametrize(
     "url",
     [

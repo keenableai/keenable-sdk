@@ -424,6 +424,171 @@ func TestFetchAllowsPublicAddress(t *testing.T) {
 	}
 }
 
+var (
+	logoImage = map[string]any{
+		"url":       "https://acme.com/logo.svg",
+		"role":      "logo",
+		"alt":       "Acme logo",
+		"width":     120,
+		"height":    40,
+		"mime_type": "image/svg+xml",
+		"sources":   []any{"json-ld", "img"},
+	}
+	coverImage = map[string]any{
+		"url":     "https://acme.com/og.png",
+		"role":    "cover",
+		"alt":     nil,
+		"sources": []any{"og:image"},
+	}
+)
+
+func fetchBodyWith(extra map[string]any) map[string]any {
+	body := map[string]any{}
+	for k, v := range fetchBody {
+		body[k] = v
+	}
+	for k, v := range extra {
+		body[k] = v
+	}
+	return body
+}
+
+func TestFetchSendsIncludeAndMaxImages(t *testing.T) {
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
+	ctx := context.Background()
+	calls := []struct {
+		opts        []*keenable.FetchOptions
+		include     string
+		maxImages   string
+		hasInclude  bool
+		hasMaxImage bool
+	}{
+		{[]*keenable.FetchOptions{{Include: []string{"images"}, MaxImages: 10}}, "images", "10", true, true},
+		{[]*keenable.FetchOptions{{Include: []string{"images"}}}, "images", "", true, false},
+		{[]*keenable.FetchOptions{{MaxImages: 3}}, "", "3", false, true},
+		{[]*keenable.FetchOptions{nil}, "", "", false, false},
+		{nil, "", "", false, false},
+	}
+	for _, call := range calls {
+		if _, err := c.Fetch(ctx, "https://acme.com", call.opts...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, call := range calls {
+		q := (*seen)[i].Query
+		if q.Get("url") != "https://acme.com" {
+			t.Fatalf("call %d: url=%q", i, q.Get("url"))
+		}
+		if q.Has("include") != call.hasInclude || q.Get("include") != call.include {
+			t.Fatalf("call %d: include=%q", i, q.Get("include"))
+		}
+		if q.Has("max_images") != call.hasMaxImage || q.Get("max_images") != call.maxImages {
+			t.Fatalf("call %d: max_images=%q", i, q.Get("max_images"))
+		}
+	}
+}
+
+func TestFetchRejectsTwoOptionValues(t *testing.T) {
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
+	_, err := c.Fetch(context.Background(), "https://acme.com", &keenable.FetchOptions{}, &keenable.FetchOptions{})
+	var invalid *keenable.InvalidRequestError
+	if !errors.As(err, &invalid) {
+		t.Fatalf("err = %v", err)
+	}
+	if len(*seen) != 0 {
+		t.Fatalf("sent %d requests", len(*seen))
+	}
+}
+
+func TestPageImagesAbsentWhenNotRequested(t *testing.T) {
+	c, _ := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
+	page, err := c.Fetch(context.Background(), "https://example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Images != nil || page.ImagesTruncated != nil {
+		t.Fatalf("images=%#v truncated=%v", page.Images, page.ImagesTruncated)
+	}
+}
+
+func TestPageImagesNullAndEmptyStayDistinct(t *testing.T) {
+	opts := &keenable.FetchOptions{Include: []string{"images"}}
+
+	c, _ := startKeyless(t, jsonHandler(http.StatusOK, fetchBodyWith(map[string]any{"images": nil, "images_truncated": false})), nil)
+	page, err := c.Fetch(context.Background(), "https://example.com", opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Images != nil {
+		t.Fatalf("null images = %#v", page.Images)
+	}
+	if page.ImagesTruncated == nil || *page.ImagesTruncated {
+		t.Fatalf("truncated = %v", page.ImagesTruncated)
+	}
+
+	c, _ = startKeyless(t, jsonHandler(http.StatusOK, fetchBodyWith(map[string]any{"images": []any{}, "images_truncated": false})), nil)
+	page, err = c.Fetch(context.Background(), "https://example.com", opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Images == nil || len(page.Images) != 0 {
+		t.Fatalf("empty images = %#v", page.Images)
+	}
+}
+
+func TestPageImagesDecodeEveryField(t *testing.T) {
+	body := fetchBodyWith(map[string]any{"images": []any{logoImage, coverImage}, "images_truncated": true})
+	c, _ := startKeyless(t, jsonHandler(http.StatusOK, body), nil)
+	page, err := c.Fetch(context.Background(), "https://acme.com", &keenable.FetchOptions{Include: []string{"images"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.ImagesTruncated == nil || !*page.ImagesTruncated {
+		t.Fatalf("truncated = %v", page.ImagesTruncated)
+	}
+	if len(page.Images) != 2 {
+		t.Fatalf("images = %#v", page.Images)
+	}
+	logo, cover := page.Images[0], page.Images[1]
+	if logo.URL != "https://acme.com/logo.svg" || logo.Role != keenable.ImageRoleLogo {
+		t.Fatalf("%#v", logo)
+	}
+	if logo.Alt == nil || *logo.Alt != "Acme logo" {
+		t.Fatalf("alt = %v", logo.Alt)
+	}
+	if logo.Width == nil || *logo.Width != 120 || logo.Height == nil || *logo.Height != 40 {
+		t.Fatalf("size = %v x %v", logo.Width, logo.Height)
+	}
+	if logo.MimeType == nil || *logo.MimeType != "image/svg+xml" {
+		t.Fatalf("mime = %v", logo.MimeType)
+	}
+	if strings.Join(logo.Sources, ",") != "json-ld,img" {
+		t.Fatalf("sources = %v", logo.Sources)
+	}
+	if cover.Role != keenable.ImageRoleCover || cover.Alt != nil || cover.Width != nil || cover.Height != nil || cover.MimeType != nil {
+		t.Fatalf("%#v", cover)
+	}
+	if strings.Join(cover.Sources, ",") != "og:image" {
+		t.Fatalf("sources = %v", cover.Sources)
+	}
+}
+
+func TestPageImagesAcceptUnknownRole(t *testing.T) {
+	hero := map[string]any{"url": "https://acme.com/hero.webp", "role": "hero", "alt": nil, "sources": []any{"img"}}
+	body := fetchBodyWith(map[string]any{"images": []any{hero}, "images_truncated": false})
+	c, _ := startKeyless(t, jsonHandler(http.StatusOK, body), nil)
+	page, err := c.Fetch(context.Background(), "https://acme.com", &keenable.FetchOptions{Include: []string{"images"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Images) != 1 || page.Images[0].Role != "hero" {
+		t.Fatalf("%#v", page.Images)
+	}
+	if page.Images[0].Raw["role"] != "hero" {
+		t.Fatalf("raw = %#v", page.Images[0].Raw)
+	}
+}
+
 func TestPageToContextCuts(t *testing.T) {
 	c, _ := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
 	page, err := c.Fetch(context.Background(), "https://example.com")

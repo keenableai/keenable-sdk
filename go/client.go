@@ -164,7 +164,7 @@ func (c *Client) Search(ctx context.Context, query string, opts *SearchOptions) 
 	if err != nil {
 		return nil, &InvalidRequestError{msg: "could not encode the search request. Retry with a string query."}
 	}
-	data, err := c.do(ctx, http.MethodPost, "search", body, "")
+	data, err := c.do(ctx, http.MethodPost, "search", body, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -175,17 +175,26 @@ func (c *Client) Search(ctx context.Context, query string, opts *SearchOptions) 
 //
 // Use it after Search when a snippet is not enough. Internal hosts and private
 // addresses are refused here, before a request is sent.
-func (c *Client) Fetch(ctx context.Context, pageURL string) (*Page, error) {
+// opts is optional; pass at most one.
+func (c *Client) Fetch(ctx context.Context, pageURL string, opts ...*FetchOptions) (*Page, error) {
 	if err := requireClient(c); err != nil {
 		return nil, err
 	}
 	if err := requireContext(ctx); err != nil {
 		return nil, err
 	}
+	if len(opts) > 1 {
+		return nil, &InvalidRequestError{msg: "Fetch takes at most one *FetchOptions. Merge the options into one value."}
+	}
 	if err := rejectPrivateFetchTarget(pageURL); err != nil {
 		return nil, err
 	}
-	data, err := c.do(ctx, http.MethodGet, "fetch", nil, pageURL)
+	query := url.Values{}
+	query.Set("url", pageURL)
+	if len(opts) == 1 {
+		opts[0].apply(query)
+	}
+	data, err := c.do(ctx, http.MethodGet, "fetch", nil, query)
 	if err != nil {
 		return nil, err
 	}
@@ -206,8 +215,8 @@ func requireContext(ctx context.Context) error {
 	return nil
 }
 
-func (c *Client) do(ctx context.Context, method, endpoint string, body []byte, fetchURL string) (map[string]any, error) {
-	rawURL, err := c.endpointURL(endpoint, fetchURL)
+func (c *Client) do(ctx context.Context, method, endpoint string, body []byte, query url.Values) (map[string]any, error) {
+	rawURL, err := c.endpointURL(endpoint, query)
 	if err != nil {
 		return nil, err
 	}
@@ -353,7 +362,7 @@ func (c *Client) headers(jsonBody bool) http.Header {
 	return h
 }
 
-func (c *Client) endpointURL(endpoint, fetchURL string) (string, error) {
+func (c *Client) endpointURL(endpoint string, query url.Values) (string, error) {
 	u, err := url.Parse(c.baseURL)
 	if err != nil || u.Host == "" {
 		return "", &InvalidRequestError{msg: fmt.Sprintf("baseURL %q is not a valid URL. Pass an https URL with a host.", c.baseURL)}
@@ -362,13 +371,8 @@ func (c *Client) endpointURL(endpoint, fetchURL string) (string, error) {
 	if c.apiKey == "" {
 		u.Path += "/public"
 	}
-	u.RawQuery = ""
+	u.RawQuery = query.Encode()
 	u.Fragment = ""
-	if fetchURL != "" {
-		q := url.Values{}
-		q.Set("url", fetchURL)
-		u.RawQuery = q.Encode()
-	}
 	return u.String(), nil
 }
 

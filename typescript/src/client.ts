@@ -8,6 +8,8 @@ import {
 import { SEARCH_FILTERS } from "./filters.js";
 import { cleanContextText, collapse, nonEmpty, normalizeHost, readEnv } from "./internal.js";
 import type {
+  FetchOptions,
+  Image,
   KeenableOptions,
   SearchOptions,
   SearchResult,
@@ -252,6 +254,14 @@ export class Page {
   readonly description?: string;
   readonly author?: string;
   readonly publishedAt?: string;
+  /**
+   * Images on the page, when fetched with `include: ["images"]`. `[]` means
+   * none were found, `null` that the page could not be inspected, and
+   * `undefined` that images were not requested.
+   */
+  readonly images?: Image[] | null;
+  /** True when more images were found than `maxImages` allowed. Set only with `include: ["images"]`. */
+  readonly imagesTruncated?: boolean;
   readonly raw: Record<string, unknown>;
 
   constructor(init: {
@@ -261,6 +271,8 @@ export class Page {
     description?: string;
     author?: string;
     publishedAt?: string;
+    images?: Image[] | null;
+    imagesTruncated?: boolean;
     raw: Record<string, unknown>;
   }) {
     this.url = init.url;
@@ -269,6 +281,8 @@ export class Page {
     this.description = init.description;
     this.author = init.author;
     this.publishedAt = init.publishedAt;
+    this.images = init.images;
+    this.imagesTruncated = init.imagesTruncated;
     this.raw = init.raw;
   }
 
@@ -303,7 +317,30 @@ function toSearchResult(data: Record<string, unknown>): SearchResult {
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function intOrUndefined(value: unknown): number | undefined {
+  return Number.isInteger(value) ? (value as number) : undefined;
+}
+
+function toImage(data: Record<string, unknown>): Image {
+  const sources = Array.isArray(data.sources) ? data.sources : [];
+  return {
+    url: String(data.url ?? ""),
+    role: String(data.role ?? ""),
+    alt: typeof data.alt === "string" ? data.alt : null,
+    width: intOrUndefined(data.width),
+    height: intOrUndefined(data.height),
+    mimeType: nonEmpty(data.mime_type),
+    sources: sources.filter((s): s is string => typeof s === "string"),
+    raw: data,
+  };
+}
+
 function toPage(data: Record<string, unknown>, url: string): Page {
+  const requested = "images" in data;
   return new Page({
     url: String(data.url ?? url),
     title: String(data.title ?? ""),
@@ -311,6 +348,12 @@ function toPage(data: Record<string, unknown>, url: string): Page {
     description: nonEmpty(data.description),
     author: nonEmpty(data.author),
     publishedAt: nonEmpty(data.published_at),
+    images: !requested
+      ? undefined
+      : Array.isArray(data.images)
+        ? data.images.filter(isRecord).map(toImage)
+        : null,
+    imagesTruncated: requested ? data.images_truncated === true : undefined,
     raw: data,
   });
 }
@@ -417,11 +460,17 @@ export class Keenable {
    * Use this after `search()` when a snippet is not enough and the model needs
    * the full page.
    */
-  async fetch(url: string, options: { signal?: AbortSignal } = {}): Promise<Page> {
+  async fetch(url: string, options: FetchOptions = {}): Promise<Page> {
     rejectPrivateFetchTarget(url);
 
     const target = new URL(this.url("fetch"));
     target.searchParams.set("url", url);
+    if (options.include !== undefined) {
+      target.searchParams.set("include", options.include.join(","));
+    }
+    if (options.maxImages !== undefined) {
+      target.searchParams.set("max_images", String(options.maxImages));
+    }
 
     const data = await this.request(
       "fetch",

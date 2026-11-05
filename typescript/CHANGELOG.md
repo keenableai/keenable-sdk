@@ -5,6 +5,17 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- `fetch()` accepts `include: ["images"]` and `maxImages` (1 to 50, API
+  default 5, only with `include`). `Page.images` then lists the page's images
+  as `Image` (`url`, `role`, `alt`, `width`, `height`, `mimeType`, `sources`)
+  and `Page.imagesTruncated` says whether more were found. `images` is `[]`
+  when the page has none, `null` when it could not be inspected, and
+  `undefined` when images were not requested. `ImageRole` is `"logo"`,
+  `"cover"`, `"icon"` or `"content"`, and the set is open. The API rejects a
+  bad `include` or `maxImages` with a 400.
+- API change, no SDK change: links and image URLs in fetched `content` are now
+  absolute.
+
 - `toContext()` (search results and fetched pages) drops markdown images and
   `<img>` tags, and resolves relative links against the result's URL (or keeps
   just the link text when it cannot). Absolute links are unchanged, and lines

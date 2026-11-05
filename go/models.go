@@ -1,6 +1,7 @@
 package keenable
 
 import (
+	"net/url"
 	"strconv"
 	"strings"
 	"unicode"
@@ -35,6 +36,54 @@ type SearchOptions struct {
 	// filter: use PublishedAfter for that. Accepts an ISO 8601 datetime,
 	// YYYY-MM-DD, or an offset back from now such as "7d" (as of 7 days ago).
 	QueryTime string
+}
+
+// FetchOptions are the optional arguments to [Client.Fetch].
+type FetchOptions struct {
+	// Include asks for extra data with the page. "images" fills Page.Images
+	// with the page's logo, cover, icons and content images.
+	Include []string
+	// MaxImages caps the returned images, 1 to 50. Zero means unset, and the
+	// API returns up to 5. Only valid with Include "images".
+	MaxImages int
+}
+
+func (o *FetchOptions) apply(q url.Values) {
+	if o == nil {
+		return
+	}
+	if o.Include != nil {
+		q.Set("include", strings.Join(o.Include, ","))
+	}
+	if o.MaxImages != 0 {
+		q.Set("max_images", strconv.Itoa(o.MaxImages))
+	}
+}
+
+// ImageRole says what an image is for. The set is open: expect values other
+// than the constants below.
+type ImageRole string
+
+const (
+	ImageRoleLogo    ImageRole = "logo"
+	ImageRoleCover   ImageRole = "cover"
+	ImageRoleIcon    ImageRole = "icon"
+	ImageRoleContent ImageRole = "content"
+)
+
+// Image is an image found on a fetched page, returned with Include "images".
+type Image struct {
+	// URL is the absolute http(s) URL of the image.
+	URL  string    `json:"url"`
+	Role ImageRole `json:"role"`
+	// Alt is the alt text. Nil when the page gave none.
+	Alt      *string `json:"alt"`
+	Width    *int    `json:"width,omitempty"`
+	Height   *int    `json:"height,omitempty"`
+	MimeType *string `json:"mime_type,omitempty"`
+	// Sources says where on the page the image was found, e.g. "og:image".
+	Sources []string       `json:"sources"`
+	Raw     map[string]any `json:"-"`
 }
 
 // ContextOptions controls [SearchResponse.ToContext] and [SearchResponse.Cited].
@@ -88,6 +137,15 @@ type Page struct {
 	Author      *string        `json:"author,omitempty"`
 	PublishedAt *string        `json:"published_at,omitempty"`
 	Raw         map[string]any `json:"-"`
+
+	// Images holds the page's images when fetched with Include "images".
+	// A non-nil empty slice means none were found. Nil means they were not
+	// requested, or the page could not be inspected (ImagesTruncated is then
+	// non-nil).
+	Images []Image `json:"images,omitempty"`
+	// ImagesTruncated reports whether more images were found than MaxImages
+	// allowed. Nil when images were not requested.
+	ImagesTruncated *bool `json:"images_truncated,omitempty"`
 }
 
 // Cited returns the results ToContext would render, in citation order.
@@ -278,7 +336,7 @@ func pageFromJSON(data map[string]any, fallbackURL string) *Page {
 	if s := asString(data["url"]); s != "" {
 		pageURL = s
 	}
-	return &Page{
+	page := &Page{
 		URL:         pageURL,
 		Title:       asString(data["title"]),
 		Content:     asString(data["content"]),
@@ -287,6 +345,50 @@ func pageFromJSON(data map[string]any, fallbackURL string) *Page {
 		PublishedAt: nonEmptyString(data["published_at"]),
 		Raw:         data,
 	}
+	if raw, ok := data["images"]; ok {
+		truncated := data["images_truncated"] == true
+		page.ImagesTruncated = &truncated
+		if list, ok := raw.([]any); ok {
+			page.Images = make([]Image, 0, len(list))
+			for _, item := range list {
+				if m, ok := item.(map[string]any); ok {
+					page.Images = append(page.Images, imageFromJSON(m))
+				}
+			}
+		}
+	}
+	return page
+}
+
+func imageFromJSON(data map[string]any) Image {
+	img := Image{
+		URL:      asString(data["url"]),
+		Role:     ImageRole(asString(data["role"])),
+		Width:    intPtr(data["width"]),
+		Height:   intPtr(data["height"]),
+		MimeType: nonEmptyString(data["mime_type"]),
+		Sources:  []string{},
+		Raw:      data,
+	}
+	if alt, ok := data["alt"].(string); ok {
+		img.Alt = &alt
+	}
+	if list, ok := data["sources"].([]any); ok {
+		for _, s := range list {
+			if str, ok := s.(string); ok {
+				img.Sources = append(img.Sources, str)
+			}
+		}
+	}
+	return img
+}
+
+func intPtr(v any) *int {
+	n, ok := asInt(v)
+	if !ok {
+		return nil
+	}
+	return &n
 }
 
 func nonEmptyString(v any) *string {

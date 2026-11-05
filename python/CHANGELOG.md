@@ -5,6 +5,17 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
+- `fetch()` (sync and async) accepts `include=["images"]` and `max_images`
+  (1 to 50, API default 5, only with `include`). `Page.images` then lists the
+  page's images as `Image` (`url`, `role`, `alt`, `width`, `height`,
+  `mime_type`, `sources`) and `Page.images_truncated` says whether more were
+  found. `images` is `[]` when the page has none and `None` when it could not
+  be inspected; both stay `None` when images were not requested. `role` is
+  `"logo"`, `"cover"`, `"icon"` or `"content"`, and the set is open. The API
+  rejects a bad `include` or `max_images` with a 400.
+- API change, no SDK change: links and image URLs in fetched `content` are now
+  absolute.
+
 - `to_context()` (search results and fetched pages) drops markdown images and
   `<img>` tags, and resolves relative links against the result's URL (or keeps
   just the link text when it cannot). Absolute links are unchanged, and lines
