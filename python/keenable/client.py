@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from os import environ
 from typing import Any, Literal
@@ -98,6 +98,19 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
         {name: value for name, value in filters.items() if value is not None}
     )
     return payload
+
+
+def _fetch_params(
+    url: str, include: Sequence[str] | None, max_images: int | None
+) -> dict[str, Any]:
+    params: dict[str, Any] = {"url": url}
+    if include is not None:
+        # A bare string is one value, not a list of characters.
+        items = [include] if isinstance(include, str) else list(include)
+        params["include"] = ",".join(items)
+    if max_images is not None:
+        params["max_images"] = max_images
+    return params
 
 
 def _to_api_error(response: httpx.Response) -> KeenableAPIError:
@@ -333,14 +346,29 @@ class Keenable(_BaseClient):
         )
         return SearchResponse._from_json(self._request(_SEARCH, json=payload), query)
 
-    def fetch(self, url: str) -> Page:
+    def fetch(
+        self,
+        url: str,
+        *,
+        include: Sequence[str] | None = None,
+        max_images: int | None = None,
+    ) -> Page:
         """Fetch one URL and return its main content as markdown.
 
         Use this after :meth:`search` when a snippet is not enough and the
         model needs the full page.
+
+        Args:
+            url: The page to fetch.
+            include: Extra data to return with the page. ``["images"]`` fills
+                :attr:`Page.images` with the page's logo, cover, icons and
+                content images.
+            max_images: Cap on returned images, 1 to 50. The API default is 5.
+                Only valid with ``include=["images"]``.
         """
         _reject_private_fetch_target(url)
-        return Page._from_json(self._request(_FETCH, params={"url": url}), url)
+        params = _fetch_params(url, include, max_images)
+        return Page._from_json(self._request(_FETCH, params=params), url)
 
 
 class AsyncKeenable(_BaseClient):
@@ -438,8 +466,16 @@ class AsyncKeenable(_BaseClient):
         body = await self._request(_SEARCH, json=payload)
         return SearchResponse._from_json(body, query)
 
-    async def fetch(self, url: str) -> Page:
+    async def fetch(
+        self,
+        url: str,
+        *,
+        include: Sequence[str] | None = None,
+        max_images: int | None = None,
+    ) -> Page:
         """Fetch one URL as markdown. See :meth:`Keenable.fetch`."""
         _reject_private_fetch_target(url)
-        body = await self._request(_FETCH, params={"url": url})
+        body = await self._request(
+            _FETCH, params=_fetch_params(url, include, max_images)
+        )
         return Page._from_json(body, url)

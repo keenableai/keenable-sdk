@@ -346,6 +346,65 @@ class SearchResponse:
         return header
 
 
+def _int_or_none(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return None
+
+
+@dataclass
+class Image:
+    """An image found on a fetched page. Returned when ``include=["images"]``."""
+
+    url: str
+    """Absolute http(s) URL of the image."""
+
+    role: str
+    """What the image is for: ``"logo"``, ``"cover"``, ``"icon"`` or
+    ``"content"``. The set is open, so expect other values too."""
+
+    alt: str | None = None
+    """Alt text, or None when the page gave none."""
+
+    width: int | None = None
+    height: int | None = None
+    mime_type: str | None = None
+    sources: list[str] = field(default_factory=list)
+    """Where on the page the image was found, e.g. ``"og:image"``."""
+
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> Image:
+        alt = data.get("alt")
+        sources = data.get("sources")
+        return cls(
+            url=str(data.get("url") or ""),
+            role=str(data.get("role") or ""),
+            alt=alt if isinstance(alt, str) else None,
+            width=_int_or_none(data.get("width")),
+            height=_int_or_none(data.get("height")),
+            mime_type=_str_or_none(data.get("mime_type")),
+            sources=(
+                [s for s in sources if isinstance(s, str)]
+                if isinstance(sources, list)
+                else []
+            ),
+            raw=data,
+        )
+
+
+def _images(data: dict[str, Any]) -> list[Image] | None:
+    value = data.get("images")
+    if not isinstance(value, list):
+        return None
+    return [Image._from_json(item) for item in value if isinstance(item, dict)]
+
+
 @dataclass
 class Page:
     """A web page fetched by :meth:`Keenable.fetch`, extracted as markdown."""
@@ -362,6 +421,16 @@ class Page:
 
     author: str | None = None
     published_at: str | None = None
+
+    images: list[Image] | None = None
+    """Images on the page, when fetched with ``include=["images"]``. ``[]``
+    means none were found; None means they were not requested, or the page
+    could not be inspected (then ``images_truncated`` is False, not None)."""
+
+    images_truncated: bool | None = None
+    """True when more images were found than ``max_images`` allowed. None when
+    images were not requested."""
+
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
@@ -373,6 +442,10 @@ class Page:
             description=_str_or_none(data.get("description")),
             author=_str_or_none(data.get("author")),
             published_at=_str_or_none(data.get("published_at")),
+            images=_images(data),
+            images_truncated=(
+                data.get("images_truncated") is True if "images" in data else None
+            ),
             raw=data,
         )
 

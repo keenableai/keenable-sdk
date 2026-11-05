@@ -56,6 +56,44 @@ export interface SearchOptions {
   signal?: AbortSignal;
 }
 
+/** Extra data `fetch()` can return with a page. */
+export type FetchInclude = "images";
+
+/** Optional arguments for `fetch()`. */
+export interface FetchOptions {
+  /**
+   * Extra data to return with the page. `["images"]` fills `Page.images` with
+   * the page's logo, cover, icons and content images.
+   */
+  include?: readonly FetchInclude[];
+  /** Cap on returned images, 1 to 50. The API default is 5. Needs `include: ["images"]`. */
+  maxImages?: number;
+  /** Abort the request from your own controller. */
+  signal?: AbortSignal;
+}
+
+/**
+ * What an image is for. The set is open: handle values not listed here.
+ * `(string & {})` keeps editor completion for the known roles.
+ */
+export type ImageRole = "logo" | "cover" | "icon" | "content" | (string & {});
+
+/** An image found on a fetched page. Returned when `include: ["images"]`. */
+export interface PageImage {
+  /** Absolute http(s) URL of the image. */
+  url: string;
+  role: ImageRole;
+  /** Alt text. Absent when the page gave none. */
+  alt?: string;
+  width?: number;
+  height?: number;
+  mimeType?: string;
+  /** Where on the page the image was found, e.g. `"og:image"`. */
+  sources: string[];
+  /** The unmodified JSON object, so new API fields stay reachable. */
+  raw: Record<string, unknown>;
+}
+
 /** Options for rendering results into a prompt block. */
 export interface ToContextOptions {
   /** Approximate character budget for the whole block. Default 12000. */

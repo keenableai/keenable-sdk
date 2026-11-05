@@ -83,6 +83,27 @@ print(page.content)  # markdown, boilerplate stripped
 print(page.to_context())  # same citable block shape as search results
 ```
 
+## Get a site's logo and cover image
+
+Pass `include=["images"]` to also get the page's images, each with a `role`:
+`"logo"`, `"cover"` (the social preview image), `"icon"` or `"content"`. The
+role set is open, so skip values you do not know.
+
+```python
+page = keenable.fetch("https://stripe.com", include=["images"], max_images=10)
+
+if page.images is None:
+    print("could not inspect the page's images")
+else:
+    logo = next((i for i in page.images if i.role == "logo"), None)
+    cover = next((i for i in page.images if i.role == "cover"), None)
+    print(logo.url if logo else "no logo", cover.url if cover else "no cover")
+```
+
+`page.images` is `[]` when the page has no images, and `None` when they could
+not be read. Image URLs are absolute. `max_images` (1 to 50, default 5) needs
+`include=["images"]`; `page.images_truncated` says whether more were found.
+
 ## Tool calling
 
 The SDK ships OpenAI-compatible tool definitions, so any inference API that

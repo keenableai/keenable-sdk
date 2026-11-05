@@ -112,6 +112,37 @@ fmt.Println(page.Content)       // markdown, boilerplate stripped
 fmt.Println(page.ToContext(nil)) // same citable block shape as search results
 ```
 
+## Get a site's logo and cover image
+
+Pass `Include: []string{"images"}` to also get the page's images, each with a
+`Role`: `ImageRoleLogo`, `ImageRoleCover` (the social preview image),
+`ImageRoleIcon` or `ImageRoleContent`. The role set is open, so skip values you
+do not know.
+
+```go
+page, err := client.Fetch(ctx, "https://stripe.com", &keenable.FetchOptions{
+	Include:   []string{"images"},
+	MaxImages: 10,
+})
+if err != nil {
+	log.Fatal(err)
+}
+if page.Images == nil {
+	fmt.Println("could not inspect the page's images")
+}
+for _, image := range page.Images {
+	switch image.Role {
+	case keenable.ImageRoleLogo, keenable.ImageRoleCover:
+		fmt.Println(image.Role, image.URL)
+	}
+}
+```
+
+`page.Images` is a non-nil empty slice when the page has no images, and nil
+when they could not be read. Image URLs are absolute. `MaxImages` (1 to 50,
+default 5) needs `Include` "images"; `page.ImagesTruncated` says whether more
+were found.
+
 Internal hosts and private addresses are refused before a request is sent.
 
 ## Tool calling
