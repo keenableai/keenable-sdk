@@ -3,7 +3,7 @@
 
 import { Keenable } from "keenable";
 
-const BLOCKED = ["pinterest.com", "medium.com/tag", ".info"];
+const BLOCKED = ["pinterest.com", "quora.com", "reddit.com"];
 
 const keenable = new Keenable();
 
@@ -13,9 +13,3 @@ const results = await keenable.search(
 );
 
 for (const result of results) console.log(`${result.url}\n  ${result.title}`);
-
-const unWithoutBlogs = await keenable.search("UN climate finance commitments", {
-  includeDomains: ["un.org"],
-  excludeDomains: ["blogs.un.org"],
-});
-console.log(`\nun.org without blogs.un.org: ${unWithoutBlogs.length} results`);

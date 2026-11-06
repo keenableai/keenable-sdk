@@ -5,7 +5,7 @@ Run: pip install keenable && python exclude.py
 
 from keenable import Keenable
 
-BLOCKED = ["pinterest.com", "medium.com/tag", ".info"]
+BLOCKED = ["pinterest.com", "quora.com", "reddit.com"]
 
 keenable = Keenable()
 
@@ -16,10 +16,3 @@ results = keenable.search(
 
 for result in results:
     print(f"{result.url}\n  {result.title}")
-
-un_without_blogs = keenable.search(
-    "UN climate finance commitments",
-    include_domains=["un.org"],
-    exclude_domains=["blogs.un.org"],
-)
-print(f"\nun.org without blogs.un.org: {len(un_without_blogs)} results")
