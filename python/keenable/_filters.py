@@ -40,17 +40,16 @@ SEARCH_FILTERS: tuple[Filter, ...] = (
     ),
     Filter(
         "include_domains",
-        "Optional. Only return results from these domains. Each entry is a "
-        "domain ('un.org', which also matches its subdomains), a domain with a "
-        "path prefix ('un.org/en/ga'), or a suffix ('.gov'). Do not combine "
-        "with site.",
+        "Optional. Only return results from these hosts, e.g. 'un.org', which "
+        "also matches its subdomains. Hosts only: paths and suffixes like "
+        "'.gov' are rejected. Up to 50. Do not combine with site.",
         json_type="array",
         tool_exposed=True,
     ),
     Filter(
         "exclude_domains",
-        "Optional. Never return results from these domains. Same entry forms "
-        "as include_domains; an entry in both lists is an error.",
+        "Optional. Never return results from these hosts, up to 200. Same "
+        "host form as include_domains; a host in both lists is an error.",
         json_type="array",
         tool_exposed=True,
     ),

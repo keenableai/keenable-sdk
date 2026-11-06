@@ -27,16 +27,16 @@ var searchFilters = []filter{
 	},
 	{
 		wire: "include_domains",
-		description: "Optional. Only return results from these domains. Each entry is a domain " +
-			"('un.org', which also matches its subdomains), a domain with a path prefix " +
-			"('un.org/en/ga'), or a suffix ('.gov'). Do not combine with site.",
+		description: "Optional. Only return results from these hosts, e.g. 'un.org', which also " +
+			"matches its subdomains. Hosts only: paths and suffixes like '.gov' are rejected. " +
+			"Up to 50. Do not combine with site.",
 		jsonType:    "array",
 		toolExposed: true,
 	},
 	{
 		wire: "exclude_domains",
-		description: "Optional. Never return results from these domains. Same entry forms as " +
-			"include_domains; an entry in both lists is an error.",
+		description: "Optional. Never return results from these hosts, up to 200. Same host " +
+			"form as include_domains; a host in both lists is an error.",
 		jsonType:    "array",
 		toolExposed: true,
 	},

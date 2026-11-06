@@ -312,8 +312,10 @@ class Keenable(_BaseClient):
                 rather than typing keywords; the index is semantic.
             mode: Search mode. ``"pro"`` (the default) does deeper retrieval.
             site: Restrict results to one domain, e.g. ``"arxiv.org"``.
-            include_domains: Only return results from these domains.
-            exclude_domains: Never return results from these domains.
+            include_domains: Only return results from these hosts and their
+                subdomains, e.g. ``"un.org"``.
+            exclude_domains: Never return results from these hosts and their
+                subdomains.
             published_after: Keep pages published on or after ``YYYY-MM-DD``.
             published_before: Keep pages published on or before ``YYYY-MM-DD``.
             acquired_after: Keep pages Keenable indexed on or after

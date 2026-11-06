@@ -16,9 +16,9 @@ type SearchOptions struct {
 	Mode string
 	// Site restricts results to one domain, for example "arxiv.org".
 	Site string
-	// IncludeDomains keeps only results from these domains, e.g. "un.org" or ".gov".
+	// IncludeDomains keeps only results from these hosts and their subdomains, e.g. "un.org".
 	IncludeDomains []string
-	// ExcludeDomains drops results from these domains.
+	// ExcludeDomains drops results from these hosts and their subdomains.
 	ExcludeDomains []string
 	// PublishedAfter keeps pages published on or after YYYY-MM-DD.
 	PublishedAfter string
