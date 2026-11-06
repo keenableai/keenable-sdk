@@ -136,7 +136,9 @@ def _retry_after_header(value: str | None) -> float | None:
     text = value.strip()
     if text.isascii() and text.isdigit():
         # Cap at a year, as the Go SDK does; checking the length first keeps
-        # int() clear of Python's integer-string length limit.
+        # int() clear of Python's integer-string length limit. Leading zeros
+        # do not count: "0000000001" is one second.
+        text = text.lstrip("0") or "0"
         if len(text) > len(str(_MAX_RETRY_AFTER)):
             return _MAX_RETRY_AFTER
         return min(int(text), _MAX_RETRY_AFTER)

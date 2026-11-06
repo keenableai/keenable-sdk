@@ -175,6 +175,12 @@ describe("retry hints", () => {
     expect(error.retryAfterSeconds).toBe(365 * 24 * 60 * 60);
   });
 
+  it("keeps a zero-padded Retry-After header's value", async () => {
+    const error = await errorFor(reply(429, { message: "m" }, { "Retry-After": "0000000001" }));
+
+    expect(error.retryAfterSeconds).toBe(1);
+  });
+
   it("ends the message with the API's fix", async () => {
     const error = await errorFor(reply(403, { error: "Forbidden", fix: "Create a new key." }));
 

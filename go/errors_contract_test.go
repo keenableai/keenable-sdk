@@ -264,6 +264,7 @@ func TestRetryAfterSources(t *testing.T) {
 		{"older body field", map[string]any{"message": "m", "retryAfter": 3}, nil, 3 * time.Second},
 		{"body wins", map[string]any{"retry_after_seconds": 4}, map[string]string{"Retry-After": "9"}, 4 * time.Second},
 		{"malformed", map[string]any{"retry_after_seconds": -1}, map[string]string{"Retry-After": "soon"}, 0},
+		{"zero-padded header", map[string]any{"message": "m"}, map[string]string{"Retry-After": "0000000001"}, time.Second},
 		{"oversized header", map[string]any{"message": "m"}, map[string]string{"Retry-After": strings.Repeat("9", 400)}, 365 * 24 * time.Hour},
 	}
 	for _, tc := range cases {

@@ -163,6 +163,14 @@ def test_an_oversized_retry_after_header_is_capped_not_raised() -> None:
     assert err.retry_after_seconds == 365 * 24 * 60 * 60
 
 
+def test_a_zero_padded_retry_after_header_keeps_its_value() -> None:
+    for header, want in (("0000000001", 1), ("0" * 5000 + "7", 7), ("000", 0)):
+        err = _raise(
+            httpx.Response(429, json={"message": "m"}, headers={"Retry-After": header})
+        )
+        assert err.retry_after_seconds == want, header
+
+
 def test_the_message_ends_with_the_apis_fix() -> None:
     err = _raise(
         httpx.Response(403, json={"error": "Forbidden", "fix": "Create a new key."})
