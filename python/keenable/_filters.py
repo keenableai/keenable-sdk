@@ -34,22 +34,13 @@ class Filter:
 SEARCH_FILTERS: tuple[Filter, ...] = (
     Filter(
         "site",
-        "Optional. Restrict results to one domain, e.g. 'arxiv.org'. "
-        "For several domains use include_domains.",
-        tool_exposed=True,
-    ),
-    Filter(
-        "include_domains",
-        "Optional. Only return results from these hosts, e.g. 'un.org', which "
-        "also matches its subdomains. Hosts only: paths and suffixes like "
-        "'.gov' are rejected. Up to 50. Do not combine with site.",
-        json_type="array",
+        "Optional. Restrict results to one domain, e.g. 'arxiv.org'.",
         tool_exposed=True,
     ),
     Filter(
         "exclude_domains",
-        "Optional. Never return results from these hosts, up to 200. Same "
-        "host form as include_domains; a host in both lists is an error.",
+        "Optional. Never return results from these hosts or their subdomains, "
+        "e.g. 'pinterest.com'. Hosts only, no paths or wildcards. Up to 1,000.",
         json_type="array",
         tool_exposed=True,
     ),

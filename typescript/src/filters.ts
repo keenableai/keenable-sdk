@@ -28,27 +28,15 @@ export const SEARCH_FILTERS: readonly Filter[] = [
   {
     wire: "site",
     option: "site",
-    description:
-      "Optional. Restrict results to one domain, e.g. 'arxiv.org'. " +
-      "For several domains use include_domains.",
-    toolExposed: true,
-  },
-  {
-    wire: "include_domains",
-    option: "includeDomains",
-    description:
-      "Optional. Only return results from these hosts, e.g. 'un.org', which also " +
-      "matches its subdomains. Hosts only: paths and suffixes like '.gov' are rejected. " +
-      "Up to 50. Do not combine with site.",
-    jsonType: "array",
+    description: "Optional. Restrict results to one domain, e.g. 'arxiv.org'.",
     toolExposed: true,
   },
   {
     wire: "exclude_domains",
     option: "excludeDomains",
     description:
-      "Optional. Never return results from these hosts, up to 200. Same host " +
-      "form as include_domains; a host in both lists is an error.",
+      "Optional. Never return results from these hosts or their subdomains, " +
+      "e.g. 'pinterest.com'. Hosts only, no paths or wildcards. Up to 1,000.",
     jsonType: "array",
     toolExposed: true,
   },

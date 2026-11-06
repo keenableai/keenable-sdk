@@ -133,38 +133,32 @@ def test_search_sends_max_results_and_query_time() -> None:
     assert payload["query_time"] == "2026-05-01"
 
 
-def test_search_sends_domain_lists_as_arrays() -> None:
+def test_search_sends_exclude_domains_as_an_array() -> None:
     keenable, seen = _client(_ok(SEARCH_BODY))
-    keenable.search("q", include_domains=["press.un.org", "undocs.org", "usa.gov"])
-    keenable.search("q", exclude_domains=("blogs.un.org",))
-    keenable.search("q", include_domains=["un.org"], exclude_domains=["blogs.un.org"])
+    keenable.search("q", exclude_domains=("pinterest.com", "quora.com"))
+    keenable.search("q", site="arxiv.org")
 
-    first, second, both = (json.loads(r.content) for r in seen)
-    assert first["include_domains"] == ["press.un.org", "undocs.org", "usa.gov"]
-    assert "exclude_domains" not in first
-    assert second["exclude_domains"] == ["blogs.un.org"]
-    assert "include_domains" not in second
-    assert both["include_domains"] == ["un.org"]
-    assert both["exclude_domains"] == ["blogs.un.org"]
-    assert "site" not in both
+    first, second = (json.loads(r.content) for r in seen)
+    assert first["exclude_domains"] == ["pinterest.com", "quora.com"]
+    assert "site" not in first
+    assert second["site"] == "arxiv.org"
+    assert "exclude_domains" not in second
 
 
 def test_search_sends_unnormalized_domain_entries_verbatim() -> None:
     keenable, seen = _client(_ok(SEARCH_BODY))
-    raw = [" https://WWW.UN.org/ ", "un.org", "un.org", "un.org/press", ".gov"]
-    keenable.search("q", include_domains=raw, exclude_domains=["WWW.spam.com."])
+    raw = [" https://WWW.Spam.com/ ", "spam.com", "spam.com", "spam.com/blog", ".gov"]
+    keenable.search("q", exclude_domains=raw)
 
     payload = json.loads(seen[0].content)
-    assert payload["include_domains"] == raw
-    assert payload["exclude_domains"] == ["WWW.spam.com."]
+    assert payload["exclude_domains"] == raw
 
 
 def test_search_passes_an_empty_domain_list_through() -> None:
     keenable, seen = _client(_ok(SEARCH_BODY))
-    keenable.search("q", include_domains=[], exclude_domains=[])
+    keenable.search("q", exclude_domains=[])
 
     payload = json.loads(seen[0].content)
-    assert payload["include_domains"] == []
     assert payload["exclude_domains"] == []
 
 
@@ -180,20 +174,18 @@ def test_search_passes_an_empty_domain_list_through() -> None:
 def test_search_sends_any_iterable_as_an_array(make: Any) -> None:
     keenable, seen = _client(_ok(SEARCH_BODY))
     expected = list(make())
-    keenable.search("q", include_domains=make(), exclude_domains=make())
+    keenable.search("q", exclude_domains=make())
 
     payload = json.loads(seen[0].content)
-    assert payload["include_domains"] == expected
     assert payload["exclude_domains"] == expected
 
 
 @pytest.mark.parametrize("value", ["un.org", {"un.org": True}], ids=["str", "mapping"])
 def test_search_sends_a_lone_string_or_mapping_unchanged(value: Any) -> None:
     keenable, seen = _client(_ok(SEARCH_BODY))
-    keenable.search("q", include_domains=value, exclude_domains=value)
+    keenable.search("q", exclude_domains=value)
 
     payload = json.loads(seen[0].content)
-    assert payload["include_domains"] == value
     assert payload["exclude_domains"] == value
 
 
@@ -206,41 +198,10 @@ def test_site_still_works_next_to_the_domain_lists() -> None:
     assert payload["exclude_domains"] == ["export.arxiv.org"]
 
 
-def test_site_and_include_domains_are_both_sent() -> None:
-    keenable, seen = _client(_ok(SEARCH_BODY))
-    keenable.search("q", site="arxiv.org", include_domains=["un.org"])
-    run_tool_call(
-        keenable,
-        "keenable_search",
-        {"query": "q", "site": "arxiv.org", "include_domains": ["un.org"]},
-    )
-
-    for request in seen:
-        payload = json.loads(request.content)
-        assert payload["site"] == "arxiv.org"
-        assert payload["include_domains"] == ["un.org"]
-
-
-async def test_async_site_and_include_domains_are_both_sent() -> None:
-    keenable, seen = _aclient(_routed)
-    async with keenable:
-        await keenable.search("q", site="arxiv.org", include_domains=["un.org"])
-        await arun_tool_call(
-            keenable,
-            "keenable_search",
-            {"query": "q", "site": "arxiv.org", "include_domains": ["un.org"]},
-        )
-
-    for request in seen:
-        payload = json.loads(request.content)
-        assert payload["site"] == "arxiv.org"
-        assert payload["include_domains"] == ["un.org"]
-
-
 def test_search_raw_keeps_the_filter_warning() -> None:
     body = {**SEARCH_BODY, "warning": "3 results were removed by your domain filter"}
     keenable, _ = _client(_ok(body))
-    response = keenable.search("q", include_domains=["un.org"])
+    response = keenable.search("q", exclude_domains=["spam.com"])
 
     assert response.raw["warning"] == "3 results were removed by your domain filter"
     assert response.raw["results"] == SEARCH_BODY["results"]
@@ -250,7 +211,7 @@ async def test_async_search_raw_keeps_the_filter_warning() -> None:
     body = {**SEARCH_BODY, "warning": "3 results were removed by your domain filter"}
     keenable, _ = _aclient(_ok(body))
     async with keenable:
-        response = await keenable.search("q", include_domains=["un.org"])
+        response = await keenable.search("q", exclude_domains=["spam.com"])
 
     assert response.raw["warning"] == "3 results were removed by your domain filter"
 
@@ -407,47 +368,47 @@ def test_rate_limit_and_auth_errors_carry_the_api_message() -> None:
 INVALID_FILTER_BODY = {
     "error": "invalid_filter",
     "message": (
-        'Invalid include_domains value "un.org/press": '
-        "paths are not supported; use the host un.org"
+        'Invalid exclude_domains value "spam.com/blog": '
+        "paths are not supported; use the host spam.com"
     ),
-    "field": "include_domains",
-    "value": "un.org/press",
-    "reason": "paths are not supported; use the host un.org",
+    "field": "exclude_domains",
+    "value": "spam.com/blog",
+    "reason": "paths are not supported; use the host spam.com",
 }
 
 
 def test_invalid_filter_error_names_field_entry_and_reason() -> None:
     keenable, _ = _client(_ok(INVALID_FILTER_BODY, status=400))
     with pytest.raises(KeenableAPIError) as excinfo:
-        keenable.search("q", include_domains=["un.org/press"])
+        keenable.search("q", exclude_domains=["spam.com/blog"])
 
     err = excinfo.value
     assert err.status_code == 400
     assert str(err) == (
-        'Keenable API error (400): Invalid include_domains value "un.org/press": '
-        "paths are not supported; use the host un.org"
+        'Keenable API error (400): Invalid exclude_domains value "spam.com/blog": '
+        "paths are not supported; use the host spam.com"
     )
     assert err.body == INVALID_FILTER_BODY["message"]
     assert err.data == INVALID_FILTER_BODY
-    assert err.field == "include_domains"
-    assert err.value == "un.org/press"
-    assert err.reason == "paths are not supported; use the host un.org"
+    assert err.field == "exclude_domains"
+    assert err.value == "spam.com/blog"
+    assert err.reason == "paths are not supported; use the host spam.com"
 
 
 def test_invalid_filter_error_without_a_value() -> None:
     body = {
         "error": "invalid_filter",
-        "message": "Invalid include_domains value: must not be empty",
-        "field": "include_domains",
-        "reason": "must not be empty",
+        "message": "Invalid exclude_domains value: at most 1000 hosts",
+        "field": "exclude_domains",
+        "reason": "at most 1000 hosts",
     }
     keenable, _ = _client(_ok(body, status=400))
     with pytest.raises(KeenableAPIError) as excinfo:
-        keenable.search("q", include_domains=[])
+        keenable.search("q", exclude_domains=["a.com"])
 
-    assert excinfo.value.field == "include_domains"
+    assert excinfo.value.field == "exclude_domains"
     assert excinfo.value.value is None
-    assert excinfo.value.reason == "must not be empty"
+    assert excinfo.value.reason == "at most 1000 hosts"
 
 
 def test_other_400s_carry_no_filter_detail() -> None:
@@ -487,7 +448,7 @@ def test_invalid_filter_non_string_entries_are_json_encoded(
         keenable.search("q", exclude_domains=["a.com", value])
 
     assert excinfo.value.value == text
-    assert excinfo.value.field == "include_domains"
+    assert excinfo.value.field == "exclude_domains"
 
 
 @pytest.mark.parametrize(
@@ -564,48 +525,34 @@ def test_tool_call_forwards_only_the_filters_the_schema_offers() -> None:
     assert "acquired_after" not in payload
 
 
-def test_tool_schema_offers_site_and_both_domain_lists() -> None:
+def test_tool_schema_offers_site_and_exclude_domains() -> None:
     search = next(t for t in TOOLS if t["function"]["name"] == "keenable_search")
     props = search["function"]["parameters"]["properties"]
-    for name in ("include_domains", "exclude_domains"):
-        assert props[name]["type"] == "array"
-        assert props[name]["items"] == {"type": "string"}
+    assert props["exclude_domains"]["type"] == "array"
+    assert props["exclude_domains"]["items"] == {"type": "string"}
+    assert "1,000" in props["exclude_domains"]["description"]
     assert props["site"]["type"] == "string"
-    assert "include_domains" in props["site"]["description"]
 
 
-def test_tool_call_forwards_domain_lists_and_keeps_empty_ones() -> None:
+def test_tool_call_forwards_exclude_domains_and_keeps_an_empty_list() -> None:
     keenable, seen = _client(_routed)
+    run_tool_call(keenable, "keenable_search", {"query": "q", "exclude_domains": []})
     run_tool_call(
-        keenable,
-        "keenable_search",
-        {"query": "q", "include_domains": ["press.un.org"], "exclude_domains": []},
+        keenable, "keenable_search", '{"query": "q", "exclude_domains": "spam.com"}'
     )
-    run_tool_call(
-        keenable,
-        "keenable_search",
-        '{"query": "q", "include_domains": "press.un.org", "exclude_domains": ""}',
-    )
-    run_tool_call(keenable, "keenable_search", {"query": "q", "include_domains": []})
+    run_tool_call(keenable, "keenable_search", {"query": "q", "exclude_domains": ""})
     run_tool_call(keenable, "keenable_search", {"query": "q"})
 
-    first, second, empty_include, absent = (json.loads(r.content) for r in seen)
-    assert first["include_domains"] == ["press.un.org"]
-    assert first["exclude_domains"] == []
-    assert empty_include["include_domains"] == []
-    assert second["include_domains"] == ["press.un.org"]
-    assert "exclude_domains" not in second
-    assert "include_domains" not in absent
+    empty, single, blank, absent = (json.loads(r.content) for r in seen)
+    assert empty["exclude_domains"] == []
+    assert single["exclude_domains"] == ["spam.com"]
+    assert "exclude_domains" not in blank
     assert "exclude_domains" not in absent
 
 
 def test_tool_call_sends_a_malformed_domain_list_to_the_api() -> None:
     keenable, seen = _client(_routed)
-    run_tool_call(
-        keenable,
-        "keenable_search",
-        {"query": "q", "include_domains": None, "exclude_domains": 5},
-    )
+    run_tool_call(keenable, "keenable_search", {"query": "q", "exclude_domains": 5})
     run_tool_call(
         keenable,
         "keenable_search",
@@ -614,12 +561,13 @@ def test_tool_call_sends_a_malformed_domain_list_to_the_api() -> None:
     run_tool_call(
         keenable, "keenable_search", {"query": "q", "exclude_domains": ["a.com", 7]}
     )
+    run_tool_call(keenable, "keenable_search", {"query": "q", "exclude_domains": None})
 
-    first, second, third = (json.loads(r.content) for r in seen)
-    assert "include_domains" not in first
+    first, second, third, fourth = (json.loads(r.content) for r in seen)
     assert first["exclude_domains"] == 5
     assert second["exclude_domains"] == {"a.com": True}
     assert third["exclude_domains"] == ["a.com", 7]
+    assert "exclude_domains" not in fourth
 
 
 def test_tool_schema_keeps_max_results_and_query_time_out() -> None:
@@ -631,18 +579,15 @@ def test_tool_schema_keeps_max_results_and_query_time_out() -> None:
     assert "query_time" not in props
 
 
-async def test_async_search_sends_domain_lists() -> None:
+async def test_async_search_sends_exclude_domains() -> None:
     keenable, seen = _aclient(_routed)
     async with keenable:
-        await keenable.search(
-            "q", include_domains=["press.un.org"], exclude_domains=["blogs.un.org"]
-        )
-        await keenable.search("q", include_domains=[])
+        await keenable.search("q", exclude_domains=["pinterest.com"])
+        await keenable.search("q", exclude_domains=[])
 
     first, second = (json.loads(r.content) for r in seen)
-    assert first["include_domains"] == ["press.un.org"]
-    assert first["exclude_domains"] == ["blogs.un.org"]
-    assert second["include_domains"] == []
+    assert first["exclude_domains"] == ["pinterest.com"]
+    assert second["exclude_domains"] == []
 
 
 async def test_async_client_mirrors_the_sync_one() -> None:
@@ -660,52 +605,50 @@ async def test_async_client_mirrors_the_sync_one() -> None:
 
 
 async def test_async_search_matches_the_sync_payloads() -> None:
-    generator: Any = (d for d in ["blogs.un.org"])
-    a_set: Any = {"arxiv.org"}
+    generator: Any = (d for d in ["spam.com"])
+    a_set: Any = {"export.arxiv.org"}
     keenable, seen = _aclient(_routed)
     async with keenable:
         await keenable.search("q", exclude_domains=generator)
         await keenable.search("q", exclude_domains=[])
-        await keenable.search(
-            "q", site="arxiv.org", include_domains=a_set, exclude_domains="x"
-        )
+        await keenable.search("q", site="arxiv.org", exclude_domains=a_set)
+        await keenable.search("q", exclude_domains="x")
 
-    exclude_only, empty_exclude, mixed = (json.loads(r.content) for r in seen)
-    assert exclude_only["exclude_domains"] == ["blogs.un.org"]
-    assert "include_domains" not in exclude_only
+    from_generator, empty_exclude, mixed, lone = (json.loads(r.content) for r in seen)
+    assert from_generator["exclude_domains"] == ["spam.com"]
     assert empty_exclude["exclude_domains"] == []
     assert mixed["site"] == "arxiv.org"
-    assert mixed["include_domains"] == ["arxiv.org"]
-    assert mixed["exclude_domains"] == "x"
+    assert mixed["exclude_domains"] == ["export.arxiv.org"]
+    assert lone["exclude_domains"] == "x"
 
 
 async def test_async_invalid_filter_error_names_field_entry_and_reason() -> None:
     keenable, _ = _aclient(_ok(INVALID_FILTER_BODY, status=400))
     async with keenable:
         with pytest.raises(KeenableAPIError) as excinfo:
-            await keenable.search("q", include_domains=["un.org/press"])
+            await keenable.search("q", exclude_domains=["spam.com/blog"])
 
     err = excinfo.value
     assert err.status_code == 400
     assert err.data == INVALID_FILTER_BODY
-    assert err.field == "include_domains"
-    assert err.value == "un.org/press"
-    assert err.reason == "paths are not supported; use the host un.org"
+    assert err.field == "exclude_domains"
+    assert err.value == "spam.com/blog"
+    assert err.reason == "paths are not supported; use the host spam.com"
 
 
 async def test_async_tool_call_forwards_domain_lists_like_the_sync_one() -> None:
     keenable, seen = _aclient(_routed)
     async with keenable:
         for arguments in (
-            '{"query": "q", "include_domains": "press.un.org", "exclude_domains": ""}',
-            {"query": "q", "include_domains": [], "exclude_domains": ["a.com"]},
+            '{"query": "q", "exclude_domains": "spam.com"}',
+            {"query": "q", "exclude_domains": ""},
+            {"query": "q", "exclude_domains": []},
             {"query": "q", "exclude_domains": ["a.com", 7]},
         ):
             await arun_tool_call(keenable, "keenable_search", arguments)
 
-    wrapped, empty_include, malformed = (json.loads(r.content) for r in seen)
-    assert wrapped["include_domains"] == ["press.un.org"]
-    assert "exclude_domains" not in wrapped
-    assert empty_include["include_domains"] == []
-    assert empty_include["exclude_domains"] == ["a.com"]
+    wrapped, blank, empty, malformed = (json.loads(r.content) for r in seen)
+    assert wrapped["exclude_domains"] == ["spam.com"]
+    assert "exclude_domains" not in blank
+    assert empty["exclude_domains"] == []
     assert malformed["exclude_domains"] == ["a.com", 7]

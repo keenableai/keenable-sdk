@@ -1,8 +1,6 @@
 package keenable
 
-import (
-	"encoding/json"
-)
+import "encoding/json"
 
 // The search filter set, declared once.
 //
@@ -20,23 +18,14 @@ type filter struct {
 
 var searchFilters = []filter{
 	{
-		wire: "site",
-		description: "Optional. Restrict results to one domain, e.g. 'arxiv.org'. " +
-			"For several domains use include_domains.",
-		toolExposed: true,
-	},
-	{
-		wire: "include_domains",
-		description: "Optional. Only return results from these hosts, e.g. 'un.org', which also " +
-			"matches its subdomains. Hosts only: paths and suffixes like '.gov' are rejected. " +
-			"Up to 50. Do not combine with site.",
-		jsonType:    "array",
+		wire:        "site",
+		description: "Optional. Restrict results to one domain, e.g. 'arxiv.org'.",
 		toolExposed: true,
 	},
 	{
 		wire: "exclude_domains",
-		description: "Optional. Never return results from these hosts, up to 200. Same host " +
-			"form as include_domains; a host in both lists is an error.",
+		description: "Optional. Never return results from these hosts or their subdomains, " +
+			"e.g. 'pinterest.com'. Hosts only, no paths or wildcards. Up to 1,000.",
 		jsonType:    "array",
 		toolExposed: true,
 	},
@@ -93,11 +82,6 @@ func (f filter) value(opts *SearchOptions) (any, bool) {
 			return nil, false
 		}
 		return opts.Site, true
-	case "include_domains":
-		if opts.IncludeDomains == nil {
-			return nil, false
-		}
-		return opts.IncludeDomains, true
 	case "exclude_domains":
 		if opts.ExcludeDomains == nil {
 			return nil, false

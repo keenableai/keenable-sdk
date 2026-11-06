@@ -44,8 +44,7 @@ func ExampleClient_Search_domainFilters() {
 	defer client.Close()
 
 	results, err := client.Search(context.Background(), "security council resolution on sudan", &keenable.SearchOptions{
-		IncludeDomains: []string{"press.un.org", "undocs.org", "documents.un.org"},
-		ExcludeDomains: []string{"blogs.un.org"},
+		ExcludeDomains: []string{"pinterest.com", "quora.com"},
 	})
 	var api *keenable.APIError
 	if errors.As(err, &api) && api.StatusCode == 400 {

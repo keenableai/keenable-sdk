@@ -294,7 +294,6 @@ class Keenable(_BaseClient):
         *,
         mode: Literal["pro"] | None = None,
         site: str | None = None,
-        include_domains: Sequence[str] | None = None,
         exclude_domains: Sequence[str] | None = None,
         published_after: str | None = None,
         published_before: str | None = None,
@@ -312,8 +311,6 @@ class Keenable(_BaseClient):
                 rather than typing keywords; the index is semantic.
             mode: Search mode. ``"pro"`` (the default) does deeper retrieval.
             site: Restrict results to one domain, e.g. ``"arxiv.org"``.
-            include_domains: Only return results from these hosts and their
-                subdomains, e.g. ``"un.org"``.
             exclude_domains: Never return results from these hosts and their
                 subdomains.
             published_after: Keep pages published on or after ``YYYY-MM-DD``.
@@ -339,7 +336,6 @@ class Keenable(_BaseClient):
             query,
             mode,
             site=site,
-            include_domains=_domain_list(include_domains),
             exclude_domains=_domain_list(exclude_domains),
             published_after=published_after,
             published_before=published_before,
@@ -432,7 +428,6 @@ class AsyncKeenable(_BaseClient):
         *,
         mode: Literal["pro"] | None = None,
         site: str | None = None,
-        include_domains: Sequence[str] | None = None,
         exclude_domains: Sequence[str] | None = None,
         published_after: str | None = None,
         published_before: str | None = None,
@@ -447,7 +442,6 @@ class AsyncKeenable(_BaseClient):
             query,
             mode,
             site=site,
-            include_domains=_domain_list(include_domains),
             exclude_domains=_domain_list(exclude_domains),
             published_after=published_after,
             published_before=published_before,

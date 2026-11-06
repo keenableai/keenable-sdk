@@ -130,65 +130,41 @@ describe("search", () => {
     expect(payload.query_time).toBe("2026-05-01");
   });
 
-  it("sends includeDomains and excludeDomains as arrays", async () => {
+  it("sends excludeDomains as an array", async () => {
     const { client, seen } = mockClient(() => json(SEARCH_BODY));
-    await client.search("security council resolution", {
-      includeDomains: ["press.un.org", "undocs.org", "usa.gov"],
-    });
-    await client.search("security council resolution", {
-      excludeDomains: ["blogs.un.org"],
-    });
-    await client.search("security council resolution", {
-      includeDomains: ["un.org"],
-      excludeDomains: ["blogs.un.org"],
-    });
+    await client.search("q", { excludeDomains: ["pinterest.com", "quora.com"] });
+    await client.search("q", { site: "arxiv.org" });
 
     const payloads = seen.map((s) => JSON.parse(String(s.init.body)));
-    expect(payloads[0].include_domains).toEqual(["press.un.org", "undocs.org", "usa.gov"]);
-    expect(payloads[0]).not.toHaveProperty("exclude_domains");
-    expect(payloads[1].exclude_domains).toEqual(["blogs.un.org"]);
-    expect(payloads[1]).not.toHaveProperty("include_domains");
-    expect(payloads[2]).toMatchObject({
-      include_domains: ["un.org"],
-      exclude_domains: ["blogs.un.org"],
-    });
-    expect(payloads[2]).not.toHaveProperty("site");
+    expect(payloads[0].exclude_domains).toEqual(["pinterest.com", "quora.com"]);
+    expect(payloads[0]).not.toHaveProperty("site");
+    expect(payloads[1].site).toBe("arxiv.org");
+    expect(payloads[1]).not.toHaveProperty("exclude_domains");
   });
 
   it("sends unnormalized domain entries verbatim for the API to clean up", async () => {
     const { client, seen } = mockClient(() => json(SEARCH_BODY));
-    const raw = [" https://WWW.UN.org/ ", "un.org", "un.org", "un.org/press", ".gov"];
-    await client.search("q", { includeDomains: raw, excludeDomains: ["WWW.spam.com."] });
+    const raw = [" https://WWW.Spam.com/ ", "spam.com", "spam.com", "spam.com/blog", ".gov"];
+    await client.search("q", { excludeDomains: raw });
 
     const payload = JSON.parse(String(seen[0]?.init.body));
-    expect(payload.include_domains).toEqual(raw);
-    expect(payload.exclude_domains).toEqual(["WWW.spam.com."]);
-  });
-
-  it("sends site and includeDomains together for the API to reject", async () => {
-    const { client, seen } = mockClient(() => json(SEARCH_BODY));
-    await client.search("q", { site: "un.org", includeDomains: ["press.un.org"] });
-
-    const payload = JSON.parse(String(seen[0]?.init.body));
-    expect(payload.site).toBe("un.org");
-    expect(payload.include_domains).toEqual(["press.un.org"]);
+    expect(payload.exclude_domains).toEqual(raw);
   });
 
   it("keeps the API's filter warning in raw", async () => {
     const body = { ...SEARCH_BODY, warning: "3 results were removed by your domain filter" };
     const { client } = mockClient(() => json(body));
-    const response = await client.search("q", { includeDomains: ["un.org"] });
+    const response = await client.search("q", { excludeDomains: ["spam.com"] });
 
     expect(response.raw.warning).toBe("3 results were removed by your domain filter");
     expect(response.raw.results).toEqual(SEARCH_BODY.results);
   });
 
-  it("passes an empty list through so the API can reject it", async () => {
+  it("passes an empty list through", async () => {
     const { client, seen } = mockClient(() => json(SEARCH_BODY));
-    await client.search("q", { includeDomains: [], excludeDomains: [] });
+    await client.search("q", { excludeDomains: [] });
 
     const payload = JSON.parse(String(seen[0]?.init.body));
-    expect(payload.include_domains).toEqual([]);
     expect(payload.exclude_domains).toEqual([]);
   });
 
@@ -401,43 +377,43 @@ describe("errors", () => {
   it("names the field, entry and reason of a rejected domain filter", async () => {
     const body = {
       error: "invalid_filter",
-      message: 'Invalid include_domains value "un.org/press": paths are not supported; use the host un.org',
-      field: "include_domains",
-      value: "un.org/press",
-      reason: "paths are not supported; use the host un.org",
+      message: 'Invalid exclude_domains value "spam.com/blog": paths are not supported; use the host spam.com',
+      field: "exclude_domains",
+      value: "spam.com/blog",
+      reason: "paths are not supported; use the host spam.com",
     };
     const { client } = mockClient(() => json(body, 400));
     const error = await client
-      .search("q", { includeDomains: ["un.org/press"] })
+      .search("q", { excludeDomains: ["spam.com/blog"] })
       .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(KeenableAPIError);
     const apiError = error as KeenableAPIError;
     expect(apiError.statusCode).toBe(400);
     expect(apiError.message).toBe(
-      'Keenable API error (400): Invalid include_domains value "un.org/press": paths are not supported; use the host un.org',
+      'Keenable API error (400): Invalid exclude_domains value "spam.com/blog": paths are not supported; use the host spam.com',
     );
     expect(apiError.body).toBe(body.message);
     expect(apiError.data).toEqual(body);
-    expect(apiError.field).toBe("include_domains");
-    expect(apiError.value).toBe("un.org/press");
-    expect(apiError.reason).toBe("paths are not supported; use the host un.org");
+    expect(apiError.field).toBe("exclude_domains");
+    expect(apiError.value).toBe("spam.com/blog");
+    expect(apiError.reason).toBe("paths are not supported; use the host spam.com");
   });
 
   it("leaves value unset when an invalid_filter body names no entry", async () => {
     const body = {
       error: "invalid_filter",
-      message: "Invalid include_domains value: must not be empty",
-      field: "include_domains",
-      reason: "must not be empty",
+      message: "Invalid exclude_domains value: at most 1000 hosts",
+      field: "exclude_domains",
+      reason: "at most 1000 hosts",
     };
     const { client } = mockClient(() => json(body, 400));
     const error = (await client
-      .search("q", { includeDomains: [] })
+      .search("q", { excludeDomains: ["a.com"] })
       .catch((e: unknown) => e)) as KeenableAPIError;
-    expect(error.field).toBe("include_domains");
+    expect(error.field).toBe("exclude_domains");
     expect(error.value).toBeUndefined();
-    expect(error.reason).toBe("must not be empty");
+    expect(error.reason).toBe("at most 1000 hosts");
   });
 
   it.each([
@@ -460,9 +436,9 @@ describe("errors", () => {
   ])("ignores an invalid_filter body on a %s subclass error", async (status, cls) => {
     const body = {
       error: "invalid_filter",
-      field: "include_domains",
-      value: "un.org/press",
-      reason: "paths are not supported; use the host un.org",
+      field: "exclude_domains",
+      value: "spam.com/blog",
+      reason: "paths are not supported; use the host spam.com",
     };
     const { client } = mockClient(() => json(body, status));
     const error = (await client.search("q").catch((e: unknown) => e)) as KeenableAPIError;
@@ -477,9 +453,9 @@ describe("errors", () => {
   it.each([422, 500])("ignores an invalid_filter body on a %s", async (status) => {
     const body = {
       error: "invalid_filter",
-      field: "include_domains",
-      value: "un.org/press",
-      reason: "paths are not supported; use the host un.org",
+      field: "exclude_domains",
+      value: "spam.com/blog",
+      reason: "paths are not supported; use the host spam.com",
     };
     const { client } = mockClient(() => json(body, status));
     const error = (await client.search("q").catch((e: unknown) => e)) as KeenableAPIError;
@@ -550,86 +526,58 @@ describe("runToolCall", () => {
     },
   );
 
-  it("offers site and both domain lists in the search tool schema", () => {
+  it("offers site and exclude_domains in the search tool schema", () => {
     const properties = SEARCH_TOOL.function.parameters.properties as Record<
       string,
       { type: string; items?: unknown; description: string }
     >;
-    expect(properties.include_domains).toMatchObject({
-      type: "array",
-      items: { type: "string" },
-    });
     expect(properties.exclude_domains).toMatchObject({
       type: "array",
       items: { type: "string" },
     });
+    expect(properties.exclude_domains?.description).toContain("1,000");
     expect(properties.site?.type).toBe("string");
-    expect(properties.site?.description).toContain("include_domains");
   });
 
-  it("forwards domain lists from a tool call, keeping empty ones", async () => {
+  it("forwards exclude_domains from a tool call, keeping an empty list", async () => {
     const { client, seen } = mockClient(routed);
+    await runToolCall(client, "keenable_search", { query: "q", exclude_domains: [] });
     await runToolCall(client, "keenable_search", {
       query: "q",
-      include_domains: ["press.un.org", "undocs.org"],
-      exclude_domains: [],
+      exclude_domains: ["pinterest.com", "quora.com"],
     });
-    await runToolCall(client, "keenable_search", {
-      query: "q",
-      include_domains: "press.un.org",
-      exclude_domains: "",
-    });
-    await runToolCall(client, "keenable_search", { query: "q", include_domains: [] });
+    await runToolCall(client, "keenable_search", { query: "q", exclude_domains: "spam.com" });
     await runToolCall(client, "keenable_search", { query: "q" });
+    await runToolCall(client, "keenable_search", { query: "q", exclude_domains: "   " });
     await runToolCall(client, "keenable_search", {
       query: "q",
-      include_domains: "   ",
       exclude_domains: " a.com,b.com ",
     });
 
-    const [first, second, emptyInclude, absent, padded] = seen.map((s) =>
+    const [empty, list, single, absent, blank, padded] = seen.map((s) =>
       JSON.parse(String(s.init.body)),
     );
-    expect(first.include_domains).toEqual(["press.un.org", "undocs.org"]);
-    expect(first.exclude_domains).toEqual([]);
-    expect(emptyInclude.include_domains).toEqual([]);
-    expect(second.include_domains).toEqual(["press.un.org"]);
-    expect(second).not.toHaveProperty("exclude_domains");
-    expect(absent).not.toHaveProperty("include_domains");
+    expect(empty.exclude_domains).toEqual([]);
+    expect(list.exclude_domains).toEqual(["pinterest.com", "quora.com"]);
+    expect(single.exclude_domains).toEqual(["spam.com"]);
     expect(absent).not.toHaveProperty("exclude_domains");
-    expect(padded).not.toHaveProperty("include_domains");
+    expect(blank).not.toHaveProperty("exclude_domains");
     expect(padded.exclude_domains).toEqual([" a.com,b.com "]);
-  });
-
-  it("sends site and include_domains from a tool call together", async () => {
-    const { client, seen } = mockClient(routed);
-    await runToolCall(client, "keenable_search", {
-      query: "q",
-      site: "un.org",
-      include_domains: ["press.un.org"],
-    });
-
-    const payload = JSON.parse(String(seen[0]?.init.body));
-    expect(payload.site).toBe("un.org");
-    expect(payload.include_domains).toEqual(["press.un.org"]);
   });
 
   it("sends a malformed domain-list argument to the API instead of dropping it", async () => {
     const { client, seen } = mockClient(routed);
-    await runToolCall(client, "keenable_search", {
-      query: "q",
-      include_domains: null,
-      exclude_domains: 5,
-    });
+    await runToolCall(client, "keenable_search", { query: "q", exclude_domains: 5 });
     await runToolCall(client, "keenable_search", {
       query: "q",
       exclude_domains: ["a.com", 7],
     });
+    await runToolCall(client, "keenable_search", { query: "q", exclude_domains: null });
 
-    const [first, second] = seen.map((s) => JSON.parse(String(s.init.body)));
-    expect(first).not.toHaveProperty("include_domains");
+    const [first, second, third] = seen.map((s) => JSON.parse(String(s.init.body)));
     expect(first.exclude_domains).toBe(5);
     expect(second.exclude_domains).toEqual(["a.com", 7]);
+    expect(third).not.toHaveProperty("exclude_domains");
   });
 
   it("forwards only the filters the schema offers the model", async () => {
