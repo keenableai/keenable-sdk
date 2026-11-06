@@ -14,15 +14,94 @@ export class KeenableConnectionError extends KeenableError {}
 /** The arguments passed to the SDK are invalid; no request was sent. */
 export class KeenableInvalidRequestError extends KeenableError {}
 
+/**
+ * The limit a 429 hit, from the API's `limit` object. A field the API left out
+ * is `undefined`.
+ */
+export interface RateLimitInfo {
+  /** Who the limit counts: `"organization"`, `"ip"`, `"payer"` or `"agent"`. */
+  scope?: string;
+  /** The window length: `"second"` or `"hour"`. */
+  window?: string;
+  /** Requests allowed per window. */
+  max?: number;
+  /** ISO 8601 time when the window opens again. */
+  resetsAt?: string;
+}
+
+/**
+ * The agent-ready fields of an API error body. Each is `undefined` when the API
+ * did not send it, which is the case for older responses.
+ */
+export interface KeenableAPIErrorDetails {
+  /** Stable, machine-readable reason, e.g. `"rate_limit_per_second"`. Branch on this, not on the message. */
+  code?: string;
+  /** The API's short error title, e.g. `"Rate limit exceeded"`. */
+  error?: string;
+  /** One sentence on what to do next. */
+  fix?: string;
+  /** The docs page for this error. */
+  docsUrl?: string;
+  /** Whether sending the same request again can succeed. */
+  retryable?: boolean;
+  /** Seconds to wait before retrying: the body's `retry_after_seconds`, else the `Retry-After` header. */
+  retryAfterSeconds?: number;
+  /** Quote it when reporting a problem: the body's `request_id`, else the `X-Request-Id` header. */
+  requestId?: string;
+  /** The request parameter a 400 is about. */
+  param?: string;
+  /** The limit a 429 hit. */
+  limit?: RateLimitInfo;
+  /** On a 402: where a human can buy credits. */
+  billingUrl?: string;
+  /** On a 402: how to turn on auto top-up. */
+  autoTopUpUrl?: string;
+  /** On a 402: the pay-per-request alternative, when the API offers it. */
+  payPerRequest?: string;
+  /** The whole decoded JSON body, for fields not listed here. */
+  raw?: Record<string, unknown>;
+}
+
 /** The Keenable API returned a non-2xx response. */
-export class KeenableAPIError extends KeenableError {
+export class KeenableAPIError extends KeenableError implements KeenableAPIErrorDetails {
   readonly statusCode: number;
   readonly body?: string;
+  readonly code?: string;
+  readonly error?: string;
+  readonly fix?: string;
+  readonly docsUrl?: string;
+  readonly retryable?: boolean;
+  readonly retryAfterSeconds?: number;
+  readonly requestId?: string;
+  readonly param?: string;
+  readonly limit?: RateLimitInfo;
+  readonly billingUrl?: string;
+  readonly autoTopUpUrl?: string;
+  readonly payPerRequest?: string;
+  readonly raw?: Record<string, unknown>;
 
-  constructor(message: string, statusCode: number, body?: string) {
+  constructor(
+    message: string,
+    statusCode: number,
+    body?: string,
+    details: KeenableAPIErrorDetails = {},
+  ) {
     super(message);
     this.statusCode = statusCode;
     this.body = body;
+    this.code = details.code;
+    this.error = details.error;
+    this.fix = details.fix;
+    this.docsUrl = details.docsUrl;
+    this.retryable = details.retryable;
+    this.retryAfterSeconds = details.retryAfterSeconds;
+    this.requestId = details.requestId;
+    this.param = details.param;
+    this.limit = details.limit;
+    this.billingUrl = details.billingUrl;
+    this.autoTopUpUrl = details.autoTopUpUrl;
+    this.payPerRequest = details.payPerRequest;
+    this.raw = details.raw;
   }
 }
 
@@ -33,6 +112,21 @@ export class KeenableAuthError extends KeenableAPIError {}
  * The rate limit was exceeded (HTTP 429).
  *
  * Keyless requests share a lower hourly cap. Setting `KEENABLE_API_KEY` lifts
- * it; a key is never required to make a request.
+ * it; a key is never required to make a request. Wait `retryAfterSeconds`
+ * before retrying; `limit` says which limit was hit.
  */
 export class KeenableRateLimitError extends KeenableAPIError {}
+
+/**
+ * The organization has no credits left (HTTP 402).
+ *
+ * Retrying returns the same error until credits are added. `billingUrl` is
+ * where a human can buy credits, and `autoTopUpUrl` explains how to keep the
+ * balance from running out.
+ */
+export class KeenableInsufficientCreditsError extends KeenableAPIError {}
+
+/** Alias of {@link KeenableInsufficientCreditsError}, the name the docs use. */
+export const KeenableCreditsError = KeenableInsufficientCreditsError;
+/** Alias of {@link KeenableInsufficientCreditsError}, the name the docs use. */
+export type KeenableCreditsError = KeenableInsufficientCreditsError;

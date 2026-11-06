@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import ipaddress
+import math
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from os import environ
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -16,8 +19,10 @@ from .errors import (
     KeenableAPIError,
     KeenableAuthError,
     KeenableConnectionError,
+    KeenableInsufficientCreditsError,
     KeenableInvalidRequestError,
     KeenableRateLimitError,
+    RateLimitInfo,
 )
 from .models import Page, SearchResponse
 
@@ -100,27 +105,120 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
     return payload
 
 
+# A 403 with one of these codes is about the page being fetched, not about the
+# caller's credentials, so it is not reported as an authentication failure.
+_NOT_AUTH_CODES = frozenset({"target_blocked"})
+
+
+def _str_field(body: dict[str, Any], key: str) -> str | None:
+    value = body.get(key)
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _seconds(value: Any) -> float | None:
+    """A non-negative, finite number of seconds, or None for anything else."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    seconds: float = value
+    if not math.isfinite(seconds) or seconds < 0:
+        return None
+    return seconds
+
+
+def _retry_after_header(value: str | None) -> float | None:
+    """Parse a Retry-After header: delay-seconds or an HTTP date."""
+    if not value or not value.strip():
+        return None
+    text = value.strip()
+    if text.isascii() and text.isdigit():
+        return int(text)
+    try:
+        when = parsedate_to_datetime(text)
+    except (TypeError, ValueError, IndexError):
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return max(0, math.ceil((when - datetime.now(timezone.utc)).total_seconds()))
+
+
+def _limit_info(value: Any) -> RateLimitInfo | None:
+    if not isinstance(value, dict):
+        return None
+    max_ = value.get("max")
+    return RateLimitInfo(
+        scope=_str_field(value, "scope"),
+        window=_str_field(value, "window"),
+        max=max_ if isinstance(max_, int) and not isinstance(max_, bool) else None,
+        resets_at=_str_field(value, "resets_at"),
+    )
+
+
+def _error_fields(
+    raw: dict[str, Any] | None, response: httpx.Response
+) -> dict[str, Any]:
+    """The agent-ready fields of an error body, None where the API left one out.
+
+    ``retry_after_seconds`` prefers the body, then the ``Retry-After`` header,
+    then the older ``retryAfter`` body field; ``request_id`` prefers the body,
+    then the ``X-Request-Id`` header.
+    """
+    body = raw or {}
+    retryable = body.get("retryable")
+    retry_after = _seconds(body.get("retry_after_seconds"))
+    if retry_after is None:
+        retry_after = _retry_after_header(response.headers.get("Retry-After"))
+    if retry_after is None:
+        retry_after = _seconds(body.get("retryAfter"))
+    header_id = (response.headers.get("X-Request-Id") or "").strip() or None
+    return {
+        "code": _str_field(body, "code"),
+        "error": _str_field(body, "error"),
+        "fix": _str_field(body, "fix"),
+        "docs_url": _str_field(body, "docs_url"),
+        "retryable": retryable if isinstance(retryable, bool) else None,
+        "retry_after_seconds": retry_after,
+        "request_id": _str_field(body, "request_id") or header_id,
+        "param": _str_field(body, "param"),
+        "limit": _limit_info(body.get("limit")),
+        "billing_url": _str_field(body, "billing_url"),
+        "auto_top_up_url": _str_field(body, "auto_top_up_url"),
+        "pay_per_request": _str_field(body, "pay_per_request"),
+        "raw": raw,
+    }
+
+
 def _to_api_error(response: httpx.Response) -> KeenableAPIError:
     """Map a non-2xx response to the most specific SDK error available."""
     detail = ""
+    body: dict[str, Any] | None = None
     try:
-        body = response.json()
-        if isinstance(body, dict):
+        decoded = response.json()
+        if isinstance(decoded, dict):
+            body = decoded
             detail = str(
                 body.get("message") or body.get("error") or body.get("detail") or ""
             )
     except ValueError:
         detail = (response.text or "").strip()
 
+    fields = _error_fields(body, response)
     status = response.status_code
-    label = _STATUS_LABELS.get(status, f"Keenable API error ({status})")
+    auth = status in (401, 403) and fields["code"] not in _NOT_AUTH_CODES
+    if status in (401, 403) and not auth:
+        label = f"Keenable API error ({status})"
+    else:
+        label = _STATUS_LABELS.get(status, f"Keenable API error ({status})")
     message = f"{label}: {detail}" if detail else label
 
-    if status in (401, 403):
-        return KeenableAuthError(message, status, detail or None)
+    if auth:
+        return KeenableAuthError(message, status, detail or None, **fields)
+    if status == 402:
+        return KeenableInsufficientCreditsError(
+            message, status, detail or None, **fields
+        )
     if status == 429:
-        return KeenableRateLimitError(message, status, detail or None)
-    return KeenableAPIError(message, status, detail or None)
+        return KeenableRateLimitError(message, status, detail or None, **fields)
+    return KeenableAPIError(message, status, detail or None, **fields)
 
 
 def _decode(response: httpx.Response) -> dict[str, Any]:

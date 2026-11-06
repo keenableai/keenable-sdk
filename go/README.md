@@ -165,7 +165,8 @@ this SDK created, and does nothing when you passed your own `http.Client`.
 SDK errors implement `keenable.Error`. `errors.As` into that interface
 catches them. `Code()` is a stable string, and the same token is the last
 parentheses of `Error()`. `errors.As` into a concrete type catches one case.
-`AuthError` and `RateLimitError` unwrap to `APIError`.
+`AuthError`, `RateLimitError` and `InsufficientCreditsError` unwrap to
+`APIError`.
 
 A caller context that ended is not one of those errors. Check it first:
 
@@ -183,11 +184,60 @@ if errors.As(err, &sdk) {
 |---|---|---|
 | `RateLimitError` | `rate_limit` | HTTP 429. The message names `X-RateLimit-Reset` when the API sent it. A keyless call is told to set `KEENABLE_API_KEY`. A keyed call is told to wait for the window |
 | `AuthError` | `auth` | HTTP 401/403, the key was rejected |
+| `InsufficientCreditsError` (alias `CreditsError`) | `api_error` | HTTP 402, no credits left; retrying will not help. The message starts "Keenable: insufficient credits (402)" |
 | `APIError` | `api_error` | Any other non-2xx response; carries `StatusCode`, `Body`, and `RequestID` when the API sent `X-Request-Id` |
 | `ConnectionError` | `connection` | The API could not be reached, or the client deadline elapsed |
 | `InvalidRequestError` | `invalid_request` | Bad arguments; no request was sent |
 
-HTTP 402 is an `APIError` whose message starts "Keenable: insufficient credits (402)" and tells you to add credits.
+## Handling errors
+
+Every `APIError` carries what the API says about the failure. Branch on
+`APICode`, not on the message, and wait `RetryAfter` before a retry. Each field
+is its zero value (nil for `Retryable` and `RateLimit`) when the API did not
+send it. `Code()` stays the SDK's coarser code above.
+
+```go
+var (
+    resp *keenable.SearchResponse
+    err  error
+)
+for attempt := 0; ; attempt++ {
+    resp, err = client.Search(ctx, "wafer scale engine", nil)
+    var api *keenable.APIError
+    if err == nil || !errors.As(err, &api) {
+        break
+    }
+    log.Println(api.APICode, api.Fix, api.DocsURL, api.RequestID)
+    // Not retryable: e.g. insufficient_credits, invalid_parameter.
+    if api.Retryable == nil || !*api.Retryable || attempt == 2 {
+        break
+    }
+    wait := api.RetryAfter
+    if wait == 0 {
+        wait = time.Second
+    }
+    time.Sleep(wait)
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `APICode` | Stable reason, e.g. `rate_limit_per_second`, `insufficient_credits`, `target_blocked` |
+| `Title` | The API's short error title (its `error` field) |
+| `Fix` | One sentence on what to do next |
+| `DocsURL` | The docs page for this error |
+| `Retryable` | Whether the same request can succeed later |
+| `RetryAfter` | How long to wait (body `retry_after_seconds`, else the `Retry-After` header) |
+| `RequestID` | Quote it when reporting a problem |
+| `Param` | The parameter a 400 is about |
+| `RateLimit` | On a 429: `Scope`, `Window`, `Max`, `ResetsAt` |
+| `BillingURL`, `AutoTopUpURL`, `PayPerRequest` | On a 402: where to add credits and the alternatives |
+| `Raw` | The whole JSON error body |
+
+When the API sends `Fix`, the error message ends with it in place of the
+generic "Retry the request" advice, so a non-retryable error never tells an
+agent to retry. A 403 with code `target_blocked` (the fetched site refused us)
+is a plain `APIError`, not an `AuthError`. The SDK does not retry on its own.
 
 ## Configuration
 

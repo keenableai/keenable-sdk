@@ -5,6 +5,18 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- Errors carry the API's agent-ready fields: `code`, `error`, `fix`, `docsUrl`,
+  `retryable`, `retryAfterSeconds` (from the body, else the `Retry-After`
+  header), `requestId` (body, else `X-Request-Id`), `param`, `limit` (a new
+  `RateLimitInfo` type), `billingUrl`, `autoTopUpUrl`, `payPerRequest` and
+  `raw`. Each is `undefined` when the API does not send it.
+- New `KeenableInsufficientCreditsError` (alias `KeenableCreditsError`) for HTTP 402. It extends
+  `KeenableAPIError`, and the message is unchanged, so existing handlers keep
+  working.
+- A 403 whose `code` is `target_blocked` (the fetched site refused us) is now a
+  plain `KeenableAPIError` labelled "Keenable API error (403)" rather than a
+  `KeenableAuthError`. Without a `code`, 401/403 behave as before.
+
 - `toContext()` (search results and fetched pages) drops markdown images and
   `<img>` tags, and resolves relative links against the result's URL (or keeps
   just the link text when it cannot). Absolute links are unchanged, and lines

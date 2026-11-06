@@ -2,9 +2,11 @@ import {
   KeenableAPIError,
   KeenableAuthError,
   KeenableConnectionError,
+  KeenableInsufficientCreditsError,
   KeenableInvalidRequestError,
   KeenableRateLimitError,
 } from "./errors.js";
+import type { KeenableAPIErrorDetails, RateLimitInfo } from "./errors.js";
 import { SEARCH_FILTERS } from "./filters.js";
 import { cleanContextText, collapse, nonEmpty, normalizeHost, readEnv } from "./internal.js";
 import type {
@@ -470,7 +472,7 @@ export class Keenable {
       callerSignal?.removeEventListener("abort", onAbort);
     }
 
-    if (!response.ok) throw toApiError(response.status, text);
+    if (!response.ok) throw toApiError(response.status, text, response.headers);
 
     let data: unknown;
     try {
@@ -491,12 +493,17 @@ export class Keenable {
   }
 }
 
-function toApiError(status: number, text: string): KeenableAPIError {
+// A 403 with one of these codes is about the page being fetched, not about the
+// caller's credentials, so it is not reported as an authentication failure.
+const NOT_AUTH_CODES = new Set(["target_blocked"]);
+
+function toApiError(status: number, text: string, headers?: Headers): KeenableAPIError {
   let detail = text.trim();
+  let record: Record<string, unknown> | undefined;
   try {
     const body: unknown = JSON.parse(text);
     if (typeof body === "object" && body !== null) {
-      const record = body as Record<string, unknown>;
+      record = body as Record<string, unknown>;
       detail =
         nonEmpty(record.message) ??
         nonEmpty(record.error) ??
@@ -507,14 +514,79 @@ function toApiError(status: number, text: string): KeenableAPIError {
     // Not JSON; the raw body is the best detail we have.
   }
 
-  const label = STATUS_LABELS[status] ?? `Keenable API error (${status})`;
+  const details = errorDetails(Array.isArray(record) ? undefined : record, headers);
+  const auth = (status === 401 || status === 403) && !NOT_AUTH_CODES.has(details.code ?? "");
+  const label =
+    (status === 401 || status === 403) && !auth
+      ? `Keenable API error (${status})`
+      : (STATUS_LABELS[status] ?? `Keenable API error (${status})`);
   const message = detail ? `${label}: ${detail}` : label;
 
-  if (status === 401 || status === 403) {
-    return new KeenableAuthError(message, status, detail || undefined);
+  if (auth) {
+    return new KeenableAuthError(message, status, detail || undefined, details);
+  }
+  if (status === 402) {
+    return new KeenableInsufficientCreditsError(message, status, detail || undefined, details);
   }
   if (status === 429) {
-    return new KeenableRateLimitError(message, status, detail || undefined);
+    return new KeenableRateLimitError(message, status, detail || undefined, details);
   }
-  return new KeenableAPIError(message, status, detail || undefined);
+  return new KeenableAPIError(message, status, detail || undefined, details);
+}
+
+/** A non-negative, finite number of seconds, or undefined for anything else. */
+function seconds(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+/** Parse a Retry-After header: delay-seconds or an HTTP date. */
+function retryAfterHeader(value: string | null | undefined): number | undefined {
+  const text = value?.trim();
+  if (!text) return undefined;
+  if (/^[0-9]+$/.test(text)) return Number(text);
+  const when = Date.parse(text);
+  if (Number.isNaN(when)) return undefined;
+  return Math.max(0, Math.ceil((when - Date.now()) / 1000));
+}
+
+function rateLimitInfo(value: unknown): RateLimitInfo | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const limit = value as Record<string, unknown>;
+  return {
+    scope: nonEmpty(limit.scope),
+    window: nonEmpty(limit.window),
+    max: Number.isInteger(limit.max) ? (limit.max as number) : undefined,
+    resetsAt: nonEmpty(limit.resets_at),
+  };
+}
+
+/**
+ * The agent-ready fields of an error body, undefined where the API left one
+ * out. `retryAfterSeconds` prefers the body, then the `Retry-After` header,
+ * then the older `retryAfter` body field; `requestId` prefers the body, then
+ * the `X-Request-Id` header.
+ */
+function errorDetails(
+  body: Record<string, unknown> | undefined,
+  headers: Headers | undefined,
+): KeenableAPIErrorDetails {
+  const b = body ?? {};
+  return {
+    code: nonEmpty(b.code),
+    error: nonEmpty(b.error),
+    fix: nonEmpty(b.fix),
+    docsUrl: nonEmpty(b.docs_url),
+    retryable: typeof b.retryable === "boolean" ? b.retryable : undefined,
+    retryAfterSeconds:
+      seconds(b.retry_after_seconds) ??
+      retryAfterHeader(headers?.get("Retry-After")) ??
+      seconds(b.retryAfter),
+    requestId: nonEmpty(b.request_id) ?? nonEmpty(headers?.get("X-Request-Id")?.trim()),
+    param: nonEmpty(b.param),
+    limit: rateLimitInfo(b.limit),
+    billingUrl: nonEmpty(b.billing_url),
+    autoTopUpUrl: nonEmpty(b.auto_top_up_url),
+    payPerRequest: nonEmpty(b.pay_per_request),
+    raw: body,
+  };
 }
