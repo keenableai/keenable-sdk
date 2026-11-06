@@ -46,8 +46,7 @@ const results = await keenable.search("post-training quantization results", {
 | Option | What it does |
 |---|---|
 | `site` | Restrict to one domain, e.g. `"arxiv.org"` |
-| `includeDomains` | Only return results from these domains (allow-list); see below |
-| `excludeDomains` | Never return results from these domains (block-list) |
+| `excludeDomains` | Never return results from these hosts or their subdomains; see below |
 | `publishedAfter` / `publishedBefore` | Filter by publication date (`YYYY-MM-DD`) |
 | `acquiredAfter` / `acquiredBefore` | Filter by when Keenable indexed the page |
 | `snippetMaxLength` | Cap the page text returned per result |
@@ -56,72 +55,48 @@ const results = await keenable.search("post-training quantization results", {
 | `mode` | Search mode; `"pro"` (default) does deeper retrieval |
 | `signal` | An `AbortSignal` to cancel the request |
 
-### Domain allow-lists and block-lists
+### Excluding domains
 
-`includeDomains` keeps only results from the listed sites; `excludeDomains`
-drops results from them. Set both and a result must match the allow-list and
-miss the block-list (exclude wins).
+`excludeDomains` drops results from the listed sites.
 
 ```ts
 const results = await keenable.search(
-  "Security Council resolution on the situation in Sudan",
-  {
-    includeDomains: ["press.un.org", "undocs.org", "documents.un.org"],
-    excludeDomains: ["blogs.un.org"],
-  },
+  "how to repot a monstera without damaging the roots",
+  { excludeDomains: ["pinterest.com", "quora.com"] },
 );
 ```
 
-Each entry is a host, such as `"un.org"`. A host covers itself and every
-subdomain, so `"yahoo.com"` also matches `finance.yahoo.com`. Up to 50 distinct
-hosts in `includeDomains` and 200 in `excludeDomains`.
+Each entry is a host, such as `"pinterest.com"`. A host excludes itself and
+every subdomain, so `"yahoo.com"` also drops `finance.yahoo.com`. Up to 1,000
+distinct hosts. Hosts such as `github.io` and `blogspot.com` are accepted.
 
-The API cleans up an entry for you without ever widening the filter: it trims
-whitespace, lowercases, and drops an `http://` or `https://` scheme, a port, a
-trailing `/` (or a `?query` / `#fragment` with no path), a trailing dot, a
-leading `www.` (kept when the rest would be a public suffix, so `www.github.io`
-stays as is), and duplicates. Internationalised names become punycode. So
-`"https://WWW.UN.org/"` is read as `"un.org"`. When it changed an entry, the
-response says so in `results.raw.warning`. That field also says when
-results had to be removed to honour the lists, which can leave fewer than
-`maxResults`.
-
-A host that is a public suffix only in the private section of the Public
-Suffix List (`blogspot.com`, `github.io`, `s3.amazonaws.com`) is accepted;
-ICANN suffixes and non-registrable names (`com`, `co.uk`, `localhost`) are
-rejected.
-
-The SDK sends the lists as given, including `[]`, and the API validates them.
-It rejects with HTTP 400, thrown as `KeenableAPIError`: a path (`"un.org/press"`),
-a suffix or wildcard (`".gov"`, `"*.gov"`, `"*"`), another scheme (`ftp://`,
-`mailto:`), a `user@host`, an IP address, an empty entry, an invalid hostname,
-a name that is not a registrable domain (`"localhost"`, `"co.uk"`), an empty
-`includeDomains`, the same host in both lists, too many hosts, or
-`includeDomains` together with `site`. Its message names the field, the entry
-and how to fix it, and `field`, `value` and `reason` hold them as separate
-properties:
+The API cleans up unambiguous input for you: surrounding whitespace, case, an
+`http://` or `https://` scheme, a leading `www.`, a port, a trailing `/` and a
+query string. So `"https://WWW.Pinterest.com/"` is read as `"pinterest.com"`.
+Anything else is rejected with HTTP 400, thrown as `KeenableAPIError`:
+a path (`"example.com/blog"`), a suffix or wildcard (`".com"`,
+`"*.example.com"`), an IP address, a `user@host`, or an invalid host. The
+`field`, `value` and `reason` properties name the rejected entry:
 
 ```ts
 try {
-  await keenable.search("q", { includeDomains: ["un.org/press"] });
+  await keenable.search("q", { excludeDomains: ["example.com/blog"] });
 } catch (err) {
   if (err instanceof KeenableAPIError) {
-    console.log(err.body); // Invalid include_domains value "un.org/press": paths are not supported; use the host un.org
-    console.log(err.field, err.value, err.reason); // include_domains un.org/press paths are not supported; use the host un.org
+    console.log(err.field, err.value, err.reason);
+    // exclude_domains example.com/blog paths are not supported; use the host example.com
   }
 }
 ```
 
-`field` / `value` / `reason` are set only for that rejection (a 400 whose
-body has `error: "invalid_filter"`); they are `undefined` on every other
-error. `err.data` holds the whole decoded body.
+They are set only for that rejection (a 400 whose body has
+`"error": "invalid_filter"`) and `undefined` on every other error.
+`err.data` holds the whole decoded body.
 
-`runToolCall` sends a model's `include_domains: []` as `[]` too, so it comes
-back as that 400 rather than running an unrestricted search. Only an absent or
-`null` list is left unset.
-
-`site` still works for a single domain. The `keenable_search` tool offers the
-model `site`, `include_domains` and `exclude_domains`.
+If every match is excluded, the response can be empty. The SDK sends the list
+as given and leaves validation to the API; `runToolCall` does the same with a
+model's `exclude_domains` argument. `site` still works for a single domain,
+and the `keenable_search` tool offers the model `site` and `exclude_domains`.
 
 ## Ground a model in one line
 

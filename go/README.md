@@ -68,8 +68,7 @@ results, err := client.Search(context.Background(), "post-training quantization 
 | Field | What it does |
 |---|---|
 | `Site` | Restrict to one domain, e.g. `"arxiv.org"` |
-| `IncludeDomains` | Only return results from these domains (allow-list); see below |
-| `ExcludeDomains` | Never return results from these domains (block-list) |
+| `ExcludeDomains` | Never return results from these hosts or their subdomains; see below |
 | `PublishedAfter` / `PublishedBefore` | Filter by publication date (`YYYY-MM-DD`) |
 | `AcquiredAfter` / `AcquiredBefore` | Filter by when Keenable indexed the page |
 | `SnippetMaxLength` | Cap the page text returned per result. Nil means unset; a pointer to zero is sent |
@@ -77,78 +76,45 @@ results, err := client.Search(context.Background(), "post-training quantization 
 | `QueryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `Mode` | Search mode; empty means `"pro"` |
 
-### Domain allow-lists and block-lists
+### Excluding domains
 
-`IncludeDomains` keeps only results from the listed sites; `ExcludeDomains`
-drops results from them. Set both and a result must match the allow-list and
-miss the block-list (exclude wins).
+`ExcludeDomains` drops results from the listed sites.
 
 ```go
-results, err := client.Search(ctx, "Security Council resolution on the situation in Sudan", &keenable.SearchOptions{
-	IncludeDomains: []string{"press.un.org", "undocs.org", "documents.un.org"},
-	ExcludeDomains: []string{"blogs.un.org"},
+results, err := client.Search(ctx, "how to repot a monstera without damaging the roots", &keenable.SearchOptions{
+	ExcludeDomains: []string{"pinterest.com", "quora.com"},
 })
 ```
 
-Each entry is a host, such as `"un.org"`. A host covers itself and every
-subdomain, so `"yahoo.com"` also matches `finance.yahoo.com`. Up to 50 distinct
-hosts in `IncludeDomains` and 200 in `ExcludeDomains`.
+Each entry is a host, such as `"pinterest.com"`. A host excludes itself and
+every subdomain, so `"yahoo.com"` also drops `finance.yahoo.com`. Up to 1,000
+distinct hosts. Hosts such as `github.io` and `blogspot.com` are accepted. A
+nil slice is unset and not sent; a non-nil empty slice is sent as `[]`.
 
-The API cleans up an entry for you without ever widening the filter: it trims
-whitespace, lowercases, and drops an `http://` or `https://` scheme, a port, a
-trailing `/` (or a `?query` / `#fragment` with no path), a trailing dot, a
-leading `www.` (kept when the rest would be a public suffix, so `www.github.io`
-stays as is), and duplicates. Internationalised names become punycode. So
-`"https://WWW.UN.org/"` is read as `"un.org"`. When it changed an entry, the
-response says so in `results.Raw["warning"]`. That field also says when
-results had to be removed to honour the lists, which can leave fewer than
-`MaxResults`.
-
-A host that is a public suffix only in the private section of the Public
-Suffix List (`blogspot.com`, `github.io`, `s3.amazonaws.com`) is accepted;
-ICANN suffixes and non-registrable names (`com`, `co.uk`, `localhost`) are
-rejected.
-
-**Nil versus empty.** A nil slice is unset and is not sent. A non-nil empty
-slice (`[]string{}`) is sent as `[]`, and the API rejects an empty
-`IncludeDomains` with HTTP 400. That is deliberate: an allow-list that ends up
-empty fails loudly instead of quietly searching the whole web. The Python and
-TypeScript SDKs send `[]` the same way.
-
-The API validates every entry and returns an `*APIError` with `StatusCode`
-400 for a path (`"un.org/press"`), a suffix or wildcard (`".gov"`, `"*.gov"`,
-`"*"`), another scheme (`ftp://`, `mailto:`), a `user@host`, an IP address, an
-empty entry, an invalid hostname, a name that is not a registrable domain
-(`"localhost"`, `"co.uk"`), the same host in both lists, too many hosts, or
-`IncludeDomains` together with `Site`. Its message (`Body`) names the field,
-the entry and how to fix it, and `Field`, `Value` and `Reason` hold them
-separately:
+The API cleans up unambiguous input for you: surrounding whitespace, case, an
+`http://` or `https://` scheme, a leading `www.`, a port, a trailing `/` and a
+query string. So `"https://WWW.Pinterest.com/"` is read as `"pinterest.com"`.
+Anything else comes back as an `*APIError` with `StatusCode` 400: a path
+(`"example.com/blog"`), a suffix or wildcard (`".com"`, `"*.example.com"`), an
+IP address, a `user@host`, or an invalid host. `Field`, `Value` and `Reason`
+name the rejected entry:
 
 ```go
 var api *keenable.APIError
 if errors.As(err, &api) && api.StatusCode == 400 {
-	fmt.Println(api.Body)
-	// Invalid include_domains value "un.org/press": paths are not supported; use the host un.org
 	fmt.Println(api.Field, api.Value, api.Reason)
-	// include_domains un.org/press paths are not supported; use the host un.org
+	// exclude_domains example.com/blog paths are not supported; use the host example.com
 }
 ```
 
-`Field` / `Value` / `Reason` are set only for that rejection (a 400 whose body
-has `"error": "invalid_filter"`); they are empty on every other error. `Data`
-holds the whole decoded body.
+They are set only for that rejection (a 400 whose body has
+`"error": "invalid_filter"`) and empty on every other error.
+`Data` holds the whole decoded body.
 
-**Tool calls.** `RunToolCall` sends a model's list arguments to the API as
-given, without checking them, like the Python and TypeScript tool helpers.
-`include_domains: []` is sent as `[]`, so it comes back as the 400 above rather
-than running an unrestricted search; only an absent or `null` list is unset. A
-malformed value such as `"exclude_domains": ["a.com", 7]` or
-`"exclude_domains": 7` is sent unchanged too, and the API returns the 400:
-dropping it would widen the search. (These values go straight into the request
-body, since a `[]string` field cannot hold them.)
-
-`Site` still works for a single domain. The `keenable_search` tool offers the
-model `site`, `include_domains` and `exclude_domains`.
+If every match is excluded, the response can be empty. The SDK sends the list
+as given and leaves validation to the API; `RunToolCall` does the same with a
+model's `exclude_domains` argument. `Site` still works for a single domain,
+and the `keenable_search` tool offers the model `site` and `exclude_domains`.
 
 ## Ground a model in one line
 

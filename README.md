@@ -62,15 +62,14 @@ func main() {
 }
 ```
 
-Restrict a search to a set of sites, or keep sites out, with
-`include_domains` / `exclude_domains` (`includeDomains` / `excludeDomains` in
-TypeScript, `IncludeDomains` / `ExcludeDomains` in Go):
+Keep sites out of a search with `exclude_domains` (`excludeDomains` in
+TypeScript, `ExcludeDomains` in Go). Each entry is a host and also covers its
+subdomains, up to 1,000 hosts:
 
 ```python
 results = keenable.search(
-    "Security Council resolution on the situation in Sudan",
-    include_domains=["press.un.org", "undocs.org", "documents.un.org"],
-    exclude_domains=["blogs.un.org"],
+    "how to repot a monstera without damaging the roots",
+    exclude_domains=["pinterest.com", "quora.com"],
 )
 ```
 
@@ -83,10 +82,8 @@ reference.
 
 - [`examples/cerebras/`](./examples/cerebras) - grounding a Cerebras model in
   live web results, and letting it call Keenable as a tool. Python and Node.
-- [`examples/domain-filters/`](./examples/domain-filters) - searching only
-  primary UN sources with `include_domains` (and checking every result host
-  against the list), and keeping sites out with `exclude_domains`. Python and
-  Node.
+- [`examples/domain-filters/`](./examples/domain-filters) - keeping sites out
+  of the results with `exclude_domains`. Python and Node.
 
 ## Documentation for partners
 

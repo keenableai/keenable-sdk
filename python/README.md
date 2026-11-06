@@ -42,8 +42,7 @@ results = keenable.search(
 | Argument | What it does |
 |---|---|
 | `site` | Restrict to one domain, e.g. `"arxiv.org"` |
-| `include_domains` | Only return results from these domains (allow-list); see below |
-| `exclude_domains` | Never return results from these domains (block-list) |
+| `exclude_domains` | Never return results from these hosts or their subdomains; see below |
 | `published_after` / `published_before` | Filter by publication date (`YYYY-MM-DD`) |
 | `acquired_after` / `acquired_before` | Filter by when Keenable indexed the page |
 | `snippet_max_length` | Cap the page text returned per result |
@@ -51,69 +50,45 @@ results = keenable.search(
 | `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `mode` | Search mode; `"pro"` (default) does deeper retrieval |
 
-### Domain allow-lists and block-lists
+### Excluding domains
 
-`include_domains` keeps only results from the listed sites; `exclude_domains`
-drops results from them. Set both and a result must match the allow-list and
-miss the block-list (exclude wins).
+`exclude_domains` drops results from the listed sites.
 
 ```python
 results = keenable.search(
-    "Security Council resolution on the situation in Sudan",
-    include_domains=["press.un.org", "undocs.org", "documents.un.org"],
-    exclude_domains=["blogs.un.org"],
+    "how to repot a monstera without damaging the roots",
+    exclude_domains=["pinterest.com", "quora.com"],
 )
 ```
 
-Each entry is a host, such as `"un.org"`. A host covers itself and every
-subdomain, so `"yahoo.com"` also matches `finance.yahoo.com`. Up to 50 distinct
-hosts in `include_domains` and 200 in `exclude_domains`.
+Each entry is a host, such as `"pinterest.com"`. A host excludes itself and
+every subdomain, so `"yahoo.com"` also drops `finance.yahoo.com`. Up to 1,000
+distinct hosts. Hosts such as `github.io` and `blogspot.com` are accepted.
 
-The API cleans up an entry for you without ever widening the filter: it trims
-whitespace, lowercases, and drops an `http://` or `https://` scheme, a port, a
-trailing `/` (or a `?query` / `#fragment` with no path), a trailing dot, a
-leading `www.` (kept when the rest would be a public suffix, so `www.github.io`
-stays as is), and duplicates. Internationalised names become punycode. So
-`"https://WWW.UN.org/"` is read as `"un.org"`. When it changed an entry, the
-response says so in `results.raw["warning"]`. That field also says when
-results had to be removed to honour the lists, which can leave fewer than
-`max_results`.
-
-A host that is a public suffix only in the private section of the Public
-Suffix List (`blogspot.com`, `github.io`, `s3.amazonaws.com`) is accepted;
-ICANN suffixes and non-registrable names (`com`, `co.uk`, `localhost`) are
-rejected.
-
-The SDK sends the lists as given, including `[]`, and the API validates them.
-It rejects with HTTP 400, raised as `KeenableAPIError`: a path (`"un.org/press"`),
-a suffix or wildcard (`".gov"`, `"*.gov"`, `"*"`), another scheme (`ftp://`,
-`mailto:`), a `user@host`, an IP address, an empty entry, an invalid hostname,
-a name that is not a registrable domain (`"localhost"`, `"co.uk"`), an empty
-`include_domains`, the same host in both lists, too many hosts, or
-`include_domains` together with `site`. Its message names the field, the entry
-and how to fix it, and `field`, `value` and `reason` hold them as separate
-attributes:
+The API cleans up unambiguous input for you: surrounding whitespace, case, an
+`http://` or `https://` scheme, a leading `www.`, a port, a trailing `/` and a
+query string. So `"https://WWW.Pinterest.com/"` is read as `"pinterest.com"`.
+Anything else is rejected with HTTP 400, raised as `KeenableAPIError`:
+a path (`"example.com/blog"`), a suffix or wildcard (`".com"`,
+`"*.example.com"`), an IP address, a `user@host`, or an invalid host. The
+`field`, `value` and `reason` attributes name the rejected entry:
 
 ```python
 try:
-    keenable.search("q", include_domains=["un.org/press"])
+    keenable.search("q", exclude_domains=["example.com/blog"])
 except KeenableAPIError as err:
-    print(err.body)
-    # Invalid include_domains value "un.org/press": paths are not supported; use the host un.org
     print(err.field, err.value, err.reason)
-    # include_domains un.org/press paths are not supported; use the host un.org
+    # exclude_domains example.com/blog paths are not supported; use the host example.com
 ```
 
-`field` / `value` / `reason` are set only for that rejection (a 400 whose
-body has `"error": "invalid_filter"`); they are `None` on every other error.
+They are set only for that rejection (a 400 whose body has
+`"error": "invalid_filter"`) and `None` on every other error.
 `err.data` holds the whole decoded body.
 
-`run_tool_call` sends a model's `include_domains: []` as `[]` too, so it comes
-back as that 400 rather than running an unrestricted search. Only an absent or
-`null` list is left unset.
-
-`site` still works for a single domain. The `keenable_search` tool offers the
-model `site`, `include_domains` and `exclude_domains`.
+If every match is excluded, the response can be empty. The SDK sends the list
+as given and leaves validation to the API; `run_tool_call` does the same with a
+model's `exclude_domains` argument. `site` still works for a single domain,
+and the `keenable_search` tool offers the model `site` and `exclude_domains`.
 
 ## Ground a model in one line
 

@@ -5,26 +5,21 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## 0.1.4
 
-- `search()` (sync and async) accepts `include_domains` and `exclude_domains`:
-  lists of hosts (`un.org`, which also covers its subdomains) to search only
-  within, or to keep out. Up to 50 included and 200 excluded hosts. Lists are
-  sent as given, including `[]`; the API cleans up entries (case, scheme,
-  `www.`, trailing `/`) and says so in the response `warning`, and rejects
-  paths, suffixes such as `.gov`, IP addresses and other non-hosts with HTTP
-  400. `site` is unchanged.
-- The `keenable_search` tool offers `include_domains` and `exclude_domains`
-  alongside `site`.
-  `run_tool_call` sends a list as given, `[]` included, so an empty
-  `include_domains` comes back as a 400 instead of running an unrestricted
-  search. Only an absent or `null` list (or `""`) is unset; a lone string is
-  wrapped. Any other value (a number, a non-string entry) is sent as given
-  too, so the API rejects it with a 400 rather than the SDK dropping it and
-  widening the search.
-- `KeenableAPIError.data` holds the decoded JSON error body. A rejected filter
-  is a 400 whose message names the field, entry and reason
-  (`Invalid include_domains value "x": <reason>`), and
-  `KeenableAPIError.field`, `.value` and `.reason` hold them separately
-  (set only when the body's `error` is `invalid_filter`, `None` otherwise).
+- `search()` (sync and async) accepts `exclude_domains`: a list of hosts to
+  keep out of the results. A host also excludes its subdomains; up to 1,000
+  distinct hosts.
+  The list is sent as given, including `[]`. The API cleans up unambiguous
+  entries (scheme, `www.`, case, port, trailing `/`, query, whitespace) and
+  rejects anything else (paths, suffixes such as `.com`, wildcards, IP
+  addresses, `user@host`, invalid hosts) with HTTP 400. If every result is
+  excluded, the response can be empty. `site` is unchanged.
+- The `keenable_search` tool offers `exclude_domains` alongside `site`.
+  `run_tool_call` sends the argument as given: only an absent or `null` value
+  (or `""`) is unset, a lone string is wrapped, and any other value goes to the
+  API, which rejects a malformed one with a 400.
+- `KeenableAPIError.data` holds the decoded JSON error body. A rejected entry
+  is a 400 whose `field`, `value` and `reason` name it (set only when the
+  body's `error` is `invalid_filter`, `None` otherwise).
 - `to_context()` (search results and fetched pages) drops markdown images and
   `<img>` tags, and resolves relative links against the result's URL (or keeps
   just the link text when it cannot). Absolute links are unchanged, and lines
