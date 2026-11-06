@@ -5,11 +5,13 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## 0.1.5
 
-- `search()` accepts `includeDomains` and `excludeDomains`: lists of domains
-  (`un.org`), domain path prefixes (`un.org/en/ga`) or suffixes (`.gov`) to
-  search only within, or to keep out. Lists are sent as given, including
-  `[]`; the API validates them and rejects bad entries with HTTP 400. `site`
-  is unchanged.
+- `search()` accepts `includeDomains` and `excludeDomains`: lists of hosts
+  (`un.org`, which also covers its subdomains) to search only within, or to
+  keep out. Up to 50 included and 200 excluded hosts. Lists are sent as given,
+  including `[]`; the API cleans up entries (case, scheme, `www.`, trailing
+  `/`) and says so in the response `warning`, and rejects paths, suffixes such
+  as `.gov`, IP addresses and other non-hosts with HTTP 400. `site` is
+  unchanged.
 - The `keenable_search` tool offers `include_domains` and `exclude_domains`
   alongside `site`.
   `runToolCall` sends a list as given, `[]` included, so an empty

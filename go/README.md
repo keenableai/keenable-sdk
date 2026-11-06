@@ -90,18 +90,18 @@ results, err := client.Search(ctx, "Security Council resolution on the situation
 })
 ```
 
-Each entry is one of:
+Each entry is a host, such as `"un.org"`. A host covers itself and every
+subdomain, so `"yahoo.com"` also matches `finance.yahoo.com`. Up to 50 distinct
+hosts in `IncludeDomains` and 200 in `ExcludeDomains`.
 
-| Entry | Matches |
-|---|---|
-| `"un.org"` | the domain and all its subdomains |
-| `"un.org/en/ga"` | that path prefix, on whole segments (`/en/ga/x`, not `/en/gax`) |
-| `".gov"`, `"*.gov"`, `".gov.uk"` | every host under that suffix |
-
-Matching ignores case, a leading `www.` and a trailing `/`. Up to 200 entries
-across both lists. A narrow list can return fewer than `MaxResults`; when
-results had to be removed to honour it, the response says so in
-`results.Raw["warning"]`.
+The API cleans up an entry for you without ever widening the filter: it trims
+whitespace, lowercases, and drops an `http://` or `https://` scheme, a port, a
+trailing `/` (or a `?query` / `#fragment` with no path), a trailing dot, any
+leading `www.`, and duplicates. Internationalised names become punycode. So
+`"https://WWW.UN.org/"` is read as `"un.org"`. When it changed an entry, the
+response says so in `results.Raw["warning"]`. That field also says when
+results had to be removed to honour the lists, which can leave fewer than
+`MaxResults`.
 
 **Nil versus empty.** A nil slice is unset and is not sent. A non-nil empty
 slice (`[]string{}`) is sent as `[]`, and the API rejects an empty
@@ -109,19 +109,22 @@ slice (`[]string{}`) is sent as `[]`, and the API rejects an empty
 empty fails loudly instead of quietly searching the whole web. The Python and
 TypeScript SDKs send `[]` the same way.
 
-The API validates every entry. An entry with a scheme, port, query or IP
-address, the same entry in both lists, or `IncludeDomains` together with
-`Site` is an `*APIError` with `StatusCode` 400. Its message (`Body`) names the
-field, the entry and the reason, and `Field`, `Value` and `Reason` hold them
+The API validates every entry and returns an `*APIError` with `StatusCode`
+400 for a path (`"un.org/press"`), a suffix or wildcard (`".gov"`, `"*.gov"`,
+`"*"`), another scheme (`ftp://`, `mailto:`), a `user@host`, an IP address, an
+empty entry, an invalid hostname, a name that is not a registrable domain
+(`"localhost"`, `"co.uk"`), the same host in both lists, too many hosts, or
+`IncludeDomains` together with `Site`. Its message (`Body`) names the field,
+the entry and how to fix it, and `Field`, `Value` and `Reason` hold them
 separately:
 
 ```go
 var api *keenable.APIError
 if errors.As(err, &api) && api.StatusCode == 400 {
 	fmt.Println(api.Body)
-	// Invalid include_domains value "https://un.org": scheme is not allowed
+	// Invalid include_domains value "un.org/press": paths are not supported; use the host un.org
 	fmt.Println(api.Field, api.Value, api.Reason)
-	// include_domains https://un.org scheme is not allowed
+	// include_domains un.org/press paths are not supported; use the host un.org
 }
 ```
 

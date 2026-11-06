@@ -2,10 +2,13 @@
 
 ## 0.1.2
 
-`SearchOptions` gains `IncludeDomains` and `ExcludeDomains`: lists of domains
-(`un.org`), domain path prefixes (`un.org/en/ga`) or suffixes (`.gov`) to
-search only within, or to keep out. A nil slice is unset; a non-nil empty
-slice is sent as `[]` (the API rejects an empty `IncludeDomains` with 400).
+`SearchOptions` gains `IncludeDomains` and `ExcludeDomains`: lists of hosts
+(`un.org`, which also covers its subdomains) to search only within, or to keep
+out. Up to 50 included and 200 excluded hosts. The API cleans up entries (case,
+scheme, `www.`, trailing `/`) and says so in the response `warning`, and
+rejects paths, suffixes such as `.gov`, IP addresses and other non-hosts with
+400. A nil slice is unset; a non-nil empty slice is sent as `[]` (the API
+rejects an empty `IncludeDomains` with 400).
 `Site` is unchanged. The `keenable_search` tool offers both lists alongside
 `site`.
 
@@ -27,8 +30,7 @@ tags, and resolves relative links against the result's URL (or keeps just the
 link text when it cannot). Absolute links are unchanged, and lines left holding
 only table pipes are dropped. Fenced code blocks, inline code and `name[i](x)`
 calls are left alone, as is a table's header row. `MaxChars` counts the
-cleaned text. `Snippet` and
-`Content` are untouched. No migration.
+cleaned text. `Snippet` and `Content` are untouched. No migration.
 
 ## 0.1.1
 

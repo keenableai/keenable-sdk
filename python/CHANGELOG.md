@@ -6,10 +6,12 @@ All notable changes to the `keenable` Python package. Versions follow
 ## 0.1.4
 
 - `search()` (sync and async) accepts `include_domains` and `exclude_domains`:
-  lists of domains (`un.org`), domain path prefixes (`un.org/en/ga`) or
-  suffixes (`.gov`) to search only within, or to keep out. Lists are sent as
-  given, including `[]`; the API validates them and rejects bad entries with
-  HTTP 400. `site` is unchanged.
+  lists of hosts (`un.org`, which also covers its subdomains) to search only
+  within, or to keep out. Up to 50 included and 200 excluded hosts. Lists are
+  sent as given, including `[]`; the API cleans up entries (case, scheme,
+  `www.`, trailing `/`) and says so in the response `warning`, and rejects
+  paths, suffixes such as `.gov`, IP addresses and other non-hosts with HTTP
+  400. `site` is unchanged.
 - The `keenable_search` tool offers `include_domains` and `exclude_domains`
   alongside `site`.
   `run_tool_call` sends a list as given, `[]` included, so an empty
@@ -30,7 +32,6 @@ All notable changes to the `keenable` Python package. Versions follow
   cleaned text. Fenced code blocks, inline code and `name[i](x)` calls are
   left alone, as is a table's header row. `snippet` and `content` are
   untouched.
-
 - The wheel now ships a `py.typed` marker, so mypy and pyright read the SDK's
   type hints instead of treating `keenable` as untyped. If you run a strict
   type checker, you may see new (correct) errors where your code passed values

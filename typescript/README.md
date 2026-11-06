@@ -72,33 +72,36 @@ const results = await keenable.search(
 );
 ```
 
-Each entry is one of:
+Each entry is a host, such as `"un.org"`. A host covers itself and every
+subdomain, so `"yahoo.com"` also matches `finance.yahoo.com`. Up to 50 distinct
+hosts in `includeDomains` and 200 in `excludeDomains`.
 
-| Entry | Matches |
-|---|---|
-| `"un.org"` | the domain and all its subdomains |
-| `"un.org/en/ga"` | that path prefix, on whole segments (`/en/ga/x`, not `/en/gax`) |
-| `".gov"`, `"*.gov"`, `".gov.uk"` | every host under that suffix |
+The API cleans up an entry for you without ever widening the filter: it trims
+whitespace, lowercases, and drops an `http://` or `https://` scheme, a port, a
+trailing `/` (or a `?query` / `#fragment` with no path), a trailing dot, any
+leading `www.`, and duplicates. Internationalised names become punycode. So
+`"https://WWW.UN.org/"` is read as `"un.org"`. When it changed an entry, the
+response says so in `results.raw.warning`. That field also says when
+results had to be removed to honour the lists, which can leave fewer than
+`maxResults`.
 
-Matching ignores case, a leading `www.` and a trailing `/`. Up to 200 entries
-across both lists. A narrow list can return fewer than `maxResults`; when
-results had to be removed to honour it, the response says so in
-`results.raw.warning`.
-
-The lists are sent as given, including `[]`, and the API validates them. An
-empty `includeDomains`, an entry with a scheme, port, query or IP address, the
-same entry in both lists, or `includeDomains` together with `site` is rejected
-with HTTP 400, thrown as `KeenableAPIError`. Its message names the field, the
-entry and the reason, and `field`, `value` and `reason` hold them as separate
+The SDK sends the lists as given, including `[]`, and the API validates them.
+It rejects with HTTP 400, thrown as `KeenableAPIError`: a path (`"un.org/press"`),
+a suffix or wildcard (`".gov"`, `"*.gov"`, `"*"`), another scheme (`ftp://`,
+`mailto:`), a `user@host`, an IP address, an empty entry, an invalid hostname,
+a name that is not a registrable domain (`"localhost"`, `"co.uk"`), an empty
+`includeDomains`, the same host in both lists, too many hosts, or
+`includeDomains` together with `site`. Its message names the field, the entry
+and how to fix it, and `field`, `value` and `reason` hold them as separate
 properties:
 
 ```ts
 try {
-  await keenable.search("q", { includeDomains: ["https://un.org"] });
+  await keenable.search("q", { includeDomains: ["un.org/press"] });
 } catch (err) {
   if (err instanceof KeenableAPIError) {
-    console.log(err.body); // Invalid include_domains value "https://un.org": scheme is not allowed
-    console.log(err.field, err.value, err.reason); // include_domains https://un.org scheme is not allowed
+    console.log(err.body); // Invalid include_domains value "un.org/press": paths are not supported; use the host un.org
+    console.log(err.field, err.value, err.reason); // include_domains un.org/press paths are not supported; use the host un.org
   }
 }
 ```

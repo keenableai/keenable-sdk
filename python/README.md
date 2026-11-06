@@ -65,34 +65,37 @@ results = keenable.search(
 )
 ```
 
-Each entry is one of:
+Each entry is a host, such as `"un.org"`. A host covers itself and every
+subdomain, so `"yahoo.com"` also matches `finance.yahoo.com`. Up to 50 distinct
+hosts in `include_domains` and 200 in `exclude_domains`.
 
-| Entry | Matches |
-|---|---|
-| `"un.org"` | the domain and all its subdomains |
-| `"un.org/en/ga"` | that path prefix, on whole segments (`/en/ga/x`, not `/en/gax`) |
-| `".gov"`, `"*.gov"`, `".gov.uk"` | every host under that suffix |
+The API cleans up an entry for you without ever widening the filter: it trims
+whitespace, lowercases, and drops an `http://` or `https://` scheme, a port, a
+trailing `/` (or a `?query` / `#fragment` with no path), a trailing dot, any
+leading `www.`, and duplicates. Internationalised names become punycode. So
+`"https://WWW.UN.org/"` is read as `"un.org"`. When it changed an entry, the
+response says so in `results.raw["warning"]`. That field also says when
+results had to be removed to honour the lists, which can leave fewer than
+`max_results`.
 
-Matching ignores case, a leading `www.` and a trailing `/`. Up to 200 entries
-across both lists. A narrow list can return fewer than `max_results`; when
-results had to be removed to honour it, the response says so in
-`results.raw["warning"]`.
-
-The lists are sent as given, including `[]`, and the API validates them. An
-empty `include_domains`, an entry with a scheme, port, query or IP address,
-the same entry in both lists, or `include_domains` together with `site` is
-rejected with HTTP 400, raised as `KeenableAPIError`. Its message names the
-field, the entry and the reason, and `field`, `value` and `reason` hold them
-as separate attributes:
+The SDK sends the lists as given, including `[]`, and the API validates them.
+It rejects with HTTP 400, raised as `KeenableAPIError`: a path (`"un.org/press"`),
+a suffix or wildcard (`".gov"`, `"*.gov"`, `"*"`), another scheme (`ftp://`,
+`mailto:`), a `user@host`, an IP address, an empty entry, an invalid hostname,
+a name that is not a registrable domain (`"localhost"`, `"co.uk"`), an empty
+`include_domains`, the same host in both lists, too many hosts, or
+`include_domains` together with `site`. Its message names the field, the entry
+and how to fix it, and `field`, `value` and `reason` hold them as separate
+attributes:
 
 ```python
 try:
-    keenable.search("q", include_domains=["https://un.org"])
+    keenable.search("q", include_domains=["un.org/press"])
 except KeenableAPIError as err:
     print(err.body)
-    # Invalid include_domains value "https://un.org": scheme is not allowed
+    # Invalid include_domains value "un.org/press": paths are not supported; use the host un.org
     print(err.field, err.value, err.reason)
-    # include_domains https://un.org scheme is not allowed
+    # include_domains un.org/press paths are not supported; use the host un.org
 ```
 
 `field` / `value` / `reason` are set only for that rejection (a 400 whose
