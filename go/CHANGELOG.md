@@ -22,6 +22,14 @@ is a 400, never an unrestricted search), `null` and `""` are unset, a lone
 string is wrapped, and a malformed value (a number, a non-string entry) goes to
 the API, which returns the 400. No migration.
 
+`ToContext` (on `SearchResponse` and `Page`) drops markdown images and `<img>`
+tags, and resolves relative links against the result's URL (or keeps just the
+link text when it cannot). Absolute links are unchanged, and lines left holding
+only table pipes are dropped. Fenced code blocks, inline code and `name[i](x)`
+calls are left alone, as is a table's header row. `MaxChars` counts the
+cleaned text. `Snippet` and
+`Content` are untouched. No migration.
+
 ## 0.1.1
 
 `SearchOptions` gains `MaxResults` and `QueryTime`. Both are client-only: the

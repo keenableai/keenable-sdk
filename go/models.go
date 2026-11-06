@@ -143,7 +143,9 @@ func (r *SearchResponse) Cited(opts *ContextOptions) []SearchResult {
 //
 // Each result is a "[n] title (url)" header followed by its page text.
 // Results are added whole until the budget is reached, so a trimmed context
-// never ends mid-sentence.
+// never ends mid-sentence. Page text has image markup dropped and relative
+// links resolved against the result URL first, and the budget counts the
+// cleaned text; Snippet itself is left untouched.
 func (r *SearchResponse) ToContext(opts *ContextOptions) string {
 	if r == nil {
 		return ""
@@ -164,7 +166,8 @@ func (r *SearchResponse) ToContext(opts *ContextOptions) string {
 //
 // Only MaxChars is read. A page is one document, so an oversized page is cut
 // at the budget instead of dropped. The publication date is included when
-// the page has one.
+// the page has one. Content has image markup dropped and relative links
+// resolved before the cut; Content itself is left untouched.
 func (p *Page) ToContext(opts *ContextOptions) string {
 	if p == nil {
 		return ""
@@ -175,7 +178,8 @@ func (p *Page) ToContext(opts *ContextOptions) string {
 	if budget <= 0 {
 		return header
 	}
-	body := strings.TrimRightFunc(cutRunes(p.Content, budget), unicode.IsSpace)
+	content := cleanContextText(p.Content, p.URL)
+	body := strings.TrimRightFunc(cutRunes(content, budget), unicode.IsSpace)
 	return contextBlock(header, body)
 }
 
@@ -220,7 +224,7 @@ func resultBody(r SearchResult) string {
 	if text == "" && r.Description != nil {
 		text = *r.Description
 	}
-	return collapse(text)
+	return collapse(cleanContextText(text, r.URL))
 }
 
 func collapse(text string) string {

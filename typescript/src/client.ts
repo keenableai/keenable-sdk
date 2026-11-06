@@ -6,7 +6,7 @@ import {
   KeenableRateLimitError,
 } from "./errors.js";
 import { SEARCH_FILTERS } from "./filters.js";
-import { collapse, nonEmpty, normalizeHost, readEnv } from "./internal.js";
+import { cleanContextText, collapse, nonEmpty, normalizeHost, readEnv } from "./internal.js";
 import type {
   KeenableOptions,
   SearchOptions,
@@ -135,6 +135,11 @@ function sourceHeader(index: number, title: string, url: string, date?: string):
   return date ? `${header} - published ${date}` : header;
 }
 
+/** The text rendered under a search result's header, as budgeted. */
+function resultBody(result: SearchResult): string {
+  return collapse(cleanContextText(result.snippet || result.description || "", result.url));
+}
+
 /** One rendered source: its header line, then its text. */
 function contextBlock(header: string, body: string): string {
   return body ? `${header}\n${body}` : header;
@@ -193,7 +198,7 @@ export class SearchResponse {
         result.url,
         includeDates ? result.publishedAt : undefined,
       );
-      const body = collapse(result.snippet || result.description || "");
+      const body = resultBody(result);
       // Measure before building: past the budget the block is discarded, and
       // each discarded snippet would be kilobytes of throwaway string.
       const blockLength = header.length + (body ? body.length + 1 : 0);
@@ -212,6 +217,9 @@ export class SearchResponse {
    * Each result becomes a `[n] title (url)` header followed by its page text,
    * which lets the model cite sources by number. Results are added whole until
    * the budget is reached, so a trimmed context never ends mid-sentence.
+   * Snippets are cleaned first (images dropped, relative links resolved),
+   * and the budget counts the cleaned text; `snippet` itself is left
+   * untouched.
    */
   toContext(options: ToContextOptions = {}): string {
     const includeDates = options.includeDates ?? true;
@@ -224,7 +232,7 @@ export class SearchResponse {
             result.url,
             includeDates ? result.publishedAt : undefined,
           ),
-          collapse(result.snippet || result.description || ""),
+          resultBody(result),
         ),
       )
       .join("\n\n");
@@ -270,14 +278,16 @@ export class Page {
    * Same shape as `SearchResponse.toContext()`, so a model can cite a fetched
    * page the way it cites a search result instead of receiving anonymous
    * markdown. Unlike search results the content is one document, so an
-   * oversized page is cut at the budget rather than dropped.
+   * oversized page is cut at the budget rather than dropped. The content is
+   * cleaned the same way before the cut; `content` itself is left untouched.
    */
   toContext(options: { maxChars?: number } = {}): string {
     const maxChars = options.maxChars ?? DEFAULT_CONTEXT_MAX_CHARS;
     const header = sourceHeader(1, this.title, this.url, this.publishedAt);
     const budget = maxChars - header.length - 1;
     if (budget <= 0) return header;
-    return contextBlock(header, this.content.slice(0, budget).trimEnd());
+    const content = cleanContextText(this.content, this.url);
+    return contextBlock(header, content.slice(0, budget).trimEnd());
   }
 }
 

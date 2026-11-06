@@ -23,6 +23,14 @@ All notable changes to the `keenable` Python package. Versions follow
   (`Invalid include_domains value "x": <reason>`), and
   `KeenableAPIError.field`, `.value` and `.reason` hold them separately
   (set only when the body's `error` is `invalid_filter`, `None` otherwise).
+- `to_context()` (search results and fetched pages) drops markdown images and
+  `<img>` tags, and resolves relative links against the result's URL (or keeps
+  just the link text when it cannot). Absolute links are unchanged, and lines
+  left holding only table pipes are dropped. The `max_chars` budget counts the
+  cleaned text. Fenced code blocks, inline code and `name[i](x)` calls are
+  left alone, as is a table's header row. `snippet` and `content` are
+  untouched.
+
 - The wheel now ships a `py.typed` marker, so mypy and pyright read the SDK's
   type hints instead of treating `keenable` as untyped. If you run a strict
   type checker, you may see new (correct) errors where your code passed values
