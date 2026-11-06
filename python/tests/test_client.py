@@ -135,18 +135,28 @@ def test_search_sends_max_results_and_query_time() -> None:
 
 def test_search_sends_domain_lists_as_arrays() -> None:
     keenable, seen = _client(_ok(SEARCH_BODY))
-    keenable.search("q", include_domains=["press.un.org", "undocs.org", ".gov"])
+    keenable.search("q", include_domains=["press.un.org", "undocs.org", "usa.gov"])
     keenable.search("q", exclude_domains=("blogs.un.org",))
     keenable.search("q", include_domains=["un.org"], exclude_domains=["blogs.un.org"])
 
     first, second, both = (json.loads(r.content) for r in seen)
-    assert first["include_domains"] == ["press.un.org", "undocs.org", ".gov"]
+    assert first["include_domains"] == ["press.un.org", "undocs.org", "usa.gov"]
     assert "exclude_domains" not in first
     assert second["exclude_domains"] == ["blogs.un.org"]
     assert "include_domains" not in second
     assert both["include_domains"] == ["un.org"]
     assert both["exclude_domains"] == ["blogs.un.org"]
     assert "site" not in both
+
+
+def test_search_sends_unnormalized_domain_entries_verbatim() -> None:
+    keenable, seen = _client(_ok(SEARCH_BODY))
+    raw = [" https://WWW.UN.org/ ", "un.org", "un.org", "un.org/press", ".gov"]
+    keenable.search("q", include_domains=raw, exclude_domains=["WWW.spam.com."])
+
+    payload = json.loads(seen[0].content)
+    assert payload["include_domains"] == raw
+    assert payload["exclude_domains"] == ["WWW.spam.com."]
 
 
 def test_search_passes_an_empty_domain_list_through() -> None:
@@ -396,29 +406,32 @@ def test_rate_limit_and_auth_errors_carry_the_api_message() -> None:
 
 INVALID_FILTER_BODY = {
     "error": "invalid_filter",
-    "message": 'Invalid include_domains value "https://un.org": scheme is not allowed',
+    "message": (
+        'Invalid include_domains value "un.org/press": '
+        "paths are not supported; use the host un.org"
+    ),
     "field": "include_domains",
-    "value": "https://un.org",
-    "reason": "scheme is not allowed",
+    "value": "un.org/press",
+    "reason": "paths are not supported; use the host un.org",
 }
 
 
 def test_invalid_filter_error_names_field_entry_and_reason() -> None:
     keenable, _ = _client(_ok(INVALID_FILTER_BODY, status=400))
     with pytest.raises(KeenableAPIError) as excinfo:
-        keenable.search("q", include_domains=["https://un.org"])
+        keenable.search("q", include_domains=["un.org/press"])
 
     err = excinfo.value
     assert err.status_code == 400
     assert str(err) == (
-        'Keenable API error (400): Invalid include_domains value "https://un.org": '
-        "scheme is not allowed"
+        'Keenable API error (400): Invalid include_domains value "un.org/press": '
+        "paths are not supported; use the host un.org"
     )
     assert err.body == INVALID_FILTER_BODY["message"]
     assert err.data == INVALID_FILTER_BODY
     assert err.field == "include_domains"
-    assert err.value == "https://un.org"
-    assert err.reason == "scheme is not allowed"
+    assert err.value == "un.org/press"
+    assert err.reason == "paths are not supported; use the host un.org"
 
 
 def test_invalid_filter_error_without_a_value() -> None:
@@ -670,14 +683,14 @@ async def test_async_invalid_filter_error_names_field_entry_and_reason() -> None
     keenable, _ = _aclient(_ok(INVALID_FILTER_BODY, status=400))
     async with keenable:
         with pytest.raises(KeenableAPIError) as excinfo:
-            await keenable.search("q", include_domains=["https://un.org"])
+            await keenable.search("q", include_domains=["un.org/press"])
 
     err = excinfo.value
     assert err.status_code == 400
     assert err.data == INVALID_FILTER_BODY
     assert err.field == "include_domains"
-    assert err.value == "https://un.org"
-    assert err.reason == "scheme is not allowed"
+    assert err.value == "un.org/press"
+    assert err.reason == "paths are not supported; use the host un.org"
 
 
 async def test_async_tool_call_forwards_domain_lists_like_the_sync_one() -> None:

@@ -133,7 +133,7 @@ describe("search", () => {
   it("sends includeDomains and excludeDomains as arrays", async () => {
     const { client, seen } = mockClient(() => json(SEARCH_BODY));
     await client.search("security council resolution", {
-      includeDomains: ["press.un.org", "undocs.org", ".gov"],
+      includeDomains: ["press.un.org", "undocs.org", "usa.gov"],
     });
     await client.search("security council resolution", {
       excludeDomains: ["blogs.un.org"],
@@ -144,7 +144,7 @@ describe("search", () => {
     });
 
     const payloads = seen.map((s) => JSON.parse(String(s.init.body)));
-    expect(payloads[0].include_domains).toEqual(["press.un.org", "undocs.org", ".gov"]);
+    expect(payloads[0].include_domains).toEqual(["press.un.org", "undocs.org", "usa.gov"]);
     expect(payloads[0]).not.toHaveProperty("exclude_domains");
     expect(payloads[1].exclude_domains).toEqual(["blogs.un.org"]);
     expect(payloads[1]).not.toHaveProperty("include_domains");
@@ -153,6 +153,16 @@ describe("search", () => {
       exclude_domains: ["blogs.un.org"],
     });
     expect(payloads[2]).not.toHaveProperty("site");
+  });
+
+  it("sends unnormalized domain entries verbatim for the API to clean up", async () => {
+    const { client, seen } = mockClient(() => json(SEARCH_BODY));
+    const raw = [" https://WWW.UN.org/ ", "un.org", "un.org", "un.org/press", ".gov"];
+    await client.search("q", { includeDomains: raw, excludeDomains: ["WWW.spam.com."] });
+
+    const payload = JSON.parse(String(seen[0]?.init.body));
+    expect(payload.include_domains).toEqual(raw);
+    expect(payload.exclude_domains).toEqual(["WWW.spam.com."]);
   });
 
   it("sends site and includeDomains together for the API to reject", async () => {
@@ -391,27 +401,27 @@ describe("errors", () => {
   it("names the field, entry and reason of a rejected domain filter", async () => {
     const body = {
       error: "invalid_filter",
-      message: 'Invalid include_domains value "https://un.org": scheme is not allowed',
+      message: 'Invalid include_domains value "un.org/press": paths are not supported; use the host un.org',
       field: "include_domains",
-      value: "https://un.org",
-      reason: "scheme is not allowed",
+      value: "un.org/press",
+      reason: "paths are not supported; use the host un.org",
     };
     const { client } = mockClient(() => json(body, 400));
     const error = await client
-      .search("q", { includeDomains: ["https://un.org"] })
+      .search("q", { includeDomains: ["un.org/press"] })
       .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(KeenableAPIError);
     const apiError = error as KeenableAPIError;
     expect(apiError.statusCode).toBe(400);
     expect(apiError.message).toBe(
-      'Keenable API error (400): Invalid include_domains value "https://un.org": scheme is not allowed',
+      'Keenable API error (400): Invalid include_domains value "un.org/press": paths are not supported; use the host un.org',
     );
     expect(apiError.body).toBe(body.message);
     expect(apiError.data).toEqual(body);
     expect(apiError.field).toBe("include_domains");
-    expect(apiError.value).toBe("https://un.org");
-    expect(apiError.reason).toBe("scheme is not allowed");
+    expect(apiError.value).toBe("un.org/press");
+    expect(apiError.reason).toBe("paths are not supported; use the host un.org");
   });
 
   it("leaves value unset when an invalid_filter body names no entry", async () => {
@@ -451,8 +461,8 @@ describe("errors", () => {
     const body = {
       error: "invalid_filter",
       field: "include_domains",
-      value: "https://un.org",
-      reason: "scheme is not allowed",
+      value: "un.org/press",
+      reason: "paths are not supported; use the host un.org",
     };
     const { client } = mockClient(() => json(body, status));
     const error = (await client.search("q").catch((e: unknown) => e)) as KeenableAPIError;
@@ -468,8 +478,8 @@ describe("errors", () => {
     const body = {
       error: "invalid_filter",
       field: "include_domains",
-      value: "https://un.org",
-      reason: "scheme is not allowed",
+      value: "un.org/press",
+      reason: "paths are not supported; use the host un.org",
     };
     const { client } = mockClient(() => json(body, status));
     const error = (await client.search("q").catch((e: unknown) => e)) as KeenableAPIError;

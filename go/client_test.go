@@ -225,11 +225,31 @@ func TestSearchSendsEveryFilter(t *testing.T) {
 	}
 }
 
+func TestSearchSendsUnnormalizedDomainEntriesVerbatim(t *testing.T) {
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, searchBody), nil)
+	raw := []string{" https://WWW.UN.org/ ", "un.org", "un.org", "un.org/press", ".gov"}
+	opts := &keenable.SearchOptions{IncludeDomains: raw, ExcludeDomains: []string{"WWW.spam.com."}}
+	if _, err := c.Search(context.Background(), "q", opts); err != nil {
+		t.Fatal(err)
+	}
+	payload := payloadOf(t, (*seen)[0])
+	want := make([]any, len(raw))
+	for i, v := range raw {
+		want[i] = v
+	}
+	if !jsonEqual(payload["include_domains"], want) {
+		t.Fatalf("include_domains: %#v", payload["include_domains"])
+	}
+	if !jsonEqual(payload["exclude_domains"], []any{"WWW.spam.com."}) {
+		t.Fatalf("exclude_domains: %#v", payload["exclude_domains"])
+	}
+}
+
 func TestSearchSendsDomainLists(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, searchBody), nil)
 	ctx := context.Background()
 	calls := []*keenable.SearchOptions{
-		{IncludeDomains: []string{"press.un.org", "undocs.org", ".gov"}},
+		{IncludeDomains: []string{"press.un.org", "undocs.org", "usa.gov"}},
 		{ExcludeDomains: []string{"blogs.un.org"}},
 		{IncludeDomains: []string{"un.org"}, ExcludeDomains: []string{"blogs.un.org"}},
 		{Site: "arxiv.org"},
@@ -253,7 +273,7 @@ func TestSearchSendsDomainLists(t *testing.T) {
 		}
 		return out
 	}
-	if got := payloads[0]["include_domains"]; !jsonEqual(got, list("press.un.org", "undocs.org", ".gov")) {
+	if got := payloads[0]["include_domains"]; !jsonEqual(got, list("press.un.org", "undocs.org", "usa.gov")) {
 		t.Fatalf("include_domains: %#v", got)
 	}
 	if _, ok := payloads[0]["exclude_domains"]; ok {
@@ -348,20 +368,20 @@ func TestSearchDomainListNilVersusEmpty(t *testing.T) {
 
 var invalidFilterBody = map[string]any{
 	"error":   "invalid_filter",
-	"message": `Invalid include_domains value "https://un.org": scheme is not allowed`,
+	"message": `Invalid include_domains value "un.org/press": paths are not supported; use the host un.org`,
 	"field":   "include_domains",
-	"value":   "https://un.org",
-	"reason":  "scheme is not allowed",
+	"value":   "un.org/press",
+	"reason":  "paths are not supported; use the host un.org",
 }
 
 func TestInvalidFilterErrorNamesFieldEntryAndReason(t *testing.T) {
 	c, _ := startKeyless(t, jsonHandler(http.StatusBadRequest, invalidFilterBody), nil)
-	_, err := c.Search(context.Background(), "q", &keenable.SearchOptions{IncludeDomains: []string{"https://un.org"}})
+	_, err := c.Search(context.Background(), "q", &keenable.SearchOptions{IncludeDomains: []string{"un.org/press"}})
 	var api *keenable.APIError
 	if !errors.As(err, &api) || api.StatusCode != 400 {
 		t.Fatalf("want a 400 APIError, got %v", err)
 	}
-	want := `Keenable API error (400): Invalid include_domains value "https://un.org": scheme is not allowed. Fix the argument named above`
+	want := `Keenable API error (400): Invalid include_domains value "un.org/press": paths are not supported; use the host un.org. Fix the argument named above`
 	if !strings.HasPrefix(err.Error(), want) {
 		t.Fatalf("error text:\n got %s\nwant prefix %s", err.Error(), want)
 	}
@@ -371,7 +391,7 @@ func TestInvalidFilterErrorNamesFieldEntryAndReason(t *testing.T) {
 	if !jsonEqual(api.Data, invalidFilterBody) {
 		t.Fatalf("Data: %#v", api.Data)
 	}
-	if api.Field != "include_domains" || api.Value != "https://un.org" || api.Reason != "scheme is not allowed" {
+	if api.Field != "include_domains" || api.Value != "un.org/press" || api.Reason != "paths are not supported; use the host un.org" {
 		t.Fatalf("Field/Value/Reason: %q %q %q", api.Field, api.Value, api.Reason)
 	}
 	if strings.Contains(err.Error(), "Retry the request") {
