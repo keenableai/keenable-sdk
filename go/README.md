@@ -96,12 +96,18 @@ hosts in `IncludeDomains` and 200 in `ExcludeDomains`.
 
 The API cleans up an entry for you without ever widening the filter: it trims
 whitespace, lowercases, and drops an `http://` or `https://` scheme, a port, a
-trailing `/` (or a `?query` / `#fragment` with no path), a trailing dot, any
-leading `www.`, and duplicates. Internationalised names become punycode. So
+trailing `/` (or a `?query` / `#fragment` with no path), a trailing dot, a
+leading `www.` (kept when the rest would be a public suffix, so `www.github.io`
+stays as is), and duplicates. Internationalised names become punycode. So
 `"https://WWW.UN.org/"` is read as `"un.org"`. When it changed an entry, the
 response says so in `results.Raw["warning"]`. That field also says when
 results had to be removed to honour the lists, which can leave fewer than
 `MaxResults`.
+
+A host that is a public suffix only in the private section of the Public
+Suffix List (`blogspot.com`, `github.io`, `s3.amazonaws.com`) is accepted;
+ICANN suffixes and non-registrable names (`com`, `co.uk`, `localhost`) are
+rejected.
 
 **Nil versus empty.** A nil slice is unset and is not sent. A non-nil empty
 slice (`[]string{}`) is sent as `[]`, and the API rejects an empty
