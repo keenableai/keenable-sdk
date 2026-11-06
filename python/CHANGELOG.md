@@ -5,6 +5,21 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
+- Errors carry the API's agent-ready fields: `code`, `error`, `fix`,
+  `docs_url`, `retryable`, `retry_after_seconds` (from the body, else the
+  `Retry-After` header), `request_id` (body, else `X-Request-Id`), `param`,
+  `limit` (a new `RateLimitInfo`), `billing_url`, `auto_top_up_url`,
+  `pay_per_request` and `raw`. Each is `None` when the API does not send it.
+- New `KeenableInsufficientCreditsError` (alias `KeenableCreditsError`) for HTTP 402. It subclasses
+  `KeenableAPIError`, and the message is unchanged, so existing handlers keep
+  working.
+- A 403 whose `code` is `target_blocked` (the fetched site refused us) is now a
+  plain `KeenableAPIError` labelled "Keenable API error (403)" rather than a
+  `KeenableAuthError`. Without a `code`, 401/403 behave as before.
+- When the API sends `fix`, the error message ends with it (". <fix>"), as in
+  the Go and TypeScript SDKs. A `Retry-After` header is capped at a year, so an
+  oversized value can never break error handling.
+
 - `to_context()` (search results and fetched pages) drops markdown images and
   `<img>` tags, and resolves relative links against the result's URL (or keeps
   just the link text when it cannot). Absolute links are unchanged, and lines

@@ -16,9 +16,12 @@ from .errors import (
     KeenableAPIError,
     KeenableAuthError,
     KeenableConnectionError,
+    KeenableCreditsError,
     KeenableError,
+    KeenableInsufficientCreditsError,
     KeenableInvalidRequestError,
     KeenableRateLimitError,
+    RateLimitInfo,
 )
 from .models import DEFAULT_CONTEXT_MAX_CHARS, Page, SearchResponse, SearchResult
 from .tools import FETCH_TOOL, SEARCH_TOOL, TOOLS, arun_tool_call, run_tool_call
@@ -32,10 +35,13 @@ __all__ = [
     "KeenableAPIError",
     "KeenableAuthError",
     "KeenableConnectionError",
+    "KeenableCreditsError",
     "KeenableError",
+    "KeenableInsufficientCreditsError",
     "KeenableInvalidRequestError",
     "KeenableRateLimitError",
     "Page",
+    "RateLimitInfo",
     "SEARCH_TOOL",
     "SearchResponse",
     "SearchResult",

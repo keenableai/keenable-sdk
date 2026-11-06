@@ -138,9 +138,51 @@ All errors subclass `KeenableError`:
 |---|---|
 | `KeenableRateLimitError` | HTTP 429. Set `KEENABLE_API_KEY` to lift the keyless cap |
 | `KeenableAuthError` | HTTP 401/403, the key was rejected |
+| `KeenableInsufficientCreditsError` (alias `KeenableCreditsError`) | HTTP 402, no credits left; retrying will not help |
 | `KeenableAPIError` | Any other non-2xx response; carries `status_code` |
 | `KeenableConnectionError` | The API could not be reached |
 | `KeenableInvalidRequestError` | Bad arguments; no request was sent |
+
+## Handling errors
+
+Every `KeenableAPIError` carries what the API says about the failure. Branch on
+`code`, not on the message, and wait `retry_after_seconds` before a retry. Each
+field is `None` when the API did not send it.
+
+```python
+import time
+
+from keenable import Keenable, KeenableAPIError
+
+keenable = Keenable()
+for attempt in range(3):
+    try:
+        results = keenable.search("wafer scale engine")
+        break
+    except KeenableAPIError as err:
+        print(err.code, err.fix, err.docs_url, err.request_id)
+        if not err.retryable or attempt == 2:
+            raise  # e.g. insufficient_credits, invalid_parameter
+        time.sleep(err.retry_after_seconds or 1)
+```
+
+| Field | Meaning |
+|---|---|
+| `code` | Stable reason, e.g. `rate_limit_per_second`, `insufficient_credits`, `target_blocked` |
+| `fix` | One sentence on what to do next |
+| `docs_url` | The docs page for this error |
+| `retryable` | Whether the same request can succeed later |
+| `retry_after_seconds` | Seconds to wait (body, else the `Retry-After` header) |
+| `request_id` | Quote it when reporting a problem |
+| `param` | The parameter a 400 is about |
+| `limit` | On a 429: `RateLimitInfo(scope, window, max, resets_at)` |
+| `billing_url`, `auto_top_up_url`, `pay_per_request` | On a 402: where to add credits and the alternatives |
+| `raw` | The whole JSON error body |
+
+When the API sends `fix`, the error message ends with it, as in the Go and
+TypeScript SDKs. A 403 with code `target_blocked` (the fetched site refused us)
+is a plain `KeenableAPIError`, not a `KeenableAuthError`. The SDK does not retry on its
+own.
 
 ## Configuration
 
