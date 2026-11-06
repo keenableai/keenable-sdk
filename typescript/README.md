@@ -169,8 +169,9 @@ for (let attempt = 0; ; attempt++) {
 | `billingUrl`, `autoTopUpUrl`, `payPerRequest` | On a 402: where to add credits and the alternatives |
 | `raw` | The whole JSON error body |
 
-A 403 with code `target_blocked` (the fetched site refused us) is a plain
-`KeenableAPIError`, not a `KeenableAuthError`. The SDK does not retry on its
+When the API sends `fix`, the error message ends with it, as in the Go and
+Python SDKs. A 403 with code `target_blocked` (the fetched site refused us) is
+a plain `KeenableAPIError`, not a `KeenableAuthError`. The SDK does not retry on its
 own.
 
 ## Configuration

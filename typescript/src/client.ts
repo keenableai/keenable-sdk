@@ -520,7 +520,9 @@ function toApiError(status: number, text: string, headers?: Headers): KeenableAP
     (status === 401 || status === 403) && !auth
       ? `Keenable API error (${status})`
       : (STATUS_LABELS[status] ?? `Keenable API error (${status})`);
-  const message = detail ? `${label}: ${detail}` : label;
+  let message = detail ? `${label}: ${detail}` : label;
+  // The API's next step, appended the same way in the Go and Python SDKs.
+  if (details.fix) message = `${message}. ${details.fix}`;
 
   if (auth) {
     return new KeenableAuthError(message, status, detail || undefined, details);
@@ -539,14 +541,21 @@ function seconds(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
+/** The longest Retry-After delay reported, in seconds (a year). */
+const MAX_RETRY_AFTER = 365 * 24 * 60 * 60;
+
 /** Parse a Retry-After header: delay-seconds or an HTTP date. */
 function retryAfterHeader(value: string | null | undefined): number | undefined {
   const text = value?.trim();
   if (!text) return undefined;
-  if (/^[0-9]+$/.test(text)) return Number(text);
+  if (/^[0-9]+$/.test(text)) {
+    // Cap at a year, as the Go SDK does, so a huge value never becomes
+    // Infinity.
+    return Math.min(Number(text), MAX_RETRY_AFTER);
+  }
   const when = Date.parse(text);
   if (Number.isNaN(when)) return undefined;
-  return Math.max(0, Math.ceil((when - Date.now()) / 1000));
+  return Math.min(Math.max(0, Math.ceil((when - Date.now()) / 1000)), MAX_RETRY_AFTER);
 }
 
 function rateLimitInfo(value: unknown): RateLimitInfo | undefined {

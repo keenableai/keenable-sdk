@@ -169,6 +169,18 @@ describe("retry hints", () => {
     expect(error.retryAfterSeconds).toBeLessThanOrEqual(31);
   });
 
+  it("caps an oversized Retry-After header instead of returning Infinity", async () => {
+    const error = await errorFor(reply(429, { message: "m" }, { "Retry-After": "9".repeat(400) }));
+
+    expect(error.retryAfterSeconds).toBe(365 * 24 * 60 * 60);
+  });
+
+  it("ends the message with the API's fix", async () => {
+    const error = await errorFor(reply(403, { error: "Forbidden", fix: "Create a new key." }));
+
+    expect(error.message).toBe("Keenable authentication failed (403): Forbidden. Create a new key.");
+  });
+
   it("falls back to the older retryAfter body field", async () => {
     const error = await errorFor(reply(429, { message: "m", retryAfter: 3 }));
 

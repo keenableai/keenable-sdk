@@ -154,6 +154,25 @@ def test_retry_after_http_date_becomes_seconds_from_now() -> None:
     assert 25 <= err.retry_after_seconds <= 31
 
 
+def test_an_oversized_retry_after_header_is_capped_not_raised() -> None:
+    err = _raise(
+        httpx.Response(429, json={"message": "m"}, headers={"Retry-After": "9" * 5000})
+    )
+
+    assert isinstance(err, KeenableRateLimitError)
+    assert err.retry_after_seconds == 365 * 24 * 60 * 60
+
+
+def test_the_message_ends_with_the_apis_fix() -> None:
+    err = _raise(
+        httpx.Response(403, json={"error": "Forbidden", "fix": "Create a new key."})
+    )
+
+    assert (
+        str(err) == "Keenable authentication failed (403): Forbidden. Create a new key."
+    )
+
+
 def test_the_older_retry_after_body_field_is_a_last_resort() -> None:
     err = _raise(httpx.Response(429, json={"message": "m", "retryAfter": 3}))
 

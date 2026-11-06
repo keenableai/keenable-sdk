@@ -192,6 +192,30 @@ func TestNotYourLimitDoesNotAskForAKey(t *testing.T) {
 	}
 }
 
+func TestNotYourLimitWithoutFixStillDoesNotAskForAKey(t *testing.T) {
+	c, _ := startKeyless(t, replyWith(429, map[string]any{"message": "busy", "code": "search_rate_limited"}, nil), nil)
+	_, err := c.Search(context.Background(), "q", nil)
+	want := "Keenable rate limit exceeded (429): busy. Wait for the rate limit window to reset, then retry. (rate_limit)"
+	if err.Error() != want {
+		t.Fatalf("%q", err.Error())
+	}
+}
+
+func TestTheAPIsFixIsTheNextStepForEveryStatus(t *testing.T) {
+	for _, name := range []string{"credentials_forbidden", "insufficient_credits", "rate_limit_per_second"} {
+		t.Run(name, func(t *testing.T) {
+			tc := contractCaseNamed(t, name)
+			c, _ := startKeyless(t, replyWith(tc.Status, tc.Body, tc.Headers), nil)
+			_, err := c.Search(context.Background(), "q", nil)
+			msg := err.Error()
+			if !strings.Contains(msg, ". "+deref(tc.Expect.Fix)) || strings.Contains(msg, "Check KEENABLE_API_KEY") ||
+				strings.Contains(msg, "Add credits at") || strings.Contains(msg, "lift the keyless hourly cap") {
+				t.Fatal(msg)
+			}
+		})
+	}
+}
+
 func TestInsufficientCreditsKeepsTheOldCodeAndMessage(t *testing.T) {
 	c, _ := startKeyless(t, jsonHandler(http.StatusPaymentRequired, map[string]any{"detail": "no credits"}), nil)
 	_, err := c.Search(context.Background(), "q", nil)
@@ -240,6 +264,7 @@ func TestRetryAfterSources(t *testing.T) {
 		{"older body field", map[string]any{"message": "m", "retryAfter": 3}, nil, 3 * time.Second},
 		{"body wins", map[string]any{"retry_after_seconds": 4}, map[string]string{"Retry-After": "9"}, 4 * time.Second},
 		{"malformed", map[string]any{"retry_after_seconds": -1}, map[string]string{"Retry-After": "soon"}, 0},
+		{"oversized header", map[string]any{"message": "m"}, map[string]string{"Retry-After": strings.Repeat("9", 400)}, 365 * 24 * time.Hour},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

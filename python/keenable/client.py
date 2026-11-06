@@ -125,20 +125,29 @@ def _seconds(value: Any) -> float | None:
     return seconds
 
 
+# The longest Retry-After delay reported, in seconds (a year).
+_MAX_RETRY_AFTER = 365 * 24 * 60 * 60
+
+
 def _retry_after_header(value: str | None) -> float | None:
     """Parse a Retry-After header: delay-seconds or an HTTP date."""
     if not value or not value.strip():
         return None
     text = value.strip()
     if text.isascii() and text.isdigit():
-        return int(text)
+        # Cap at a year, as the Go SDK does; checking the length first keeps
+        # int() clear of Python's integer-string length limit.
+        if len(text) > len(str(_MAX_RETRY_AFTER)):
+            return _MAX_RETRY_AFTER
+        return min(int(text), _MAX_RETRY_AFTER)
     try:
         when = parsedate_to_datetime(text)
     except (TypeError, ValueError, IndexError):
         return None
     if when.tzinfo is None:
         when = when.replace(tzinfo=timezone.utc)
-    return max(0, math.ceil((when - datetime.now(timezone.utc)).total_seconds()))
+    delay = math.ceil((when - datetime.now(timezone.utc)).total_seconds())
+    return min(max(0, delay), _MAX_RETRY_AFTER)
 
 
 def _limit_info(value: Any) -> RateLimitInfo | None:
@@ -209,6 +218,9 @@ def _to_api_error(response: httpx.Response) -> KeenableAPIError:
     else:
         label = _STATUS_LABELS.get(status, f"Keenable API error ({status})")
     message = f"{label}: {detail}" if detail else label
+    if fields["fix"]:
+        # The API's next step, appended the same way in the Go and TS SDKs.
+        message = f"{message}. {fields['fix']}"
 
     if auth:
         return KeenableAuthError(message, status, detail or None, **fields)

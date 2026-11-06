@@ -235,8 +235,8 @@ for attempt := 0; ; attempt++ {
 | `Raw` | The whole JSON error body |
 
 When the API sends `Fix`, the error message ends with it in place of the
-generic "Retry the request" advice, so a non-retryable error never tells an
-agent to retry. A 403 with code `target_blocked` (the fetched site refused us)
+SDK's generic advice (for every status, as in the Python and TypeScript SDKs),
+so a non-retryable error never tells an agent to retry. A 403 with code `target_blocked` (the fetched site refused us)
 is a plain `APIError`, not an `AuthError`. The SDK does not retry on its own.
 
 ## Configuration

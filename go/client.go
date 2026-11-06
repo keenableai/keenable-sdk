@@ -522,31 +522,32 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 	if detail != "" {
 		msg = label + ": " + detail
 	}
+	// When the API sends a fix, it is the next step for every status: it is
+	// specific to this failure and says whether a retry can help, which the
+	// generic advice below cannot. Python and TypeScript append it the same way.
 	switch {
+	case api.Fix != "":
+		msg += ". " + api.Fix
 	case auth:
 		msg += ". Check KEENABLE_API_KEY, or pass Options.APIKey."
 	case status == 402:
 		msg += ". Add credits at https://keenable.ai/console."
+	case status == 429 && notYourLimitCodes[api.APICode]:
+		// Not the caller's own limit, so a key would not lift it.
+		msg += ". Wait for the rate limit window to reset, then retry."
+	case status == 429 && keyless:
+		msg += ". Set KEENABLE_API_KEY to lift the keyless hourly cap. Create a key at https://keenable.ai/console."
 	case status == 429:
-		switch {
-		case notYourLimitCodes[api.APICode] && api.Fix != "":
-			msg += ". " + api.Fix
-		case keyless:
-			msg += ". Set KEENABLE_API_KEY to lift the keyless hourly cap. Create a key at https://keenable.ai/console."
-		default:
-			msg += ". Wait for the rate limit window to reset, then retry."
-		}
+		msg += ". Wait for the rate limit window to reset, then retry."
+	default:
+		msg += ". Retry the request. If it keeps failing, confirm KEENABLE_API_URL."
+	}
+	if status == 429 {
 		if reset := headerValue(header, "X-RateLimit-Reset"); reset != "" {
 			msg += " Retry after " + reset + "."
 		} else if api.RetryAfter > 0 {
 			msg += " Retry after " + api.RetryAfter.String() + "."
 		}
-	case api.Fix != "":
-		// The API's fix says whether a retry can help; the generic advice
-		// below would tell an agent to retry a request that cannot succeed.
-		msg += ". " + api.Fix
-	default:
-		msg += ". Retry the request. If it keeps failing, confirm KEENABLE_API_URL."
 	}
 	api.msg = msg
 	return classifyStatus(api, auth, header)
@@ -644,11 +645,16 @@ func retryAfterHeader(v string) (time.Duration, bool) {
 	if v == "" {
 		return 0, false
 	}
-	if n, err := strconv.ParseUint(v, 10, 64); err == nil {
+	n, err := strconv.ParseUint(v, 10, 64)
+	if err == nil {
 		if n > uint64(maxRetryAfter/time.Second) {
 			return maxRetryAfter, true
 		}
 		return time.Duration(n) * time.Second, true
+	}
+	if errors.Is(err, strconv.ErrRange) {
+		// All digits, just too many for a uint64: still a delay, capped.
+		return maxRetryAfter, true
 	}
 	when, err := http.ParseTime(v)
 	if err != nil {
