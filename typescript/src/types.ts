@@ -33,6 +33,8 @@ export interface SearchOptions {
   mode?: "pro";
   /** Restrict results to one domain, e.g. `"arxiv.org"`. */
   site?: string;
+  /** Never return results from these hosts and their subdomains. */
+  excludeDomains?: readonly string[];
   /** Only pages published on or after this date (`YYYY-MM-DD`). */
   publishedAfter?: string;
   /** Only pages published on or before this date (`YYYY-MM-DD`). */

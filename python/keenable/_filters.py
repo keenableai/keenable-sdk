@@ -38,6 +38,13 @@ SEARCH_FILTERS: tuple[Filter, ...] = (
         tool_exposed=True,
     ),
     Filter(
+        "exclude_domains",
+        "Optional. Never return results from these hosts or their subdomains, "
+        "e.g. 'pinterest.com'. Hosts only, no paths or wildcards. Up to 1,000.",
+        json_type="array",
+        tool_exposed=True,
+    ),
+    Filter(
         "published_after",
         "Optional. Only pages published on or after this date (YYYY-MM-DD).",
         tool_exposed=True,
@@ -76,14 +83,32 @@ SEARCH_FILTERS: tuple[Filter, ...] = (
 TOOL_FILTERS: tuple[Filter, ...] = tuple(f for f in SEARCH_FILTERS if f.tool_exposed)
 
 
+def _schema(f: Filter) -> dict[str, Any]:
+    if f.json_type == "array":
+        return {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": f.description,
+        }
+    return {"type": f.json_type, "description": f.description}
+
+
 def tool_properties() -> dict[str, Any]:
     """The JSON-schema ``properties`` entries for the tool-exposed filters."""
-    return {
-        f.name: {"type": f.json_type, "description": f.description}
-        for f in TOOL_FILTERS
-    }
+    return {f.name: _schema(f) for f in TOOL_FILTERS}
 
 
 def tool_filter_kwargs(args: dict[str, Any]) -> dict[str, Any]:
     """Keep only the filters the tool schema actually offers the model."""
-    return {f.name: args[f.name] for f in TOOL_FILTERS if args.get(f.name)}
+    kwargs: dict[str, Any] = {}
+    for f in TOOL_FILTERS:
+        value = args.get(f.name)
+        if f.json_type == "array":
+            if value is None or value == "":
+                continue
+            if isinstance(value, str):
+                value = [value]
+        elif not value:
+            continue
+        kwargs[f.name] = value
+    return kwargs

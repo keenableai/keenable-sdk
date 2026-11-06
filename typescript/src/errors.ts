@@ -18,12 +18,32 @@ export class KeenableInvalidRequestError extends KeenableError {}
 export class KeenableAPIError extends KeenableError {
   readonly statusCode: number;
   readonly body?: string;
+  readonly data?: Record<string, unknown>;
+  readonly field?: string;
+  readonly value?: string;
+  readonly reason?: string;
 
-  constructor(message: string, statusCode: number, body?: string) {
+  constructor(
+    message: string,
+    statusCode: number,
+    body?: string,
+    data?: Record<string, unknown>,
+  ) {
     super(message);
     this.statusCode = statusCode;
     this.body = body;
+    this.data = data;
+    if (statusCode === 400 && data?.error === "invalid_filter") {
+      this.field = text(data.field);
+      this.value = text(data.value);
+      this.reason = text(data.reason);
+    }
   }
+}
+
+function text(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  return typeof value === "string" ? value : JSON.stringify(value);
 }
 
 /** The API key was rejected (HTTP 401/403). */

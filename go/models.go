@@ -16,6 +16,8 @@ type SearchOptions struct {
 	Mode string
 	// Site restricts results to one domain, for example "arxiv.org".
 	Site string
+	// ExcludeDomains drops results from these hosts and their subdomains.
+	ExcludeDomains []string
 	// PublishedAfter keeps pages published on or after YYYY-MM-DD.
 	PublishedAfter string
 	// PublishedBefore keeps pages published on or before YYYY-MM-DD.

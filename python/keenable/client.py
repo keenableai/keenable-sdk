@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from os import environ
 from typing import Any, Literal
@@ -100,12 +100,22 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
     return payload
 
 
+def _domain_list(value: Sequence[str] | None) -> Any:
+    if value is None or isinstance(value, (str, Mapping)):
+        return value
+    if not isinstance(value, Iterable):
+        return value
+    return list(value)
+
+
 def _to_api_error(response: httpx.Response) -> KeenableAPIError:
     """Map a non-2xx response to the most specific SDK error available."""
     detail = ""
+    data: dict[str, Any] | None = None
     try:
         body = response.json()
         if isinstance(body, dict):
+            data = body
             detail = str(
                 body.get("message") or body.get("error") or body.get("detail") or ""
             )
@@ -117,10 +127,10 @@ def _to_api_error(response: httpx.Response) -> KeenableAPIError:
     message = f"{label}: {detail}" if detail else label
 
     if status in (401, 403):
-        return KeenableAuthError(message, status, detail or None)
+        return KeenableAuthError(message, status, detail or None, data)
     if status == 429:
-        return KeenableRateLimitError(message, status, detail or None)
-    return KeenableAPIError(message, status, detail or None)
+        return KeenableRateLimitError(message, status, detail or None, data)
+    return KeenableAPIError(message, status, detail or None, data)
 
 
 def _decode(response: httpx.Response) -> dict[str, Any]:
@@ -284,6 +294,7 @@ class Keenable(_BaseClient):
         *,
         mode: Literal["pro"] | None = None,
         site: str | None = None,
+        exclude_domains: Sequence[str] | None = None,
         published_after: str | None = None,
         published_before: str | None = None,
         acquired_after: str | None = None,
@@ -300,6 +311,8 @@ class Keenable(_BaseClient):
                 rather than typing keywords; the index is semantic.
             mode: Search mode. ``"pro"`` (the default) does deeper retrieval.
             site: Restrict results to one domain, e.g. ``"arxiv.org"``.
+            exclude_domains: Never return results from these hosts and their
+                subdomains.
             published_after: Keep pages published on or after ``YYYY-MM-DD``.
             published_before: Keep pages published on or before ``YYYY-MM-DD``.
             acquired_after: Keep pages Keenable indexed on or after
@@ -323,6 +336,7 @@ class Keenable(_BaseClient):
             query,
             mode,
             site=site,
+            exclude_domains=_domain_list(exclude_domains),
             published_after=published_after,
             published_before=published_before,
             acquired_after=acquired_after,
@@ -414,6 +428,7 @@ class AsyncKeenable(_BaseClient):
         *,
         mode: Literal["pro"] | None = None,
         site: str | None = None,
+        exclude_domains: Sequence[str] | None = None,
         published_after: str | None = None,
         published_before: str | None = None,
         acquired_after: str | None = None,
@@ -427,6 +442,7 @@ class AsyncKeenable(_BaseClient):
             query,
             mode,
             site=site,
+            exclude_domains=_domain_list(exclude_domains),
             published_after=published_after,
             published_before=published_before,
             acquired_after=acquired_after,

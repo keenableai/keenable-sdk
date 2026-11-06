@@ -46,6 +46,7 @@ const results = await keenable.search("post-training quantization results", {
 | Option | What it does |
 |---|---|
 | `site` | Restrict to one domain, e.g. `"arxiv.org"` |
+| `excludeDomains` | Never return results from these hosts or their subdomains; see below |
 | `publishedAfter` / `publishedBefore` | Filter by publication date (`YYYY-MM-DD`) |
 | `acquiredAfter` / `acquiredBefore` | Filter by when Keenable indexed the page |
 | `snippetMaxLength` | Cap the page text returned per result |
@@ -53,6 +54,49 @@ const results = await keenable.search("post-training quantization results", {
 | `queryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `mode` | Search mode; `"pro"` (default) does deeper retrieval |
 | `signal` | An `AbortSignal` to cancel the request |
+
+### Excluding domains
+
+`excludeDomains` drops results from the listed sites.
+
+```ts
+const results = await keenable.search(
+  "how to repot a monstera without damaging the roots",
+  { excludeDomains: ["pinterest.com", "quora.com"] },
+);
+```
+
+Each entry is a host, such as `"pinterest.com"`. A host excludes itself and
+every subdomain, so `"yahoo.com"` also drops `finance.yahoo.com`. Up to 1,000
+distinct hosts. Hosts such as `github.io` and `blogspot.com` are accepted.
+
+The API cleans up unambiguous input for you: surrounding whitespace, case, an
+`http://` or `https://` scheme, a leading `www.`, a port, a trailing `/` and a
+query string. So `"https://WWW.Pinterest.com/"` is read as `"pinterest.com"`.
+Anything else is rejected with HTTP 400, thrown as `KeenableAPIError`:
+a path (`"example.com/blog"`), a suffix or wildcard (`".com"`,
+`"*.example.com"`), an IP address, a `user@host`, or an invalid host. The
+`field`, `value` and `reason` properties name the rejected entry:
+
+```ts
+try {
+  await keenable.search("q", { excludeDomains: ["example.com/blog"] });
+} catch (err) {
+  if (err instanceof KeenableAPIError) {
+    console.log(err.field, err.value, err.reason);
+    // exclude_domains example.com/blog paths are not supported; use the host example.com
+  }
+}
+```
+
+They are set only for that rejection (a 400 whose body has
+`"error": "invalid_filter"`) and `undefined` on every other error.
+`err.data` holds the whole decoded body.
+
+If every match is excluded, the response can be empty. The SDK sends the list
+as given and leaves validation to the API; `runToolCall` does the same with a
+model's `exclude_domains` argument. `site` still works for a single domain,
+and the `keenable_search` tool offers the model `site` and `exclude_domains`.
 
 ## Ground a model in one line
 
@@ -126,7 +170,7 @@ All errors extend `KeenableError`:
 |---|---|
 | `KeenableRateLimitError` | HTTP 429. Set `KEENABLE_API_KEY` to lift the keyless cap |
 | `KeenableAuthError` | HTTP 401/403, the key was rejected |
-| `KeenableAPIError` | Any other non-2xx response; carries `statusCode` |
+| `KeenableAPIError` | Any other non-2xx response; carries `statusCode`, and `data` (the decoded JSON error body) when there is one |
 | `KeenableConnectionError` | The API could not be reached |
 | `KeenableInvalidRequestError` | Bad arguments; no request was sent |
 

@@ -3,8 +3,23 @@
 All notable changes to the `keenable` Python package. Versions follow
 [semver](https://semver.org); releases are tagged `python-v<version>`.
 
-## Unreleased
+## 0.1.4
 
+- `search()` (sync and async) accepts `exclude_domains`: a list of hosts to
+  keep out of the results. A host also excludes its subdomains; up to 1,000
+  distinct hosts.
+  The list is sent as given, including `[]`. The API cleans up unambiguous
+  entries (scheme, `www.`, case, port, trailing `/`, query, whitespace) and
+  rejects anything else (paths, suffixes such as `.com`, wildcards, IP
+  addresses, `user@host`, invalid hosts) with HTTP 400. If every result is
+  excluded, the response can be empty. `site` is unchanged.
+- The `keenable_search` tool offers `exclude_domains` alongside `site`.
+  `run_tool_call` sends the argument as given: only an absent or `null` value
+  (or `""`) is unset, a lone string is wrapped, and any other value goes to the
+  API, which rejects a malformed one with a 400.
+- `KeenableAPIError.data` holds the decoded JSON error body. A rejected entry
+  is a 400 whose `field`, `value` and `reason` name it (set only when the
+  body's `error` is `invalid_filter`, `None` otherwise).
 - `to_context()` (search results and fetched pages) drops markdown images and
   `<img>` tags, and resolves relative links against the result's URL (or keeps
   just the link text when it cannot). Absolute links are unchanged, and lines
@@ -12,7 +27,6 @@ All notable changes to the `keenable` Python package. Versions follow
   cleaned text. Fenced code blocks, inline code and `name[i](x)` calls are
   left alone, as is a table's header row. `snippet` and `content` are
   untouched.
-
 - The wheel now ships a `py.typed` marker, so mypy and pyright read the SDK's
   type hints instead of treating `keenable` as untyped. If you run a strict
   type checker, you may see new (correct) errors where your code passed values

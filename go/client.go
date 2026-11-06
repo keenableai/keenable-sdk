@@ -142,6 +142,10 @@ func (c *Client) Keyless() bool { return c != nil && c.apiKey == "" }
 // Vue performance") rather than keywords. The index is semantic.
 // opts may be nil.
 func (c *Client) Search(ctx context.Context, query string, opts *SearchOptions) (*SearchResponse, error) {
+	return c.search(ctx, query, opts, nil)
+}
+
+func (c *Client) search(ctx context.Context, query string, opts *SearchOptions, raw map[string]any) (*SearchResponse, error) {
 	if err := requireClient(c); err != nil {
 		return nil, err
 	}
@@ -160,6 +164,9 @@ func (c *Client) Search(ctx context.Context, query string, opts *SearchOptions) 
 		"mode":  mode,
 	}
 	applyFilters(payload, opts)
+	for wire, v := range raw {
+		payload[wire] = v
+	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, &InvalidRequestError{msg: "could not encode the search request. Retry with a string query."}
@@ -488,10 +495,12 @@ var statusLabels = map[int]string{
 
 func toAPIError(status int, raw []byte, header http.Header, keyless bool) error {
 	detail := ""
+	var data map[string]any
 	var body any
 	if err := json.Unmarshal(raw, &body); err != nil {
 		detail = strings.TrimSpace(string(raw))
 	} else if m, ok := body.(map[string]any); ok {
+		data = m
 		detail = firstDetail(m, "message", "error", "detail")
 	}
 	label, ok := statusLabels[status]
@@ -505,6 +514,12 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 	switch status {
 	case 401, 403:
 		msg += ". Check KEENABLE_API_KEY, or pass Options.APIKey."
+	case 400:
+		if detail != "" {
+			msg += ". Fix the argument named above; the same request will fail again."
+		} else {
+			msg += ". Check the request arguments; the same request will fail again."
+		}
 	case 402:
 		msg += ". Add credits at https://keenable.ai/console."
 	case 429:
@@ -519,10 +534,10 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 	default:
 		msg += ". Retry the request. If it keeps failing, confirm KEENABLE_API_URL."
 	}
-	return classifyStatus(status, msg, detail, header)
+	return classifyStatus(status, msg, detail, data, header)
 }
 
-func classifyStatus(status int, msg, body string, header http.Header) error {
+func classifyStatus(status int, msg, body string, data map[string]any, header http.Header) error {
 	code := CodeAPI
 	switch status {
 	case 401, 403:
@@ -533,9 +548,15 @@ func classifyStatus(status int, msg, body string, header http.Header) error {
 	api := &APIError{
 		StatusCode: status,
 		Body:       body,
+		Data:       data,
 		RequestID:  headerValue(header, "X-Request-Id"),
 		msg:        msg,
 		code:       code,
+	}
+	if status == 400 && data != nil && data["error"] == "invalid_filter" {
+		api.Field = detailText(data["field"])
+		api.Value = detailText(data["value"])
+		api.Reason = detailText(data["reason"])
 	}
 	switch status {
 	case 401, 403:
@@ -549,6 +570,21 @@ func classifyStatus(status int, msg, body string, header http.Header) error {
 		}
 	default:
 		return api
+	}
+}
+
+func detailText(v any) string {
+	switch t := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return t
+	default:
+		encoded, err := json.Marshal(t)
+		if err != nil {
+			return ""
+		}
+		return string(encoded)
 	}
 }
 

@@ -68,12 +68,53 @@ results, err := client.Search(context.Background(), "post-training quantization 
 | Field | What it does |
 |---|---|
 | `Site` | Restrict to one domain, e.g. `"arxiv.org"` |
+| `ExcludeDomains` | Never return results from these hosts or their subdomains; see below |
 | `PublishedAfter` / `PublishedBefore` | Filter by publication date (`YYYY-MM-DD`) |
 | `AcquiredAfter` / `AcquiredBefore` | Filter by when Keenable indexed the page |
 | `SnippetMaxLength` | Cap the page text returned per result. Nil means unset; a pointer to zero is sent |
 | `MaxResults` | How many results to return, 1 to 50. Zero means the API default of 10 |
 | `QueryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `Mode` | Search mode; empty means `"pro"` |
+
+### Excluding domains
+
+`ExcludeDomains` drops results from the listed sites.
+
+```go
+results, err := client.Search(ctx, "how to repot a monstera without damaging the roots", &keenable.SearchOptions{
+	ExcludeDomains: []string{"pinterest.com", "quora.com"},
+})
+```
+
+Each entry is a host, such as `"pinterest.com"`. A host excludes itself and
+every subdomain, so `"yahoo.com"` also drops `finance.yahoo.com`. Up to 1,000
+distinct hosts. Hosts such as `github.io` and `blogspot.com` are accepted. A
+nil slice is unset and not sent; a non-nil empty slice is sent as `[]`.
+
+The API cleans up unambiguous input for you: surrounding whitespace, case, an
+`http://` or `https://` scheme, a leading `www.`, a port, a trailing `/` and a
+query string. So `"https://WWW.Pinterest.com/"` is read as `"pinterest.com"`.
+Anything else comes back as an `*APIError` with `StatusCode` 400: a path
+(`"example.com/blog"`), a suffix or wildcard (`".com"`, `"*.example.com"`), an
+IP address, a `user@host`, or an invalid host. `Field`, `Value` and `Reason`
+name the rejected entry:
+
+```go
+var api *keenable.APIError
+if errors.As(err, &api) && api.StatusCode == 400 {
+	fmt.Println(api.Field, api.Value, api.Reason)
+	// exclude_domains example.com/blog paths are not supported; use the host example.com
+}
+```
+
+They are set only for that rejection (a 400 whose body has
+`"error": "invalid_filter"`) and empty on every other error.
+`Data` holds the whole decoded body.
+
+If every match is excluded, the response can be empty. The SDK sends the list
+as given and leaves validation to the API; `RunToolCall` does the same with a
+model's `exclude_domains` argument. `Site` still works for a single domain,
+and the `keenable_search` tool offers the model `site` and `exclude_domains`.
 
 ## Ground a model in one line
 
@@ -183,7 +224,7 @@ if errors.As(err, &sdk) {
 |---|---|---|
 | `RateLimitError` | `rate_limit` | HTTP 429. The message names `X-RateLimit-Reset` when the API sent it. A keyless call is told to set `KEENABLE_API_KEY`. A keyed call is told to wait for the window |
 | `AuthError` | `auth` | HTTP 401/403, the key was rejected |
-| `APIError` | `api_error` | Any other non-2xx response; carries `StatusCode`, `Body`, and `RequestID` when the API sent `X-Request-Id` |
+| `APIError` | `api_error` | Any other non-2xx response; carries `StatusCode`, `Body`, `Data` (the decoded JSON error body), and `RequestID` when the API sent `X-Request-Id` |
 | `ConnectionError` | `connection` | The API could not be reached, or the client deadline elapsed |
 | `InvalidRequestError` | `invalid_request` | Bad arguments; no request was sent |
 

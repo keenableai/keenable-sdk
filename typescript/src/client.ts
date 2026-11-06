@@ -493,10 +493,12 @@ export class Keenable {
 
 function toApiError(status: number, text: string): KeenableAPIError {
   let detail = text.trim();
+  let data: Record<string, unknown> | undefined;
   try {
     const body: unknown = JSON.parse(text);
     if (typeof body === "object" && body !== null) {
       const record = body as Record<string, unknown>;
+      data = Array.isArray(body) ? undefined : record;
       detail =
         nonEmpty(record.message) ??
         nonEmpty(record.error) ??
@@ -511,10 +513,10 @@ function toApiError(status: number, text: string): KeenableAPIError {
   const message = detail ? `${label}: ${detail}` : label;
 
   if (status === 401 || status === 403) {
-    return new KeenableAuthError(message, status, detail || undefined);
+    return new KeenableAuthError(message, status, detail || undefined, data);
   }
   if (status === 429) {
-    return new KeenableRateLimitError(message, status, detail || undefined);
+    return new KeenableRateLimitError(message, status, detail || undefined, data);
   }
-  return new KeenableAPIError(message, status, detail || undefined);
+  return new KeenableAPIError(message, status, detail || undefined, data);
 }

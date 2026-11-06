@@ -3,8 +3,22 @@
 All notable changes to the `keenable` npm package. Versions follow
 [semver](https://semver.org); releases are tagged `ts-v<version>`.
 
-## Unreleased
+## 0.1.5
 
+- `search()` accepts `excludeDomains`: a list of hosts to keep out of the
+  results. A host also excludes its subdomains; up to 1,000 distinct hosts.
+  The list is sent as given, including `[]`. The API cleans up unambiguous
+  entries (scheme, `www.`, case, port, trailing `/`, query, whitespace) and
+  rejects anything else (paths, suffixes such as `.com`, wildcards, IP
+  addresses, `user@host`, invalid hosts) with HTTP 400. If every result is
+  excluded, the response can be empty. `site` is unchanged.
+- The `keenable_search` tool offers `exclude_domains` alongside `site`.
+  `runToolCall` sends the argument as given: only an absent or `null` value (or
+  `""`) is unset, a lone string is wrapped, and any other value goes to the
+  API, which rejects a malformed one with a 400.
+- `KeenableAPIError.data` holds the decoded JSON error body. A rejected entry
+  is a 400 whose `field`, `value` and `reason` name it (set only when the
+  body's `error` is `invalid_filter`, `undefined` otherwise).
 - `toContext()` (search results and fetched pages) drops markdown images and
   `<img>` tags, and resolves relative links against the result's URL (or keeps
   just the link text when it cannot). Absolute links are unchanged, and lines

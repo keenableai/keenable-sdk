@@ -8,7 +8,7 @@
 
 import type { Keenable } from "./client.js";
 import { KeenableInvalidRequestError } from "./errors.js";
-import { TOOL_FILTERS, toolProperties } from "./filters.js";
+import { type Filter, TOOL_FILTERS, toolProperties } from "./filters.js";
 import { nonEmpty } from "./internal.js";
 import type { SearchOptions } from "./types.js";
 
@@ -96,11 +96,23 @@ function requireString(value: unknown, message: string): string {
   return text;
 }
 
+function toolValue(filter: Filter, value: unknown): unknown {
+  if (filter.jsonType === "array") {
+    if (value === undefined || value === null) return undefined;
+    if (typeof value === "string") {
+      const single = nonEmpty(value);
+      return single === undefined ? undefined : [single];
+    }
+    return value;
+  }
+  return nonEmpty(value);
+}
+
 /** Keep only the filters the tool schema actually offers the model. */
 function toolFilterOptions(args: Record<string, unknown>): SearchOptions {
   const options: Record<string, unknown> = {};
   for (const filter of TOOL_FILTERS) {
-    const value = nonEmpty(args[filter.wire]);
+    const value = toolValue(filter, args[filter.wire]);
     if (value !== undefined) options[filter.option] = value;
   }
   return options as SearchOptions;

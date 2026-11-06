@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from typing import Any
+
 
 class KeenableError(Exception):
     """Base class for every error raised by this SDK."""
@@ -18,10 +21,32 @@ class KeenableAPIError(KeenableError):
     from the API when it sent one.
     """
 
-    def __init__(self, message: str, status_code: int, body: str | None = None):
+    def __init__(
+        self,
+        message: str,
+        status_code: int,
+        body: str | None = None,
+        data: dict[str, Any] | None = None,
+    ):
         super().__init__(message)
         self.status_code = status_code
         self.body = body
+        self.data = data
+        self.field: str | None = None
+        self.value: str | None = None
+        self.reason: str | None = None
+        if status_code == 400 and data and data.get("error") == "invalid_filter":
+            self.field = _text(data.get("field"))
+            self.value = _text(data.get("value"))
+            self.reason = _text(data.get("reason"))
+
+
+def _text(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    return json.dumps(value)
 
 
 class KeenableAuthError(KeenableAPIError):
