@@ -61,8 +61,8 @@ class KeenableAPIError(KeenableError):
     - ``billing_url``, ``auto_top_up_url``, ``pay_per_request``: on 402s.
     - ``raw``: the whole decoded JSON body, for fields not listed here.
 
-    ``str(err)`` ends with ``Docs: <docs_url>`` and ``(request_id: <id>)`` when
-    the API sent them.
+    ``str(err)`` ends with ``Docs: <docs_url>``, ``(code: <code>)`` and
+    ``(request_id: <id>)`` when the API sent them.
     """
 
     def __init__(

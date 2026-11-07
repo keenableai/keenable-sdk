@@ -181,7 +181,8 @@ for attempt in range(3):
 | `raw` | The whole JSON error body |
 
 When the API sends `fix`, the error message ends with it, then with
-`Docs: <docs_url>` and `(request_id: <id>)`, as in the Go and TypeScript SDKs.
+`Docs: <docs_url>`, `(code: <code>)` and `(request_id: <id>)`, as in the Go and
+TypeScript SDKs.
 A 403 with type `target_error` (e.g. code `target_blocked`, the fetched site
 refused us) is a plain `KeenableAPIError`, not a `KeenableAuthError`. The SDK does not retry on its
 own.

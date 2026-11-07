@@ -77,7 +77,8 @@ func (e *ConnectionError) keenableError() {}
 // The API's error body adds fields an agent can act on. Each is the zero value
 // (nil for pointers) when the API did not send it, which is the case for
 // older responses. Error() ends with "Docs: <DocsURL>" and
-// "(request_id: <RequestID>)" when the API sent them.
+// "(code: <APICode>) (request_id: <RequestID>)" when the API sent them, then
+// the SDK's own "(<Code()>)".
 type APIError struct {
 	StatusCode int
 	Body       string
@@ -139,6 +140,11 @@ func (e *APIError) Error() string {
 		return ""
 	}
 	msg := e.msg
+	// The API's code gets its own parentheses, so the "(request_id: ...)"
+	// and the SDK code that already shipped read as before.
+	if e.APICode != "" {
+		msg += " (code: " + e.APICode + ")"
+	}
 	if e.RequestID != "" {
 		msg += " (request_id: " + e.RequestID + ")"
 	}

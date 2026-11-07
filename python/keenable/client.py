@@ -254,9 +254,12 @@ def _to_api_error(response: httpx.Response) -> KeenableAPIError:
         # The API's next step, appended the same way in the Go and TS SDKs.
         message = _sentence(message, fields["fix"])
     # Where to read more and what to quote, as Stripe's SDKs print them; the
-    # same tail as the Go and TS SDKs.
+    # same tail as the Go and TS SDKs. The code goes in its own parentheses so
+    # the "(request_id: ...)" Go has shipped reads the same everywhere.
     if fields["docs_url"]:
         message = _sentence(message, f"Docs: {fields['docs_url']}")
+    if fields["code"]:
+        message = f"{message} (code: {fields['code']})"
     if fields["request_id"]:
         message = f"{message} (request_id: {fields['request_id']})"
 

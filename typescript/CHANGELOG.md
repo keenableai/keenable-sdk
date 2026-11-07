@@ -25,9 +25,10 @@ All notable changes to the `keenable` npm package. Versions follow
   that does not send it gets one derived from the status and `code`, so `type`
   is set on every `KeenableAPIError` from a response. A 401/403 whose type is
   `target_error` is not a `KeenableAuthError` (as `target_blocked` already was).
-- `error.message` ends with `Docs: <docsUrl>` and `(request_id: <id>)` when the
-  API sends them, the way Stripe's SDKs print the doc link and request id.
-  `body` is unchanged, and so is the message of a response without either field.
+- `error.message` ends with `Docs: <docsUrl>`, `(code: <code>)` and
+  `(request_id: <id>)` when the API sends them, the way Stripe's SDKs print the
+  doc link and request id. `body` is unchanged, and so is the message of a
+  response without any of these fields.
   A message that already ends in a period no longer gets a second one before
   the fix.
 

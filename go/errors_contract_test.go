@@ -152,7 +152,7 @@ func TestBackendErrorBodiesParseIntoTypedErrors(t *testing.T) {
 			if !strings.Contains(err.Error(), want.MessageContains) {
 				t.Fatal(err)
 			}
-			tail := "Docs: " + deref(want.DocsURL) + " (request_id: " + deref(want.RequestID) + ") (" + api.Code() + ")"
+			tail := "Docs: " + deref(want.DocsURL) + " (code: " + deref(want.Code) + ") (request_id: " + deref(want.RequestID) + ") (" + api.Code() + ")"
 			if !strings.HasSuffix(err.Error(), tail) {
 				t.Fatalf("%q does not end with %q", err.Error(), tail)
 			}
@@ -275,10 +275,20 @@ func TestNotYourLimitDoesNotAskForAKey(t *testing.T) {
 	}
 }
 
+func TestTheMessageNamesTheAPICodeBeforeTheRequestID(t *testing.T) {
+	c, _ := start(t, replyWith(400, map[string]any{"message": "Bad query.", "fix": "Shorten it.", "code": "invalid_parameter"},
+		map[string]string{"X-Request-Id": "req-c"}), keyed())
+	_, err := c.Search(context.Background(), "q", nil)
+	want := "Keenable API error (400): Bad query. Shorten it. (code: invalid_parameter) (request_id: req-c) (api_error)"
+	if err.Error() != want {
+		t.Fatalf("%q", err.Error())
+	}
+}
+
 func TestNotYourLimitWithoutFixStillDoesNotAskForAKey(t *testing.T) {
 	c, _ := startKeyless(t, replyWith(429, map[string]any{"message": "busy", "code": "search_rate_limited"}, nil), nil)
 	_, err := c.Search(context.Background(), "q", nil)
-	want := "Keenable rate limit exceeded (429): busy. Wait for the rate limit window to reset, then retry. (rate_limit)"
+	want := "Keenable rate limit exceeded (429): busy. Wait for the rate limit window to reset, then retry. (code: search_rate_limited) (rate_limit)"
 	if err.Error() != want {
 		t.Fatalf("%q", err.Error())
 	}

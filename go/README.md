@@ -238,8 +238,8 @@ for attempt := 0; ; attempt++ {
 When the API sends `Fix`, the error message ends with it in place of the
 SDK's generic advice (for every status, as in the Python and TypeScript SDKs),
 so a non-retryable error never tells an agent to retry. It then ends with
-`Docs: <DocsURL>` and `(request_id: <RequestID>)` before the SDK code, as in the
-Python and TypeScript SDKs. A 403 with type `target_error` (e.g. code
+`Docs: <DocsURL>`, `(code: <APICode>)` and `(request_id: <RequestID>)` before
+the SDK code, as in the Python and TypeScript SDKs. A 403 with type `target_error` (e.g. code
 `target_blocked`, the fetched site refused us) is a plain `APIError`, not an `AuthError`. The SDK does not retry on its own.
 
 ## Configuration

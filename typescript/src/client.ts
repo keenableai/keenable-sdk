@@ -545,8 +545,10 @@ function toApiError(status: number, text: string, headers?: Headers): KeenableAP
   // The API's next step, appended the same way in the Go and Python SDKs.
   if (details.fix) message = sentence(message, details.fix);
   // Where to read more and what to quote, as Stripe's SDKs print them; the same
-  // tail as the Go and Python SDKs.
+  // tail as the Go and Python SDKs. The code goes in its own parentheses so the
+  // "(request_id: ...)" Go has shipped reads the same everywhere.
   if (details.docsUrl) message = sentence(message, `Docs: ${details.docsUrl}`);
+  if (details.code) message = `${message} (code: ${details.code})`;
   if (details.requestId) message = `${message} (request_id: ${details.requestId})`;
 
   if (auth) {

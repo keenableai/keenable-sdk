@@ -25,8 +25,9 @@ An API that does not send it gets one derived from the status and `APICode`, so
 `Type` is set on every error response. A 401/403 whose type is `target_error`
 is not an `AuthError` (as `target_blocked` already was). When the API sends
 `DocsURL`, `Error()` adds "Docs: <DocsURL>" before the `(request_id: ...)` it
-already printed, the way Stripe's SDKs print the doc link. `Code()` and the
-final parentheses are unchanged. A message that already ends in a period no
+already printed, the way Stripe's SDKs print the doc link, and when it sends a
+`code` it adds `(code: <APICode>)` just before the request id. The
+`(request_id: ...)` text, `Code()` and the final parentheses are unchanged. A message that already ends in a period no
 longer gets a second one before `Fix`. No migration.
 
 `ToContext` (on `SearchResponse` and `Page`) drops markdown images and `<img>`

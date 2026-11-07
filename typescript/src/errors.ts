@@ -84,7 +84,8 @@ export interface KeenableAPIErrorDetails {
 
 /**
  * The Keenable API returned a non-2xx response. The message ends with
- * `Docs: <docsUrl>` and `(request_id: <requestId>)` when the API sent them.
+ * `Docs: <docsUrl>`, `(code: <code>)` and `(request_id: <requestId>)` when the
+ * API sent them.
  */
 export class KeenableAPIError extends KeenableError implements KeenableAPIErrorDetails {
   readonly statusCode: number;

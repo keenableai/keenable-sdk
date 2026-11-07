@@ -94,9 +94,11 @@ describe("backend error bodies", () => {
     expect(error.payPerRequest).toBe(orUndefined(want.pay_per_request));
     expect(error.raw).toEqual(c.body);
     expect(error.message).toContain(want.message_contains);
-    expect(error.message.endsWith(`Docs: ${want.docs_url} (request_id: ${want.request_id})`)).toBe(
-      true,
-    );
+    expect(
+      error.message.endsWith(
+        `Docs: ${want.docs_url} (code: ${want.code}) (request_id: ${want.request_id})`,
+      ),
+    ).toBe(true);
     if (want.limit === null) {
       expect(error.limit).toBeUndefined();
     } else {
@@ -227,6 +229,21 @@ describe("retry hints", () => {
       "Keenable API error (500): Internal server error. Docs: https://d/e#x (request_id: req-h)",
     );
     expect(error.body).toBe("Internal server error");
+  });
+
+  it("names the API code before the request id", async () => {
+    const error = await errorFor(
+      reply(
+        401,
+        { error: "Invalid API key", code: "invalid_api_key" },
+        { "X-Request-Id": "req-c" },
+      ),
+    );
+
+    expect(error.message).toBe(
+      "Keenable authentication failed (401): Invalid API key (code: invalid_api_key) (request_id: req-c)",
+    );
+    expect(error.body).toBe("Invalid API key");
   });
 
   it("does not double a final period before the fix", async () => {

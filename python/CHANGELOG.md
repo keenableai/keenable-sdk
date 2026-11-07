@@ -25,9 +25,10 @@ All notable changes to the `keenable` Python package. Versions follow
   it gets one derived from the status and `code`, so `type` is set on every
   `KeenableAPIError` from a response. A 401/403 whose type is `target_error`
   is not a `KeenableAuthError` (as `target_blocked` already was).
-- `str(err)` ends with `Docs: <docs_url>` and `(request_id: <id>)` when the API
-  sends them, the way Stripe's SDKs print the doc link and request id. `body`
-  is unchanged, and so is the message of a response without either field.
+- `str(err)` ends with `Docs: <docs_url>`, `(code: <code>)` and
+  `(request_id: <id>)` when the API sends them, the way Stripe's SDKs print the
+  doc link and request id. `body` is unchanged, and so is the message of a
+  response without any of these fields.
   A message that already ends in a period no longer gets a second one before
   the fix.
 

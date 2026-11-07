@@ -76,7 +76,8 @@ def test_backend_error_bodies_parse_into_typed_errors(case: dict[str, Any]) -> N
     assert err.raw == case["body"]
     assert want["message_contains"] in str(err)
     assert str(err).endswith(
-        f"Docs: {want['docs_url']} (request_id: {want['request_id']})"
+        f"Docs: {want['docs_url']}"
+        f" (code: {want['code']}) (request_id: {want['request_id']})"
     )
     if want["limit"] is None:
         assert err.limit is None
@@ -230,6 +231,22 @@ def test_the_message_ends_with_the_docs_link_and_request_id() -> None:
         " (request_id: req-h)"
     )
     assert err.body == "Internal server error"
+
+
+def test_the_message_names_the_api_code_before_the_request_id() -> None:
+    err = _raise(
+        httpx.Response(
+            401,
+            json={"error": "Invalid API key", "code": "invalid_api_key"},
+            headers={"X-Request-Id": "req-c"},
+        )
+    )
+
+    assert str(err) == (
+        "Keenable authentication failed (401): Invalid API key"
+        " (code: invalid_api_key) (request_id: req-c)"
+    )
+    assert err.body == "Invalid API key"
 
 
 def test_a_message_ending_in_a_period_is_not_doubled() -> None:

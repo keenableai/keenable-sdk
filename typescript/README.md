@@ -171,7 +171,8 @@ for (let attempt = 0; ; attempt++) {
 | `raw` | The whole JSON error body |
 
 When the API sends `fix`, the error message ends with it, then with
-`Docs: <docsUrl>` and `(request_id: <id>)`, as in the Go and Python SDKs. A 403
+`Docs: <docsUrl>`, `(code: <code>)` and `(request_id: <id>)`, as in the Go and
+Python SDKs. A 403
 with type `target_error` (e.g. code `target_blocked`, the fetched site refused
 us) is a plain `KeenableAPIError`, not a `KeenableAuthError`. The SDK does not retry on its
 own.
