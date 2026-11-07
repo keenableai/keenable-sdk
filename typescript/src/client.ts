@@ -497,6 +497,10 @@ export class Keenable {
 // Codes for a page that failed, besides every code starting with "target_".
 const TARGET_CODES = new Set(["page_not_found", "content_not_extracted"]);
 
+// Codes the API fills in by status when nothing more specific applies. They say
+// no more than a missing code, so the title and message fallbacks still run.
+const GENERIC_CODES = new Set(["forbidden", "not_found", "unprocessable"]);
+
 // The API's title for a 403 from the fetched site, before it sent codes.
 const UPSTREAM_FORBIDDEN = "upstream forbidden";
 
@@ -531,14 +535,16 @@ function isTargetError(
   apiBody: boolean,
 ): boolean {
   if (status === 429) return false;
-  if (code !== undefined) return code.startsWith("target_") || TARGET_CODES.has(code);
+  if (code !== undefined && !GENERIC_CODES.has(code)) {
+    return code.startsWith("target_") || TARGET_CODES.has(code);
+  }
   if (status === 403 && (title ?? "").trim().toLowerCase() === UPSTREAM_FORBIDDEN) return true;
   return fetch && apiBody && (status === 404 || status === 422);
 }
 
 /** True when a 403 refused the URL for pointing to a private address. */
 function isPrivateUrlError(status: number, code: string | undefined, detail: string): boolean {
-  if (code !== undefined) return code === "private_url_not_allowed";
+  if (code !== undefined && !GENERIC_CODES.has(code)) return code === "private_url_not_allowed";
   return status === 403 && detail.toLowerCase().includes(PRIVATE_HOST_MARKER);
 }
 

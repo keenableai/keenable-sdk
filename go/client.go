@@ -492,6 +492,11 @@ var statusLabels = map[int]string{
 // with "target_".
 var targetCodes = map[string]bool{"page_not_found": true, "content_not_extracted": true}
 
+// genericCodes are the codes the API fills in by status when nothing more
+// specific applies. They say no more than a missing code, so the title and
+// message fallbacks still run for them.
+var genericCodes = map[string]bool{"forbidden": true, "not_found": true, "unprocessable": true}
+
 // upstreamForbidden is the API's title for a 403 from the fetched site, from
 // before it sent codes.
 const upstreamForbidden = "upstream forbidden"
@@ -518,7 +523,7 @@ func isTargetError(status int, code, title string, fetch, apiBody bool) bool {
 	if status == 429 {
 		return false
 	}
-	if code != "" {
+	if code != "" && !genericCodes[code] {
 		return strings.HasPrefix(code, "target_") || targetCodes[code]
 	}
 	if status == 403 && strings.ToLower(strings.TrimSpace(title)) == upstreamForbidden {
@@ -530,7 +535,7 @@ func isTargetError(status int, code, title string, fetch, apiBody bool) bool {
 // isPrivateURLError reports whether a 403 refused the URL for pointing to a
 // private or internal address, which has nothing to do with the caller's key.
 func isPrivateURLError(status int, code, detail string) bool {
-	if code != "" {
+	if code != "" && !genericCodes[code] {
 		return code == "private_url_not_allowed"
 	}
 	return status == 403 && strings.Contains(strings.ToLower(detail), privateHostMarker)

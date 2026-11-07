@@ -17,8 +17,21 @@ responses raise change.
   instead. `except KeenableAPIError` and `except KeenableError` still catch
   every one of them, and `status_code` is unchanged. A rejected key is still a
   `KeenableAuthError`.
-- Nothing else changes for existing calls: `search()` still sends
-  `mode="pro"` by default.
+- Some responses that used to raise a bare `KeenableAPIError` now raise a
+  subclass: a fetch 404 or 422, a 502 or 504 with a `target_*` code, and a
+  code-less `403 Upstream forbidden` raise `KeenableTargetError`, and a 402
+  raises `KeenableInsufficientCreditsError`. `except KeenableAPIError` and
+  `isinstance` still match them; an exact-class check
+  (`type(e) is KeenableAPIError`) does not. Use `isinstance`.
+- Error messages end with different advice text. `str(e)` was never a stable
+  format: match on the class, `status_code` or `code`.
+- The default timeout is 90 seconds, up from 30. If your runtime kills a call
+  sooner (a serverless or tool-call deadline under 90 seconds), pass
+  `timeout=` below it, so you still get a `KeenableConnectionError` you can
+  handle.
+- `search()` still sends `mode="pro"` by default, so results and price do not
+  change. Pass `org_default_mode=True` to use your organization's default
+  instead.
 
 ### Changes
 
@@ -37,6 +50,9 @@ responses raise change.
   `KeenableTargetError`. The same statuses from search stay a plain
   `KeenableAPIError`, and so is a fetch 404 or 422 whose body is not the API's
   JSON error (a proxy or a wrong `base_url`).
+- The generic codes the API may fill in by status (`forbidden`, `not_found`,
+  `unprocessable`) are treated like no code, so the fallbacks above still
+  apply to them.
 - A target error without a `fix` ends with advice not to retry the same URL,
   unless the API sent `retryable: true`.
 - New `search(..., org_default_mode=True)`: with `mode` unset, the SDK sends no

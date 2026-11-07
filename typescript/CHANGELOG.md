@@ -17,8 +17,22 @@ responses throw change.
   `instanceof KeenableTargetError` instead. `instanceof KeenableAPIError` and
   `instanceof KeenableError` still match every one of them, and `statusCode`
   is unchanged. A rejected key is still a `KeenableAuthError`.
-- Nothing else changes for existing calls: `search()` still sends
-  `mode: "pro"` by default.
+- Some responses that used to throw a bare `KeenableAPIError` now throw a
+  subclass: a fetch 404 or 422, a 502 or 504 with a `target_*` code, and a
+  code-less `403 Upstream forbidden` throw `KeenableTargetError`, and a 402
+  throws `KeenableInsufficientCreditsError`. `instanceof KeenableAPIError`
+  still matches them; an exact check (`e.constructor === KeenableAPIError`, or
+  `e.name === "KeenableAPIError"`, since `name` is the subclass name) does not.
+  Use `instanceof`.
+- Error messages end with different advice text. `e.message` was never a
+  stable format: match on the class, `statusCode` or `code`.
+- The default timeout is 90 seconds, up from 30. If your runtime kills a call
+  sooner (a serverless or tool-call deadline under 90 seconds), pass
+  `timeoutMs` below it, so you still get a `KeenableConnectionError` you can
+  handle.
+- `search()` still sends `mode: "pro"` by default, so results and price do not
+  change. Pass `orgDefaultMode: true` to use your organization's default
+  instead.
 
 ### Changes
 
@@ -37,6 +51,9 @@ responses throw change.
   `KeenableTargetError`. The same statuses from search stay a plain
   `KeenableAPIError`, and so is a fetch 404 or 422 whose body is not the API's
   JSON error (a proxy or a wrong `baseUrl`).
+- The generic codes the API may fill in by status (`forbidden`, `not_found`,
+  `unprocessable`) are treated like no code, so the fallbacks above still
+  apply to them.
 - A target error without a `fix` ends with advice not to retry the same URL,
   unless the API sent `retryable: true`.
 - New `search(query, { orgDefaultMode: true })`: with `mode` unset, the SDK

@@ -113,6 +113,10 @@ def _search_payload(
 # Codes for a page that failed, besides every code starting with "target_".
 _TARGET_CODES = frozenset({"page_not_found", "content_not_extracted"})
 
+# Codes the API fills in by status when nothing more specific applies. They say
+# no more than a missing code, so the title and message fallbacks still run.
+_GENERIC_CODES = frozenset({"forbidden", "not_found", "unprocessable"})
+
 # The API's title for a 403 from the fetched site, before it sent codes.
 _UPSTREAM_FORBIDDEN = "upstream forbidden"
 
@@ -148,7 +152,7 @@ def _is_target_error(
     """
     if status == 429:
         return False
-    if code is not None:
+    if code is not None and code not in _GENERIC_CODES:
         return code.startswith("target_") or code in _TARGET_CODES
     if status == 403 and (title or "").strip().lower() == _UPSTREAM_FORBIDDEN:
         return True
@@ -157,7 +161,7 @@ def _is_target_error(
 
 def _is_private_url_error(status: int, code: str | None, detail: str) -> bool:
     """True when a 403 refused the URL for pointing to a private address."""
-    if code is not None:
+    if code is not None and code not in _GENERIC_CODES:
         return code == "private_url_not_allowed"
     return status == 403 and _PRIVATE_HOST_MARKER in detail.lower()
 

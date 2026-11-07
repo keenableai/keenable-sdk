@@ -17,8 +17,21 @@ return change.
   `case keenable.CodeAPI:` switch keeps matching 502/504 target failures. A
   target 403 or private-URL 403 that used to report `CodeAuth` now reports
   `CodeAPI`, because it was never about your key.
-- Nothing else changes for existing calls: `Search` still sends `mode: "pro"`
-  by default.
+- The concrete type changes for some responses that used to be a bare
+  `*APIError`: a fetch 404 or 422, a 502 or 504 with a `target_*` code, and a
+  code-less `403 Upstream forbidden` are now a `*TargetError`, and a 402 is now
+  an `*InsufficientCreditsError`. `errors.As` still finds the `*APIError`
+  inside them, but a type assertion (`err.(*keenable.APIError)`) or a type
+  switch with `case *keenable.APIError:` does not unwrap and no longer matches
+  them. Use `errors.As(err, &apiErr)`, or add the new types to the switch.
+- Error messages end with different advice text. `Error()` was never a stable
+  format: match on the type, `Code()`, `StatusCode` or `APICode`.
+- `DefaultTimeout` is 90 seconds, up from 30. If your runtime kills a call
+  sooner (a serverless or tool-call deadline under 90 seconds), set
+  `Options.Timeout` or a context deadline below it, so you still get a
+  `*ConnectionError` you can handle.
+- `Search` still sends `mode: "pro"` by default, so results and price do not
+  change. Set `OrgDefaultMode` to use your organization's default instead.
 
 ### Changes
 
@@ -42,7 +55,9 @@ the same error when sent again. Before, every such
 error ended with "Retry the request".
 
 A fetch 404 or 422 whose body is not the API's JSON error (a proxy or a wrong
-`BaseURL`) stays a plain `APIError`.
+`BaseURL`) stays a plain `APIError`. The generic codes the API may fill in
+by status (`forbidden`, `not_found`, `unprocessable`) are treated like no code,
+so these fallbacks still apply to them.
 
 New `SearchOptions.OrgDefaultMode`: when true and `Mode` is empty, `Search`
 sends no mode, so your organization's default search mode applies. Without it,

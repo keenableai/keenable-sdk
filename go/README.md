@@ -239,7 +239,8 @@ for attempt := 0; ; attempt++ {
 When the API sends `Fix`, the error message ends with it in place of the
 SDK's generic advice (for every status, as in the Python and TypeScript SDKs),
 so a non-retryable error never tells an agent to retry. Without a `Fix`, the
-SDK suggests a retry only for a 5xx or `Retryable: true`. A 403 from the site
+SDK suggests a retry when `Retryable` is true, or for a 5xx or 408 unless
+`Retryable` is false. A 403 from the site
 you fetched (a `target_*` code, or today's `Upstream forbidden`) is a
 `TargetError`, not an `AuthError`, and its message never asks you to check
 your API key. So is a fetch 404 (page not found) or 422 (no readable content)

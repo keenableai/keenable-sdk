@@ -1105,6 +1105,121 @@
         "pay_per_request": null,
         "message_contains": "use a public http or https URL"
       }
+    },
+    {
+      "name": "upstream forbidden with the generic forbidden code",
+      "source": "keenable-backend-ts dx/error-schema-v1 src/shared/utils/api-errors.ts withDefaultGuidance (status default code)",
+      "endpoint": "fetch",
+      "status": 403,
+      "headers": {
+        "X-Request-Id": "req-g1"
+      },
+      "body": {
+        "error": "Upstream forbidden",
+        "message": "The site refused the request",
+        "code": "forbidden"
+      },
+      "expect": {
+        "kind": "target",
+        "code": "forbidden",
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": "req-g1",
+        "param": null,
+        "docs_url": null,
+        "fix": null,
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "fetch another source"
+      }
+    },
+    {
+      "name": "private host with the generic forbidden code",
+      "source": "keenable-backend-ts dx/error-schema-v1 src/shared/utils/api-errors.ts withDefaultGuidance (status default code)",
+      "endpoint": "fetch",
+      "status": 403,
+      "headers": {
+        "X-Request-Id": "req-g2"
+      },
+      "body": {
+        "error": "Forbidden",
+        "message": "Fetching from private/internal hosts is not allowed",
+        "code": "forbidden"
+      },
+      "expect": {
+        "kind": "api",
+        "code": "forbidden",
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": "req-g2",
+        "param": null,
+        "docs_url": null,
+        "fix": null,
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "use a public http or https URL"
+      }
+    },
+    {
+      "name": "page not found with the generic not_found code",
+      "source": "keenable-backend-ts dx/error-schema-v1 src/shared/utils/api-errors.ts withDefaultGuidance (status default code)",
+      "endpoint": "fetch",
+      "status": 404,
+      "headers": {
+        "X-Request-Id": "req-g3"
+      },
+      "body": {
+        "error": "Not found",
+        "message": "The page does not exist at this URL. Check that the URL is correct.",
+        "code": "not_found"
+      },
+      "expect": {
+        "kind": "target",
+        "code": "not_found",
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": "req-g3",
+        "param": null,
+        "docs_url": null,
+        "fix": null,
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "fetch another source"
+      }
+    },
+    {
+      "name": "credentials forbidden with the generic forbidden code",
+      "source": "keenable-backend-ts dx/error-schema-v1 src/shared/utils/api-errors.ts withDefaultGuidance (status default code)",
+      "status": 403,
+      "headers": {
+        "X-Request-Id": "req-g4"
+      },
+      "body": {
+        "error": "Forbidden",
+        "message": "This API key cannot use this endpoint",
+        "code": "forbidden"
+      },
+      "expect": {
+        "kind": "auth",
+        "code": "forbidden",
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": "req-g4",
+        "param": null,
+        "docs_url": null,
+        "fix": null,
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "This API key cannot use this endpoint"
+      }
     }
   ]
 }
