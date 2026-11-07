@@ -188,10 +188,10 @@ func TestATargetRefusalWithoutACodeIsATargetError(t *testing.T) {
 	if !errors.As(err, &target) || errors.As(err, new(*keenable.AuthError)) {
 		t.Fatalf("%T: %v", err, err)
 	}
-	if target.Code() != keenable.CodeTarget || target.StatusCode != 403 {
+	if target.Code() != keenable.CodeAPI || target.StatusCode != 403 {
 		t.Fatal(err)
 	}
-	want := "Keenable API error (403): The target server denied access to this URL. The site refused the fetch. This is not about your API key, and retrying the same URL will not help: fetch another source. (target)"
+	want := "Keenable API error (403): The target server denied access to this URL. The site refused the fetch. This is not about your API key, and retrying the same URL will not help: fetch another source. (api_error)"
 	if err.Error() != want {
 		t.Fatalf("%q", err.Error())
 	}
@@ -245,13 +245,50 @@ func TestCodelessFetchPageErrorsAreTargetErrors(t *testing.T) {
 			c, _ := start(t, replyWith(tc.status, map[string]any{"error": "x", "message": tc.message}, nil), keyed())
 			_, err := c.Fetch(context.Background(), "https://example.com")
 			var target *keenable.TargetError
-			if !errors.As(err, &target) || target.Code() != keenable.CodeTarget {
+			if !errors.As(err, &target) || target.Code() != keenable.CodeAPI {
 				t.Fatalf("%T: %v", err, err)
 			}
 			if !strings.Contains(err.Error(), "fetch another source") || strings.Contains(err.Error(), "Retry the request") {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestTargetErrorsKeepTheAPIErrorCode(t *testing.T) {
+	for _, status := range []int{502, 504} {
+		body := map[string]any{"error": "Bad gateway", "message": "m", "code": "target_unreachable"}
+		c, _ := start(t, replyWith(status, body, nil), keyed())
+		_, err := c.Fetch(context.Background(), "https://example.com")
+		var sdk keenable.Error
+		if !errors.As(err, new(*keenable.TargetError)) || !errors.As(err, &sdk) || sdk.Code() != keenable.CodeAPI {
+			t.Fatalf("%d: %T %v", status, err, err)
+		}
+	}
+}
+
+func TestANonJSONFetch404IsNotATargetError(t *testing.T) {
+	for _, status := range []int{404, 422} {
+		h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html")
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte("<html><body>Not Found</body></html>"))
+		})
+		c, _ := start(t, h, keyed())
+		_, err := c.Fetch(context.Background(), "https://example.com")
+		if errors.As(err, new(*keenable.TargetError)) || strings.Contains(err.Error(), "fetch another source") {
+			t.Fatalf("%d: %T %v", status, err, err)
+		}
+		apiErrorFrom(t, err)
+	}
+}
+
+func TestASiteRateLimitOnFetchStaysARateLimitError(t *testing.T) {
+	body := map[string]any{"error": "Rate limit exceeded", "message": "busy", "code": "target_rate_limited"}
+	c, _ := start(t, replyWith(429, body, nil), keyed())
+	_, err := c.Fetch(context.Background(), "https://example.com")
+	if !errors.As(err, new(*keenable.RateLimitError)) || errors.As(err, new(*keenable.TargetError)) {
+		t.Fatalf("%T: %v", err, err)
 	}
 }
 

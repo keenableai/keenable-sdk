@@ -3,7 +3,24 @@
 All notable changes to the `keenable` npm package. Versions follow
 [semver](https://semver.org); releases are tagged `ts-v<version>`.
 
-## Unreleased
+## 0.2.0 (unreleased)
+
+Release this as a minor version, not a patch: the error classes some
+responses throw change.
+
+### Upgrading from 0.1.x
+
+- A failed fetch target (a site's 403, a `target_*` code, a missing page) now
+  throws `KeenableTargetError`, and a private-URL 403 throws a plain
+  `KeenableAPIError`. Before, both threw `KeenableAuthError`. If you checked
+  `instanceof KeenableAuthError` to handle a blocked fetch, check
+  `instanceof KeenableTargetError` instead. `instanceof KeenableAPIError` and
+  `instanceof KeenableError` still match every one of them, and `statusCode`
+  is unchanged. A rejected key is still a `KeenableAuthError`.
+- Nothing else changes for existing calls: `search()` still sends
+  `mode: "pro"` by default.
+
+### Changes
 
 - New `KeenableTargetError` (extends `KeenableAPIError`) for a page that
   failed rather than your request or key: any `code` starting with `target_`
@@ -18,11 +35,13 @@ All notable changes to the `keenable` npm package. Versions follow
   public URL.
 - A fetch 404 or 422 without a code (page not found, no readable content) is a
   `KeenableTargetError`. The same statuses from search stay a plain
-  `KeenableAPIError`.
+  `KeenableAPIError`, and so is a fetch 404 or 422 whose body is not the API's
+  JSON error (a proxy or a wrong `baseUrl`).
 - A target error without a `fix` ends with advice not to retry the same URL,
   unless the API sent `retryable: true`.
-- `search()` sends `mode` only when you set it, so your organization's default
-  search mode applies. Before, the SDK always sent `"pro"`.
+- New `search(query, { orgDefaultMode: true })`: with `mode` unset, the SDK
+  sends no mode, so your organization's default search mode applies. Without
+  it, `search()` still sends `mode: "pro"`, as before.
 - The default `timeoutMs` is 90000 (90 seconds), up from 30. The API waits up to 60
   seconds on a slow fetch and bills a fetch that succeeds, so the old default
   could give up on a page you paid for.

@@ -102,7 +102,7 @@ describe("search", () => {
     expect([...response].map((r) => r.title)).toEqual(["How Cerebras works", "MoE guide"]);
   });
 
-  it("sends filters snake_cased and leaves mode to the org default", async () => {
+  it("sends filters snake_cased and defaults mode to pro", async () => {
     const { client, seen } = mockClient(() => json(SEARCH_BODY));
     await client.search("wafer scale engine", {
       site: "cerebras.ai",
@@ -112,17 +112,24 @@ describe("search", () => {
 
     expect(JSON.parse(String(seen[0]?.init.body))).toEqual({
       query: "wafer scale engine",
+      mode: "pro",
       site: "cerebras.ai",
       published_after: "2026-01-01",
       snippet_max_length: 200,
     });
   });
 
-  it("sends mode only when the caller sets it", async () => {
+  it.each([
+    [{}, "pro"],
+    [{ mode: undefined }, "pro"],
+    [{ mode: "pro" as const }, "pro"],
+    [{ mode: "pro" as const, orgDefaultMode: true }, "pro"],
+    [{ orgDefaultMode: true }, undefined],
+  ])("sends mode %o as %s", async (options, expected) => {
     const { client, seen } = mockClient(() => json(SEARCH_BODY));
-    await client.search("q", { mode: "pro" });
+    await client.search("q", options);
 
-    expect(JSON.parse(String(seen[0]?.init.body)).mode).toBe("pro");
+    expect(JSON.parse(String(seen[0]?.init.body)).mode).toBe(expected);
   });
 
   it("sends maxResults and queryTime", async () => {

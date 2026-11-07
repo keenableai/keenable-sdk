@@ -29,11 +29,13 @@ export interface SearchResult {
  * in both places and every consumer picks it up.
  */
 export interface SearchOptions {
-  /**
-   * Search mode: `"pro"` does deeper retrieval. Leave it unset to use your
-   * organization's default mode.
-   */
+  /** Search mode. `"pro"` (the default) does deeper retrieval. */
   mode?: "pro";
+  /**
+   * When true and `mode` is unset, send no mode, so your organization's
+   * default search mode applies instead of `"pro"`.
+   */
+  orgDefaultMode?: boolean;
   /** Restrict results to one domain, e.g. `"arxiv.org"`. */
   site?: string;
   /** Only pages published on or after this date (`YYYY-MM-DD`). */

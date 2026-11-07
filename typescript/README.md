@@ -51,7 +51,8 @@ const results = await keenable.search("post-training quantization results", {
 | `snippetMaxLength` | Cap the page text returned per result |
 | `maxResults` | How many results to return, 1 to 50 (default 10) |
 | `queryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `mode` | Search mode; `"pro"` does deeper retrieval. Unset uses your organization's default |
+| `mode` | Search mode; `"pro"` (default) does deeper retrieval |
+| `orgDefaultMode` | With `mode` unset, send no mode so your organization's default applies instead of `"pro"` |
 | `signal` | An `AbortSignal` to cancel the request |
 
 ## Ground a model in one line

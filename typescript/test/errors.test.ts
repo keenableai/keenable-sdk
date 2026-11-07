@@ -179,6 +179,22 @@ describe("target errors", () => {
     expect(error.message.endsWith("check the URL or fetch another source.")).toBe(true);
   });
 
+  it.each([404, 422])("keeps a non-JSON fetch %i a plain API error", async (status) => {
+    const error = await errorFor(reply(status, "<html><body>Not Found</body></html>"), "fetch");
+
+    expect(error.constructor).toBe(KeenableAPIError);
+    expect(error.message).not.toContain("fetch another source");
+  });
+
+  it("keeps a target error an instance of KeenableAPIError", async () => {
+    const body = { error: "Upstream forbidden", message: "m", code: "target_blocked" };
+    const error = await errorFor(reply(403, body), "fetch");
+
+    expect(error).toBeInstanceOf(KeenableTargetError);
+    expect(error).toBeInstanceOf(KeenableAPIError);
+    expect(error.statusCode).toBe(403);
+  });
+
   it.each([404, 422])("keeps a code-less search %i a plain API error", async (status) => {
     const error = await errorFor(reply(status, { message: "nope" }));
 

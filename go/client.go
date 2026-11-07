@@ -155,8 +155,11 @@ func (c *Client) Search(ctx context.Context, query string, opts *SearchOptions) 
 		return nil, &InvalidRequestError{msg: "search() needs a non-empty query. Pass the question as the query argument."}
 	}
 	payload := map[string]any{"query": query}
-	if opts != nil && opts.Mode != "" {
+	switch {
+	case opts != nil && opts.Mode != "":
 		payload["mode"] = opts.Mode
+	case opts == nil || !opts.OrgDefaultMode:
+		payload["mode"] = "pro"
 	}
 	applyFilters(payload, opts)
 	body, err := json.Marshal(payload)
@@ -509,7 +512,9 @@ const retryAdvice = "Retry the request. If it keeps failing, confirm KEENABLE_AP
 // caller's request or key. A response without a code falls back to the status:
 // a 403 "Upstream forbidden" from any endpoint, and a 404 or 422 from fetch,
 // which the API sends only when the page is missing or has no readable text.
-func isTargetError(status int, code, title string, fetch bool) bool {
+// The status fallback needs the API's JSON error object: a plain-text or HTML
+// 404 comes from a proxy or a wrong base URL, not from the page.
+func isTargetError(status int, code, title string, fetch, apiBody bool) bool {
 	if status == 429 {
 		return false
 	}
@@ -519,7 +524,7 @@ func isTargetError(status int, code, title string, fetch bool) bool {
 	if status == 403 && strings.ToLower(strings.TrimSpace(title)) == upstreamForbidden {
 		return true
 	}
-	return fetch && (status == 404 || status == 422)
+	return fetch && apiBody && (status == 404 || status == 422)
 }
 
 // isPrivateURLError reports whether a 403 refused the URL for pointing to a
@@ -576,7 +581,7 @@ func toAPIError(status int, raw []byte, header http.Header, keyless, fetch bool)
 	api.StatusCode = status
 	api.Body = detail
 
-	target := isTargetError(status, api.APICode, api.Title, fetch)
+	target := isTargetError(status, api.APICode, api.Title, fetch, obj != nil)
 	privateURL := isPrivateURLError(status, api.APICode, detail)
 	auth := (status == 401 || status == 403) && !target && !privateURL
 	label, ok := statusLabels[status]
@@ -624,7 +629,6 @@ func classifyStatus(api *APIError, auth, target bool, header http.Header) error 
 	api.code = CodeAPI
 	switch {
 	case target:
-		api.code = CodeTarget
 		return &TargetError{APIError: api}
 	case auth:
 		api.code = CodeAuth

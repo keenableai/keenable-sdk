@@ -94,14 +94,16 @@ def _reject_private_fetch_target(url: str) -> None:
         raise KeenableInvalidRequestError(f"refusing to fetch private address {host!r}")
 
 
-def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, Any]:
+def _search_payload(
+    query: str, mode: str | None, org_default_mode: bool = False, **filters: Any
+) -> dict[str, Any]:
     """Build the search request body, dropping filters the caller left unset."""
     if not query or not query.strip():
         raise KeenableInvalidRequestError("search() needs a non-empty query")
 
     payload: dict[str, Any] = {"query": query}
-    if mode:
-        payload["mode"] = mode
+    if mode or not org_default_mode:
+        payload["mode"] = mode or "pro"
     payload.update(
         {name: value for name, value in filters.items() if value is not None}
     )
@@ -134,13 +136,15 @@ _PRIVATE_URL_ADVICE = (
 
 
 def _is_target_error(
-    status: int, code: str | None, title: str | None, fetch: bool
+    status: int, code: str | None, title: str | None, fetch: bool, api_body: bool
 ) -> bool:
     """True when the page being fetched failed, not the caller's request.
 
     A response without a code falls back to the status: a 403 "Upstream
     forbidden" from any endpoint, and a 404 or 422 from fetch, which the API
-    sends only when the page is missing or has no readable text.
+    sends only when the page is missing or has no readable text. That fallback
+    needs the API's JSON error object: a plain-text or HTML 404 comes from a
+    proxy or a wrong base URL, not from the page.
     """
     if status == 429:
         return False
@@ -148,7 +152,7 @@ def _is_target_error(
         return code.startswith("target_") or code in _TARGET_CODES
     if status == 403 and (title or "").strip().lower() == _UPSTREAM_FORBIDDEN:
         return True
-    return fetch and status in (404, 422)
+    return fetch and api_body and status in (404, 422)
 
 
 def _is_private_url_error(status: int, code: str | None, detail: str) -> bool:
@@ -273,7 +277,9 @@ def _to_api_error(response: httpx.Response, fetch: bool = False) -> KeenableAPIE
 
     fields = _error_fields(body, response)
     status = response.status_code
-    target = _is_target_error(status, fields["code"], fields["error"], fetch)
+    target = _is_target_error(
+        status, fields["code"], fields["error"], fetch, body is not None
+    )
     private_url = _is_private_url_error(status, fields["code"], detail)
     auth = status in (401, 403) and not target and not private_url
     if status in (401, 403) and not auth:
@@ -470,6 +476,7 @@ class Keenable(_BaseClient):
         snippet_max_length: int | None = None,
         max_results: int | None = None,
         query_time: str | None = None,
+        org_default_mode: bool = False,
     ) -> SearchResponse:
         """Search the web and return ranked results with page text.
 
@@ -477,8 +484,7 @@ class Keenable(_BaseClient):
             query: What to look for. Describe the ideal page in natural
                 language ("blog post comparing React and Vue performance")
                 rather than typing keywords; the index is semantic.
-            mode: Search mode, e.g. ``"pro"`` for deeper retrieval. Leave it
-                unset to use your organization's default mode.
+            mode: Search mode. ``"pro"`` (the default) does deeper retrieval.
             site: Restrict results to one domain, e.g. ``"arxiv.org"``.
             published_after: Keep pages published on or after ``YYYY-MM-DD``.
             published_before: Keep pages published on or before ``YYYY-MM-DD``.
@@ -494,6 +500,9 @@ class Keenable(_BaseClient):
                 not a recency filter: use ``published_after`` for that.
                 Accepts an ISO 8601 datetime, ``YYYY-MM-DD``, or an offset
                 back from now such as ``"7d"`` (as of 7 days ago).
+            org_default_mode: When true and ``mode`` is unset, send no mode,
+                so your organization's default search mode applies instead
+                of ``"pro"``.
 
         Returns:
             A :class:`SearchResponse`; iterate it for results or call
@@ -502,6 +511,7 @@ class Keenable(_BaseClient):
         payload = _search_payload(
             query,
             mode,
+            org_default_mode,
             site=site,
             published_after=published_after,
             published_before=published_before,
@@ -601,11 +611,13 @@ class AsyncKeenable(_BaseClient):
         snippet_max_length: int | None = None,
         max_results: int | None = None,
         query_time: str | None = None,
+        org_default_mode: bool = False,
     ) -> SearchResponse:
         """Search the web. See :meth:`Keenable.search` for the arguments."""
         payload = _search_payload(
             query,
             mode,
+            org_default_mode,
             site=site,
             published_after=published_after,
             published_before=published_before,

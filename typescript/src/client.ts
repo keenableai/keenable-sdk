@@ -385,7 +385,7 @@ export class Keenable {
     }
 
     const payload: Record<string, unknown> = { query };
-    if (options.mode) payload.mode = options.mode;
+    if (options.mode || !options.orgDefaultMode) payload.mode = options.mode ?? "pro";
     for (const filter of SEARCH_FILTERS) {
       const value = (options as Record<string, unknown>)[filter.option];
       if (value !== undefined) payload[filter.wire] = value;
@@ -519,18 +519,21 @@ const PRIVATE_URL_ADVICE =
  * True when the page being fetched failed, not the caller's request. A
  * response without a code falls back to the status: a 403 "Upstream
  * forbidden" from any endpoint, and a 404 or 422 from fetch, which the API
- * sends only when the page is missing or has no readable text.
+ * sends only when the page is missing or has no readable text. That fallback
+ * needs the API's JSON error object: a plain-text or HTML 404 comes from a
+ * proxy or a wrong base URL, not from the page.
  */
 function isTargetError(
   status: number,
   code: string | undefined,
   title: string | undefined,
   fetch: boolean,
+  apiBody: boolean,
 ): boolean {
   if (status === 429) return false;
   if (code !== undefined) return code.startsWith("target_") || TARGET_CODES.has(code);
   if (status === 403 && (title ?? "").trim().toLowerCase() === UPSTREAM_FORBIDDEN) return true;
-  return fetch && (status === 404 || status === 422);
+  return fetch && apiBody && (status === 404 || status === 422);
 }
 
 /** True when a 403 refused the URL for pointing to a private address. */
@@ -573,8 +576,9 @@ function toApiError(
     // Not JSON; the raw body is the best detail we have.
   }
 
-  const details = errorDetails(Array.isArray(record) ? undefined : record, headers);
-  const target = isTargetError(status, details.code, details.error, fetch);
+  const apiRecord = Array.isArray(record) ? undefined : record;
+  const details = errorDetails(apiRecord, headers);
+  const target = isTargetError(status, details.code, details.error, fetch, apiRecord !== undefined);
   const privateUrl = isPrivateUrlError(status, details.code, detail);
   const auth = (status === 401 || status === 403) && !target && !privateUrl;
   const label =

@@ -1,8 +1,28 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (unreleased)
 
-New `TargetError` (unwraps to `APIError`, `Code()` `target`) for a page that
+Release this as a minor version, not a patch: the error types some responses
+return change.
+
+### Upgrading from 0.1.x
+
+- A failed fetch target (a site's 403, a `target_*` code, a missing page) now
+  returns a `*TargetError`, and a private-URL 403 a plain `*APIError`. Before,
+  both were an `*AuthError`. If you used `errors.As(err, &authErr)` to handle a
+  blocked fetch, use `errors.As(err, &targetErr)` instead.
+  `errors.As(err, &apiErr)` still matches every one of them, and `StatusCode`
+  is unchanged. A rejected key is still an `*AuthError`.
+- `Code()` of a `TargetError` is `CodeAPI` (`"api_error"`), so a
+  `case keenable.CodeAPI:` switch keeps matching 502/504 target failures. A
+  target 403 or private-URL 403 that used to report `CodeAuth` now reports
+  `CodeAPI`, because it was never about your key.
+- Nothing else changes for existing calls: `Search` still sends `mode: "pro"`
+  by default.
+
+### Changes
+
+New `TargetError` (unwraps to `APIError`, `Code()` `api_error`) for a page that
 failed rather than your request or key: any `APICode` starting with `target_`
 (`target_blocked`, `target_unreachable`, `target_timeout`, ...),
 `page_not_found` or `content_not_extracted`. Today's code-less
@@ -21,9 +41,12 @@ help: always when the API sent `retryable: true`, never when it sent
 the same error when sent again. Before, every such
 error ended with "Retry the request".
 
-`Search` sends `mode` only when `SearchOptions.Mode` is set, so your
-organization's default search mode applies. Before, the SDK always sent
-`"pro"`.
+A fetch 404 or 422 whose body is not the API's JSON error (a proxy or a wrong
+`BaseURL`) stays a plain `APIError`.
+
+New `SearchOptions.OrgDefaultMode`: when true and `Mode` is empty, `Search`
+sends no mode, so your organization's default search mode applies. Without it,
+`Search` still sends `"pro"`, as before.
 
 `DefaultTimeout` is 90 seconds, up from 30. The API waits up to 60 seconds on a
 slow fetch and bills a fetch that succeeds, so the old default could give up on

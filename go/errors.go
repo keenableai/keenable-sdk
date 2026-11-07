@@ -10,7 +10,6 @@ const (
 	CodeAPI            = "api_error"
 	CodeAuth           = "auth"
 	CodeRateLimit      = "rate_limit"
-	CodeTarget         = "target"
 )
 
 // Error is implemented by every error this package returns.
@@ -158,6 +157,10 @@ func (e *AuthError) Unwrap() error {
 //
 // Check Retryable before retrying: a blocked or missing page returns the same
 // error every time, so fetch another source instead.
+//
+// Code() stays CodeAPI ("api_error"), as for any other APIError, so existing
+// switches on Code() keep matching. Detect a target failure with
+// errors.As(err, &targetErr).
 type TargetError struct {
 	*APIError
 }

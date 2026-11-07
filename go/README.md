@@ -73,7 +73,8 @@ results, err := client.Search(context.Background(), "post-training quantization 
 | `SnippetMaxLength` | Cap the page text returned per result. Nil means unset; a pointer to zero is sent |
 | `MaxResults` | How many results to return, 1 to 50. Zero means the API default of 10 |
 | `QueryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `Mode` | Search mode, such as `"pro"`; empty is not sent, so your organization's default applies |
+| `Mode` | Search mode; empty means `"pro"` |
+| `OrgDefaultMode` | With `Mode` empty, send no mode so your organization's default applies instead of `"pro"` |
 
 ## Ground a model in one line
 
@@ -176,7 +177,7 @@ if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) 
 }
 var sdk keenable.Error
 if errors.As(err, &sdk) {
-    fmt.Println(sdk.Code()) // invalid_request, connection, api_error, auth, rate_limit, target
+    fmt.Println(sdk.Code()) // invalid_request, connection, api_error, auth, rate_limit
 }
 ```
 
@@ -184,7 +185,7 @@ if errors.As(err, &sdk) {
 |---|---|---|
 | `RateLimitError` | `rate_limit` | HTTP 429. The message names `X-RateLimit-Reset` when the API sent it. A keyless call is told to set `KEENABLE_API_KEY`. A keyed call is told to wait for the window |
 | `AuthError` | `auth` | HTTP 401/403, the key was rejected |
-| `TargetError` | `target` | The page you fetched failed: the site refused it, timed out, could not be reached or had no usable content. Not about your key; check `Retryable` |
+| `TargetError` | `api_error` | The page you fetched failed: the site refused it, timed out, could not be reached or had no usable content. Not about your key; check `Retryable` |
 | `InsufficientCreditsError` (alias `CreditsError`) | `api_error` | HTTP 402, no credits left; retrying will not help. The message starts "Keenable: insufficient credits (402)" |
 | `APIError` | `api_error` | Any other non-2xx response; carries `StatusCode`, `Body`, and `RequestID` when the API sent `X-Request-Id` |
 | `ConnectionError` | `connection` | The API could not be reached, or the client deadline elapsed |

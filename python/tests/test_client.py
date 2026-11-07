@@ -107,7 +107,7 @@ def test_search_parses_results_and_prefers_snippet() -> None:
     assert response[0].published_at == "2026-05-31T23:57:19Z"
 
 
-def test_search_sends_filters_and_leaves_mode_to_the_org_default() -> None:
+def test_search_sends_filters_and_defaults_to_pro() -> None:
     keenable, seen = _client(_ok(SEARCH_BODY))
     keenable.search(
         "wafer scale engine", site="cerebras.ai", published_after="2026-01-01"
@@ -116,16 +116,36 @@ def test_search_sends_filters_and_leaves_mode_to_the_org_default() -> None:
     payload = json.loads(seen[0].content)
     assert payload == {
         "query": "wafer scale engine",
+        "mode": "pro",
         "site": "cerebras.ai",
         "published_after": "2026-01-01",
     }
 
 
-def test_search_sends_mode_only_when_set() -> None:
+@pytest.mark.parametrize(
+    ("kwargs", "expected"),
+    [
+        ({}, "pro"),
+        ({"mode": None}, "pro"),
+        ({"mode": "pro"}, "pro"),
+        ({"mode": "pro", "org_default_mode": True}, "pro"),
+        ({"org_default_mode": True}, None),
+    ],
+)
+def test_search_mode_defaults_to_pro_unless_the_org_default_is_asked_for(
+    kwargs: dict[str, Any], expected: str | None
+) -> None:
     keenable, seen = _client(_ok(SEARCH_BODY))
-    keenable.search("q", mode="pro")
+    keenable.search("q", **kwargs)
 
-    assert json.loads(seen[0].content)["mode"] == "pro"
+    assert json.loads(seen[0].content).get("mode") == expected
+
+
+async def test_async_search_can_defer_mode_to_the_org_default() -> None:
+    keenable, seen = _aclient(_ok(SEARCH_BODY))
+    await keenable.search("q", org_default_mode=True)
+
+    assert "mode" not in json.loads(seen[0].content)
 
 
 def test_default_timeout_outlasts_the_apis_fetch_wait() -> None:

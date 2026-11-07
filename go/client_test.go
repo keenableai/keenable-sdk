@@ -167,7 +167,7 @@ func TestSearchParsesResults(t *testing.T) {
 	}
 }
 
-func TestSearchSendsFiltersAndLeavesModeToTheOrgDefault(t *testing.T) {
+func TestSearchSendsFiltersAndDefaultsToPro(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, searchBody), nil)
 	capLen := 200
 	_, err := c.Search(context.Background(), "wafer scale engine", &keenable.SearchOptions{
@@ -179,11 +179,8 @@ func TestSearchSendsFiltersAndLeavesModeToTheOrgDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 	payload := payloadOf(t, one(t, seen))
-	if payload["query"] != "wafer scale engine" {
+	if payload["query"] != "wafer scale engine" || payload["mode"] != "pro" {
 		t.Fatalf("payload %#v", payload)
-	}
-	if _, ok := payload["mode"]; ok {
-		t.Fatalf("sent a mode the caller did not set: %#v", payload)
 	}
 	if payload["site"] != "cerebras.ai" || payload["published_after"] != "2026-01-01" {
 		t.Fatalf("payload %#v", payload)
@@ -992,13 +989,35 @@ func titles(results []keenable.SearchResult) string {
 
 func intPtr(n int) *int { return &n }
 
-func TestSearchSendsModeOnlyWhenSet(t *testing.T) {
-	c, seen := startKeyless(t, jsonHandler(http.StatusOK, searchBody), nil)
-	if _, err := c.Search(context.Background(), "q", &keenable.SearchOptions{Mode: "pro"}); err != nil {
-		t.Fatal(err)
+func TestSearchModeDefaultsToProUnlessTheOrgDefaultIsAskedFor(t *testing.T) {
+	cases := []struct {
+		name string
+		opts *keenable.SearchOptions
+		want any
+	}{
+		{"nil options", nil, "pro"},
+		{"empty options", &keenable.SearchOptions{}, "pro"},
+		{"explicit mode", &keenable.SearchOptions{Mode: "pro"}, "pro"},
+		{"explicit mode wins over org default", &keenable.SearchOptions{Mode: "pro", OrgDefaultMode: true}, "pro"},
+		{"org default", &keenable.SearchOptions{OrgDefaultMode: true}, nil},
 	}
-	if payloadOf(t, one(t, seen))["mode"] != "pro" {
-		t.Fatal("an explicit mode was not sent")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, seen := startKeyless(t, jsonHandler(http.StatusOK, searchBody), nil)
+			if _, err := c.Search(context.Background(), "q", tc.opts); err != nil {
+				t.Fatal(err)
+			}
+			mode, sent := payloadOf(t, one(t, seen))["mode"]
+			if tc.want == nil {
+				if sent {
+					t.Fatalf("sent mode %v", mode)
+				}
+				return
+			}
+			if mode != tc.want {
+				t.Fatalf("mode %v, want %v", mode, tc.want)
+			}
+		})
 	}
 }
 

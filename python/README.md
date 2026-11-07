@@ -47,7 +47,8 @@ results = keenable.search(
 | `snippet_max_length` | Cap the page text returned per result |
 | `max_results` | How many results to return, 1 to 50 (default 10) |
 | `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `mode` | Search mode; `"pro"` does deeper retrieval. Unset uses your organization's default |
+| `mode` | Search mode; `"pro"` (default) does deeper retrieval |
+| `org_default_mode` | With `mode` unset, send no mode so your organization's default applies instead of `"pro"` |
 
 ## Ground a model in one line
 

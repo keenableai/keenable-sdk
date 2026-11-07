@@ -10,11 +10,13 @@ import (
 // SearchOptions are the optional arguments to [Client.Search].
 //
 // Empty strings are left unset and are not sent. SnippetMaxLength uses a
-// pointer so zero can be sent; nil means unset. An empty Mode is not sent.
+// pointer so zero can be sent; nil means unset. Mode defaults to "pro".
 type SearchOptions struct {
-	// Mode is the search mode, such as "pro" for deeper retrieval. Empty is not
-	// sent, so the API uses your organization's default mode.
+	// Mode is the search mode. Empty means "pro", unless OrgDefaultMode is set.
 	Mode string
+	// OrgDefaultMode, when true and Mode is empty, sends no mode, so the API
+	// uses your organization's default search mode instead of "pro".
+	OrgDefaultMode bool
 	// Site restricts results to one domain, for example "arxiv.org".
 	Site string
 	// PublishedAfter keeps pages published on or after YYYY-MM-DD.

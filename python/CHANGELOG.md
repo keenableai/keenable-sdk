@@ -3,7 +3,24 @@
 All notable changes to the `keenable` Python package. Versions follow
 [semver](https://semver.org); releases are tagged `python-v<version>`.
 
-## Unreleased
+## 0.2.0 (unreleased)
+
+Release this as a minor version, not a patch: the error classes some
+responses raise change.
+
+### Upgrading from 0.1.x
+
+- A failed fetch target (a site's 403, a `target_*` code, a missing page) now
+  raises `KeenableTargetError`, and a private-URL 403 raises a plain
+  `KeenableAPIError`. Before, both raised `KeenableAuthError`. If you caught
+  `KeenableAuthError` to handle a blocked fetch, catch `KeenableTargetError`
+  instead. `except KeenableAPIError` and `except KeenableError` still catch
+  every one of them, and `status_code` is unchanged. A rejected key is still a
+  `KeenableAuthError`.
+- Nothing else changes for existing calls: `search()` still sends
+  `mode="pro"` by default.
+
+### Changes
 
 - New `KeenableTargetError` (subclasses `KeenableAPIError`) for a page that
   failed rather than your request or key: any `code` starting with `target_`
@@ -18,11 +35,13 @@ All notable changes to the `keenable` Python package. Versions follow
   public URL.
 - A fetch 404 or 422 without a code (page not found, no readable content) is a
   `KeenableTargetError`. The same statuses from search stay a plain
-  `KeenableAPIError`.
+  `KeenableAPIError`, and so is a fetch 404 or 422 whose body is not the API's
+  JSON error (a proxy or a wrong `base_url`).
 - A target error without a `fix` ends with advice not to retry the same URL,
   unless the API sent `retryable: true`.
-- `search()` sends `mode` only when you pass it, so your organization's default
-  search mode applies. Before, the SDK always sent `"pro"`.
+- New `search(..., org_default_mode=True)`: with `mode` unset, the SDK sends no
+  mode, so your organization's default search mode applies. Without it,
+  `search()` still sends `mode="pro"`, as before.
 - The default `timeout` is 90 seconds, up from 30. The API waits up to 60
   seconds on a slow fetch and bills a fetch that succeeds, so the old default
   could give up on a page you paid for.

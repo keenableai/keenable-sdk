@@ -186,6 +186,28 @@ def test_codeless_fetch_page_errors_are_target_errors(
 
 
 @pytest.mark.parametrize("status", [404, 422])
+def test_a_non_json_fetch_404_is_not_a_target_error(status: int) -> None:
+    response = httpx.Response(
+        status,
+        text="<html><body>Not Found</body></html>",
+        headers={"Content-Type": "text/html"},
+    )
+    err = _raise(response, "fetch")
+
+    assert type(err) is KeenableAPIError
+    assert "fetch another source" not in str(err)
+
+
+def test_a_target_error_is_still_caught_as_an_api_error() -> None:
+    body = {"error": "Upstream forbidden", "message": "m", "code": "target_blocked"}
+    with pytest.raises(KeenableAPIError) as excinfo:
+        _client(httpx.Response(403, json=body)).fetch("https://example.com")
+
+    assert isinstance(excinfo.value, KeenableTargetError)
+    assert excinfo.value.status_code == 403
+
+
+@pytest.mark.parametrize("status", [404, 422])
 def test_codeless_search_404_and_422_are_not_target_errors(status: int) -> None:
     err = _raise(httpx.Response(status, json={"message": "nope"}))
 
