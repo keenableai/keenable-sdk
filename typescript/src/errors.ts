@@ -30,12 +30,32 @@ export interface RateLimitInfo {
 }
 
 /**
+ * The category of an API error. Branch on it for coarse handling and on `code`
+ * for the exact reason. A newer API may send a type not listed here, so the
+ * field also accepts any string.
+ */
+export type KeenableErrorType =
+  | "invalid_request_error"
+  | "authentication_error"
+  | "permission_error"
+  | "billing_error"
+  | "rate_limit_error"
+  /** The page being fetched failed, not Keenable. */
+  | "target_error"
+  | "api_error";
+
+/**
  * The agent-ready fields of an API error body. Each is `undefined` when the API
  * did not send it, which is the case for older responses.
  */
 export interface KeenableAPIErrorDetails {
   /** Stable, machine-readable reason, e.g. `"rate_limit_per_second"`. Branch on this, not on the message. */
   code?: string;
+  /**
+   * The error's category. Derived from the status and `code` when the API did
+   * not send it, so it is set on every response error.
+   */
+  type?: KeenableErrorType | (string & {});
   /** The API's short error title, e.g. `"Rate limit exceeded"`. */
   error?: string;
   /** One sentence on what to do next. */
@@ -62,11 +82,15 @@ export interface KeenableAPIErrorDetails {
   raw?: Record<string, unknown>;
 }
 
-/** The Keenable API returned a non-2xx response. */
+/**
+ * The Keenable API returned a non-2xx response. The message ends with
+ * `Docs: <docsUrl>` and `(request_id: <requestId>)` when the API sent them.
+ */
 export class KeenableAPIError extends KeenableError implements KeenableAPIErrorDetails {
   readonly statusCode: number;
   readonly body?: string;
   readonly code?: string;
+  readonly type?: KeenableErrorType | (string & {});
   readonly error?: string;
   readonly fix?: string;
   readonly docsUrl?: string;
@@ -90,6 +114,7 @@ export class KeenableAPIError extends KeenableError implements KeenableAPIErrorD
     this.statusCode = statusCode;
     this.body = body;
     this.code = details.code;
+    this.type = details.type;
     this.error = details.error;
     this.fix = details.fix;
     this.docsUrl = details.docsUrl;

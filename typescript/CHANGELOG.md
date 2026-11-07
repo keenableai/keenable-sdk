@@ -19,6 +19,17 @@ All notable changes to the `keenable` npm package. Versions follow
 - When the API sends `fix`, the error message ends with it (". <fix>"), as in
   the Go and Python SDKs. A `Retry-After` header is capped at a year, so an
   oversized value can never break error handling.
+- Errors carry the API's `type` (error format v1, new `KeenableErrorType`):
+  `invalid_request_error`, `authentication_error`, `permission_error`,
+  `billing_error`, `rate_limit_error`, `target_error` or `api_error`. An API
+  that does not send it gets one derived from the status and `code`, so `type`
+  is set on every `KeenableAPIError` from a response. A 401/403 whose type is
+  `target_error` is not a `KeenableAuthError` (as `target_blocked` already was).
+- `error.message` ends with `Docs: <docsUrl>` and `(request_id: <id>)` when the
+  API sends them, the way Stripe's SDKs print the doc link and request id.
+  `body` is unchanged, and so is the message of a response without either field.
+  A message that already ends in a period no longer gets a second one before
+  the fix.
 
 - `toContext()` (search results and fetched pages) drops markdown images and
   `<img>` tags, and resolves relative links against the result's URL (or keeps

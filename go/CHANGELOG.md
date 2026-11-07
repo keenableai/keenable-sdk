@@ -18,6 +18,17 @@ not the caller's (`search_rate_limited`, `fetch_rate_limited`,
 the new fields produce the same errors and messages as before. A digit-only
 `Retry-After` too large for a uint64 is capped at a year like other large values. No migration.
 
+`APIError.Type` carries the API's error type (error format v1), with constants
+`TypeInvalidRequestError`, `TypeAuthenticationError`, `TypePermissionError`,
+`TypeBillingError`, `TypeRateLimitError`, `TypeTargetError` and `TypeAPIError`.
+An API that does not send it gets one derived from the status and `APICode`, so
+`Type` is set on every error response. A 401/403 whose type is `target_error`
+is not an `AuthError` (as `target_blocked` already was). When the API sends
+`DocsURL`, `Error()` adds "Docs: <DocsURL>" before the `(request_id: ...)` it
+already printed, the way Stripe's SDKs print the doc link. `Code()` and the
+final parentheses are unchanged. A message that already ends in a period no
+longer gets a second one before `Fix`. No migration.
+
 `ToContext` (on `SearchResponse` and `Page`) drops markdown images and `<img>`
 tags, and resolves relative links against the result's URL (or keeps just the
 link text when it cannot). Absolute links are unchanged, and lines left holding

@@ -159,6 +159,7 @@ for (let attempt = 0; ; attempt++) {
 | Field | Meaning |
 |---|---|
 | `code` | Stable reason, e.g. `rate_limit_per_second`, `insufficient_credits`, `target_blocked` |
+| `type` | The category (`KeenableErrorType`): `invalid_request_error`, `authentication_error`, `permission_error`, `billing_error`, `rate_limit_error`, `target_error` (the page being fetched failed, not Keenable) or `api_error`; derived from the status when an older API leaves it out |
 | `fix` | One sentence on what to do next |
 | `docsUrl` | The docs page for this error |
 | `retryable` | Whether the same request can succeed later |
@@ -169,9 +170,10 @@ for (let attempt = 0; ; attempt++) {
 | `billingUrl`, `autoTopUpUrl`, `payPerRequest` | On a 402: where to add credits and the alternatives |
 | `raw` | The whole JSON error body |
 
-When the API sends `fix`, the error message ends with it, as in the Go and
-Python SDKs. A 403 with code `target_blocked` (the fetched site refused us) is
-a plain `KeenableAPIError`, not a `KeenableAuthError`. The SDK does not retry on its
+When the API sends `fix`, the error message ends with it, then with
+`Docs: <docsUrl>` and `(request_id: <id>)`, as in the Go and Python SDKs. A 403
+with type `target_error` (e.g. code `target_blocked`, the fetched site refused
+us) is a plain `KeenableAPIError`, not a `KeenableAuthError`. The SDK does not retry on its
 own.
 
 ## Configuration

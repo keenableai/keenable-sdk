@@ -223,6 +223,7 @@ for attempt := 0; ; attempt++ {
 | Field | Meaning |
 |---|---|
 | `APICode` | Stable reason, e.g. `rate_limit_per_second`, `insufficient_credits`, `target_blocked` |
+| `Type` | The category, one of the `Type*` constants: `invalid_request_error`, `authentication_error`, `permission_error`, `billing_error`, `rate_limit_error`, `target_error` (the page being fetched failed, not Keenable) or `api_error`; derived from the status when an older API leaves it out |
 | `Title` | The API's short error title (its `error` field) |
 | `Fix` | One sentence on what to do next |
 | `DocsURL` | The docs page for this error |
@@ -236,8 +237,10 @@ for attempt := 0; ; attempt++ {
 
 When the API sends `Fix`, the error message ends with it in place of the
 SDK's generic advice (for every status, as in the Python and TypeScript SDKs),
-so a non-retryable error never tells an agent to retry. A 403 with code `target_blocked` (the fetched site refused us)
-is a plain `APIError`, not an `AuthError`. The SDK does not retry on its own.
+so a non-retryable error never tells an agent to retry. It then ends with
+`Docs: <DocsURL>` and `(request_id: <RequestID>)` before the SDK code, as in the
+Python and TypeScript SDKs. A 403 with type `target_error` (e.g. code
+`target_blocked`, the fetched site refused us) is a plain `APIError`, not an `AuthError`. The SDK does not retry on its own.
 
 ## Configuration
 

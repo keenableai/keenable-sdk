@@ -12,6 +12,20 @@ const (
 	CodeRateLimit      = "rate_limit"
 )
 
+// Error types the API sends as APIError.Type, Stripe-style. Switch on Type for
+// coarse handling and on APICode for the exact reason. A newer API may send a
+// type not listed here.
+const (
+	TypeInvalidRequestError = "invalid_request_error"
+	TypeAuthenticationError = "authentication_error"
+	TypePermissionError     = "permission_error"
+	TypeBillingError        = "billing_error"
+	TypeRateLimitError      = "rate_limit_error"
+	// TypeTargetError means the page being fetched failed, not Keenable.
+	TypeTargetError = "target_error"
+	TypeAPIError    = "api_error"
+)
+
 // Error is implemented by every error this package returns.
 //
 // errors.As into Error catches the whole set, the way except KeenableError
@@ -62,7 +76,8 @@ func (e *ConnectionError) keenableError() {}
 //
 // The API's error body adds fields an agent can act on. Each is the zero value
 // (nil for pointers) when the API did not send it, which is the case for
-// older responses.
+// older responses. Error() ends with "Docs: <DocsURL>" and
+// "(request_id: <RequestID>)" when the API sent them.
 type APIError struct {
 	StatusCode int
 	Body       string
@@ -72,6 +87,10 @@ type APIError struct {
 	// "rate_limit_per_second" or "target_blocked". Branch on it, not on the
 	// message. Code() stays the SDK's own coarser code.
 	APICode string
+	// Type is the error's category, one of the Type* constants. It is
+	// derived from the status and APICode when the API did not send it, so
+	// it is set on every error response.
+	Type string
 	// Title is the API's short error title (the body's "error"), such as
 	// "Rate limit exceeded".
 	Title string

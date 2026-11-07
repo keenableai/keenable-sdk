@@ -30,7 +30,7 @@ export {
   KeenableInvalidRequestError,
   KeenableRateLimitError,
 } from "./errors.js";
-export type { KeenableAPIErrorDetails, RateLimitInfo } from "./errors.js";
+export type { KeenableAPIErrorDetails, KeenableErrorType, RateLimitInfo } from "./errors.js";
 export { FETCH_TOOL, SEARCH_TOOL, TOOLS, runToolCall } from "./tools.js";
 export type { ToolDefinition } from "./tools.js";
 export type {

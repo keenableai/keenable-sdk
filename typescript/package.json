@@ -42,6 +42,7 @@
     "build": "tsup",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "errors:sync": "node ../scripts/error-contract/sync.ts",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
