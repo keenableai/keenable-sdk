@@ -176,7 +176,7 @@ if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) 
 }
 var sdk keenable.Error
 if errors.As(err, &sdk) {
-    fmt.Println(sdk.Code()) // invalid_request, connection, api_error, auth, rate_limit
+    fmt.Println(sdk.Code()) // invalid_request, connection, api_error, auth, rate_limit, target
 }
 ```
 
@@ -241,7 +241,9 @@ so a non-retryable error never tells an agent to retry. Without a `Fix`, the
 SDK suggests a retry only for a 5xx or `Retryable: true`. A 403 from the site
 you fetched (a `target_*` code, or today's `Upstream forbidden`) is a
 `TargetError`, not an `AuthError`, and its message never asks you to check
-your API key. The SDK does not retry on its own.
+your API key. So is a fetch 404 (page not found) or 422 (no readable content)
+that has no code. A 403 for a private or internal URL is a plain `APIError`
+whose message says to use a public URL. The SDK does not retry on its own.
 
 ## Configuration
 
@@ -261,7 +263,7 @@ client, err := keenable.New(&keenable.Options{APIKey: &key})
 ```
 
 `BaseURL` must be `https`, except `http` to `localhost`, `127.0.0.1`, or `::1`.
-It cannot include a query string or a fragment. `Timeout` of zero means 30
+It cannot include a query string or a fragment. `Timeout` of zero means 90
 seconds when this SDK creates the HTTP client. When you pass `HTTPClient`,
 zero adds no extra deadline and that client's `Timeout` is left unchanged.
 `ClientSource` is sent as

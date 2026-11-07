@@ -471,7 +471,9 @@ export class Keenable {
       callerSignal?.removeEventListener("abort", onAbort);
     }
 
-    if (!response.ok) throw toApiError(response.status, text, response.headers);
+    if (!response.ok) {
+      throw toApiError(response.status, text, response.headers, endpoint === "fetch");
+    }
 
     let data: unknown;
     try {
@@ -492,29 +494,69 @@ export class Keenable {
   }
 }
 
-// A 403 with one of these codes is about the page being fetched or the URL
-// asked for, not about the caller's credentials, so it is not reported as an
-// authentication failure.
-const NOT_AUTH_CODES = new Set(["private_url_not_allowed"]);
-
 // Codes for a page that failed, besides every code starting with "target_".
 const TARGET_CODES = new Set(["page_not_found", "content_not_extracted"]);
 
 // The API's title for a 403 from the fetched site, before it sent codes.
 const UPSTREAM_FORBIDDEN = "upstream forbidden";
 
+// In the API's message for a code-less 403 on a private or internal URL.
+const PRIVATE_HOST_MARKER = "private/internal";
+
 const TARGET_403_ADVICE =
   "The site refused the fetch. This is not about your API key, and retrying " +
   "the same URL will not help: fetch another source.";
 
-/** True when the page being fetched failed, not the caller's request. */
-function isTargetError(status: number, code: string | undefined, title: string | undefined): boolean {
+const TARGET_ADVICE =
+  "The page could not be fetched. Retrying the same URL will not help: " +
+  "check the URL or fetch another source.";
+
+const PRIVATE_URL_ADVICE =
+  "The URL points to a private or internal address, which the fetcher never " +
+  "reaches. This is not about your API key: use a public http or https URL.";
+
+/**
+ * True when the page being fetched failed, not the caller's request. A
+ * response without a code falls back to the status: a 403 "Upstream
+ * forbidden" from any endpoint, and a 404 or 422 from fetch, which the API
+ * sends only when the page is missing or has no readable text.
+ */
+function isTargetError(
+  status: number,
+  code: string | undefined,
+  title: string | undefined,
+  fetch: boolean,
+): boolean {
   if (status === 429) return false;
   if (code !== undefined) return code.startsWith("target_") || TARGET_CODES.has(code);
-  return status === 403 && (title ?? "").trim().toLowerCase() === UPSTREAM_FORBIDDEN;
+  if (status === 403 && (title ?? "").trim().toLowerCase() === UPSTREAM_FORBIDDEN) return true;
+  return fetch && (status === 404 || status === 422);
 }
 
-function toApiError(status: number, text: string, headers?: Headers): KeenableAPIError {
+/** True when a 403 refused the URL for pointing to a private address. */
+function isPrivateUrlError(status: number, code: string | undefined, detail: string): boolean {
+  if (code !== undefined) return code === "private_url_not_allowed";
+  return status === 403 && detail.toLowerCase().includes(PRIVATE_HOST_MARKER);
+}
+
+/** The next step when the API sent no fix, or undefined when there is none. */
+function defaultAdvice(
+  status: number,
+  retryable: boolean | undefined,
+  target: boolean,
+  privateUrl: boolean,
+): string | undefined {
+  if (privateUrl) return PRIVATE_URL_ADVICE;
+  if (retryable === true || !target || status >= 500) return undefined;
+  return status === 403 ? TARGET_403_ADVICE : TARGET_ADVICE;
+}
+
+function toApiError(
+  status: number,
+  text: string,
+  headers?: Headers,
+  fetch = false,
+): KeenableAPIError {
   let detail = text.trim();
   let record: Record<string, unknown> | undefined;
   try {
@@ -532,17 +574,17 @@ function toApiError(status: number, text: string, headers?: Headers): KeenableAP
   }
 
   const details = errorDetails(Array.isArray(record) ? undefined : record, headers);
-  const target = isTargetError(status, details.code, details.error);
-  const auth =
-    (status === 401 || status === 403) && !target && !NOT_AUTH_CODES.has(details.code ?? "");
+  const target = isTargetError(status, details.code, details.error, fetch);
+  const privateUrl = isPrivateUrlError(status, details.code, detail);
+  const auth = (status === 401 || status === 403) && !target && !privateUrl;
   const label =
     (status === 401 || status === 403) && !auth
       ? `Keenable API error (${status})`
       : (STATUS_LABELS[status] ?? `Keenable API error (${status})`);
   let message = detail ? `${label}: ${detail}` : label;
   // The API's next step, appended the same way in the Go and Python SDKs.
-  if (details.fix) message = `${message}. ${details.fix}`;
-  else if (target && status === 403) message = `${message}. ${TARGET_403_ADVICE}`;
+  const advice = details.fix ?? defaultAdvice(status, details.retryable, target, privateUrl);
+  if (advice) message = `${message}. ${advice}`;
 
   if (target) {
     return new KeenableTargetError(message, status, detail || undefined, details);

@@ -236,7 +236,7 @@ func (c *Client) do(ctx context.Context, method, endpoint string, body []byte, f
 		return nil, c.transportError(ctx, reqCtx, err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, toAPIError(resp.StatusCode, raw, resp.Header, c.Keyless())
+		return nil, toAPIError(resp.StatusCode, raw, resp.Header, c.Keyless(), endpoint == "fetch")
 	}
 	return decodeObject(resp.StatusCode, raw, resp.Header)
 }
@@ -485,10 +485,6 @@ var statusLabels = map[int]string{
 	429: "Keenable rate limit exceeded (429)",
 }
 
-// notAuthCodes are 403 codes about the URL asked for, not about the caller's
-// credentials, so they are not reported as an AuthError.
-var notAuthCodes = map[string]bool{"private_url_not_allowed": true}
-
 // targetCodes are codes for a page that failed, besides every code starting
 // with "target_".
 var targetCodes = map[string]bool{"page_not_found": true, "content_not_extracted": true}
@@ -497,31 +493,58 @@ var targetCodes = map[string]bool{"page_not_found": true, "content_not_extracted
 // before it sent codes.
 const upstreamForbidden = "upstream forbidden"
 
+// privateHostMarker is in the API's message for a code-less 403 on a URL that
+// points to a private or internal address.
+const privateHostMarker = "private/internal"
+
 const target403Advice = "The site refused the fetch. This is not about your API key, and retrying the same URL will not help: fetch another source."
+
+const targetAdvice = "The page could not be fetched. Retrying the same URL will not help: check the URL or fetch another source."
+
+const privateURLAdvice = "The URL points to a private or internal address, which the fetcher never reaches. This is not about your API key: use a public http or https URL."
 
 const retryAdvice = "Retry the request. If it keeps failing, confirm KEENABLE_API_URL."
 
-func isTargetError(status int, code, title string) bool {
+// isTargetError reports whether the page being fetched failed rather than the
+// caller's request or key. A response without a code falls back to the status:
+// a 403 "Upstream forbidden" from any endpoint, and a 404 or 422 from fetch,
+// which the API sends only when the page is missing or has no readable text.
+func isTargetError(status int, code, title string, fetch bool) bool {
 	if status == 429 {
 		return false
 	}
 	if code != "" {
 		return strings.HasPrefix(code, "target_") || targetCodes[code]
 	}
-	return status == 403 && strings.ToLower(strings.TrimSpace(title)) == upstreamForbidden
+	if status == 403 && strings.ToLower(strings.TrimSpace(title)) == upstreamForbidden {
+		return true
+	}
+	return fetch && (status == 404 || status == 422)
+}
+
+// isPrivateURLError reports whether a 403 refused the URL for pointing to a
+// private or internal address, which has nothing to do with the caller's key.
+func isPrivateURLError(status int, code, detail string) bool {
+	if code != "" {
+		return code == "private_url_not_allowed"
+	}
+	return status == 403 && strings.Contains(strings.ToLower(detail), privateHostMarker)
 }
 
 // defaultAdvice is the next step when the API sent no fix. It suggests a
-// retry only when one can help: never when the API said retryable false, and
-// never for a 4xx that returns the same error when sent again.
+// retry only when one can help: always when the API said retryable true,
+// never when it said false, and never for a 4xx that returns the same error
+// when sent again.
 func defaultAdvice(status int, retryable *bool, target bool) string {
 	switch {
-	case target && status == 403:
-		return target403Advice
 	case retryable != nil && *retryable:
 		return retryAdvice
+	case target && status == 403:
+		return target403Advice
+	case target && status < 500:
+		return targetAdvice
 	case status == 400 || status == 422:
-		return "Fix the request. Sending it unchanged returns the same error."
+		return "Sending the same request again returns the same error: change the request or the URL."
 	case status == 404:
 		return "Check the URL. Retrying the same request will not help."
 	case retryable != nil || (status >= 400 && status < 500 && status != 408):
@@ -539,7 +562,7 @@ var notYourLimitCodes = map[string]bool{
 	"fetch_rate_limited":  true,
 }
 
-func toAPIError(status int, raw []byte, header http.Header, keyless bool) error {
+func toAPIError(status int, raw []byte, header http.Header, keyless, fetch bool) error {
 	detail := ""
 	var body any
 	var obj map[string]any
@@ -553,8 +576,9 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 	api.StatusCode = status
 	api.Body = detail
 
-	target := isTargetError(status, api.APICode, api.Title)
-	auth := (status == 401 || status == 403) && !target && !notAuthCodes[api.APICode]
+	target := isTargetError(status, api.APICode, api.Title, fetch)
+	privateURL := isPrivateURLError(status, api.APICode, detail)
+	auth := (status == 401 || status == 403) && !target && !privateURL
 	label, ok := statusLabels[status]
 	if !ok || ((status == 401 || status == 403) && !auth) {
 		label = fmt.Sprintf("Keenable API error (%d)", status)
@@ -569,6 +593,8 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 	switch {
 	case api.Fix != "":
 		msg += ". " + api.Fix
+	case privateURL:
+		msg += ". " + privateURLAdvice
 	case auth:
 		msg += ". Check KEENABLE_API_KEY, or pass Options.APIKey."
 	case status == 402:

@@ -8,12 +8,17 @@ failed rather than your request or key: any `APICode` starting with `target_`
 `page_not_found` or `content_not_extracted`. Today's code-less
 `403 Upstream forbidden` from `/v1/fetch` is one too, and its message says the
 site refused the fetch instead of "Check KEENABLE_API_KEY". Before, every 403
-was an `AuthError`. A site's 429 stays a `RateLimitError`. A 403 with code
-`private_url_not_allowed` is a plain `APIError`.
+was an `AuthError`. A site's 429 stays a `RateLimitError`. A fetch 404 or 422
+without a code (page not found, no readable content) is a `TargetError`; the
+same statuses from search stay a plain `APIError`. A 403 for a private or
+internal URL (code `private_url_not_allowed`, or today's code-less "Fetching
+from private/internal hosts" message) is a plain `APIError` whose message says
+to use a public URL, not "Check KEENABLE_API_KEY".
 
 Without a `Fix` from the API, the message suggests a retry only when one can
-help: never when the API sent `retryable: false`, and never for a 400, 404, 422
-or other 4xx, which return the same error when sent again. Before, every such
+help: always when the API sent `retryable: true`, never when it sent
+`retryable: false`, and never for a 400, 404, 422 or other 4xx, which return
+the same error when sent again. Before, every such
 error ended with "Retry the request".
 
 `Search` sends `mode` only when `SearchOptions.Mode` is set, so your

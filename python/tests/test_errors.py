@@ -46,9 +46,12 @@ def _client(response: httpx.Response, api_key: str | None = "k") -> Keenable:
     return Keenable(api_key, client=httpx.Client(transport=transport))
 
 
-def _raise(response: httpx.Response) -> KeenableAPIError:
+def _raise(response: httpx.Response, endpoint: str = "search") -> KeenableAPIError:
     with pytest.raises(KeenableAPIError) as excinfo:
-        _client(response).search("q")
+        if endpoint == "fetch":
+            _client(response).fetch("https://example.com")
+        else:
+            _client(response).search("q")
     return excinfo.value
 
 
@@ -57,7 +60,7 @@ def test_backend_error_bodies_parse_into_typed_errors(case: dict[str, Any]) -> N
     response = httpx.Response(
         case["status"], json=case["body"], headers=case["headers"]
     )
-    err = _raise(response)
+    err = _raise(response, case.get("endpoint", "search"))
     want = case["expect"]
 
     assert type(err) is KINDS[want["kind"]]
@@ -151,6 +154,50 @@ def test_a_private_url_refusal_is_not_an_auth_error() -> None:
     )
 
     assert type(err) is KeenableAPIError
+
+
+def test_a_private_host_403_without_a_code_is_not_an_auth_error() -> None:
+    body = {
+        "error": "Forbidden",
+        "message": "Fetching from private/internal hosts is not allowed",
+    }
+    err = _raise(httpx.Response(403, json=body), "fetch")
+
+    assert type(err) is KeenableAPIError
+    assert "use a public http or https URL" in str(err)
+
+
+@pytest.mark.parametrize(
+    ("status", "message"),
+    [
+        (404, "The page does not exist at this URL. Check that the URL is correct."),
+        (422, "The page was reached but content could not be extracted"),
+    ],
+)
+def test_codeless_fetch_page_errors_are_target_errors(
+    status: int, message: str
+) -> None:
+    err = _raise(
+        httpx.Response(status, json={"error": "x", "message": message}), "fetch"
+    )
+
+    assert type(err) is KeenableTargetError
+    assert str(err).endswith("check the URL or fetch another source.")
+
+
+@pytest.mark.parametrize("status", [404, 422])
+def test_codeless_search_404_and_422_are_not_target_errors(status: int) -> None:
+    err = _raise(httpx.Response(status, json={"message": "nope"}))
+
+    assert type(err) is KeenableAPIError
+
+
+def test_a_retryable_target_403_without_a_fix_gets_no_contrary_advice() -> None:
+    body = {"error": "Upstream forbidden", "message": "m", "retryable": True}
+    err = _raise(httpx.Response(403, json=body), "fetch")
+
+    assert type(err) is KeenableTargetError
+    assert "will not help" not in str(err)
 
 
 def test_a_credentials_403_without_a_code_is_still_an_auth_error() -> None:

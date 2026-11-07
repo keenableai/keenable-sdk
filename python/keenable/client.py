@@ -108,30 +108,65 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
     return payload
 
 
-# A 403 with one of these codes is about the page being fetched or the URL
-# asked for, not about the caller's credentials, so it is not reported as an
-# authentication failure.
-_NOT_AUTH_CODES = frozenset({"private_url_not_allowed"})
-
 # Codes for a page that failed, besides every code starting with "target_".
 _TARGET_CODES = frozenset({"page_not_found", "content_not_extracted"})
 
 # The API's title for a 403 from the fetched site, before it sent codes.
 _UPSTREAM_FORBIDDEN = "upstream forbidden"
 
+# In the API's message for a code-less 403 on a private or internal URL.
+_PRIVATE_HOST_MARKER = "private/internal"
+
 _TARGET_403_ADVICE = (
     "The site refused the fetch. This is not about your API key, and retrying "
     "the same URL will not help: fetch another source."
 )
 
+_TARGET_ADVICE = (
+    "The page could not be fetched. Retrying the same URL will not help: "
+    "check the URL or fetch another source."
+)
 
-def _is_target_error(status: int, code: str | None, title: str | None) -> bool:
-    """True when the page being fetched failed, not the caller's request."""
+_PRIVATE_URL_ADVICE = (
+    "The URL points to a private or internal address, which the fetcher never "
+    "reaches. This is not about your API key: use a public http or https URL."
+)
+
+
+def _is_target_error(
+    status: int, code: str | None, title: str | None, fetch: bool
+) -> bool:
+    """True when the page being fetched failed, not the caller's request.
+
+    A response without a code falls back to the status: a 403 "Upstream
+    forbidden" from any endpoint, and a 404 or 422 from fetch, which the API
+    sends only when the page is missing or has no readable text.
+    """
     if status == 429:
         return False
     if code is not None:
         return code.startswith("target_") or code in _TARGET_CODES
-    return status == 403 and (title or "").strip().lower() == _UPSTREAM_FORBIDDEN
+    if status == 403 and (title or "").strip().lower() == _UPSTREAM_FORBIDDEN:
+        return True
+    return fetch and status in (404, 422)
+
+
+def _is_private_url_error(status: int, code: str | None, detail: str) -> bool:
+    """True when a 403 refused the URL for pointing to a private address."""
+    if code is not None:
+        return code == "private_url_not_allowed"
+    return status == 403 and _PRIVATE_HOST_MARKER in detail.lower()
+
+
+def _default_advice(
+    status: int, retryable: bool | None, target: bool, private_url: bool
+) -> str | None:
+    """The next step when the API sent no fix, or None when there is none."""
+    if private_url:
+        return _PRIVATE_URL_ADVICE
+    if retryable is True or not target or status >= 500:
+        return None
+    return _TARGET_403_ADVICE if status == 403 else _TARGET_ADVICE
 
 
 def _str_field(body: dict[str, Any], key: str) -> str | None:
@@ -222,7 +257,7 @@ def _error_fields(
     }
 
 
-def _to_api_error(response: httpx.Response) -> KeenableAPIError:
+def _to_api_error(response: httpx.Response, fetch: bool = False) -> KeenableAPIError:
     """Map a non-2xx response to the most specific SDK error available."""
     detail = ""
     body: dict[str, Any] | None = None
@@ -238,8 +273,9 @@ def _to_api_error(response: httpx.Response) -> KeenableAPIError:
 
     fields = _error_fields(body, response)
     status = response.status_code
-    target = _is_target_error(status, fields["code"], fields["error"])
-    auth = status in (401, 403) and not target and fields["code"] not in _NOT_AUTH_CODES
+    target = _is_target_error(status, fields["code"], fields["error"], fetch)
+    private_url = _is_private_url_error(status, fields["code"], detail)
+    auth = status in (401, 403) and not target and not private_url
     if status in (401, 403) and not auth:
         label = f"Keenable API error ({status})"
     else:
@@ -248,8 +284,8 @@ def _to_api_error(response: httpx.Response) -> KeenableAPIError:
     if fields["fix"]:
         # The API's next step, appended the same way in the Go and TS SDKs.
         message = f"{message}. {fields['fix']}"
-    elif target and status == 403:
-        message = f"{message}. {_TARGET_403_ADVICE}"
+    elif advice := _default_advice(status, fields["retryable"], target, private_url):
+        message = f"{message}. {advice}"
 
     if target:
         return KeenableTargetError(message, status, detail or None, **fields)
@@ -264,10 +300,10 @@ def _to_api_error(response: httpx.Response) -> KeenableAPIError:
     return KeenableAPIError(message, status, detail or None, **fields)
 
 
-def _decode(response: httpx.Response) -> dict[str, Any]:
+def _decode(response: httpx.Response, fetch: bool = False) -> dict[str, Any]:
     """Validate the status and decode a JSON object body."""
     if not response.is_success:
-        raise _to_api_error(response)
+        raise _to_api_error(response, fetch)
     try:
         data = response.json()
     except ValueError as exc:
@@ -419,7 +455,7 @@ class Keenable(_BaseClient):
                 response = self._client.post(
                     self._url(endpoint), json=json, headers=headers
                 )
-        return _decode(response)
+        return _decode(response, fetch=endpoint == _FETCH)
 
     def search(
         self,
@@ -550,7 +586,7 @@ class AsyncKeenable(_BaseClient):
                 response = await self._client.post(
                     self._url(endpoint), json=json, headers=headers
                 )
-        return _decode(response)
+        return _decode(response, fetch=endpoint == _FETCH)
 
     async def search(
         self,

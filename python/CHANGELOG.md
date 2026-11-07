@@ -12,8 +12,15 @@ All notable changes to the `keenable` Python package. Versions follow
   `403 Upstream forbidden` from `/v1/fetch` is one too, and its message says
   the site refused the fetch, not your API key. Before, every 403 was a
   `KeenableAuthError`. A site's 429 stays a `KeenableRateLimitError`.
-- A 403 with code `private_url_not_allowed` is a plain `KeenableAPIError`, not
-  a `KeenableAuthError`.
+- A 403 for a private or internal URL is a plain `KeenableAPIError`, not a
+  `KeenableAuthError`: code `private_url_not_allowed`, or today's code-less
+  "Fetching from private/internal hosts" message. Its message says to use a
+  public URL.
+- A fetch 404 or 422 without a code (page not found, no readable content) is a
+  `KeenableTargetError`. The same statuses from search stay a plain
+  `KeenableAPIError`.
+- A target error without a `fix` ends with advice not to retry the same URL,
+  unless the API sent `retryable: true`.
 - `search()` sends `mode` only when you pass it, so your organization's default
   search mode applies. Before, the SDK always sent `"pro"`.
 - The default `timeout` is 90 seconds, up from 30. The API waits up to 60

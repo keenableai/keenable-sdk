@@ -18,11 +18,12 @@ import (
 // headers the backend sends (keenable-backend-ts PRs #663 and #666),
 // generated from its own error constructors.
 type contractCase struct {
-	Name    string            `json:"name"`
-	Status  int               `json:"status"`
-	Headers map[string]string `json:"headers"`
-	Body    map[string]any    `json:"body"`
-	Expect  struct {
+	Name     string            `json:"name"`
+	Endpoint string            `json:"endpoint"`
+	Status   int               `json:"status"`
+	Headers  map[string]string `json:"headers"`
+	Body     map[string]any    `json:"body"`
+	Expect   struct {
 		Kind              string   `json:"kind"`
 		Code              *string  `json:"code"`
 		Retryable         *bool    `json:"retryable"`
@@ -93,7 +94,12 @@ func TestBackendErrorBodiesParseIntoTypedErrors(t *testing.T) {
 	for _, tc := range loadContract(t) {
 		t.Run(tc.Name, func(t *testing.T) {
 			c, _ := start(t, replyWith(tc.Status, tc.Body, tc.Headers), keyed())
-			_, err := c.Search(context.Background(), "q", nil)
+			var err error
+			if tc.Endpoint == "fetch" {
+				_, err = c.Fetch(context.Background(), "https://example.com")
+			} else {
+				_, err = c.Search(context.Background(), "q", nil)
+			}
 			api := apiErrorFrom(t, err)
 			want := tc.Expect
 
@@ -214,6 +220,60 @@ func TestAPrivateURLRefusalIsNotAnAuthError(t *testing.T) {
 	}
 }
 
+func TestAPrivateHost403WithoutACodeIsNotAnAuthError(t *testing.T) {
+	body := map[string]any{"error": "Forbidden", "message": "Fetching from private/internal hosts is not allowed"}
+	c, _ := start(t, replyWith(403, body, nil), keyed())
+	_, err := c.Fetch(context.Background(), "https://intranet.example.com")
+	if errors.As(err, new(*keenable.AuthError)) || errors.As(err, new(*keenable.TargetError)) {
+		t.Fatalf("%T", err)
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "KEENABLE_API_KEY") || !strings.Contains(msg, "use a public http or https URL") {
+		t.Fatal(msg)
+	}
+}
+
+func TestCodelessFetchPageErrorsAreTargetErrors(t *testing.T) {
+	for _, tc := range []struct {
+		status  int
+		message string
+	}{
+		{404, "The page does not exist at this URL. Check that the URL is correct."},
+		{422, "The page was reached but content could not be extracted"},
+	} {
+		t.Run(tc.message, func(t *testing.T) {
+			c, _ := start(t, replyWith(tc.status, map[string]any{"error": "x", "message": tc.message}, nil), keyed())
+			_, err := c.Fetch(context.Background(), "https://example.com")
+			var target *keenable.TargetError
+			if !errors.As(err, &target) || target.Code() != keenable.CodeTarget {
+				t.Fatalf("%T: %v", err, err)
+			}
+			if !strings.Contains(err.Error(), "fetch another source") || strings.Contains(err.Error(), "Retry the request") {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestCodelessSearch404And422AreNotTargetErrors(t *testing.T) {
+	for _, status := range []int{404, 422} {
+		c, _ := start(t, replyWith(status, map[string]any{"message": "nope"}, nil), keyed())
+		_, err := c.Search(context.Background(), "q", nil)
+		if errors.As(err, new(*keenable.TargetError)) {
+			t.Fatalf("%d: %T", status, err)
+		}
+	}
+}
+
+func TestARetryableTarget403WithoutAFixSaysToRetry(t *testing.T) {
+	body := map[string]any{"error": "Upstream forbidden", "message": "m", "code": "target_blocked", "retryable": true}
+	c, _ := start(t, replyWith(403, body, nil), keyed())
+	_, err := c.Fetch(context.Background(), "https://example.com")
+	if !strings.Contains(err.Error(), "Retry the request") || strings.Contains(err.Error(), "will not help") {
+		t.Fatal(err)
+	}
+}
+
 func TestACredentials403WithoutACodeIsStillAnAuthError(t *testing.T) {
 	c, _ := start(t, replyWith(403, map[string]any{"error": "Forbidden", "message": "Key revoked"}, nil), keyed())
 	_, err := c.Search(context.Background(), "q", nil)
@@ -230,9 +290,9 @@ func TestAdviceWithoutAFixOnlySuggestsARetryThatCanHelp(t *testing.T) {
 		retryable *bool
 		advice    string
 	}{
-		{"page error 404", 404, nil, "Check the URL. Retrying the same request will not help."},
-		{"page error 422", 422, nil, "Fix the request. Sending it unchanged returns the same error."},
-		{"bad request", 400, nil, "Fix the request. Sending it unchanged returns the same error."},
+		{"not found", 404, nil, "Check the URL. Retrying the same request will not help."},
+		{"unprocessable", 422, nil, "Sending the same request again returns the same error: change the request or the URL."},
+		{"bad request", 400, nil, "Sending the same request again returns the same error: change the request or the URL."},
 		{"conflict", 409, nil, "Retrying the same request will not help."},
 		{"5xx the API says is final", 500, &no, "Retrying the same request will not help."},
 		{"4xx the API says can be retried", 409, &yes, "Retry the request."},

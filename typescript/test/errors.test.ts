@@ -20,6 +20,7 @@ import {
 
 interface Case {
   name: string;
+  endpoint?: "fetch";
   status: number;
   headers: Record<string, string>;
   body: Record<string, unknown>;
@@ -73,7 +74,7 @@ const reply = (status: number, body: unknown, headers: Record<string, string> = 
 
 describe("backend error bodies", () => {
   it.each(CASES.map((c) => [c.name, c] as const))("%s parses into a typed error", async (_name, c) => {
-    const error = await errorFor(reply(c.status, c.body, c.headers));
+    const error = await errorFor(reply(c.status, c.body, c.headers), c.endpoint ?? "search");
     const want = c.expect;
 
     expect(error.constructor).toBe(KINDS[want.kind]);
@@ -158,6 +159,38 @@ describe("target errors", () => {
     );
 
     expect(error.constructor).toBe(KeenableAPIError);
+  });
+
+  it("does not report a code-less private host 403 as an auth failure", async () => {
+    const body = { error: "Forbidden", message: "Fetching from private/internal hosts is not allowed" };
+    const error = await errorFor(reply(403, body), "fetch");
+
+    expect(error.constructor).toBe(KeenableAPIError);
+    expect(error.message).toContain("use a public http or https URL");
+  });
+
+  it.each([
+    [404, "The page does not exist at this URL. Check that the URL is correct."],
+    [422, "The page was reached but content could not be extracted"],
+  ])("reports a code-less fetch %i as a target error", async (status, message) => {
+    const error = await errorFor(reply(status, { error: "x", message }), "fetch");
+
+    expect(error.constructor).toBe(KeenableTargetError);
+    expect(error.message.endsWith("check the URL or fetch another source.")).toBe(true);
+  });
+
+  it.each([404, 422])("keeps a code-less search %i a plain API error", async (status) => {
+    const error = await errorFor(reply(status, { message: "nope" }));
+
+    expect(error.constructor).toBe(KeenableAPIError);
+  });
+
+  it("gives a retryable target 403 without a fix no contrary advice", async () => {
+    const body = { error: "Upstream forbidden", message: "m", retryable: true };
+    const error = await errorFor(reply(403, body), "fetch");
+
+    expect(error.constructor).toBe(KeenableTargetError);
+    expect(error.message).not.toContain("will not help");
   });
 
   it("keeps a code-less credentials 403 an auth error", async () => {

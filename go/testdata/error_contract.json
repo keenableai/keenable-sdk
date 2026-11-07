@@ -1,5 +1,5 @@
 {
-  "_comment": "Generated from the error constructors in keenableai/keenable-backend-ts PRs #663 and #666 (src/shared/utils/api-errors.ts), with sendError's agent-route default guidance and request_id applied, and Date.now fixed at 2026-11-06T12:00:00Z. \"source\" names the backend test whose expectations each case reproduces. Kept identical in python/tests, typescript/test and go/testdata.",
+  "_comment": "Generated from the error constructors in keenableai/keenable-backend-ts PRs #663 and #666 (src/shared/utils/api-errors.ts), with sendError's agent-route default guidance and request_id applied, and Date.now fixed at 2026-11-06T12:00:00Z. \"source\" names the backend test whose expectations each case reproduces. An optional \"endpoint\" of \"fetch\" means the case is sent from fetch(); every other case is sent from search(). Kept identical in python/tests, typescript/test and go/testdata.",
   "cases": [
     {
       "name": "missing_api_key",
@@ -895,7 +895,7 @@
     },
     {
       "name": "private_url_not_allowed",
-      "source": "keenable-backend-ts#666 src/shared/utils/url-validator.ts privateUrl",
+      "source": "proposed in the 2026-11-07 DX audit for src/shared/utils/url-validation.ts AUTH_FORBIDDEN, not sent yet",
       "status": 403,
       "headers": {
         "X-Request-Id": "req-t5"
@@ -924,6 +924,186 @@
         "auto_top_up_url": null,
         "pay_per_request": null,
         "message_contains": "private/internal hosts"
+      }
+    },
+    {
+      "name": "target_paywalled",
+      "source": "keenable-backend-ts#666 src/shared/utils/api-errors.ts FETCH_GUIDANCE",
+      "status": 422,
+      "headers": {
+        "X-Request-Id": "req-t6"
+      },
+      "body": {
+        "error": "Unprocessable entity",
+        "message": "The page is behind a login or paywall",
+        "code": "target_paywalled",
+        "fix": "The page needs a login or a subscription, so there is no content to return. Retrying will not help: fetch another source.",
+        "docs_url": "https://docs.keenable.ai/errors#422",
+        "retryable": false,
+        "request_id": "req-t6"
+      },
+      "expect": {
+        "kind": "target",
+        "code": "target_paywalled",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-t6",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/errors#422",
+        "fix": "The page needs a login or a subscription, so there is no content to return. Retrying will not help: fetch another source.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "behind a login or paywall"
+      }
+    },
+    {
+      "name": "target_wrong_page",
+      "source": "keenable-backend-ts#666 src/shared/utils/api-errors.ts FETCH_GUIDANCE",
+      "status": 422,
+      "headers": {
+        "X-Request-Id": "req-t7"
+      },
+      "body": {
+        "error": "Unprocessable entity",
+        "message": "The fetch returned a different page, not the requested one",
+        "code": "target_wrong_page",
+        "fix": "The site served a different page than the one requested, such as a redirect to its home page. Retrying will not help: check the URL or fetch another source.",
+        "docs_url": "https://docs.keenable.ai/errors#422",
+        "retryable": false,
+        "request_id": "req-t7"
+      },
+      "expect": {
+        "kind": "target",
+        "code": "target_wrong_page",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-t7",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/errors#422",
+        "fix": "The site served a different page than the one requested, such as a redirect to its home page. Retrying will not help: check the URL or fetch another source.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "a different page"
+      }
+    },
+    {
+      "name": "target_http_error",
+      "source": "keenable-backend-ts#666 src/shared/utils/api-errors.ts FETCH_GUIDANCE",
+      "status": 422,
+      "headers": {
+        "X-Request-Id": "req-t8"
+      },
+      "body": {
+        "error": "Unprocessable entity",
+        "message": "The target page returned an error (410)",
+        "code": "target_http_error",
+        "fix": "The site answered with an error status for this URL. Retrying the same URL will not help: check the URL or fetch another source.",
+        "docs_url": "https://docs.keenable.ai/errors#422",
+        "retryable": false,
+        "request_id": "req-t8"
+      },
+      "expect": {
+        "kind": "target",
+        "code": "target_http_error",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-t8",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/errors#422",
+        "fix": "The site answered with an error status for this URL. Retrying the same URL will not help: check the URL or fetch another source.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "returned an error (410)"
+      }
+    },
+    {
+      "name": "page not found without a code",
+      "source": "keenable-backend-ts main src/services/search.service.ts pageDoesNotExistError, before #666",
+      "endpoint": "fetch",
+      "status": 404,
+      "headers": {
+        "X-Request-Id": "req-t9"
+      },
+      "body": {
+        "error": "Not found",
+        "message": "The page does not exist at this URL. Check that the URL is correct."
+      },
+      "expect": {
+        "kind": "target",
+        "code": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": "req-t9",
+        "param": null,
+        "docs_url": null,
+        "fix": null,
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "fetch another source"
+      }
+    },
+    {
+      "name": "content not extracted without a code",
+      "source": "keenable-backend-ts main src/services/search.service.ts contentNotExtractedError, before #666",
+      "endpoint": "fetch",
+      "status": 422,
+      "headers": {
+        "X-Request-Id": "req-t10"
+      },
+      "body": {
+        "error": "Unprocessable entity",
+        "message": "The page was reached but content could not be extracted"
+      },
+      "expect": {
+        "kind": "target",
+        "code": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": "req-t10",
+        "param": null,
+        "docs_url": null,
+        "fix": null,
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "fetch another source"
+      }
+    },
+    {
+      "name": "private host without a code",
+      "source": "keenable-backend-ts main src/shared/utils/url-validation.ts AUTH_FORBIDDEN",
+      "endpoint": "fetch",
+      "status": 403,
+      "headers": {
+        "X-Request-Id": "req-t11"
+      },
+      "body": {
+        "error": "Forbidden",
+        "message": "Fetching from private/internal hosts is not allowed"
+      },
+      "expect": {
+        "kind": "api",
+        "code": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": "req-t11",
+        "param": null,
+        "docs_url": null,
+        "fix": null,
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "use a public http or https URL"
       }
     }
   ]

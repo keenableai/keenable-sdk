@@ -173,8 +173,10 @@ for (let attempt = 0; ; attempt++) {
 When the API sends `fix`, the error message ends with it, as in the Go and
 Python SDKs. A 403 from the site you fetched (a `target_*` code, or today's
 `Upstream forbidden`) is a `KeenableTargetError`, not a `KeenableAuthError`, and
-its message never asks you to check your API key. The SDK does not retry on its
-own.
+its message never asks you to check your API key. So is a fetch 404 (page not
+found) or 422 (no readable content) that has no code. A 403 for a private or
+internal URL is a plain `KeenableAPIError` whose message says to use a public
+URL. The SDK does not retry on its own.
 
 ## Configuration
 
