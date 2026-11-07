@@ -107,7 +107,7 @@ def test_search_parses_results_and_prefers_snippet() -> None:
     assert response[0].published_at == "2026-05-31T23:57:19Z"
 
 
-def test_search_sends_filters_and_defaults_to_pro() -> None:
+def test_search_sends_filters_and_leaves_mode_to_the_org_default() -> None:
     keenable, seen = _client(_ok(SEARCH_BODY))
     keenable.search(
         "wafer scale engine", site="cerebras.ai", published_after="2026-01-01"
@@ -116,10 +116,22 @@ def test_search_sends_filters_and_defaults_to_pro() -> None:
     payload = json.loads(seen[0].content)
     assert payload == {
         "query": "wafer scale engine",
-        "mode": "pro",
         "site": "cerebras.ai",
         "published_after": "2026-01-01",
     }
+
+
+def test_search_sends_mode_only_when_set() -> None:
+    keenable, seen = _client(_ok(SEARCH_BODY))
+    keenable.search("q", mode="pro")
+
+    assert json.loads(seen[0].content)["mode"] == "pro"
+
+
+def test_default_timeout_outlasts_the_apis_fetch_wait() -> None:
+    from keenable.client import DEFAULT_TIMEOUT
+
+    assert DEFAULT_TIMEOUT > 60
 
 
 def test_search_sends_max_results_and_query_time() -> None:

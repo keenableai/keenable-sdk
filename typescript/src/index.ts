@@ -29,6 +29,7 @@ export {
   KeenableInsufficientCreditsError,
   KeenableInvalidRequestError,
   KeenableRateLimitError,
+  KeenableTargetError,
 } from "./errors.js";
 export type { KeenableAPIErrorDetails, RateLimitInfo } from "./errors.js";
 export { FETCH_TOOL, SEARCH_TOOL, TOOLS, runToolCall } from "./tools.js";

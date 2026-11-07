@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   Keenable,
@@ -102,7 +102,7 @@ describe("search", () => {
     expect([...response].map((r) => r.title)).toEqual(["How Cerebras works", "MoE guide"]);
   });
 
-  it("sends filters snake_cased and defaults to pro mode", async () => {
+  it("sends filters snake_cased and leaves mode to the org default", async () => {
     const { client, seen } = mockClient(() => json(SEARCH_BODY));
     await client.search("wafer scale engine", {
       site: "cerebras.ai",
@@ -112,11 +112,17 @@ describe("search", () => {
 
     expect(JSON.parse(String(seen[0]?.init.body))).toEqual({
       query: "wafer scale engine",
-      mode: "pro",
       site: "cerebras.ai",
       published_after: "2026-01-01",
       snippet_max_length: 200,
     });
+  });
+
+  it("sends mode only when the caller sets it", async () => {
+    const { client, seen } = mockClient(() => json(SEARCH_BODY));
+    await client.search("q", { mode: "pro" });
+
+    expect(JSON.parse(String(seen[0]?.init.body)).mode).toBe("pro");
   });
 
   it("sends maxResults and queryTime", async () => {
@@ -275,6 +281,18 @@ describe("fetch", () => {
 });
 
 describe("deadline", () => {
+  it("defaults to a deadline that outlasts the API's 60-second fetch wait", async () => {
+    const spy = vi.spyOn(globalThis, "setTimeout");
+    try {
+      const { client } = mockClient(() => json(FETCH_BODY));
+      await client.fetch("https://example.com/");
+      const delays = spy.mock.calls.map((call) => call[1]);
+      expect(delays).toContain(90_000);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("applies the timeout to a body that arrives after the headers", async () => {
     const { client } = mockClient(
       (_url, init) => slowJson(SEARCH_BODY, 100, init.signal),

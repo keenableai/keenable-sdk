@@ -5,6 +5,7 @@ import {
   KeenableInsufficientCreditsError,
   KeenableInvalidRequestError,
   KeenableRateLimitError,
+  KeenableTargetError,
 } from "./errors.js";
 import type { KeenableAPIErrorDetails, RateLimitInfo } from "./errors.js";
 import { SEARCH_FILTERS } from "./filters.js";
@@ -23,7 +24,7 @@ const VERSION = typeof __VERSION__ === "string" ? __VERSION__ : "0.0.0-dev";
 
 export const DEFAULT_BASE_URL = "https://api.keenable.ai";
 export const DEFAULT_CONTEXT_MAX_CHARS = 12_000;
-const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_TIMEOUT_MS = 90_000;
 
 // Endpoints are named once; the keyless variant of each is the same path with a
 // `/public` suffix, so a new endpoint is one name rather than two constants.
@@ -383,10 +384,8 @@ export class Keenable {
       throw new KeenableInvalidRequestError("search() needs a non-empty query");
     }
 
-    const payload: Record<string, unknown> = {
-      query,
-      mode: options.mode ?? "pro",
-    };
+    const payload: Record<string, unknown> = { query };
+    if (options.mode) payload.mode = options.mode;
     for (const filter of SEARCH_FILTERS) {
       const value = (options as Record<string, unknown>)[filter.option];
       if (value !== undefined) payload[filter.wire] = value;
@@ -493,9 +492,27 @@ export class Keenable {
   }
 }
 
-// A 403 with one of these codes is about the page being fetched, not about the
-// caller's credentials, so it is not reported as an authentication failure.
-const NOT_AUTH_CODES = new Set(["target_blocked"]);
+// A 403 with one of these codes is about the page being fetched or the URL
+// asked for, not about the caller's credentials, so it is not reported as an
+// authentication failure.
+const NOT_AUTH_CODES = new Set(["private_url_not_allowed"]);
+
+// Codes for a page that failed, besides every code starting with "target_".
+const TARGET_CODES = new Set(["page_not_found", "content_not_extracted"]);
+
+// The API's title for a 403 from the fetched site, before it sent codes.
+const UPSTREAM_FORBIDDEN = "upstream forbidden";
+
+const TARGET_403_ADVICE =
+  "The site refused the fetch. This is not about your API key, and retrying " +
+  "the same URL will not help: fetch another source.";
+
+/** True when the page being fetched failed, not the caller's request. */
+function isTargetError(status: number, code: string | undefined, title: string | undefined): boolean {
+  if (status === 429) return false;
+  if (code !== undefined) return code.startsWith("target_") || TARGET_CODES.has(code);
+  return status === 403 && (title ?? "").trim().toLowerCase() === UPSTREAM_FORBIDDEN;
+}
 
 function toApiError(status: number, text: string, headers?: Headers): KeenableAPIError {
   let detail = text.trim();
@@ -515,7 +532,9 @@ function toApiError(status: number, text: string, headers?: Headers): KeenableAP
   }
 
   const details = errorDetails(Array.isArray(record) ? undefined : record, headers);
-  const auth = (status === 401 || status === 403) && !NOT_AUTH_CODES.has(details.code ?? "");
+  const target = isTargetError(status, details.code, details.error);
+  const auth =
+    (status === 401 || status === 403) && !target && !NOT_AUTH_CODES.has(details.code ?? "");
   const label =
     (status === 401 || status === 403) && !auth
       ? `Keenable API error (${status})`
@@ -523,7 +542,11 @@ function toApiError(status: number, text: string, headers?: Headers): KeenableAP
   let message = detail ? `${label}: ${detail}` : label;
   // The API's next step, appended the same way in the Go and Python SDKs.
   if (details.fix) message = `${message}. ${details.fix}`;
+  else if (target && status === 403) message = `${message}. ${TARGET_403_ADVICE}`;
 
+  if (target) {
+    return new KeenableTargetError(message, status, detail || undefined, details);
+  }
   if (auth) {
     return new KeenableAuthError(message, status, detail || undefined, details);
   }

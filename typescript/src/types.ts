@@ -29,7 +29,10 @@ export interface SearchResult {
  * in both places and every consumer picks it up.
  */
 export interface SearchOptions {
-  /** Search mode. `"pro"` (the default) does deeper retrieval. */
+  /**
+   * Search mode: `"pro"` does deeper retrieval. Leave it unset to use your
+   * organization's default mode.
+   */
   mode?: "pro";
   /** Restrict results to one domain, e.g. `"arxiv.org"`. */
   site?: string;
@@ -81,7 +84,11 @@ export interface KeenableOptions {
    * attribution.
    */
   clientSource?: string;
-  /** Deadline in milliseconds for the whole request, headers and body. Default 30000. */
+  /**
+   * Deadline in milliseconds for the whole request, headers and body. Default
+   * 90000, which outlasts the API's own 60-second wait on a slow fetch, so a
+   * page you are billed for is not abandoned.
+   */
   timeoutMs?: number;
   /** Custom fetch implementation (for tests or a proxy). */
   fetch?: typeof globalThis.fetch;

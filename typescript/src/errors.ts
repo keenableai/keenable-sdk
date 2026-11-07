@@ -109,6 +109,20 @@ export class KeenableAPIError extends KeenableError implements KeenableAPIErrorD
 export class KeenableAuthError extends KeenableAPIError {}
 
 /**
+ * The page being fetched failed, not your request or your API key.
+ *
+ * Thrown when the site refused the fetcher (a 403 such as `target_blocked` or
+ * today's `Upstream forbidden`), could not be reached, timed out, or returned
+ * no usable page (`code` starts with `target_`, or is `page_not_found` or
+ * `content_not_extracted`). A 429 from the site stays a
+ * {@link KeenableRateLimitError} with `code: "target_rate_limited"`.
+ *
+ * Check `retryable` before retrying: a blocked or missing page returns the
+ * same error every time, so fetch another source instead.
+ */
+export class KeenableTargetError extends KeenableAPIError {}
+
+/**
  * The rate limit was exceeded (HTTP 429).
  *
  * Keyless requests share a lower hourly cap. Setting `KEENABLE_API_KEY` lifts

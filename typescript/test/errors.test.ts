@@ -15,6 +15,7 @@ import {
   KeenableCreditsError,
   KeenableInsufficientCreditsError,
   KeenableRateLimitError,
+  KeenableTargetError,
 } from "../src/index.js";
 
 interface Case {
@@ -23,7 +24,7 @@ interface Case {
   headers: Record<string, string>;
   body: Record<string, unknown>;
   expect: {
-    kind: "auth" | "rate_limit" | "insufficient_credits" | "api";
+    kind: "auth" | "rate_limit" | "insufficient_credits" | "target" | "api";
     code: string | null;
     retryable: boolean | null;
     retry_after_seconds: number | null;
@@ -47,6 +48,7 @@ const KINDS = {
   auth: KeenableAuthError,
   rate_limit: KeenableRateLimitError,
   insufficient_credits: KeenableInsufficientCreditsError,
+  target: KeenableTargetError,
   api: KeenableAPIError,
 } as const;
 
@@ -107,6 +109,69 @@ describe("backend error bodies", () => {
 
     expect(error).not.toBeInstanceOf(KeenableAuthError);
     expect(error.message.startsWith("Keenable API error (403): ")).toBe(true);
+  });
+});
+
+describe("target errors", () => {
+  it("reports today's code-less Upstream forbidden as a target error with no key advice", async () => {
+    const error = await errorFor(
+      reply(403, {
+        error: "Upstream forbidden",
+        message: "The target server denied access to this URL",
+      }),
+      "fetch",
+    );
+
+    expect(error).toBeInstanceOf(KeenableTargetError);
+    expect(error).not.toBeInstanceOf(KeenableAuthError);
+    expect(error.message).toBe(
+      "Keenable API error (403): The target server denied access to this URL. " +
+        "The site refused the fetch. This is not about your API key, and " +
+        "retrying the same URL will not help: fetch another source.",
+    );
+  });
+
+  it.each([
+    "target_blocked",
+    "target_forbidden",
+    "target_bot_wall",
+    "target_unreachable",
+    "page_not_found",
+    "content_not_extracted",
+  ])("makes code %s a target error, not an auth error", async (code) => {
+    const error = await errorFor(reply(403, { error: "Forbidden", message: "no", code }), "fetch");
+
+    expect(error.constructor).toBe(KeenableTargetError);
+    expect(error.code).toBe(code);
+  });
+
+  it("keeps a site's 429 a rate-limit error", async () => {
+    const error = await errorFor(reply(429, { message: "busy", code: "target_rate_limited" }));
+
+    expect(error.constructor).toBe(KeenableRateLimitError);
+  });
+
+  it("does not report a private URL refusal as an auth failure", async () => {
+    const error = await errorFor(
+      reply(403, { error: "Forbidden", message: "private", code: "private_url_not_allowed" }),
+      "fetch",
+    );
+
+    expect(error.constructor).toBe(KeenableAPIError);
+  });
+
+  it("keeps a code-less credentials 403 an auth error", async () => {
+    const error = await errorFor(reply(403, { error: "Forbidden", message: "Key revoked" }));
+
+    expect(error.constructor).toBe(KeenableAuthError);
+    expect(error.message).toBe("Keenable authentication failed (403): Key revoked");
+  });
+
+  it.each([400, 404, 422, 500])("adds no retry advice to a non-retryable %i", async (status) => {
+    const error = await errorFor(reply(status, { message: "nope", retryable: false }));
+
+    expect(error.message.toLowerCase()).not.toContain("retry");
+    expect(error.retryable).toBe(false);
   });
 });
 

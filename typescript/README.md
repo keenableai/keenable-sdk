@@ -51,7 +51,7 @@ const results = await keenable.search("post-training quantization results", {
 | `snippetMaxLength` | Cap the page text returned per result |
 | `maxResults` | How many results to return, 1 to 50 (default 10) |
 | `queryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `mode` | Search mode; `"pro"` (default) does deeper retrieval |
+| `mode` | Search mode; `"pro"` does deeper retrieval. Unset uses your organization's default |
 | `signal` | An `AbortSignal` to cancel the request |
 
 ## Ground a model in one line
@@ -126,6 +126,7 @@ All errors extend `KeenableError`:
 |---|---|
 | `KeenableRateLimitError` | HTTP 429. Set `KEENABLE_API_KEY` to lift the keyless cap |
 | `KeenableAuthError` | HTTP 401/403, the key was rejected |
+| `KeenableTargetError` | The page you fetched failed: the site refused it, timed out, could not be reached or had no usable content. Not about your key; check `retryable` |
 | `KeenableInsufficientCreditsError` (alias `KeenableCreditsError`) | HTTP 402, no credits left; retrying will not help |
 | `KeenableAPIError` | Any other non-2xx response; carries `statusCode` |
 | `KeenableConnectionError` | The API could not be reached |
@@ -170,8 +171,9 @@ for (let attempt = 0; ; attempt++) {
 | `raw` | The whole JSON error body |
 
 When the API sends `fix`, the error message ends with it, as in the Go and
-Python SDKs. A 403 with code `target_blocked` (the fetched site refused us) is
-a plain `KeenableAPIError`, not a `KeenableAuthError`. The SDK does not retry on its
+Python SDKs. A 403 from the site you fetched (a `target_*` code, or today's
+`Upstream forbidden`) is a `KeenableTargetError`, not a `KeenableAuthError`, and
+its message never asks you to check your API key. The SDK does not retry on its
 own.
 
 ## Configuration

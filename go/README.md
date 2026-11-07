@@ -73,7 +73,7 @@ results, err := client.Search(context.Background(), "post-training quantization 
 | `SnippetMaxLength` | Cap the page text returned per result. Nil means unset; a pointer to zero is sent |
 | `MaxResults` | How many results to return, 1 to 50. Zero means the API default of 10 |
 | `QueryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `Mode` | Search mode; empty means `"pro"` |
+| `Mode` | Search mode, such as `"pro"`; empty is not sent, so your organization's default applies |
 
 ## Ground a model in one line
 
@@ -149,7 +149,7 @@ Pass the request's `context.Context`. Canceling it returns `ctx.Err()`
 (`context.Canceled` or `context.DeadlineExceeded`), not a connection error.
 Those two values do not implement `keenable.Error`.
 
-`Options.Timeout` (default 30s) covers response headers and the body when this
+`Options.Timeout` (default 90s, longer than the API's 60-second wait on a slow fetch) covers response headers and the body when this
 SDK creates the HTTP client. A positive `Options.Timeout` also applies when
 you pass your own `http.Client`, and it does not change that client. When the
 SDK deadline fires and the caller's context is still live, the error is a
@@ -184,6 +184,7 @@ if errors.As(err, &sdk) {
 |---|---|---|
 | `RateLimitError` | `rate_limit` | HTTP 429. The message names `X-RateLimit-Reset` when the API sent it. A keyless call is told to set `KEENABLE_API_KEY`. A keyed call is told to wait for the window |
 | `AuthError` | `auth` | HTTP 401/403, the key was rejected |
+| `TargetError` | `target` | The page you fetched failed: the site refused it, timed out, could not be reached or had no usable content. Not about your key; check `Retryable` |
 | `InsufficientCreditsError` (alias `CreditsError`) | `api_error` | HTTP 402, no credits left; retrying will not help. The message starts "Keenable: insufficient credits (402)" |
 | `APIError` | `api_error` | Any other non-2xx response; carries `StatusCode`, `Body`, and `RequestID` when the API sent `X-Request-Id` |
 | `ConnectionError` | `connection` | The API could not be reached, or the client deadline elapsed |
@@ -236,8 +237,11 @@ for attempt := 0; ; attempt++ {
 
 When the API sends `Fix`, the error message ends with it in place of the
 SDK's generic advice (for every status, as in the Python and TypeScript SDKs),
-so a non-retryable error never tells an agent to retry. A 403 with code `target_blocked` (the fetched site refused us)
-is a plain `APIError`, not an `AuthError`. The SDK does not retry on its own.
+so a non-retryable error never tells an agent to retry. Without a `Fix`, the
+SDK suggests a retry only for a 5xx or `Retryable: true`. A 403 from the site
+you fetched (a `target_*` code, or today's `Upstream forbidden`) is a
+`TargetError`, not an `AuthError`, and its message never asks you to check
+your API key. The SDK does not retry on its own.
 
 ## Configuration
 

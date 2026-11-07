@@ -22,6 +22,7 @@ from .errors import (
     KeenableInsufficientCreditsError,
     KeenableInvalidRequestError,
     KeenableRateLimitError,
+    KeenableTargetError,
     RateLimitInfo,
 )
 from .models import Page, SearchResponse
@@ -29,7 +30,7 @@ from .models import Page, SearchResponse
 __all__ = ["Keenable", "AsyncKeenable"]
 
 DEFAULT_BASE_URL = "https://api.keenable.ai"
-DEFAULT_TIMEOUT = 30.0
+DEFAULT_TIMEOUT = 90.0
 
 # Endpoints are named once; the keyless variant of each is the same path with a
 # `/public` suffix, so a new endpoint is one name rather than two constants.
@@ -98,16 +99,39 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
     if not query or not query.strip():
         raise KeenableInvalidRequestError("search() needs a non-empty query")
 
-    payload: dict[str, Any] = {"query": query, "mode": mode or "pro"}
+    payload: dict[str, Any] = {"query": query}
+    if mode:
+        payload["mode"] = mode
     payload.update(
         {name: value for name, value in filters.items() if value is not None}
     )
     return payload
 
 
-# A 403 with one of these codes is about the page being fetched, not about the
-# caller's credentials, so it is not reported as an authentication failure.
-_NOT_AUTH_CODES = frozenset({"target_blocked"})
+# A 403 with one of these codes is about the page being fetched or the URL
+# asked for, not about the caller's credentials, so it is not reported as an
+# authentication failure.
+_NOT_AUTH_CODES = frozenset({"private_url_not_allowed"})
+
+# Codes for a page that failed, besides every code starting with "target_".
+_TARGET_CODES = frozenset({"page_not_found", "content_not_extracted"})
+
+# The API's title for a 403 from the fetched site, before it sent codes.
+_UPSTREAM_FORBIDDEN = "upstream forbidden"
+
+_TARGET_403_ADVICE = (
+    "The site refused the fetch. This is not about your API key, and retrying "
+    "the same URL will not help: fetch another source."
+)
+
+
+def _is_target_error(status: int, code: str | None, title: str | None) -> bool:
+    """True when the page being fetched failed, not the caller's request."""
+    if status == 429:
+        return False
+    if code is not None:
+        return code.startswith("target_") or code in _TARGET_CODES
+    return status == 403 and (title or "").strip().lower() == _UPSTREAM_FORBIDDEN
 
 
 def _str_field(body: dict[str, Any], key: str) -> str | None:
@@ -214,7 +238,8 @@ def _to_api_error(response: httpx.Response) -> KeenableAPIError:
 
     fields = _error_fields(body, response)
     status = response.status_code
-    auth = status in (401, 403) and fields["code"] not in _NOT_AUTH_CODES
+    target = _is_target_error(status, fields["code"], fields["error"])
+    auth = status in (401, 403) and not target and fields["code"] not in _NOT_AUTH_CODES
     if status in (401, 403) and not auth:
         label = f"Keenable API error ({status})"
     else:
@@ -223,7 +248,11 @@ def _to_api_error(response: httpx.Response) -> KeenableAPIError:
     if fields["fix"]:
         # The API's next step, appended the same way in the Go and TS SDKs.
         message = f"{message}. {fields['fix']}"
+    elif target and status == 403:
+        message = f"{message}. {_TARGET_403_ADVICE}"
 
+    if target:
+        return KeenableTargetError(message, status, detail or None, **fields)
     if auth:
         return KeenableAuthError(message, status, detail or None, **fields)
     if status == 402:
@@ -329,7 +358,9 @@ class Keenable(_BaseClient):
     Args:
         api_key: Falls back to ``KEENABLE_API_KEY``; omit it for the free tier.
         base_url: Falls back to ``KEENABLE_API_URL``.
-        timeout: Request timeout in seconds.
+        timeout: Request timeout in seconds. The default, 90, outlasts the
+            API's own 60-second wait on a slow fetch, so a page you are
+            billed for is not abandoned.
         client_source: Name this client reports as its traffic source. Leave it
             alone unless you are building an integration on top of this SDK and
             want your own attribution.
@@ -410,7 +441,8 @@ class Keenable(_BaseClient):
             query: What to look for. Describe the ideal page in natural
                 language ("blog post comparing React and Vue performance")
                 rather than typing keywords; the index is semantic.
-            mode: Search mode. ``"pro"`` (the default) does deeper retrieval.
+            mode: Search mode, e.g. ``"pro"`` for deeper retrieval. Leave it
+                unset to use your organization's default mode.
             site: Restrict results to one domain, e.g. ``"arxiv.org"``.
             published_after: Keep pages published on or after ``YYYY-MM-DD``.
             published_before: Keep pages published on or before ``YYYY-MM-DD``.

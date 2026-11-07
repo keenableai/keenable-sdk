@@ -10,9 +10,10 @@ import (
 // SearchOptions are the optional arguments to [Client.Search].
 //
 // Empty strings are left unset and are not sent. SnippetMaxLength uses a
-// pointer so zero can be sent; nil means unset. Mode defaults to "pro".
+// pointer so zero can be sent; nil means unset. An empty Mode is not sent.
 type SearchOptions struct {
-	// Mode is the search mode. Empty means "pro".
+	// Mode is the search mode, such as "pro" for deeper retrieval. Empty is not
+	// sent, so the API uses your organization's default mode.
 	Mode string
 	// Site restricts results to one domain, for example "arxiv.org".
 	Site string

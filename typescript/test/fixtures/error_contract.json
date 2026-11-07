@@ -426,7 +426,7 @@
         "request_id": "req-12"
       },
       "expect": {
-        "kind": "api",
+        "kind": "target",
         "code": "target_unreachable",
         "retryable": true,
         "retry_after_seconds": 2,
@@ -460,7 +460,7 @@
         "request_id": "req-13"
       },
       "expect": {
-        "kind": "api",
+        "kind": "target",
         "code": "target_timeout",
         "retryable": true,
         "retry_after_seconds": 5,
@@ -526,7 +526,7 @@
         "request_id": "req-15"
       },
       "expect": {
-        "kind": "api",
+        "kind": "target",
         "code": "target_blocked",
         "retryable": false,
         "retry_after_seconds": null,
@@ -558,7 +558,7 @@
         "request_id": "req-16"
       },
       "expect": {
-        "kind": "api",
+        "kind": "target",
         "code": "content_not_extracted",
         "retryable": false,
         "retry_after_seconds": null,
@@ -768,6 +768,162 @@
         "auto_top_up_url": null,
         "pay_per_request": null,
         "message_contains": "Could not verify credentials right now. Retry shortly."
+      }
+    },
+    {
+      "name": "upstream forbidden without a code",
+      "source": "keenable-backend-ts main src/shared/utils/api-errors.ts UPSTREAM_FORBIDDEN, before #666",
+      "status": 403,
+      "headers": {
+        "X-Request-Id": "req-t1"
+      },
+      "body": {
+        "error": "Upstream forbidden",
+        "message": "The target server denied access to this URL"
+      },
+      "expect": {
+        "kind": "target",
+        "code": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": "req-t1",
+        "param": null,
+        "docs_url": null,
+        "fix": null,
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "not about your API key"
+      }
+    },
+    {
+      "name": "target_forbidden",
+      "source": "proposed in the 2026-11-07 DX audit (fetch/v1-fetch.md), not sent yet",
+      "status": 403,
+      "headers": {
+        "X-Request-Id": "req-t2"
+      },
+      "body": {
+        "error": "Upstream forbidden",
+        "message": "The site answered 403 to the fetcher",
+        "code": "target_forbidden",
+        "fix": "The site refused the fetcher. This is not about your API key, and retrying will not help: use another source.",
+        "docs_url": "https://docs.keenable.ai/errors#403",
+        "retryable": false,
+        "request_id": "req-t2"
+      },
+      "expect": {
+        "kind": "target",
+        "code": "target_forbidden",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-t2",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/errors#403",
+        "fix": "The site refused the fetcher. This is not about your API key, and retrying will not help: use another source.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "The site answered 403 to the fetcher"
+      }
+    },
+    {
+      "name": "target_bot_wall",
+      "source": "proposed in the 2026-11-07 DX audit (fetch/v1-fetch.md), not sent yet",
+      "status": 403,
+      "headers": {
+        "X-Request-Id": "req-t3"
+      },
+      "body": {
+        "error": "Upstream forbidden",
+        "message": "The site served a bot challenge instead of the page",
+        "code": "target_bot_wall",
+        "fix": "The site served a bot check. This is not about your API key, and retrying will not help: use another source.",
+        "docs_url": "https://docs.keenable.ai/errors#403",
+        "retryable": false,
+        "request_id": "req-t3"
+      },
+      "expect": {
+        "kind": "target",
+        "code": "target_bot_wall",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-t3",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/errors#403",
+        "fix": "The site served a bot check. This is not about your API key, and retrying will not help: use another source.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "bot challenge"
+      }
+    },
+    {
+      "name": "page_not_found",
+      "source": "keenable-backend-ts#666 src/shared/utils/api-errors.ts FETCH_GUIDANCE",
+      "status": 404,
+      "headers": {
+        "X-Request-Id": "req-t4"
+      },
+      "body": {
+        "error": "Not found",
+        "message": "The page does not exist at this URL. Check that the URL is correct.",
+        "code": "page_not_found",
+        "fix": "The site says the page does not exist. Retrying the same URL returns the same 404: check the URL, or use another search result.",
+        "docs_url": "https://docs.keenable.ai/errors#404",
+        "retryable": false,
+        "request_id": "req-t4"
+      },
+      "expect": {
+        "kind": "target",
+        "code": "page_not_found",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-t4",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/errors#404",
+        "fix": "The site says the page does not exist. Retrying the same URL returns the same 404: check the URL, or use another search result.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "The page does not exist at this URL"
+      }
+    },
+    {
+      "name": "private_url_not_allowed",
+      "source": "keenable-backend-ts#666 src/shared/utils/url-validator.ts privateUrl",
+      "status": 403,
+      "headers": {
+        "X-Request-Id": "req-t5"
+      },
+      "body": {
+        "error": "Forbidden",
+        "message": "Fetching from private/internal hosts is not allowed",
+        "code": "private_url_not_allowed",
+        "fix": "The fetcher only reaches public http and https pages. Use a public URL; retrying this one returns the same 403.",
+        "docs_url": "https://docs.keenable.ai/errors#403",
+        "retryable": false,
+        "param": "url",
+        "request_id": "req-t5"
+      },
+      "expect": {
+        "kind": "api",
+        "code": "private_url_not_allowed",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-t5",
+        "param": "url",
+        "docs_url": "https://docs.keenable.ai/errors#403",
+        "fix": "The fetcher only reaches public http and https pages. Use a public URL; retrying this one returns the same 403.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "private/internal hosts"
       }
     }
   ]

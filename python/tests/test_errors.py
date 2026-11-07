@@ -24,6 +24,7 @@ from keenable import (
     KeenableCreditsError,
     KeenableInsufficientCreditsError,
     KeenableRateLimitError,
+    KeenableTargetError,
     RateLimitInfo,
 )
 
@@ -35,6 +36,7 @@ KINDS: dict[str, type[KeenableAPIError]] = {
     "auth": KeenableAuthError,
     "rate_limit": KeenableRateLimitError,
     "insufficient_credits": KeenableInsufficientCreditsError,
+    "target": KeenableTargetError,
     "api": KeenableAPIError,
 }
 
@@ -85,6 +87,87 @@ def test_a_blocked_fetch_target_is_not_an_auth_failure() -> None:
 
     assert not isinstance(err, KeenableAuthError)
     assert str(err).startswith("Keenable API error (403): ")
+
+
+def test_a_target_refusal_without_a_code_is_a_target_error() -> None:
+    err = _raise(
+        httpx.Response(
+            403,
+            json={
+                "error": "Upstream forbidden",
+                "message": "The target server denied access to this URL",
+            },
+        )
+    )
+
+    assert isinstance(err, KeenableTargetError)
+    assert not isinstance(err, KeenableAuthError)
+    assert str(err) == (
+        "Keenable API error (403): The target server denied access to this URL. "
+        "The site refused the fetch. This is not about your API key, and "
+        "retrying the same URL will not help: fetch another source."
+    )
+    assert "KEENABLE_API_KEY" not in str(err)
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "target_blocked",
+        "target_forbidden",
+        "target_bot_wall",
+        "target_unreachable",
+        "page_not_found",
+        "content_not_extracted",
+    ],
+)
+def test_every_target_code_is_a_target_error_not_an_auth_error(code: str) -> None:
+    err = _raise(
+        httpx.Response(403, json={"error": "Forbidden", "message": "no", "code": code})
+    )
+
+    assert type(err) is KeenableTargetError
+    assert err.code == code
+
+
+def test_a_target_rate_limit_stays_a_rate_limit_error() -> None:
+    err = _raise(
+        httpx.Response(429, json={"message": "busy", "code": "target_rate_limited"})
+    )
+
+    assert type(err) is KeenableRateLimitError
+
+
+def test_a_private_url_refusal_is_not_an_auth_error() -> None:
+    err = _raise(
+        httpx.Response(
+            403,
+            json={
+                "error": "Forbidden",
+                "message": "private",
+                "code": "private_url_not_allowed",
+            },
+        )
+    )
+
+    assert type(err) is KeenableAPIError
+
+
+def test_a_credentials_403_without_a_code_is_still_an_auth_error() -> None:
+    err = _raise(
+        httpx.Response(403, json={"error": "Forbidden", "message": "Key revoked"})
+    )
+
+    assert type(err) is KeenableAuthError
+    assert str(err) == "Keenable authentication failed (403): Key revoked"
+
+
+@pytest.mark.parametrize("status", [400, 404, 422, 500])
+def test_errors_without_a_fix_never_add_retry_advice(status: int) -> None:
+    err = _raise(httpx.Response(status, json={"message": "nope", "retryable": False}))
+
+    assert "retry" not in str(err).lower()
+    assert err.retryable is False
 
 
 def test_insufficient_credits_is_still_an_api_error_with_the_old_message() -> None:

@@ -167,7 +167,7 @@ func TestSearchParsesResults(t *testing.T) {
 	}
 }
 
-func TestSearchSendsFiltersAndDefaultsToPro(t *testing.T) {
+func TestSearchSendsFiltersAndLeavesModeToTheOrgDefault(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, searchBody), nil)
 	capLen := 200
 	_, err := c.Search(context.Background(), "wafer scale engine", &keenable.SearchOptions{
@@ -179,8 +179,11 @@ func TestSearchSendsFiltersAndDefaultsToPro(t *testing.T) {
 		t.Fatal(err)
 	}
 	payload := payloadOf(t, one(t, seen))
-	if payload["query"] != "wafer scale engine" || payload["mode"] != "pro" {
+	if payload["query"] != "wafer scale engine" {
 		t.Fatalf("payload %#v", payload)
+	}
+	if _, ok := payload["mode"]; ok {
+		t.Fatalf("sent a mode the caller did not set: %#v", payload)
 	}
 	if payload["site"] != "cerebras.ai" || payload["published_after"] != "2026-01-01" {
 		t.Fatalf("payload %#v", payload)
@@ -988,3 +991,19 @@ func titles(results []keenable.SearchResult) string {
 }
 
 func intPtr(n int) *int { return &n }
+
+func TestSearchSendsModeOnlyWhenSet(t *testing.T) {
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, searchBody), nil)
+	if _, err := c.Search(context.Background(), "q", &keenable.SearchOptions{Mode: "pro"}); err != nil {
+		t.Fatal(err)
+	}
+	if payloadOf(t, one(t, seen))["mode"] != "pro" {
+		t.Fatal("an explicit mode was not sent")
+	}
+}
+
+func TestDefaultTimeoutOutlastsTheAPIsFetchWait(t *testing.T) {
+	if keenable.DefaultTimeout <= 60*time.Second {
+		t.Fatalf("DefaultTimeout %s gives up before the API's 60s fetch wait", keenable.DefaultTimeout)
+	}
+}

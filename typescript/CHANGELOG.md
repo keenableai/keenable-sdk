@@ -5,6 +5,21 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- New `KeenableTargetError` (extends `KeenableAPIError`) for a page that
+  failed rather than your request or key: any `code` starting with `target_`
+  (`target_blocked`, `target_unreachable`, `target_timeout`, ...),
+  `page_not_found` or `content_not_extracted`. Today's code-less
+  `403 Upstream forbidden` from `/v1/fetch` is one too, and its message says
+  the site refused the fetch, not your API key. Before, every 403 was a
+  `KeenableAuthError`. A site's 429 stays a `KeenableRateLimitError`.
+- A 403 with code `private_url_not_allowed` is a plain `KeenableAPIError`, not
+  a `KeenableAuthError`.
+- `search()` sends `mode` only when you set it, so your organization's default
+  search mode applies. Before, the SDK always sent `"pro"`.
+- The default `timeoutMs` is 90000 (90 seconds), up from 30. The API waits up to 60
+  seconds on a slow fetch and bills a fetch that succeeds, so the old default
+  could give up on a page you paid for.
+
 - Errors carry the API's agent-ready fields: `code`, `error`, `fix`, `docsUrl`,
   `retryable`, `retryAfterSeconds` (from the body, else the `Retry-After`
   header), `requestId` (body, else `X-Request-Id`), `param`, `limit` (a new

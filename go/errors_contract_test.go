@@ -101,6 +101,7 @@ func TestBackendErrorBodiesParseIntoTypedErrors(t *testing.T) {
 				"auth":                 errors.As(err, new(*keenable.AuthError)),
 				"rate_limit":           errors.As(err, new(*keenable.RateLimitError)),
 				"insufficient_credits": errors.As(err, new(*keenable.InsufficientCreditsError)),
+				"target":               errors.As(err, new(*keenable.TargetError)),
 			}
 			for kind, got := range kinds {
 				if got != (kind == want.Kind) {
@@ -170,6 +171,89 @@ func TestBlockedFetchTargetIsNotAnAuthError(t *testing.T) {
 	msg := err.Error()
 	if !strings.HasPrefix(msg, "Keenable API error (403): ") || strings.Contains(msg, "KEENABLE_API_KEY") || !strings.Contains(msg, "not about your API key") {
 		t.Fatal(msg)
+	}
+}
+
+func TestATargetRefusalWithoutACodeIsATargetError(t *testing.T) {
+	body := map[string]any{"error": "Upstream forbidden", "message": "The target server denied access to this URL"}
+	c, _ := start(t, replyWith(403, body, nil), keyed())
+	_, err := c.Fetch(context.Background(), "https://example.com")
+	var target *keenable.TargetError
+	if !errors.As(err, &target) || errors.As(err, new(*keenable.AuthError)) {
+		t.Fatalf("%T: %v", err, err)
+	}
+	if target.Code() != keenable.CodeTarget || target.StatusCode != 403 {
+		t.Fatal(err)
+	}
+	want := "Keenable API error (403): The target server denied access to this URL. The site refused the fetch. This is not about your API key, and retrying the same URL will not help: fetch another source. (target)"
+	if err.Error() != want {
+		t.Fatalf("%q", err.Error())
+	}
+}
+
+func TestEveryTargetCodeIsATargetErrorNotAnAuthError(t *testing.T) {
+	for _, code := range []string{"target_blocked", "target_forbidden", "target_bot_wall", "target_unreachable", "page_not_found", "content_not_extracted"} {
+		t.Run(code, func(t *testing.T) {
+			c, _ := start(t, replyWith(403, map[string]any{"error": "Forbidden", "message": "no", "code": code}, nil), keyed())
+			_, err := c.Fetch(context.Background(), "https://example.com")
+			if !errors.As(err, new(*keenable.TargetError)) || strings.Contains(err.Error(), "KEENABLE_API_KEY") {
+				t.Fatalf("%T: %v", err, err)
+			}
+		})
+	}
+}
+
+func TestAPrivateURLRefusalIsNotAnAuthError(t *testing.T) {
+	c, _ := start(t, replyWith(403, map[string]any{"error": "Forbidden", "message": "private", "code": "private_url_not_allowed"}, nil), keyed())
+	_, err := c.Fetch(context.Background(), "https://example.com")
+	if errors.As(err, new(*keenable.AuthError)) || errors.As(err, new(*keenable.TargetError)) {
+		t.Fatalf("%T", err)
+	}
+	if strings.Contains(err.Error(), "KEENABLE_API_KEY") || strings.Contains(err.Error(), "Retry the request") {
+		t.Fatal(err)
+	}
+}
+
+func TestACredentials403WithoutACodeIsStillAnAuthError(t *testing.T) {
+	c, _ := start(t, replyWith(403, map[string]any{"error": "Forbidden", "message": "Key revoked"}, nil), keyed())
+	_, err := c.Search(context.Background(), "q", nil)
+	if !errors.As(err, new(*keenable.AuthError)) || !strings.Contains(err.Error(), "Check KEENABLE_API_KEY") {
+		t.Fatalf("%T: %v", err, err)
+	}
+}
+
+func TestAdviceWithoutAFixOnlySuggestsARetryThatCanHelp(t *testing.T) {
+	no, yes := false, true
+	cases := []struct {
+		name      string
+		status    int
+		retryable *bool
+		advice    string
+	}{
+		{"page error 404", 404, nil, "Check the URL. Retrying the same request will not help."},
+		{"page error 422", 422, nil, "Fix the request. Sending it unchanged returns the same error."},
+		{"bad request", 400, nil, "Fix the request. Sending it unchanged returns the same error."},
+		{"conflict", 409, nil, "Retrying the same request will not help."},
+		{"5xx the API says is final", 500, &no, "Retrying the same request will not help."},
+		{"4xx the API says can be retried", 409, &yes, "Retry the request."},
+		{"5xx with no word from the API", 503, nil, "Retry the request."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := map[string]any{"message": "nope"}
+			if tc.retryable != nil {
+				body["retryable"] = *tc.retryable
+			}
+			c, _ := start(t, replyWith(tc.status, body, nil), keyed())
+			_, err := c.Search(context.Background(), "q", nil)
+			msg := err.Error()
+			if !strings.Contains(msg, "nope. "+tc.advice) {
+				t.Fatal(msg)
+			}
+			if !strings.HasPrefix(tc.advice, "Retry the request") && strings.Contains(msg, "Retry the request") {
+				t.Fatal(msg)
+			}
+		})
 	}
 }
 

@@ -10,6 +10,7 @@ const (
 	CodeAPI            = "api_error"
 	CodeAuth           = "auth"
 	CodeRateLimit      = "rate_limit"
+	CodeTarget         = "target"
 )
 
 // Error is implemented by every error this package returns.
@@ -57,8 +58,8 @@ func (e *ConnectionError) keenableError() {}
 // APIError is a non-2xx response.
 //
 // StatusCode is the HTTP status. Body is the API's error message when it sent
-// one, otherwise empty. AuthError, RateLimitError and InsufficientCreditsError
-// unwrap to APIError.
+// one, otherwise empty. AuthError, TargetError, RateLimitError and
+// InsufficientCreditsError unwrap to APIError.
 //
 // The API's error body adds fields an agent can act on. Each is the zero value
 // (nil for pointers) when the API did not send it, which is the case for
@@ -148,6 +149,26 @@ func (e *AuthError) Unwrap() error {
 	return e.APIError
 }
 
+// TargetError means the page being fetched failed, not your request or your
+// API key. It is returned when the site refused the fetcher (a 403 such as
+// "target_blocked", or today's "Upstream forbidden"), could not be reached,
+// timed out, or returned no usable page: APICode starts with "target_", or is
+// "page_not_found" or "content_not_extracted". A 429 from the site stays a
+// RateLimitError with APICode "target_rate_limited".
+//
+// Check Retryable before retrying: a blocked or missing page returns the same
+// error every time, so fetch another source instead.
+type TargetError struct {
+	*APIError
+}
+
+func (e *TargetError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.APIError
+}
+
 // RateLimitError means the rate limit was exceeded (HTTP 429).
 //
 // Keyless calls share a lower hourly cap. Set KEENABLE_API_KEY to lift it.
@@ -191,6 +212,7 @@ var (
 	_ Error = (*ConnectionError)(nil)
 	_ Error = (*APIError)(nil)
 	_ Error = (*AuthError)(nil)
+	_ Error = (*TargetError)(nil)
 	_ Error = (*RateLimitError)(nil)
 	_ Error = (*InsufficientCreditsError)(nil)
 )

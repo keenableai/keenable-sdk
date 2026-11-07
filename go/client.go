@@ -25,8 +25,10 @@ const (
 	// DefaultContextMaxChars is the ToContext budget: about 3k tokens, enough
 	// for a handful of results without crowding out the rest of the prompt.
 	DefaultContextMaxChars = 12_000
-	// DefaultTimeout is the deadline for one request, including the body.
-	DefaultTimeout = 30 * time.Second
+	// DefaultTimeout is the deadline for one request, including the body. It
+	// outlasts the API's own 60-second wait on a slow fetch, so a page you are
+	// billed for is not abandoned.
+	DefaultTimeout = 90 * time.Second
 
 	defaultClientSource = "Keenable SDK"
 )
@@ -152,13 +154,9 @@ func (c *Client) Search(ctx context.Context, query string, opts *SearchOptions) 
 	if strings.TrimSpace(query) == "" {
 		return nil, &InvalidRequestError{msg: "search() needs a non-empty query. Pass the question as the query argument."}
 	}
-	mode := "pro"
+	payload := map[string]any{"query": query}
 	if opts != nil && opts.Mode != "" {
-		mode = opts.Mode
-	}
-	payload := map[string]any{
-		"query": query,
-		"mode":  mode,
+		payload["mode"] = opts.Mode
 	}
 	applyFilters(payload, opts)
 	body, err := json.Marshal(payload)
@@ -487,9 +485,51 @@ var statusLabels = map[int]string{
 	429: "Keenable rate limit exceeded (429)",
 }
 
-// notAuthCodes are 403 codes about the page being fetched, not about the
-// caller's credentials, so they are not reported as an AuthError.
-var notAuthCodes = map[string]bool{"target_blocked": true}
+// notAuthCodes are 403 codes about the URL asked for, not about the caller's
+// credentials, so they are not reported as an AuthError.
+var notAuthCodes = map[string]bool{"private_url_not_allowed": true}
+
+// targetCodes are codes for a page that failed, besides every code starting
+// with "target_".
+var targetCodes = map[string]bool{"page_not_found": true, "content_not_extracted": true}
+
+// upstreamForbidden is the API's title for a 403 from the fetched site, from
+// before it sent codes.
+const upstreamForbidden = "upstream forbidden"
+
+const target403Advice = "The site refused the fetch. This is not about your API key, and retrying the same URL will not help: fetch another source."
+
+const retryAdvice = "Retry the request. If it keeps failing, confirm KEENABLE_API_URL."
+
+func isTargetError(status int, code, title string) bool {
+	if status == 429 {
+		return false
+	}
+	if code != "" {
+		return strings.HasPrefix(code, "target_") || targetCodes[code]
+	}
+	return status == 403 && strings.ToLower(strings.TrimSpace(title)) == upstreamForbidden
+}
+
+// defaultAdvice is the next step when the API sent no fix. It suggests a
+// retry only when one can help: never when the API said retryable false, and
+// never for a 4xx that returns the same error when sent again.
+func defaultAdvice(status int, retryable *bool, target bool) string {
+	switch {
+	case target && status == 403:
+		return target403Advice
+	case retryable != nil && *retryable:
+		return retryAdvice
+	case status == 400 || status == 422:
+		return "Fix the request. Sending it unchanged returns the same error."
+	case status == 404:
+		return "Check the URL. Retrying the same request will not help."
+	case retryable != nil || (status >= 400 && status < 500 && status != 408):
+		return "Retrying the same request will not help."
+	default:
+		return retryAdvice
+	}
+}
 
 // notYourLimitCodes are 429 codes for a limit that is not the caller's own
 // (ours or the fetched site's), so a key would not lift it.
@@ -513,7 +553,8 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 	api.StatusCode = status
 	api.Body = detail
 
-	auth := (status == 401 || status == 403) && !notAuthCodes[api.APICode]
+	target := isTargetError(status, api.APICode, api.Title)
+	auth := (status == 401 || status == 403) && !target && !notAuthCodes[api.APICode]
 	label, ok := statusLabels[status]
 	if !ok || ((status == 401 || status == 403) && !auth) {
 		label = fmt.Sprintf("Keenable API error (%d)", status)
@@ -540,7 +581,7 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 	case status == 429:
 		msg += ". Wait for the rate limit window to reset, then retry."
 	default:
-		msg += ". Retry the request. If it keeps failing, confirm KEENABLE_API_URL."
+		msg += ". " + defaultAdvice(status, api.Retryable, target)
 	}
 	if status == 429 {
 		if reset := headerValue(header, "X-RateLimit-Reset"); reset != "" {
@@ -550,12 +591,15 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 		}
 	}
 	api.msg = msg
-	return classifyStatus(api, auth, header)
+	return classifyStatus(api, auth, target, header)
 }
 
-func classifyStatus(api *APIError, auth bool, header http.Header) error {
+func classifyStatus(api *APIError, auth, target bool, header http.Header) error {
 	api.code = CodeAPI
 	switch {
+	case target:
+		api.code = CodeTarget
+		return &TargetError{APIError: api}
 	case auth:
 		api.code = CodeAuth
 		return &AuthError{APIError: api}

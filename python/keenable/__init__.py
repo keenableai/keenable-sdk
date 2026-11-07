@@ -21,6 +21,7 @@ from .errors import (
     KeenableInsufficientCreditsError,
     KeenableInvalidRequestError,
     KeenableRateLimitError,
+    KeenableTargetError,
     RateLimitInfo,
 )
 from .models import DEFAULT_CONTEXT_MAX_CHARS, Page, SearchResponse, SearchResult
@@ -40,6 +41,7 @@ __all__ = [
     "KeenableInsufficientCreditsError",
     "KeenableInvalidRequestError",
     "KeenableRateLimitError",
+    "KeenableTargetError",
     "Page",
     "RateLimitInfo",
     "SEARCH_TOOL",
