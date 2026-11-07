@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/netip"
@@ -486,70 +487,225 @@ var statusLabels = map[int]string{
 	429: "Keenable rate limit exceeded (429)",
 }
 
+// targetCodes are codes about the page being fetched rather than about
+// Keenable or the caller, besides every target_* code. Servers before error
+// format v1 send no "type", so it is derived from these and the status.
+var targetCodes = map[string]bool{"page_not_found": true, "content_not_extracted": true}
+
+// deriveType is the error type for a response that did not send one. It
+// matches the API's catalog for every code it had when "type" was added.
+func deriveType(status int, code string) string {
+	switch {
+	case strings.HasPrefix(code, "target_") || targetCodes[code]:
+		return TypeTargetError
+	case status == 401:
+		return TypeAuthenticationError
+	case status == 403:
+		return TypePermissionError
+	case status == 402 || status == 451:
+		return TypeBillingError
+	case status == 429:
+		return TypeRateLimitError
+	case status >= 400 && status < 500:
+		return TypeInvalidRequestError
+	default:
+		return TypeAPIError
+	}
+}
+
+// notYourLimitCodes are 429 codes for a limit that is not the caller's own
+// (ours or the fetched site's), so a key would not lift it.
+var notYourLimitCodes = map[string]bool{
+	"target_rate_limited": true,
+	"search_rate_limited": true,
+	"fetch_rate_limited":  true,
+}
+
 func toAPIError(status int, raw []byte, header http.Header, keyless bool) error {
 	detail := ""
 	var body any
+	var obj map[string]any
 	if err := json.Unmarshal(raw, &body); err != nil {
 		detail = strings.TrimSpace(string(raw))
 	} else if m, ok := body.(map[string]any); ok {
+		obj = m
 		detail = firstDetail(m, "message", "error", "detail")
 	}
+	api := parseErrorBody(obj, header)
+	api.StatusCode = status
+	api.Body = detail
+	if api.Type == "" {
+		api.Type = deriveType(status, api.APICode)
+	}
+
+	// A 401/403 about the page being fetched is not an authentication failure.
+	auth := (status == 401 || status == 403) && api.Type != TypeTargetError
 	label, ok := statusLabels[status]
-	if !ok {
+	if !ok || ((status == 401 || status == 403) && !auth) {
 		label = fmt.Sprintf("Keenable API error (%d)", status)
 	}
 	msg := label
 	if detail != "" {
 		msg = label + ": " + detail
 	}
-	switch status {
-	case 401, 403:
+	// When the API sends a fix, it is the next step for every status: it is
+	// specific to this failure and says whether a retry can help, which the
+	// generic advice below cannot. Python and TypeScript append it the same way.
+	switch {
+	case api.Fix != "":
+		msg = sentence(msg, api.Fix)
+	case auth:
 		msg += ". Check KEENABLE_API_KEY, or pass Options.APIKey."
-	case 402:
+	case status == 402:
 		msg += ". Add credits at https://keenable.ai/console."
-	case 429:
-		if keyless {
-			msg += ". Set KEENABLE_API_KEY to lift the keyless hourly cap. Create a key at https://keenable.ai/console."
-		} else {
-			msg += ". Wait for the rate limit window to reset, then retry."
-		}
-		if reset := headerValue(header, "X-RateLimit-Reset"); reset != "" {
-			msg += " Retry after " + reset + "."
-		}
+	case status == 429 && notYourLimitCodes[api.APICode]:
+		// Not the caller's own limit, so a key would not lift it.
+		msg += ". Wait for the rate limit window to reset, then retry."
+	case status == 429 && keyless:
+		msg += ". Set KEENABLE_API_KEY to lift the keyless hourly cap. Create a key at https://keenable.ai/console."
+	case status == 429:
+		msg += ". Wait for the rate limit window to reset, then retry."
 	default:
 		msg += ". Retry the request. If it keeps failing, confirm KEENABLE_API_URL."
 	}
-	return classifyStatus(status, msg, detail, header)
+	if status == 429 {
+		if reset := headerValue(header, "X-RateLimit-Reset"); reset != "" {
+			msg += " Retry after " + reset + "."
+		} else if api.RetryAfter > 0 {
+			msg += " Retry after " + api.RetryAfter.String() + "."
+		}
+	}
+	// Where to read more, as Stripe's SDKs print it; Error() adds the request
+	// id after it. Python and TypeScript end their messages the same way.
+	if api.DocsURL != "" {
+		msg = sentence(msg, "Docs: "+api.DocsURL)
+	}
+	api.msg = msg
+	return classifyStatus(api, auth, header)
 }
 
-func classifyStatus(status int, msg, body string, header http.Header) error {
-	code := CodeAPI
-	switch status {
-	case 401, 403:
-		code = CodeAuth
-	case 429:
-		code = CodeRateLimit
+// sentence appends more as a new sentence, without doubling a final period.
+func sentence(msg, more string) string {
+	if strings.HasSuffix(msg, ".") {
+		return msg + " " + more
 	}
-	api := &APIError{
-		StatusCode: status,
-		Body:       body,
-		RequestID:  headerValue(header, "X-Request-Id"),
-		msg:        msg,
-		code:       code,
-	}
-	switch status {
-	case 401, 403:
+	return msg + ". " + more
+}
+
+func classifyStatus(api *APIError, auth bool, header http.Header) error {
+	api.code = CodeAPI
+	switch {
+	case auth:
+		api.code = CodeAuth
 		return &AuthError{APIError: api}
-	case 429:
+	case api.StatusCode == 429:
+		api.code = CodeRateLimit
 		return &RateLimitError{
 			APIError:  api,
 			Limit:     headerInt(header, "X-RateLimit-Limit"),
 			Remaining: headerInt(header, "X-RateLimit-Remaining"),
 			Reset:     headerValue(header, "X-RateLimit-Reset"),
 		}
+	case api.StatusCode == 402:
+		return &InsufficientCreditsError{APIError: api}
 	default:
 		return api
 	}
+}
+
+// parseErrorBody reads the agent-ready fields of an error body. RetryAfter
+// prefers the body's retry_after_seconds, then the Retry-After header, then
+// the older retryAfter body field. RequestID prefers the body's request_id,
+// then the X-Request-Id header.
+func parseErrorBody(m map[string]any, header http.Header) *APIError {
+	api := &APIError{
+		Raw:           m,
+		APICode:       stringField(m, "code"),
+		Type:          stringField(m, "type"),
+		Title:         stringField(m, "error"),
+		Fix:           stringField(m, "fix"),
+		DocsURL:       stringField(m, "docs_url"),
+		RequestID:     stringField(m, "request_id"),
+		Param:         stringField(m, "param"),
+		BillingURL:    stringField(m, "billing_url"),
+		AutoTopUpURL:  stringField(m, "auto_top_up_url"),
+		PayPerRequest: stringField(m, "pay_per_request"),
+	}
+	if api.RequestID == "" {
+		api.RequestID = headerValue(header, "X-Request-Id")
+	}
+	if b, ok := m["retryable"].(bool); ok {
+		api.Retryable = &b
+	}
+	if d, ok := secondsField(m, "retry_after_seconds"); ok {
+		api.RetryAfter = d
+	} else if d, ok := retryAfterHeader(headerValue(header, "Retry-After")); ok {
+		api.RetryAfter = d
+	} else if d, ok := secondsField(m, "retryAfter"); ok {
+		api.RetryAfter = d
+	}
+	if l, ok := m["limit"].(map[string]any); ok {
+		info := &RateLimitInfo{
+			Scope:    stringField(l, "scope"),
+			Window:   stringField(l, "window"),
+			ResetsAt: stringField(l, "resets_at"),
+		}
+		if n, ok := l["max"].(float64); ok && n == math.Trunc(n) && !math.IsInf(n, 0) {
+			info.Max = int(n)
+		}
+		api.RateLimit = info
+	}
+	return api
+}
+
+func stringField(m map[string]any, key string) string {
+	s, ok := m[key].(string)
+	if !ok || strings.TrimSpace(s) == "" {
+		return ""
+	}
+	return s
+}
+
+// maxRetryAfter caps a hint so converting it to a Duration cannot overflow.
+const maxRetryAfter = 365 * 24 * time.Hour
+
+func secondsField(m map[string]any, key string) (time.Duration, bool) {
+	n, ok := m[key].(float64)
+	if !ok || math.IsNaN(n) || math.IsInf(n, 0) || n < 0 {
+		return 0, false
+	}
+	if n > maxRetryAfter.Seconds() {
+		return maxRetryAfter, true
+	}
+	return time.Duration(n * float64(time.Second)), true
+}
+
+// retryAfterHeader parses a Retry-After header: delay-seconds or an HTTP date.
+func retryAfterHeader(v string) (time.Duration, bool) {
+	if v == "" {
+		return 0, false
+	}
+	n, err := strconv.ParseUint(v, 10, 64)
+	if err == nil {
+		if n > uint64(maxRetryAfter/time.Second) {
+			return maxRetryAfter, true
+		}
+		return time.Duration(n) * time.Second, true
+	}
+	if errors.Is(err, strconv.ErrRange) {
+		// All digits, just too many for a uint64: still a delay, capped.
+		return maxRetryAfter, true
+	}
+	when, err := http.ParseTime(v)
+	if err != nil {
+		return 0, false
+	}
+	d := time.Until(when)
+	if d <= 0 {
+		return 0, true
+	}
+	// Round up, as the other SDKs do, so waiting this long is never too early.
+	return (d + time.Second - 1).Truncate(time.Second), true
 }
 
 func headerValue(h http.Header, key string) string {

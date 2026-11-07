@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import ipaddress
+import math
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from os import environ
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -16,8 +19,10 @@ from .errors import (
     KeenableAPIError,
     KeenableAuthError,
     KeenableConnectionError,
+    KeenableInsufficientCreditsError,
     KeenableInvalidRequestError,
     KeenableRateLimitError,
+    RateLimitInfo,
 )
 from .models import Page, SearchResponse
 
@@ -100,27 +105,173 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
     return payload
 
 
+# Codes about the page being fetched rather than about Keenable or the caller,
+# besides every ``target_*`` code. Servers before error format v1 send no
+# ``type``, so it is derived from these and the status.
+_TARGET_CODES = frozenset({"page_not_found", "content_not_extracted"})
+
+
+def _derive_type(status: int, code: str | None) -> str:
+    """The error ``type`` for a response that did not send one.
+
+    Matches the API's catalog for every code it had when ``type`` was added.
+    """
+    if code and (code.startswith("target_") or code in _TARGET_CODES):
+        return "target_error"
+    if status == 401:
+        return "authentication_error"
+    if status == 403:
+        return "permission_error"
+    if status in (402, 451):
+        return "billing_error"
+    if status == 429:
+        return "rate_limit_error"
+    if 400 <= status < 500:
+        return "invalid_request_error"
+    return "api_error"
+
+
+def _str_field(body: dict[str, Any], key: str) -> str | None:
+    value = body.get(key)
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _seconds(value: Any) -> float | None:
+    """A non-negative, finite number of seconds, or None for anything else."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    seconds: float = value
+    if not math.isfinite(seconds) or seconds < 0:
+        return None
+    return seconds
+
+
+# The longest Retry-After delay reported, in seconds (a year).
+_MAX_RETRY_AFTER = 365 * 24 * 60 * 60
+
+
+def _retry_after_header(value: str | None) -> float | None:
+    """Parse a Retry-After header: delay-seconds or an HTTP date."""
+    if not value or not value.strip():
+        return None
+    text = value.strip()
+    if text.isascii() and text.isdigit():
+        # Cap at a year, as the Go SDK does; checking the length first keeps
+        # int() clear of Python's integer-string length limit. Leading zeros
+        # do not count: "0000000001" is one second.
+        text = text.lstrip("0") or "0"
+        if len(text) > len(str(_MAX_RETRY_AFTER)):
+            return _MAX_RETRY_AFTER
+        return min(int(text), _MAX_RETRY_AFTER)
+    try:
+        when = parsedate_to_datetime(text)
+    except (TypeError, ValueError, IndexError):
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    delay = math.ceil((when - datetime.now(timezone.utc)).total_seconds())
+    return min(max(0, delay), _MAX_RETRY_AFTER)
+
+
+def _limit_info(value: Any) -> RateLimitInfo | None:
+    if not isinstance(value, dict):
+        return None
+    max_ = value.get("max")
+    return RateLimitInfo(
+        scope=_str_field(value, "scope"),
+        window=_str_field(value, "window"),
+        max=max_ if isinstance(max_, int) and not isinstance(max_, bool) else None,
+        resets_at=_str_field(value, "resets_at"),
+    )
+
+
+def _error_fields(
+    raw: dict[str, Any] | None, response: httpx.Response
+) -> dict[str, Any]:
+    """The agent-ready fields of an error body, None where the API left one out.
+
+    ``retry_after_seconds`` prefers the body, then the ``Retry-After`` header,
+    then the older ``retryAfter`` body field; ``request_id`` prefers the body,
+    then the ``X-Request-Id`` header; ``type`` is derived from the status and
+    code when the API did not send it.
+    """
+    body = raw or {}
+    retryable = body.get("retryable")
+    retry_after = _seconds(body.get("retry_after_seconds"))
+    if retry_after is None:
+        retry_after = _retry_after_header(response.headers.get("Retry-After"))
+    if retry_after is None:
+        retry_after = _seconds(body.get("retryAfter"))
+    header_id = (response.headers.get("X-Request-Id") or "").strip() or None
+    code = _str_field(body, "code")
+    return {
+        "code": code,
+        "type": _str_field(body, "type") or _derive_type(response.status_code, code),
+        "error": _str_field(body, "error"),
+        "fix": _str_field(body, "fix"),
+        "docs_url": _str_field(body, "docs_url"),
+        "retryable": retryable if isinstance(retryable, bool) else None,
+        "retry_after_seconds": retry_after,
+        "request_id": _str_field(body, "request_id") or header_id,
+        "param": _str_field(body, "param"),
+        "limit": _limit_info(body.get("limit")),
+        "billing_url": _str_field(body, "billing_url"),
+        "auto_top_up_url": _str_field(body, "auto_top_up_url"),
+        "pay_per_request": _str_field(body, "pay_per_request"),
+        "raw": raw,
+    }
+
+
+def _sentence(message: str, more: str) -> str:
+    """Append ``more`` as a new sentence, without doubling a final period."""
+    return f"{message}{' ' if message.endswith('.') else '. '}{more}"
+
+
 def _to_api_error(response: httpx.Response) -> KeenableAPIError:
     """Map a non-2xx response to the most specific SDK error available."""
     detail = ""
+    body: dict[str, Any] | None = None
     try:
-        body = response.json()
-        if isinstance(body, dict):
+        decoded = response.json()
+        if isinstance(decoded, dict):
+            body = decoded
             detail = str(
                 body.get("message") or body.get("error") or body.get("detail") or ""
             )
     except ValueError:
         detail = (response.text or "").strip()
 
+    fields = _error_fields(body, response)
     status = response.status_code
-    label = _STATUS_LABELS.get(status, f"Keenable API error ({status})")
+    # A 401/403 about the page being fetched is not an authentication failure.
+    auth = status in (401, 403) and fields["type"] != "target_error"
+    if status in (401, 403) and not auth:
+        label = f"Keenable API error ({status})"
+    else:
+        label = _STATUS_LABELS.get(status, f"Keenable API error ({status})")
     message = f"{label}: {detail}" if detail else label
+    if fields["fix"]:
+        # The API's next step, appended the same way in the Go and TS SDKs.
+        message = _sentence(message, fields["fix"])
+    # Where to read more and what to quote, as Stripe's SDKs print them; the
+    # same tail as the Go and TS SDKs. The code goes in its own parentheses so
+    # the "(request_id: ...)" Go has shipped reads the same everywhere.
+    if fields["docs_url"]:
+        message = _sentence(message, f"Docs: {fields['docs_url']}")
+    if fields["code"]:
+        message = f"{message} (code: {fields['code']})"
+    if fields["request_id"]:
+        message = f"{message} (request_id: {fields['request_id']})"
 
-    if status in (401, 403):
-        return KeenableAuthError(message, status, detail or None)
+    if auth:
+        return KeenableAuthError(message, status, detail or None, **fields)
+    if status == 402:
+        return KeenableInsufficientCreditsError(
+            message, status, detail or None, **fields
+        )
     if status == 429:
-        return KeenableRateLimitError(message, status, detail or None)
-    return KeenableAPIError(message, status, detail or None)
+        return KeenableRateLimitError(message, status, detail or None, **fields)
+    return KeenableAPIError(message, status, detail or None, **fields)
 
 
 def _decode(response: httpx.Response) -> dict[str, Any]:

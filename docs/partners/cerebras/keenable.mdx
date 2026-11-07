@@ -268,8 +268,13 @@ alive.
 |---|---|
 | `KeenableRateLimitError` | HTTP 429, your account's rate limit |
 | `KeenableAuthError` | HTTP 401/403, the key was rejected |
+| `KeenableInsufficientCreditsError` | HTTP 402, no credits left; retrying will not help |
 | `KeenableAPIError` | Any other non-2xx response; carries `status_code` |
 | `KeenableConnectionError` | The API could not be reached |
+
+API errors also carry `code`, `fix`, `retryable` and `retry_after_seconds`
+(`retryAfterSeconds` in Node): retry only when `retryable` is true, after that
+many seconds.
 
 ## Next steps
 

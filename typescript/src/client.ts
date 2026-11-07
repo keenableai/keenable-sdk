@@ -2,9 +2,11 @@ import {
   KeenableAPIError,
   KeenableAuthError,
   KeenableConnectionError,
+  KeenableInsufficientCreditsError,
   KeenableInvalidRequestError,
   KeenableRateLimitError,
 } from "./errors.js";
+import type { KeenableAPIErrorDetails, KeenableErrorType, RateLimitInfo } from "./errors.js";
 import { SEARCH_FILTERS } from "./filters.js";
 import { cleanContextText, collapse, nonEmpty, normalizeHost, readEnv } from "./internal.js";
 import type {
@@ -470,7 +472,7 @@ export class Keenable {
       callerSignal?.removeEventListener("abort", onAbort);
     }
 
-    if (!response.ok) throw toApiError(response.status, text);
+    if (!response.ok) throw toApiError(response.status, text, response.headers);
 
     let data: unknown;
     try {
@@ -491,12 +493,37 @@ export class Keenable {
   }
 }
 
-function toApiError(status: number, text: string): KeenableAPIError {
+// Codes about the page being fetched rather than about Keenable or the caller,
+// besides every `target_*` code. Servers before error format v1 send no `type`,
+// so it is derived from these and the status.
+const TARGET_CODES = new Set(["page_not_found", "content_not_extracted"]);
+
+/**
+ * The error `type` for a response that did not send one. Matches the API's
+ * catalog for every code it had when `type` was added.
+ */
+function deriveType(status: number, code: string | undefined): KeenableErrorType {
+  if (code && (code.startsWith("target_") || TARGET_CODES.has(code))) return "target_error";
+  if (status === 401) return "authentication_error";
+  if (status === 403) return "permission_error";
+  if (status === 402 || status === 451) return "billing_error";
+  if (status === 429) return "rate_limit_error";
+  if (status >= 400 && status < 500) return "invalid_request_error";
+  return "api_error";
+}
+
+/** Append `more` as a new sentence, without doubling a final period. */
+function sentence(message: string, more: string): string {
+  return `${message}${message.endsWith(".") ? " " : ". "}${more}`;
+}
+
+function toApiError(status: number, text: string, headers?: Headers): KeenableAPIError {
   let detail = text.trim();
+  let record: Record<string, unknown> | undefined;
   try {
     const body: unknown = JSON.parse(text);
     if (typeof body === "object" && body !== null) {
-      const record = body as Record<string, unknown>;
+      record = body as Record<string, unknown>;
       detail =
         nonEmpty(record.message) ??
         nonEmpty(record.error) ??
@@ -507,14 +534,99 @@ function toApiError(status: number, text: string): KeenableAPIError {
     // Not JSON; the raw body is the best detail we have.
   }
 
-  const label = STATUS_LABELS[status] ?? `Keenable API error (${status})`;
-  const message = detail ? `${label}: ${detail}` : label;
+  const details = errorDetails(status, Array.isArray(record) ? undefined : record, headers);
+  // A 401/403 about the page being fetched is not an authentication failure.
+  const auth = (status === 401 || status === 403) && details.type !== "target_error";
+  const label =
+    (status === 401 || status === 403) && !auth
+      ? `Keenable API error (${status})`
+      : (STATUS_LABELS[status] ?? `Keenable API error (${status})`);
+  let message = detail ? `${label}: ${detail}` : label;
+  // The API's next step, appended the same way in the Go and Python SDKs.
+  if (details.fix) message = sentence(message, details.fix);
+  // Where to read more and what to quote, as Stripe's SDKs print them; the same
+  // tail as the Go and Python SDKs. The code goes in its own parentheses so the
+  // "(request_id: ...)" Go has shipped reads the same everywhere.
+  if (details.docsUrl) message = sentence(message, `Docs: ${details.docsUrl}`);
+  if (details.code) message = `${message} (code: ${details.code})`;
+  if (details.requestId) message = `${message} (request_id: ${details.requestId})`;
 
-  if (status === 401 || status === 403) {
-    return new KeenableAuthError(message, status, detail || undefined);
+  if (auth) {
+    return new KeenableAuthError(message, status, detail || undefined, details);
+  }
+  if (status === 402) {
+    return new KeenableInsufficientCreditsError(message, status, detail || undefined, details);
   }
   if (status === 429) {
-    return new KeenableRateLimitError(message, status, detail || undefined);
+    return new KeenableRateLimitError(message, status, detail || undefined, details);
   }
-  return new KeenableAPIError(message, status, detail || undefined);
+  return new KeenableAPIError(message, status, detail || undefined, details);
+}
+
+/** A non-negative, finite number of seconds, or undefined for anything else. */
+function seconds(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+/** The longest Retry-After delay reported, in seconds (a year). */
+const MAX_RETRY_AFTER = 365 * 24 * 60 * 60;
+
+/** Parse a Retry-After header: delay-seconds or an HTTP date. */
+function retryAfterHeader(value: string | null | undefined): number | undefined {
+  const text = value?.trim();
+  if (!text) return undefined;
+  if (/^[0-9]+$/.test(text)) {
+    // Cap at a year, as the Go SDK does, so a huge value never becomes
+    // Infinity.
+    return Math.min(Number(text), MAX_RETRY_AFTER);
+  }
+  const when = Date.parse(text);
+  if (Number.isNaN(when)) return undefined;
+  return Math.min(Math.max(0, Math.ceil((when - Date.now()) / 1000)), MAX_RETRY_AFTER);
+}
+
+function rateLimitInfo(value: unknown): RateLimitInfo | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const limit = value as Record<string, unknown>;
+  return {
+    scope: nonEmpty(limit.scope),
+    window: nonEmpty(limit.window),
+    max: Number.isInteger(limit.max) ? (limit.max as number) : undefined,
+    resetsAt: nonEmpty(limit.resets_at),
+  };
+}
+
+/**
+ * The agent-ready fields of an error body, undefined where the API left one
+ * out. `retryAfterSeconds` prefers the body, then the `Retry-After` header,
+ * then the older `retryAfter` body field; `requestId` prefers the body, then
+ * the `X-Request-Id` header; `type` is derived from the status and code when
+ * the API did not send it.
+ */
+function errorDetails(
+  status: number,
+  body: Record<string, unknown> | undefined,
+  headers: Headers | undefined,
+): KeenableAPIErrorDetails {
+  const b = body ?? {};
+  const code = nonEmpty(b.code);
+  return {
+    code,
+    type: nonEmpty(b.type) ?? deriveType(status, code),
+    error: nonEmpty(b.error),
+    fix: nonEmpty(b.fix),
+    docsUrl: nonEmpty(b.docs_url),
+    retryable: typeof b.retryable === "boolean" ? b.retryable : undefined,
+    retryAfterSeconds:
+      seconds(b.retry_after_seconds) ??
+      retryAfterHeader(headers?.get("Retry-After")) ??
+      seconds(b.retryAfter),
+    requestId: nonEmpty(b.request_id) ?? nonEmpty(headers?.get("X-Request-Id")?.trim()),
+    param: nonEmpty(b.param),
+    limit: rateLimitInfo(b.limit),
+    billingUrl: nonEmpty(b.billing_url),
+    autoTopUpUrl: nonEmpty(b.auto_top_up_url),
+    payPerRequest: nonEmpty(b.pay_per_request),
+    raw: body,
+  };
 }

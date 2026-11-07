@@ -126,9 +126,56 @@ All errors extend `KeenableError`:
 |---|---|
 | `KeenableRateLimitError` | HTTP 429. Set `KEENABLE_API_KEY` to lift the keyless cap |
 | `KeenableAuthError` | HTTP 401/403, the key was rejected |
+| `KeenableInsufficientCreditsError` (alias `KeenableCreditsError`) | HTTP 402, no credits left; retrying will not help |
 | `KeenableAPIError` | Any other non-2xx response; carries `statusCode` |
 | `KeenableConnectionError` | The API could not be reached |
 | `KeenableInvalidRequestError` | Bad arguments; no request was sent |
+
+## Handling errors
+
+Every `KeenableAPIError` carries what the API says about the failure. Branch on
+`code`, not on the message, and wait `retryAfterSeconds` before a retry. Each
+field is `undefined` when the API did not send it.
+
+```ts
+import { Keenable, KeenableAPIError } from "keenable";
+
+const keenable = new Keenable();
+let results;
+for (let attempt = 0; ; attempt++) {
+  try {
+    results = await keenable.search("wafer scale engine");
+    break;
+  } catch (err) {
+    if (!(err instanceof KeenableAPIError)) throw err;
+    console.log(err.code, err.fix, err.docsUrl, err.requestId);
+    // Not retryable: e.g. insufficient_credits, invalid_parameter.
+    if (!err.retryable || attempt === 2) throw err;
+    await new Promise((r) => setTimeout(r, (err.retryAfterSeconds ?? 1) * 1000));
+  }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `code` | Stable reason, e.g. `rate_limit_per_second`, `insufficient_credits`, `target_blocked` |
+| `type` | The category (`KeenableErrorType`): `invalid_request_error`, `authentication_error`, `permission_error`, `billing_error`, `rate_limit_error`, `target_error` (the page being fetched failed, not Keenable) or `api_error`; derived from the status when an older API leaves it out |
+| `fix` | One sentence on what to do next |
+| `docsUrl` | The docs page for this error |
+| `retryable` | Whether the same request can succeed later |
+| `retryAfterSeconds` | Seconds to wait (body, else the `Retry-After` header) |
+| `requestId` | Quote it when reporting a problem |
+| `param` | The parameter a 400 is about |
+| `limit` | On a 429: `{ scope, window, max, resetsAt }` |
+| `billingUrl`, `autoTopUpUrl`, `payPerRequest` | On a 402: where to add credits and the alternatives |
+| `raw` | The whole JSON error body |
+
+When the API sends `fix`, the error message ends with it, then with
+`Docs: <docsUrl>`, `(code: <code>)` and `(request_id: <id>)`, as in the Go and
+Python SDKs. A 403
+with type `target_error` (e.g. code `target_blocked`, the fetched site refused
+us) is a plain `KeenableAPIError`, not a `KeenableAuthError`. The SDK does not retry on its
+own.
 
 ## Configuration
 
