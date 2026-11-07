@@ -1,0 +1,796 @@
+{
+  "_comment": "Error bodies as servers before error format v1 send them: no \"type\", and docs_url on the older page anchors. Frozen from keenable-sdk PR #41 (generated from keenableai/keenable-backend-ts PRs #663 and #666, Date.now fixed at 2026-11-06T12:00:00Z). expect.type is what an SDK derives from the status and code. sync.ts copies these cases into error_contract.json and borrows their domain extras (limit, param, billing_url, ...) for the catalog cases of the same code. Edit by hand only to add an older shape a released server still sends.",
+  "cases": [
+    {
+      "name": "missing_api_key (before v1)",
+      "source": "keenable-backend-ts#663 src/__tests__/routes/v1-search.test.ts",
+      "status": 401,
+      "headers": {
+        "X-Request-Id": "req-1"
+      },
+      "body": {
+        "error": "Missing authentication",
+        "message": "Either X-API-Key header or Authorization Bearer token is required",
+        "code": "missing_api_key",
+        "fix": "Send your Keenable API key in the X-API-Key header (or as \"Authorization: Bearer <key>\") and retry. Create a key at https://app.keenable.ai/console/api-keys.",
+        "keyless": "/v1/search/public and /v1/fetch/public work without a key, rate-limited per IP. Name your app in the X-Keenable-Title header (or the keenable_title query parameter); public requests without it get a 400.",
+        "api_keys_url": "https://app.keenable.ai/console/api-keys",
+        "docs_url": "https://docs.keenable.ai/authentication.md",
+        "retryable": false,
+        "request_id": "req-1"
+      },
+      "expect": {
+        "kind": "auth",
+        "code": "missing_api_key",
+        "type": "authentication_error",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-1",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/authentication.md",
+        "fix": "Send your Keenable API key in the X-API-Key header (or as \"Authorization: Bearer <key>\") and retry. Create a key at https://app.keenable.ai/console/api-keys.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "Either X-API-Key header or Authorization Bearer token is required"
+      }
+    },
+    {
+      "name": "invalid_api_key (before v1)",
+      "source": "keenable-backend-ts#663 src/__tests__/routes/v1-search.test.ts",
+      "status": 401,
+      "headers": {
+        "X-Request-Id": "req-2"
+      },
+      "body": {
+        "error": "Authentication failed",
+        "message": "Invalid API key",
+        "code": "invalid_api_key",
+        "fix": "The API key was not accepted. Copy the full key from https://app.keenable.ai/console/api-keys, or create a new one there, and retry with it in the X-API-Key header.",
+        "keyless": "/v1/search/public and /v1/fetch/public work without a key, rate-limited per IP. Name your app in the X-Keenable-Title header (or the keenable_title query parameter); public requests without it get a 400.",
+        "api_keys_url": "https://app.keenable.ai/console/api-keys",
+        "docs_url": "https://docs.keenable.ai/authentication.md",
+        "retryable": false,
+        "request_id": "req-2"
+      },
+      "expect": {
+        "kind": "auth",
+        "code": "invalid_api_key",
+        "type": "authentication_error",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-2",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/authentication.md",
+        "fix": "The API key was not accepted. Copy the full key from https://app.keenable.ai/console/api-keys, or create a new one there, and retry with it in the X-API-Key header.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "Invalid API key"
+      }
+    },
+    {
+      "name": "credentials_forbidden (before v1)",
+      "source": "keenable-backend-ts#666 src/shared/utils/agent-error-guidance.test.ts",
+      "status": 403,
+      "headers": {
+        "X-Request-Id": "req-3"
+      },
+      "body": {
+        "error": "Forbidden",
+        "message": "Key revoked",
+        "code": "credentials_forbidden",
+        "fix": "The credentials were recognized but are not allowed, usually because the key was revoked. Retrying with them will not help: create a new key at https://app.keenable.ai/console/api-keys, or ask a human with console access to.",
+        "api_keys_url": "https://app.keenable.ai/console/api-keys",
+        "docs_url": "https://docs.keenable.ai/errors#403",
+        "retryable": false,
+        "request_id": "req-3"
+      },
+      "expect": {
+        "kind": "auth",
+        "code": "credentials_forbidden",
+        "type": "permission_error",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-3",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/errors#403",
+        "fix": "The credentials were recognized but are not allowed, usually because the key was revoked. Retrying with them will not help: create a new key at https://app.keenable.ai/console/api-keys, or ask a human with console access to.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "Key revoked"
+      }
+    },
+    {
+      "name": "rate_limit_per_second (before v1)",
+      "source": "keenable-backend-ts#666 src/__tests__/routes/agent-ready-limit-errors.test.ts",
+      "status": 429,
+      "headers": {
+        "X-Request-Id": "req-4",
+        "Retry-After": "1"
+      },
+      "body": {
+        "error": "Rate limit exceeded",
+        "message": "Too many requests — your organization has a 10 RPS limit. Contact us to increase your quota. More info about authentication & upgrade: curl https://docs.keenable.ai/authentication.md",
+        "code": "rate_limit_per_second",
+        "fix": "Your organization is limited to 10 requests per second, shared by all its keys. Wait for Retry-After, retry, and keep under 10 per second. To raise the limit, see the plans at https://keenable.ai/pricing or contact us at https://keenable.ai/contact.",
+        "docs_url": "https://docs.keenable.ai/rate-limits.md",
+        "retryable": true,
+        "retry_after_seconds": 1,
+        "limit": {
+          "scope": "organization",
+          "window": "second",
+          "max": 10,
+          "resets_at": "2026-11-06T12:00:01.000Z"
+        },
+        "retryAfter": 1,
+        "request_id": "req-4"
+      },
+      "expect": {
+        "kind": "rate_limit",
+        "code": "rate_limit_per_second",
+        "type": "rate_limit_error",
+        "retryable": true,
+        "retry_after_seconds": 1,
+        "request_id": "req-4",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/rate-limits.md",
+        "fix": "Your organization is limited to 10 requests per second, shared by all its keys. Wait for Retry-After, retry, and keep under 10 per second. To raise the limit, see the plans at https://keenable.ai/pricing or contact us at https://keenable.ai/contact.",
+        "limit": {
+          "scope": "organization",
+          "window": "second",
+          "max": 10,
+          "resets_at": "2026-11-06T12:00:01.000Z"
+        },
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "Too many requests — your organization has a 10 RPS limit. Contact us to increase your quota. More info about authentication & upgrade: curl https://docs.keenable.ai/authentication.md"
+      }
+    },
+    {
+      "name": "public_rate_limit_per_second (before v1)",
+      "source": "keenable-backend-ts#666 src/__tests__/routes/agent-ready-limit-errors.test.ts",
+      "status": 429,
+      "headers": {
+        "X-Request-Id": "req-5",
+        "Retry-After": "2"
+      },
+      "body": {
+        "error": "Rate limit exceeded",
+        "message": "Too many requests — 10 RPS limit on public API. Please try again shortly. More info about authentication & upgrade: curl https://docs.keenable.ai/authentication.md",
+        "code": "public_rate_limit_per_second",
+        "fix": "Keyless requests are limited to 10 per second per IP address on each endpoint, shared with other traffic from your IP. Wait for Retry-After and retry, or send an API key (free at https://app.keenable.ai/console/api-keys) to /v1/search or /v1/fetch for your organization's own limit.",
+        "docs_url": "https://docs.keenable.ai/rate-limits.md",
+        "retryable": true,
+        "retry_after_seconds": 2,
+        "limit": {
+          "scope": "ip",
+          "window": "second",
+          "max": 10,
+          "resets_at": "2026-11-06T12:00:02.000Z"
+        },
+        "request_id": "req-5"
+      },
+      "expect": {
+        "kind": "rate_limit",
+        "code": "public_rate_limit_per_second",
+        "type": "rate_limit_error",
+        "retryable": true,
+        "retry_after_seconds": 2,
+        "request_id": "req-5",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/rate-limits.md",
+        "fix": "Keyless requests are limited to 10 per second per IP address on each endpoint, shared with other traffic from your IP. Wait for Retry-After and retry, or send an API key (free at https://app.keenable.ai/console/api-keys) to /v1/search or /v1/fetch for your organization's own limit.",
+        "limit": {
+          "scope": "ip",
+          "window": "second",
+          "max": 10,
+          "resets_at": "2026-11-06T12:00:02.000Z"
+        },
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "Too many requests — 10 RPS limit on public API. Please try again shortly. More info about authentication & upgrade: curl https://docs.keenable.ai/authentication.md"
+      }
+    },
+    {
+      "name": "public_rate_limit_hourly (before v1)",
+      "source": "keenable-backend-ts#666 src/shared/utils/agent-error-guidance.test.ts",
+      "status": 429,
+      "headers": {
+        "X-Request-Id": "req-6",
+        "Retry-After": "1800"
+      },
+      "body": {
+        "error": "Rate limit exceeded",
+        "message": "Public API hourly limit reached. Wait 30 minutes to continue or upgrade. More info about authentication & upgrade: curl https://docs.keenable.ai/authentication.md",
+        "code": "public_rate_limit_hourly",
+        "fix": "Keyless requests are limited to 1000 per hour per IP address on each endpoint. Retrying before the window resets returns 429 again. To continue now, create a free API key at https://app.keenable.ai/console/api-keys and call /v1/search or /v1/fetch with it in the X-API-Key header: keyed requests have no hourly cap.",
+        "docs_url": "https://docs.keenable.ai/rate-limits.md",
+        "retryable": true,
+        "retry_after_seconds": 1800,
+        "limit": {
+          "scope": "ip",
+          "window": "hour",
+          "max": 1000,
+          "resets_at": "2026-11-06T12:30:00.000Z"
+        },
+        "request_id": "req-6"
+      },
+      "expect": {
+        "kind": "rate_limit",
+        "code": "public_rate_limit_hourly",
+        "type": "rate_limit_error",
+        "retryable": true,
+        "retry_after_seconds": 1800,
+        "request_id": "req-6",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/rate-limits.md",
+        "fix": "Keyless requests are limited to 1000 per hour per IP address on each endpoint. Retrying before the window resets returns 429 again. To continue now, create a free API key at https://app.keenable.ai/console/api-keys and call /v1/search or /v1/fetch with it in the X-API-Key header: keyed requests have no hourly cap.",
+        "limit": {
+          "scope": "ip",
+          "window": "hour",
+          "max": 1000,
+          "resets_at": "2026-11-06T12:30:00.000Z"
+        },
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "Public API hourly limit reached. Wait 30 minutes to continue or upgrade. More info about authentication & upgrade: curl https://docs.keenable.ai/authentication.md"
+      }
+    },
+    {
+      "name": "rate_limit_per_second without a retry time (before v1)",
+      "source": "keenable-backend-ts#666 src/shared/utils/agent-error-guidance.test.ts",
+      "status": 429,
+      "headers": {
+        "X-Request-Id": "req-7"
+      },
+      "body": {
+        "error": "Rate limit exceeded",
+        "message": "Too many requests — your organization has a 10 RPS limit. Contact us to increase your quota. More info about authentication & upgrade: curl https://docs.keenable.ai/authentication.md",
+        "code": "rate_limit_per_second",
+        "fix": "Your organization is limited to 10 requests per second, shared by all its keys. Wait for Retry-After, retry, and keep under 10 per second. To raise the limit, see the plans at https://keenable.ai/pricing or contact us at https://keenable.ai/contact.",
+        "docs_url": "https://docs.keenable.ai/rate-limits.md",
+        "retryable": true,
+        "request_id": "req-7"
+      },
+      "expect": {
+        "kind": "rate_limit",
+        "code": "rate_limit_per_second",
+        "type": "rate_limit_error",
+        "retryable": true,
+        "retry_after_seconds": null,
+        "request_id": "req-7",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/rate-limits.md",
+        "fix": "Your organization is limited to 10 requests per second, shared by all its keys. Wait for Retry-After, retry, and keep under 10 per second. To raise the limit, see the plans at https://keenable.ai/pricing or contact us at https://keenable.ai/contact.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "Too many requests — your organization has a 10 RPS limit. Contact us to increase your quota. More info about authentication & upgrade: curl https://docs.keenable.ai/authentication.md"
+      }
+    },
+    {
+      "name": "search_rate_limited (before v1)",
+      "source": "keenable-backend-ts#666 src/shared/utils/agent-error-guidance.test.ts",
+      "status": 429,
+      "headers": {
+        "X-Request-Id": "req-8",
+        "Retry-After": "1"
+      },
+      "body": {
+        "error": "Rate limit exceeded",
+        "message": "busy",
+        "code": "search_rate_limited",
+        "fix": "Search is briefly rate-limited on our side; this is not your own limit. Wait for Retry-After and retry.",
+        "docs_url": "https://docs.keenable.ai/errors#429",
+        "retryable": true,
+        "retry_after_seconds": 1,
+        "request_id": "req-8"
+      },
+      "expect": {
+        "kind": "rate_limit",
+        "code": "search_rate_limited",
+        "type": "rate_limit_error",
+        "retryable": true,
+        "retry_after_seconds": 1,
+        "request_id": "req-8",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/errors#429",
+        "fix": "Search is briefly rate-limited on our side; this is not your own limit. Wait for Retry-After and retry.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "busy"
+      }
+    },
+    {
+      "name": "search_overloaded (before v1)",
+      "source": "keenable-backend-ts#666 src/shared/utils/agent-error-guidance.test.ts",
+      "status": 529,
+      "headers": {
+        "X-Request-Id": "req-9",
+        "Retry-After": "1"
+      },
+      "body": {
+        "error": "Overloaded",
+        "message": "Search is temporarily overloaded, please retry shortly.",
+        "code": "search_overloaded",
+        "fix": "Search is briefly overloaded. Wait for Retry-After and retry, backing off if it repeats.",
+        "docs_url": "https://docs.keenable.ai/errors#5xx",
+        "retryable": true,
+        "retry_after_seconds": 1,
+        "request_id": "req-9"
+      },
+      "expect": {
+        "kind": "api",
+        "code": "search_overloaded",
+        "type": "api_error",
+        "retryable": true,
+        "retry_after_seconds": 1,
+        "request_id": "req-9",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/errors#5xx",
+        "fix": "Search is briefly overloaded. Wait for Retry-After and retry, backing off if it repeats.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "Search is temporarily overloaded, please retry shortly."
+      }
+    },
+    {
+      "name": "insufficient_credits (before v1)",
+      "source": "keenable-backend-ts#666 src/__tests__/routes/agent-ready-limit-errors.test.ts",
+      "status": 402,
+      "headers": {
+        "X-Request-Id": "req-10"
+      },
+      "body": {
+        "error": "Insufficient credits",
+        "message": "No credits left: this month's free requests and your purchased credits are used up. Top up at https://app.keenable.ai/console/billing, or wait until your free allowance renews.",
+        "code": "insufficient_credits",
+        "fix": "Retrying returns the same 402 until credits are added. Ask a human with console access to buy credits at https://app.keenable.ai/console/billing, and to turn on auto top-up there so the balance refills itself (https://docs.keenable.ai/auto-top-up.md).",
+        "docs_url": "https://docs.keenable.ai/errors#402",
+        "retryable": false,
+        "billing_url": "https://app.keenable.ai/console/billing",
+        "auto_top_up_url": "https://docs.keenable.ai/auto-top-up.md",
+        "request_id": "req-10"
+      },
+      "expect": {
+        "kind": "insufficient_credits",
+        "code": "insufficient_credits",
+        "type": "billing_error",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-10",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/errors#402",
+        "fix": "Retrying returns the same 402 until credits are added. Ask a human with console access to buy credits at https://app.keenable.ai/console/billing, and to turn on auto top-up there so the balance refills itself (https://docs.keenable.ai/auto-top-up.md).",
+        "limit": null,
+        "billing_url": "https://app.keenable.ai/console/billing",
+        "auto_top_up_url": "https://docs.keenable.ai/auto-top-up.md",
+        "pay_per_request": null,
+        "message_contains": "No credits left: this month's free requests and your purchased credits are used up. Top up at https://app.keenable.ai/console/billing, or wait until your free allowance renews."
+      }
+    },
+    {
+      "name": "insufficient_credits with pay_per_request (before v1)",
+      "source": "keenable-backend-ts#666 src/shared/utils/agent-error-guidance.test.ts",
+      "status": 402,
+      "headers": {
+        "X-Request-Id": "req-11"
+      },
+      "body": {
+        "error": "Insufficient credits",
+        "message": "No credits left: this month's free requests and your purchased credits are used up. Top up at https://app.keenable.ai/console/billing, or wait until your free allowance renews.",
+        "code": "insufficient_credits",
+        "fix": "Retrying returns the same 402 until credits are added. Ask a human with console access to buy credits at https://app.keenable.ai/console/billing, and to turn on auto top-up there so the balance refills itself (https://docs.keenable.ai/auto-top-up.md).",
+        "docs_url": "https://docs.keenable.ai/errors#402",
+        "retryable": false,
+        "billing_url": "https://app.keenable.ai/console/billing",
+        "auto_top_up_url": "https://docs.keenable.ai/auto-top-up.md",
+        "pay_per_request": "Without credits, an agent with a crypto wallet can pay per request over x402 on /v1/x402/search and /v1/x402/fetch, with no key: an unpaid call returns a 402 whose \"accepts\" list names the networks and assets it takes. See https://docs.keenable.ai/pay-per-request.md.",
+        "request_id": "req-11"
+      },
+      "expect": {
+        "kind": "insufficient_credits",
+        "code": "insufficient_credits",
+        "type": "billing_error",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-11",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/errors#402",
+        "fix": "Retrying returns the same 402 until credits are added. Ask a human with console access to buy credits at https://app.keenable.ai/console/billing, and to turn on auto top-up there so the balance refills itself (https://docs.keenable.ai/auto-top-up.md).",
+        "limit": null,
+        "billing_url": "https://app.keenable.ai/console/billing",
+        "auto_top_up_url": "https://docs.keenable.ai/auto-top-up.md",
+        "pay_per_request": "Without credits, an agent with a crypto wallet can pay per request over x402 on /v1/x402/search and /v1/x402/fetch, with no key: an unpaid call returns a 402 whose \"accepts\" list names the networks and assets it takes. See https://docs.keenable.ai/pay-per-request.md.",
+        "message_contains": "No credits left: this month's free requests and your purchased credits are used up. Top up at https://app.keenable.ai/console/billing, or wait until your free allowance renews."
+      }
+    },
+    {
+      "name": "target_unreachable (before v1)",
+      "source": "keenable-backend-ts#666 src/__tests__/routes/agent-ready-limit-errors.test.ts",
+      "status": 502,
+      "headers": {
+        "X-Request-Id": "req-12",
+        "Retry-After": "2"
+      },
+      "body": {
+        "error": "Bad gateway",
+        "message": "The target page could not be reached by the fetcher (upstream fetch failed). This may be transient — retrying is reasonable.",
+        "code": "target_unreachable",
+        "fix": "The fetcher could not reach the page: a connection, DNS or TLS failure, or a server error on the site. This is often transient: wait a few seconds and retry up to 3 times, then try another URL.",
+        "docs_url": "https://docs.keenable.ai/errors#5xx",
+        "retryable": true,
+        "retry_after_seconds": 2,
+        "request_id": "req-12"
+      },
+      "expect": {
+        "kind": "api",
+        "code": "target_unreachable",
+        "type": "target_error",
+        "retryable": true,
+        "retry_after_seconds": 2,
+        "request_id": "req-12",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/errors#5xx",
+        "fix": "The fetcher could not reach the page: a connection, DNS or TLS failure, or a server error on the site. This is often transient: wait a few seconds and retry up to 3 times, then try another URL.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "The target page could not be reached by the fetcher (upstream fetch failed). This may be transient — retrying is reasonable."
+      }
+    },
+    {
+      "name": "target_timeout (before v1)",
+      "source": "keenable-backend-ts#666 src/__tests__/routes/agent-ready-limit-errors.test.ts",
+      "status": 504,
+      "headers": {
+        "X-Request-Id": "req-13",
+        "Retry-After": "5"
+      },
+      "body": {
+        "error": "Gateway timeout",
+        "message": "The target page took too long to respond",
+        "code": "target_timeout",
+        "fix": "The page took too long to respond. Retrying can help: wait a few seconds and retry up to 3 times, then try another URL.",
+        "docs_url": "https://docs.keenable.ai/errors#5xx",
+        "retryable": true,
+        "retry_after_seconds": 5,
+        "request_id": "req-13"
+      },
+      "expect": {
+        "kind": "api",
+        "code": "target_timeout",
+        "type": "target_error",
+        "retryable": true,
+        "retry_after_seconds": 5,
+        "request_id": "req-13",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/errors#5xx",
+        "fix": "The page took too long to respond. Retrying can help: wait a few seconds and retry up to 3 times, then try another URL.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "The target page took too long to respond"
+      }
+    },
+    {
+      "name": "target_rate_limited (before v1)",
+      "source": "keenable-backend-ts#666 src/shared/utils/agent-error-guidance.test.ts",
+      "status": 429,
+      "headers": {
+        "X-Request-Id": "req-14",
+        "Retry-After": "1"
+      },
+      "body": {
+        "error": "Rate limit exceeded",
+        "message": "busy",
+        "code": "target_rate_limited",
+        "fix": "The target site rate-limited the fetch. This is not your Keenable limit: wait for Retry-After and retry, or fetch another source.",
+        "docs_url": "https://docs.keenable.ai/errors#429",
+        "retryable": true,
+        "retry_after_seconds": 1,
+        "request_id": "req-14"
+      },
+      "expect": {
+        "kind": "rate_limit",
+        "code": "target_rate_limited",
+        "type": "target_error",
+        "retryable": true,
+        "retry_after_seconds": 1,
+        "request_id": "req-14",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/errors#429",
+        "fix": "The target site rate-limited the fetch. This is not your Keenable limit: wait for Retry-After and retry, or fetch another source.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "busy"
+      }
+    },
+    {
+      "name": "target_blocked (before v1)",
+      "source": "keenable-backend-ts#666 src/__tests__/routes/agent-ready-limit-errors.test.ts",
+      "status": 403,
+      "headers": {
+        "X-Request-Id": "req-15"
+      },
+      "body": {
+        "error": "Upstream forbidden",
+        "message": "The target server denied access to this URL",
+        "code": "target_blocked",
+        "fix": "The site refused the fetcher, for example with a bot check or an access rule. This is not about your API key, and retrying the same URL will not help: fetch another source for the same content.",
+        "docs_url": "https://docs.keenable.ai/errors#403",
+        "retryable": false,
+        "request_id": "req-15"
+      },
+      "expect": {
+        "kind": "api",
+        "code": "target_blocked",
+        "type": "target_error",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-15",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/errors#403",
+        "fix": "The site refused the fetcher, for example with a bot check or an access rule. This is not about your API key, and retrying the same URL will not help: fetch another source for the same content.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "The target server denied access to this URL"
+      }
+    },
+    {
+      "name": "content_not_extracted (before v1)",
+      "source": "keenable-backend-ts#666 src/__tests__/routes/agent-ready-limit-errors.test.ts",
+      "status": 422,
+      "headers": {
+        "X-Request-Id": "req-16"
+      },
+      "body": {
+        "error": "Unprocessable entity",
+        "message": "empty",
+        "code": "content_not_extracted",
+        "fix": "The page was reached but has no readable text to extract. Retrying will not help: fetch another source.",
+        "docs_url": "https://docs.keenable.ai/errors#422",
+        "retryable": false,
+        "request_id": "req-16"
+      },
+      "expect": {
+        "kind": "api",
+        "code": "content_not_extracted",
+        "type": "target_error",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-16",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/errors#422",
+        "fix": "The page was reached but has no readable text to extract. Retrying will not help: fetch another source.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "empty"
+      }
+    },
+    {
+      "name": "missing_parameter (before v1)",
+      "source": "keenable-backend-ts#666 src/__tests__/routes/agent-ready-limit-errors.test.ts",
+      "status": 400,
+      "headers": {
+        "X-Request-Id": "req-17"
+      },
+      "body": {
+        "error": "Missing required parameter",
+        "message": "\"url\" is required",
+        "code": "missing_parameter",
+        "fix": "Send the \"url\" parameter; it is required. Then retry.",
+        "docs_url": "https://docs.keenable.ai/errors#400-invalid-request",
+        "retryable": false,
+        "param": "url",
+        "request_id": "req-17"
+      },
+      "expect": {
+        "kind": "api",
+        "code": "missing_parameter",
+        "type": "invalid_request_error",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-17",
+        "param": "url",
+        "docs_url": "https://docs.keenable.ai/errors#400-invalid-request",
+        "fix": "Send the \"url\" parameter; it is required. Then retry.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "\"url\" is required"
+      }
+    },
+    {
+      "name": "invalid_parameter (before v1)",
+      "source": "keenable-backend-ts#666 src/shared/utils/agent-error-guidance.test.ts",
+      "status": 400,
+      "headers": {
+        "X-Request-Id": "req-18"
+      },
+      "body": {
+        "error": "Invalid parameter",
+        "message": "\"max_results\": must be an integer between 1 and 50",
+        "code": "invalid_parameter",
+        "fix": "Correct the \"max_results\" parameter (must be an integer between 1 and 50) and retry.",
+        "docs_url": "https://docs.keenable.ai/errors#400-invalid-request",
+        "retryable": false,
+        "param": "max_results",
+        "request_id": "req-18"
+      },
+      "expect": {
+        "kind": "api",
+        "code": "invalid_parameter",
+        "type": "invalid_request_error",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-18",
+        "param": "max_results",
+        "docs_url": "https://docs.keenable.ai/errors#400-invalid-request",
+        "fix": "Correct the \"max_results\" parameter (must be an integer between 1 and 50) and retry.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "\"max_results\": must be an integer between 1 and 50"
+      }
+    },
+    {
+      "name": "missing_app_title (before v1)",
+      "source": "keenable-backend-ts#666 src/__tests__/routes/agent-ready-limit-errors.test.ts",
+      "status": 400,
+      "headers": {
+        "X-Request-Id": "req-19"
+      },
+      "body": {
+        "error": "Missing app identifier",
+        "message": "X-Keenable-Title header is required for token-less requests",
+        "code": "missing_app_title",
+        "fix": "Name your app in the X-Keenable-Title header (or the keenable_title query parameter) and retry. With an API key, call /v1/search or /v1/fetch instead, which do not need it.",
+        "docs_url": "https://docs.keenable.ai/errors#400-missing-app-identifier",
+        "retryable": false,
+        "param": "X-Keenable-Title",
+        "request_id": "req-19"
+      },
+      "expect": {
+        "kind": "api",
+        "code": "missing_app_title",
+        "type": "invalid_request_error",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-19",
+        "param": "X-Keenable-Title",
+        "docs_url": "https://docs.keenable.ai/errors#400-missing-app-identifier",
+        "fix": "Name your app in the X-Keenable-Title header (or the keenable_title query parameter) and retry. With an API key, call /v1/search or /v1/fetch instead, which do not need it.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "X-Keenable-Title header is required for token-less requests"
+      }
+    },
+    {
+      "name": "request_too_large (before v1)",
+      "source": "keenable-backend-ts#666 src/__tests__/routes/agent-ready-limit-errors.test.ts",
+      "status": 413,
+      "headers": {
+        "X-Request-Id": "req-20"
+      },
+      "body": {
+        "error": "Request body too large",
+        "code": "request_too_large",
+        "fix": "The JSON request body is larger than the server accepts. Send only the documented parameters, with a shorter query, and retry.",
+        "docs_url": "https://docs.keenable.ai/errors#400-invalid-request",
+        "retryable": false,
+        "request_id": "req-20"
+      },
+      "expect": {
+        "kind": "api",
+        "code": "request_too_large",
+        "type": "invalid_request_error",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-20",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/errors#400-invalid-request",
+        "fix": "The JSON request body is larger than the server accepts. Send only the documented parameters, with a shorter query, and retry.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "Request body too large"
+      }
+    },
+    {
+      "name": "internal_error (before v1)",
+      "source": "keenable-backend-ts#666 src/__tests__/routes/agent-ready-limit-errors.test.ts",
+      "status": 500,
+      "headers": {
+        "X-Request-Id": "req-21",
+        "Retry-After": "2"
+      },
+      "body": {
+        "error": "Internal server error",
+        "code": "internal_error",
+        "fix": "Something failed on our side; the request itself may be fine. Wait a few seconds and retry up to 3 times, then report it with the request_id.",
+        "docs_url": "https://docs.keenable.ai/errors#5xx",
+        "retryable": true,
+        "retry_after_seconds": 2,
+        "request_id": "req-21"
+      },
+      "expect": {
+        "kind": "api",
+        "code": "internal_error",
+        "type": "api_error",
+        "retryable": true,
+        "retry_after_seconds": 2,
+        "request_id": "req-21",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/errors#5xx",
+        "fix": "Something failed on our side; the request itself may be fine. Wait a few seconds and retry up to 3 times, then report it with the request_id.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "Internal server error"
+      }
+    },
+    {
+      "name": "auth_unavailable (before v1)",
+      "source": "keenable-backend-ts#666 src/shared/utils/agent-error-guidance.test.ts",
+      "status": 503,
+      "headers": {
+        "X-Request-Id": "req-22",
+        "Retry-After": "5"
+      },
+      "body": {
+        "error": "Authentication temporarily unavailable",
+        "message": "Could not verify credentials right now. Retry shortly.",
+        "code": "auth_unavailable",
+        "fix": "Keenable could not check your credentials just now; the key itself may be fine. Wait for Retry-After and retry the same request.",
+        "docs_url": "https://docs.keenable.ai/errors#5xx",
+        "retryable": true,
+        "retry_after_seconds": 5,
+        "request_id": "req-22"
+      },
+      "expect": {
+        "kind": "api",
+        "code": "auth_unavailable",
+        "type": "api_error",
+        "retryable": true,
+        "retry_after_seconds": 5,
+        "request_id": "req-22",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/errors#5xx",
+        "fix": "Keenable could not check your credentials just now; the key itself may be fine. Wait for Retry-After and retry the same request.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "Could not verify credentials right now. Retry shortly."
+      }
+    }
+  ]
+}

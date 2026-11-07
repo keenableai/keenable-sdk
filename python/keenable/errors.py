@@ -43,6 +43,12 @@ class KeenableAPIError(KeenableError):
     - ``code``: a stable, machine-readable reason such as
       ``"rate_limit_per_second"`` or ``"target_blocked"``. Branch on this, not
       on the message.
+    - ``type``: the error's category, one of ``"invalid_request_error"``,
+      ``"authentication_error"``, ``"permission_error"``, ``"billing_error"``,
+      ``"rate_limit_error"``, ``"target_error"`` (the page being fetched
+      failed, not Keenable) or ``"api_error"``. Derived from the status and
+      ``code`` when the API did not send it, so it is set on every response
+      error.
     - ``error``: the API's short error title, e.g. ``"Rate limit exceeded"``.
     - ``fix``: one sentence on what to do next.
     - ``docs_url``: the docs page for this error.
@@ -54,6 +60,9 @@ class KeenableAPIError(KeenableError):
     - ``limit``: a :class:`RateLimitInfo` on 429s.
     - ``billing_url``, ``auto_top_up_url``, ``pay_per_request``: on 402s.
     - ``raw``: the whole decoded JSON body, for fields not listed here.
+
+    ``str(err)`` ends with ``Docs: <docs_url>``, ``(code: <code>)`` and
+    ``(request_id: <id>)`` when the API sent them.
     """
 
     def __init__(
@@ -63,6 +72,7 @@ class KeenableAPIError(KeenableError):
         body: str | None = None,
         *,
         code: str | None = None,
+        type: str | None = None,
         error: str | None = None,
         fix: str | None = None,
         docs_url: str | None = None,
@@ -80,6 +90,7 @@ class KeenableAPIError(KeenableError):
         self.status_code = status_code
         self.body = body
         self.code = code
+        self.type = type
         self.error = error
         self.fix = fix
         self.docs_url = docs_url

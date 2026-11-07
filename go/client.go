@@ -487,9 +487,31 @@ var statusLabels = map[int]string{
 	429: "Keenable rate limit exceeded (429)",
 }
 
-// notAuthCodes are 403 codes about the page being fetched, not about the
-// caller's credentials, so they are not reported as an AuthError.
-var notAuthCodes = map[string]bool{"target_blocked": true}
+// targetCodes are codes about the page being fetched rather than about
+// Keenable or the caller, besides every target_* code. Servers before error
+// format v1 send no "type", so it is derived from these and the status.
+var targetCodes = map[string]bool{"page_not_found": true, "content_not_extracted": true}
+
+// deriveType is the error type for a response that did not send one. It
+// matches the API's catalog for every code it had when "type" was added.
+func deriveType(status int, code string) string {
+	switch {
+	case strings.HasPrefix(code, "target_") || targetCodes[code]:
+		return TypeTargetError
+	case status == 401:
+		return TypeAuthenticationError
+	case status == 403:
+		return TypePermissionError
+	case status == 402 || status == 451:
+		return TypeBillingError
+	case status == 429:
+		return TypeRateLimitError
+	case status >= 400 && status < 500:
+		return TypeInvalidRequestError
+	default:
+		return TypeAPIError
+	}
+}
 
 // notYourLimitCodes are 429 codes for a limit that is not the caller's own
 // (ours or the fetched site's), so a key would not lift it.
@@ -512,8 +534,12 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 	api := parseErrorBody(obj, header)
 	api.StatusCode = status
 	api.Body = detail
+	if api.Type == "" {
+		api.Type = deriveType(status, api.APICode)
+	}
 
-	auth := (status == 401 || status == 403) && !notAuthCodes[api.APICode]
+	// A 401/403 about the page being fetched is not an authentication failure.
+	auth := (status == 401 || status == 403) && api.Type != TypeTargetError
 	label, ok := statusLabels[status]
 	if !ok || ((status == 401 || status == 403) && !auth) {
 		label = fmt.Sprintf("Keenable API error (%d)", status)
@@ -527,7 +553,7 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 	// generic advice below cannot. Python and TypeScript append it the same way.
 	switch {
 	case api.Fix != "":
-		msg += ". " + api.Fix
+		msg = sentence(msg, api.Fix)
 	case auth:
 		msg += ". Check KEENABLE_API_KEY, or pass Options.APIKey."
 	case status == 402:
@@ -549,8 +575,21 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 			msg += " Retry after " + api.RetryAfter.String() + "."
 		}
 	}
+	// Where to read more, as Stripe's SDKs print it; Error() adds the request
+	// id after it. Python and TypeScript end their messages the same way.
+	if api.DocsURL != "" {
+		msg = sentence(msg, "Docs: "+api.DocsURL)
+	}
 	api.msg = msg
 	return classifyStatus(api, auth, header)
+}
+
+// sentence appends more as a new sentence, without doubling a final period.
+func sentence(msg, more string) string {
+	if strings.HasSuffix(msg, ".") {
+		return msg + " " + more
+	}
+	return msg + ". " + more
 }
 
 func classifyStatus(api *APIError, auth bool, header http.Header) error {
@@ -582,6 +621,7 @@ func parseErrorBody(m map[string]any, header http.Header) *APIError {
 	api := &APIError{
 		Raw:           m,
 		APICode:       stringField(m, "code"),
+		Type:          stringField(m, "type"),
 		Title:         stringField(m, "error"),
 		Fix:           stringField(m, "fix"),
 		DocsURL:       stringField(m, "docs_url"),

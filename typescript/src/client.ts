@@ -6,7 +6,7 @@ import {
   KeenableInvalidRequestError,
   KeenableRateLimitError,
 } from "./errors.js";
-import type { KeenableAPIErrorDetails, RateLimitInfo } from "./errors.js";
+import type { KeenableAPIErrorDetails, KeenableErrorType, RateLimitInfo } from "./errors.js";
 import { SEARCH_FILTERS } from "./filters.js";
 import { cleanContextText, collapse, nonEmpty, normalizeHost, readEnv } from "./internal.js";
 import type {
@@ -493,9 +493,29 @@ export class Keenable {
   }
 }
 
-// A 403 with one of these codes is about the page being fetched, not about the
-// caller's credentials, so it is not reported as an authentication failure.
-const NOT_AUTH_CODES = new Set(["target_blocked"]);
+// Codes about the page being fetched rather than about Keenable or the caller,
+// besides every `target_*` code. Servers before error format v1 send no `type`,
+// so it is derived from these and the status.
+const TARGET_CODES = new Set(["page_not_found", "content_not_extracted"]);
+
+/**
+ * The error `type` for a response that did not send one. Matches the API's
+ * catalog for every code it had when `type` was added.
+ */
+function deriveType(status: number, code: string | undefined): KeenableErrorType {
+  if (code && (code.startsWith("target_") || TARGET_CODES.has(code))) return "target_error";
+  if (status === 401) return "authentication_error";
+  if (status === 403) return "permission_error";
+  if (status === 402 || status === 451) return "billing_error";
+  if (status === 429) return "rate_limit_error";
+  if (status >= 400 && status < 500) return "invalid_request_error";
+  return "api_error";
+}
+
+/** Append `more` as a new sentence, without doubling a final period. */
+function sentence(message: string, more: string): string {
+  return `${message}${message.endsWith(".") ? " " : ". "}${more}`;
+}
 
 function toApiError(status: number, text: string, headers?: Headers): KeenableAPIError {
   let detail = text.trim();
@@ -514,15 +534,22 @@ function toApiError(status: number, text: string, headers?: Headers): KeenableAP
     // Not JSON; the raw body is the best detail we have.
   }
 
-  const details = errorDetails(Array.isArray(record) ? undefined : record, headers);
-  const auth = (status === 401 || status === 403) && !NOT_AUTH_CODES.has(details.code ?? "");
+  const details = errorDetails(status, Array.isArray(record) ? undefined : record, headers);
+  // A 401/403 about the page being fetched is not an authentication failure.
+  const auth = (status === 401 || status === 403) && details.type !== "target_error";
   const label =
     (status === 401 || status === 403) && !auth
       ? `Keenable API error (${status})`
       : (STATUS_LABELS[status] ?? `Keenable API error (${status})`);
   let message = detail ? `${label}: ${detail}` : label;
   // The API's next step, appended the same way in the Go and Python SDKs.
-  if (details.fix) message = `${message}. ${details.fix}`;
+  if (details.fix) message = sentence(message, details.fix);
+  // Where to read more and what to quote, as Stripe's SDKs print them; the same
+  // tail as the Go and Python SDKs. The code goes in its own parentheses so the
+  // "(request_id: ...)" Go has shipped reads the same everywhere.
+  if (details.docsUrl) message = sentence(message, `Docs: ${details.docsUrl}`);
+  if (details.code) message = `${message} (code: ${details.code})`;
+  if (details.requestId) message = `${message} (request_id: ${details.requestId})`;
 
   if (auth) {
     return new KeenableAuthError(message, status, detail || undefined, details);
@@ -573,15 +600,19 @@ function rateLimitInfo(value: unknown): RateLimitInfo | undefined {
  * The agent-ready fields of an error body, undefined where the API left one
  * out. `retryAfterSeconds` prefers the body, then the `Retry-After` header,
  * then the older `retryAfter` body field; `requestId` prefers the body, then
- * the `X-Request-Id` header.
+ * the `X-Request-Id` header; `type` is derived from the status and code when
+ * the API did not send it.
  */
 function errorDetails(
+  status: number,
   body: Record<string, unknown> | undefined,
   headers: Headers | undefined,
 ): KeenableAPIErrorDetails {
   const b = body ?? {};
+  const code = nonEmpty(b.code);
   return {
-    code: nonEmpty(b.code),
+    code,
+    type: nonEmpty(b.type) ?? deriveType(status, code),
     error: nonEmpty(b.error),
     fix: nonEmpty(b.fix),
     docsUrl: nonEmpty(b.docs_url),

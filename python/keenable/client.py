@@ -105,9 +105,30 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
     return payload
 
 
-# A 403 with one of these codes is about the page being fetched, not about the
-# caller's credentials, so it is not reported as an authentication failure.
-_NOT_AUTH_CODES = frozenset({"target_blocked"})
+# Codes about the page being fetched rather than about Keenable or the caller,
+# besides every ``target_*`` code. Servers before error format v1 send no
+# ``type``, so it is derived from these and the status.
+_TARGET_CODES = frozenset({"page_not_found", "content_not_extracted"})
+
+
+def _derive_type(status: int, code: str | None) -> str:
+    """The error ``type`` for a response that did not send one.
+
+    Matches the API's catalog for every code it had when ``type`` was added.
+    """
+    if code and (code.startswith("target_") or code in _TARGET_CODES):
+        return "target_error"
+    if status == 401:
+        return "authentication_error"
+    if status == 403:
+        return "permission_error"
+    if status in (402, 451):
+        return "billing_error"
+    if status == 429:
+        return "rate_limit_error"
+    if 400 <= status < 500:
+        return "invalid_request_error"
+    return "api_error"
 
 
 def _str_field(body: dict[str, Any], key: str) -> str | None:
@@ -171,7 +192,8 @@ def _error_fields(
 
     ``retry_after_seconds`` prefers the body, then the ``Retry-After`` header,
     then the older ``retryAfter`` body field; ``request_id`` prefers the body,
-    then the ``X-Request-Id`` header.
+    then the ``X-Request-Id`` header; ``type`` is derived from the status and
+    code when the API did not send it.
     """
     body = raw or {}
     retryable = body.get("retryable")
@@ -181,8 +203,10 @@ def _error_fields(
     if retry_after is None:
         retry_after = _seconds(body.get("retryAfter"))
     header_id = (response.headers.get("X-Request-Id") or "").strip() or None
+    code = _str_field(body, "code")
     return {
-        "code": _str_field(body, "code"),
+        "code": code,
+        "type": _str_field(body, "type") or _derive_type(response.status_code, code),
         "error": _str_field(body, "error"),
         "fix": _str_field(body, "fix"),
         "docs_url": _str_field(body, "docs_url"),
@@ -196,6 +220,11 @@ def _error_fields(
         "pay_per_request": _str_field(body, "pay_per_request"),
         "raw": raw,
     }
+
+
+def _sentence(message: str, more: str) -> str:
+    """Append ``more`` as a new sentence, without doubling a final period."""
+    return f"{message}{' ' if message.endswith('.') else '. '}{more}"
 
 
 def _to_api_error(response: httpx.Response) -> KeenableAPIError:
@@ -214,7 +243,8 @@ def _to_api_error(response: httpx.Response) -> KeenableAPIError:
 
     fields = _error_fields(body, response)
     status = response.status_code
-    auth = status in (401, 403) and fields["code"] not in _NOT_AUTH_CODES
+    # A 401/403 about the page being fetched is not an authentication failure.
+    auth = status in (401, 403) and fields["type"] != "target_error"
     if status in (401, 403) and not auth:
         label = f"Keenable API error ({status})"
     else:
@@ -222,7 +252,16 @@ def _to_api_error(response: httpx.Response) -> KeenableAPIError:
     message = f"{label}: {detail}" if detail else label
     if fields["fix"]:
         # The API's next step, appended the same way in the Go and TS SDKs.
-        message = f"{message}. {fields['fix']}"
+        message = _sentence(message, fields["fix"])
+    # Where to read more and what to quote, as Stripe's SDKs print them; the
+    # same tail as the Go and TS SDKs. The code goes in its own parentheses so
+    # the "(request_id: ...)" Go has shipped reads the same everywhere.
+    if fields["docs_url"]:
+        message = _sentence(message, f"Docs: {fields['docs_url']}")
+    if fields["code"]:
+        message = f"{message} (code: {fields['code']})"
+    if fields["request_id"]:
+        message = f"{message} (request_id: {fields['request_id']})"
 
     if auth:
         return KeenableAuthError(message, status, detail or None, **fields)
