@@ -83,7 +83,7 @@
         "type": "permission_error",
         "code": "credentials_forbidden",
         "message": "The credentials were recognized but are not allowed, usually because the key was revoked.",
-        "fix": "The credentials were recognized but are not allowed, usually because the key was revoked. Retrying with them will not help: create a new key at https://app.keenable.ai/console/api-keys, or ask a human with console access to.",
+        "fix": "The credentials were recognized but are not allowed, usually because the key was revoked. Retrying with them will not help: create a new key at https://app.keenable.ai/console/api-keys, or ask a human with console access to create one for you.",
         "docs_url": "https://docs.keenable.ai/errors#credentials-forbidden",
         "request_id": "req-credentials_forbidden",
         "retryable": false,
@@ -98,7 +98,7 @@
         "request_id": "req-credentials_forbidden",
         "param": null,
         "docs_url": "https://docs.keenable.ai/errors#credentials-forbidden",
-        "fix": "The credentials were recognized but are not allowed, usually because the key was revoked. Retrying with them will not help: create a new key at https://app.keenable.ai/console/api-keys, or ask a human with console access to.",
+        "fix": "The credentials were recognized but are not allowed, usually because the key was revoked. Retrying with them will not help: create a new key at https://app.keenable.ai/console/api-keys, or ask a human with console access to create one for you.",
         "limit": null,
         "billing_url": null,
         "auto_top_up_url": null,
@@ -188,7 +188,7 @@
         "type": "billing_error",
         "code": "insufficient_credits",
         "message": "This month's free requests and the purchased credits are used up.",
-        "fix": "Retrying returns the same 402 until credits are added. Ask a human with console access to buy credits at billing_url, and to turn on auto top-up there so the balance refills itself (https://docs.keenable.ai/auto-top-up.md).",
+        "fix": "Retrying returns the same 402 until credits are added. Ask a human with console access to buy credits at the URL in this response's billing_url field (the Billing page of the Keenable console), and to turn on auto top-up there so the balance refills itself (https://docs.keenable.ai/auto-top-up.md).",
         "docs_url": "https://docs.keenable.ai/errors#insufficient-credits",
         "request_id": "req-insufficient_credits",
         "retryable": false,
@@ -204,7 +204,7 @@
         "request_id": "req-insufficient_credits",
         "param": null,
         "docs_url": "https://docs.keenable.ai/errors#insufficient-credits",
-        "fix": "Retrying returns the same 402 until credits are added. Ask a human with console access to buy credits at billing_url, and to turn on auto top-up there so the balance refills itself (https://docs.keenable.ai/auto-top-up.md).",
+        "fix": "Retrying returns the same 402 until credits are added. Ask a human with console access to buy credits at the URL in this response's billing_url field (the Billing page of the Keenable console), and to turn on auto top-up there so the balance refills itself (https://docs.keenable.ai/auto-top-up.md).",
         "limit": null,
         "billing_url": "https://app.keenable.ai/console/billing",
         "auto_top_up_url": "https://docs.keenable.ai/auto-top-up.md",
@@ -224,7 +224,7 @@
         "error": "Internal server error",
         "type": "api_error",
         "code": "internal_error",
-        "message": "Something failed on the Keenable side.",
+        "message": "Something failed on the Keenable side, usually with 500; any other 5xx without a more specific code also uses it.",
         "fix": "Something failed on our side; the request itself may be fine. Wait a few seconds and retry up to 3 times, then report it with the request_id.",
         "docs_url": "https://docs.keenable.ai/errors#internal-error",
         "request_id": "req-internal_error",
@@ -245,7 +245,7 @@
         "billing_url": null,
         "auto_top_up_url": null,
         "pay_per_request": null,
-        "message_contains": "Something failed on the Keenable side."
+        "message_contains": "Something failed on the Keenable side, usually with 500; any other 5xx without a more specific code also uses it."
       }
     },
     {
@@ -991,10 +991,10 @@
         "X-Request-Id": "req-request_rejected"
       },
       "body": {
-        "error": "Conflict",
+        "error": "Request rejected",
         "type": "invalid_request_error",
         "code": "request_rejected",
-        "message": "The request was rejected; the message names the step to take first.",
+        "message": "The request was rejected, usually with 409 Conflict; any other 4xx without a more specific code also uses it. The message names the step to take first.",
         "fix": "The request was rejected: read \"message\" for the step to take first. Retrying the same request unchanged returns the same error.",
         "docs_url": "https://docs.keenable.ai/errors#request-rejected",
         "request_id": "req-request_rejected",
@@ -1014,7 +1014,7 @@
         "billing_url": null,
         "auto_top_up_url": null,
         "pay_per_request": null,
-        "message_contains": "The request was rejected; the message names the step to take first."
+        "message_contains": "The request was rejected, usually with 409 Conflict; any other 4xx without a more specific code also uses it. The message names the step to take first."
       }
     },
     {
