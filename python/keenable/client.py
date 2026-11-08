@@ -112,6 +112,11 @@ def _numeric_ipv4(host: str) -> ipaddress.IPv4Address | None:
             digits, base, allowed = part, 10, "0123456789"
         if not part or not all(c in allowed for c in digits):
             return None
+        # Over 11 significant digits is past 2**32 in any base; checking first
+        # keeps int() clear of Python's integer-string length limit.
+        digits = digits.lstrip("0")
+        if len(digits) > 11:
+            return None
         numbers.append(int(digits, base) if digits else 0)
     *leading, last = numbers
     if any(n > 255 for n in leading) or last >= 256 ** (4 - len(leading)):

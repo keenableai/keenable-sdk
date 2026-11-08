@@ -863,6 +863,15 @@ def test_a_host_that_is_not_a_numeric_ipv4_is_left_to_the_hostname_path(
     assert client_module._numeric_ipv4(host) is None
 
 
+async def test_a_huge_numeric_host_is_a_hostname_not_a_crash(run: Runner) -> None:
+    # Past Python's 4300-digit int() limit, which raised a bare ValueError.
+    host = "9" * 5000
+    assert client_module._numeric_ipv4(host) is None
+    assert client_module._numeric_ipv4("0" * 5000 + "177.0.0.1") is not None
+    outcome = await run([_page()], method="fetch", arg=f"https://{host}/")
+    assert outcome.error is None
+
+
 async def test_a_zoneless_retry_after_date_is_read_as_gmt(run: Runner) -> None:
     when = datetime.now(timezone.utc) + timedelta(seconds=30)
     header = when.strftime("%a, %d %b %Y %H:%M:%S")
