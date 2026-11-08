@@ -1124,6 +1124,76 @@
       }
     },
     {
+      "name": "storage_error",
+      "source": "keenable-backend-ts docs/error-catalog.json#storage_error",
+      "status": 500,
+      "headers": {
+        "X-Request-Id": "req-storage_error"
+      },
+      "body": {
+        "error": "Storage error",
+        "type": "api_error",
+        "code": "storage_error",
+        "message": "Our database answered with an error, so the request could not be completed.",
+        "fix": "Our database returned an error; the request itself is fine, but retrying it unchanged will not help. Report it with the request_id.",
+        "docs_url": "https://docs.keenable.ai/errors#storage-error",
+        "request_id": "req-storage_error",
+        "retryable": false
+      },
+      "expect": {
+        "kind": "api",
+        "code": "storage_error",
+        "type": "api_error",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-storage_error",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/errors#storage-error",
+        "fix": "Our database returned an error; the request itself is fine, but retrying it unchanged will not help. Report it with the request_id.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "Our database answered with an error, so the request could not be completed."
+      }
+    },
+    {
+      "name": "storage_unavailable",
+      "source": "keenable-backend-ts docs/error-catalog.json#storage_unavailable",
+      "status": 503,
+      "headers": {
+        "X-Request-Id": "req-storage_unavailable",
+        "Retry-After": "1"
+      },
+      "body": {
+        "error": "Storage temporarily unavailable",
+        "type": "api_error",
+        "code": "storage_unavailable",
+        "message": "Our database did not respond in time, so the request could not be completed.",
+        "fix": "Our database did not respond in time; the request itself is fine. Wait for Retry-After and retry the same request.",
+        "docs_url": "https://docs.keenable.ai/errors#storage-unavailable",
+        "request_id": "req-storage_unavailable",
+        "retryable": true,
+        "retry_after_seconds": 1
+      },
+      "expect": {
+        "kind": "api",
+        "code": "storage_unavailable",
+        "type": "api_error",
+        "retryable": true,
+        "retry_after_seconds": 1,
+        "request_id": "req-storage_unavailable",
+        "param": null,
+        "docs_url": "https://docs.keenable.ai/errors#storage-unavailable",
+        "fix": "Our database did not respond in time; the request itself is fine. Wait for Retry-After and retry the same request.",
+        "limit": null,
+        "billing_url": null,
+        "auto_top_up_url": null,
+        "pay_per_request": null,
+        "message_contains": "Our database did not respond in time, so the request could not be completed."
+      }
+    },
+    {
       "name": "target_blocked",
       "source": "keenable-backend-ts docs/error-catalog.json#target_blocked",
       "status": 403,

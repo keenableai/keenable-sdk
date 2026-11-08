@@ -372,6 +372,30 @@
     "since": "2026-11"
   },
   {
+    "code": "storage_error",
+    "type": "api_error",
+    "status": 500,
+    "title": "Storage error",
+    "summary": "Our database answered with an error, so the request could not be completed.",
+    "fix": "Our database returned an error; the request itself is fine, but retrying it unchanged will not help. Report it with the request_id.",
+    "retryable": false,
+    "docs_anchor": "storage-error",
+    "docs_url": "https://docs.keenable.ai/errors#storage-error",
+    "since": "2026-11"
+  },
+  {
+    "code": "storage_unavailable",
+    "type": "api_error",
+    "status": 503,
+    "title": "Storage temporarily unavailable",
+    "summary": "Our database did not respond in time, so the request could not be completed.",
+    "fix": "Our database did not respond in time; the request itself is fine. Wait for Retry-After and retry the same request.",
+    "retryable": true,
+    "docs_anchor": "storage-unavailable",
+    "docs_url": "https://docs.keenable.ai/errors#storage-unavailable",
+    "since": "2026-11"
+  },
+  {
     "code": "target_blocked",
     "type": "target_error",
     "status": 403,
