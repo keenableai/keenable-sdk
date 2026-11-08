@@ -33,12 +33,14 @@ var (
 //
 // Markdown images and <img> tags are removed. Links with an absolute URL are
 // kept as written; relative links are resolved against baseURL (the page the
-// text came from), or reduced to their text when that is not possible. Fenced
-// code blocks and inline code spans are left alone, and so is name[i](x),
-// which is code rather than a link. Only lines that changed are tidied: runs
-// of spaces squeezed, and the line dropped if nothing but table pipes and
-// dashes is left (unless it is a table's header row). Text without such markup
-// is returned unchanged.
+// text came from), or reduced to their text when that is not possible.
+// Markdown tables are flattened: delimiter rows (|---|:-:|) are dropped, and
+// each row becomes its non-empty cells joined with " · " (\| is a literal
+// pipe); a row left with no cells is dropped. Fenced code blocks and inline
+// code spans are left alone, and so is name[i](x), which is code rather than
+// a link. Other lines are tidied only if they changed: runs of spaces
+// squeezed, and the line dropped if nothing but pipes and dashes is left.
+// Text without images, links or tables is returned unchanged.
 func cleanContextText(text, baseURL string) string {
 	var base *url.URL
 	if u, err := url.Parse(baseURL); err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" {
@@ -47,6 +49,7 @@ func cleanContextText(text, baseURL string) string {
 	lines := strings.Split(text, "\n")
 	out := make([]string, 0, len(lines))
 	fence := ""
+	inTable := false
 	for i, line := range lines {
 		marker := fenceLine.FindStringSubmatch(line)
 		run, info := "", ""
@@ -62,13 +65,29 @@ func cleanContextText(text, baseURL string) string {
 		}
 		if run != "" && !(run[0] == '`' && strings.Contains(info, "`")) {
 			fence = run
+			inTable = false
 			out = append(out, line)
+			continue
+		}
+		if isTableDelimiter(line) {
+			inTable = true
 			continue
 		}
 
 		protected, spans := protectCodeSpans(line)
 		cleaned := htmlImage.ReplaceAllString(mdImage.ReplaceAllString(protected, ""), "")
 		cleaned = replaceLinks(cleaned, base)
+		// A table row: it starts with a pipe, or it has one and sits under a
+		// header (the next line is a delimiter row) or under another row.
+		if hasCellPipe(cleaned) && (strings.HasPrefix(strings.TrimLeftFunc(cleaned, unicode.IsSpace), "|") ||
+			inTable || (i+1 < len(lines) && isTableDelimiter(lines[i+1]))) {
+			inTable = true
+			if cells := tableCells(cleaned); len(cells) > 0 {
+				out = append(out, restoreCodeSpans(strings.Join(cells, " · "), spans))
+			}
+			continue
+		}
+		inTable = false
 		if cleaned == protected {
 			out = append(out, line)
 			continue
@@ -76,20 +95,10 @@ func cleanContextText(text, baseURL string) string {
 		rest := strings.TrimLeft(cleaned, " \t")
 		indent := cleaned[:len(cleaned)-len(rest)]
 		cleaned = indent + strings.TrimRightFunc(spaceRun.ReplaceAllString(rest, " "), unicode.IsSpace)
-		if onlyTableRule.MatchString(cleaned) &&
-			!(strings.Contains(cleaned, "|") && i+1 < len(lines) && isTableDelimiter(lines[i+1])) {
+		if onlyTableRule.MatchString(cleaned) {
 			continue
 		}
-		if len(spans) > 0 {
-			cleaned = placeholder.ReplaceAllStringFunc(cleaned, func(p string) string {
-				n, err := strconv.Atoi(p[1 : len(p)-1])
-				if err != nil || n >= len(spans) {
-					return p
-				}
-				return spans[n]
-			})
-		}
-		out = append(out, cleaned)
+		out = append(out, restoreCodeSpans(cleaned, spans))
 	}
 	return strings.Join(out, "\n")
 }
@@ -144,6 +153,56 @@ func protectCodeSpans(line string) (string, []string) {
 		i = closer
 	}
 	return b.String(), spans
+}
+
+func restoreCodeSpans(text string, spans []string) string {
+	if len(spans) == 0 {
+		return text
+	}
+	return placeholder.ReplaceAllStringFunc(text, func(p string) string {
+		n, err := strconv.Atoi(p[1 : len(p)-1])
+		if err != nil || n >= len(spans) {
+			return p
+		}
+		return spans[n]
+	})
+}
+
+// hasCellPipe reports whether line has a | that is not escaped as \|.
+func hasCellPipe(line string) bool {
+	for i := 0; i < len(line); i++ {
+		if line[i] == '|' && (i == 0 || line[i-1] != '\\') {
+			return true
+		}
+	}
+	return false
+}
+
+// tableCells returns the non-empty cells of a table row, trimmed, with \|
+// read as |.
+func tableCells(line string) []string {
+	var cells []string
+	var cell strings.Builder
+	flush := func() {
+		c := strings.TrimSpace(spaceRun.ReplaceAllString(cell.String(), " "))
+		if c != "" {
+			cells = append(cells, c)
+		}
+		cell.Reset()
+	}
+	for i := 0; i < len(line); i++ {
+		switch {
+		case line[i] == '\\' && i+1 < len(line) && line[i+1] == '|':
+			cell.WriteByte('|')
+			i++
+		case line[i] == '|':
+			flush()
+		default:
+			cell.WriteByte(line[i])
+		}
+	}
+	flush()
+	return cells
 }
 
 func isTableDelimiter(line string) bool {

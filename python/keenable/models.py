@@ -13,6 +13,11 @@ from urllib.parse import urljoin, urlsplit
 # front of a user question without crowding out the rest of the prompt.
 DEFAULT_CONTEXT_MAX_CHARS = 12_000
 
+# Default per-result cap for `SearchResponse.to_context()`. Search snippets are
+# often whole pages (4,000 to 13,000 characters); without a cap the first one
+# or two results eat the budget and crowd out every other source.
+DEFAULT_CONTEXT_MAX_SNIPPET_CHARS = 2_000
+
 
 def _str_or_none(value: Any) -> str | None:
     """Return a non-empty string, or None for anything else (incl. "")."""
@@ -140,21 +145,57 @@ def _is_table_delimiter(line: str) -> bool:
     return "|" in line and "-" in line and bool(_ONLY_TABLE_RULE.match(line.rstrip()))
 
 
+def _has_cell_pipe(line: str) -> bool:
+    """Whether ``line`` has a ``|`` that is not escaped as ``\\|``."""
+    i = line.find("|")
+    while i != -1:
+        if i == 0 or line[i - 1] != "\\":
+            return True
+        i = line.find("|", i + 1)
+    return False
+
+
+def _table_cells(line: str) -> list[str]:
+    """The non-empty cells of a table row, trimmed, with ``\\|`` read as ``|``."""
+    cells: list[str] = []
+    cell: list[str] = []
+    i = 0
+    n = len(line)
+    while i < n:
+        ch = line[i]
+        if ch == "\\" and i + 1 < n and line[i + 1] == "|":
+            cell.append("|")
+            i += 2
+            continue
+        if ch == "|":
+            cells.append("".join(cell))
+            cell = []
+        else:
+            cell.append(ch)
+        i += 1
+    cells.append("".join(cell))
+    return [c for c in (_SPACE_RUN.sub(" ", c).strip() for c in cells) if c]
+
+
 def _clean_context_text(text: str, base_url: str) -> str:
     """Strip markup a model cannot use from page text bound for a prompt.
 
     Markdown images and ``<img>`` tags are removed. Links with an absolute URL
     are kept as written; relative links are resolved against ``base_url`` (the
     page the text came from), or reduced to their text when that is not
-    possible. Fenced code blocks and inline code spans are left alone, and so
-    is ``name[i](x)``, which is code rather than a link. Only lines that
-    changed are tidied: runs of spaces squeezed, and the line dropped if
-    nothing but table pipes and dashes is left (unless it is a table's header
-    row). Text without such markup is returned unchanged.
+    possible. Markdown tables are flattened: delimiter rows (``|---|:-:|``)
+    are dropped, and each row becomes its non-empty cells joined with " · "
+    (``\\|`` is a literal pipe); a row left with no cells is dropped. Fenced
+    code blocks and inline code spans are left alone, and so is
+    ``name[i](x)``, which is code rather than a link. Other lines are tidied
+    only if they changed: runs of spaces squeezed, and the line dropped if
+    nothing but pipes and dashes is left. Text without images, links or tables
+    is returned unchanged.
     """
     lines = text.split("\n")
     out: list[str] = []
     fence: str | None = None
+    in_table = False
     for i, line in enumerate(lines):
         marker = _FENCE.match(line)
         if fence is not None:
@@ -169,24 +210,52 @@ def _clean_context_text(text: str, base_url: str) -> str:
             continue
         if marker and not (marker.group(1)[0] == "`" and "`" in marker.group(2)):
             fence = marker.group(1)
+            in_table = False
             out.append(line)
+            continue
+        if _is_table_delimiter(line):
+            in_table = True
             continue
 
         protected, spans = _protect_code_spans(line)
         cleaned = _HTML_IMAGE.sub("", _MD_IMAGE.sub("", protected))
         cleaned = _MD_LINK.sub(lambda m: _resolve_link(m, base_url), cleaned)
+        # A table row: it starts with a pipe, or it has one and sits under a
+        # header (the next line is a delimiter row) or under another row.
+        if _has_cell_pipe(cleaned) and (
+            cleaned.lstrip().startswith("|")
+            or in_table
+            or (i + 1 < len(lines) and _is_table_delimiter(lines[i + 1]))
+        ):
+            in_table = True
+            cells = _table_cells(cleaned)
+            if cells:
+                out.append(_restore_code_spans(" · ".join(cells), spans))
+            continue
+        in_table = False
         if cleaned == protected:
             out.append(line)
             continue
         rest = cleaned.lstrip(" \t")
         indent = cleaned[: len(cleaned) - len(rest)]
         cleaned = indent + _SPACE_RUN.sub(" ", rest).rstrip()
-        if _ONLY_TABLE_RULE.match(cleaned) and not (
-            "|" in cleaned and i + 1 < len(lines) and _is_table_delimiter(lines[i + 1])
-        ):
+        if _ONLY_TABLE_RULE.match(cleaned):
             continue
         out.append(_restore_code_spans(cleaned, spans))
     return "\n".join(out)
+
+
+def _cap_snippet(text: str, limit: int | None) -> str:
+    """Cut ``text`` to ``limit`` characters at a word boundary, ending in "…".
+
+    The cut falls at the last space at or before ``limit`` (a hard cut when
+    there is none). Text at or under the limit is returned as is.
+    """
+    if limit is None or limit < 1 or len(text) <= limit:
+        return text
+    space = text.rfind(" ", 0, limit + 1)
+    head = text[:space] if space > 0 else text[:limit]
+    return head.rstrip() + "…"
 
 
 def _context_block(header: str, body: str) -> str:
@@ -231,10 +300,12 @@ class SearchResult:
         )
 
 
-def _result_body(result: SearchResult) -> str:
+def _result_body(result: SearchResult, max_snippet_chars: int | None) -> str:
     """The text rendered under a search result's header, as budgeted."""
     text = result.snippet or result.description or ""
-    return _collapse(_clean_context_text(text, result.url))
+    return _cap_snippet(
+        _collapse(_clean_context_text(text, result.url)), max_snippet_chars
+    )
 
 
 @dataclass
@@ -275,20 +346,22 @@ class SearchResponse:
         max_chars: int = DEFAULT_CONTEXT_MAX_CHARS,
         max_results: int | None = None,
         include_dates: bool = True,
+        max_snippet_chars: int | None = DEFAULT_CONTEXT_MAX_SNIPPET_CHARS,
     ) -> list[SearchResult]:
         """The results :meth:`to_context` would render, in citation order.
 
         Use this to print a source list that matches the citations in a model's
         answer: index ``0`` here is the source the model cites as ``[1]``.
         Without it, a caller listing every result would number sources the model
-        never saw once the budget trimmed them.
+        never saw once the budget trimmed them. Takes the same arguments as
+        :meth:`to_context`.
         """
         selected = self.results if max_results is None else self.results[:max_results]
         kept: list[SearchResult] = []
         used = 0
 
         for index, result in enumerate(selected, start=1):
-            body = _result_body(result)
+            body = _result_body(result, max_snippet_chars)
             header = self._header(index, result, include_dates=include_dates)
             # Measure before building: past the budget the block is discarded,
             # and each discarded snippet is kilobytes of throwaway string.
@@ -306,15 +379,19 @@ class SearchResponse:
         max_chars: int = DEFAULT_CONTEXT_MAX_CHARS,
         max_results: int | None = None,
         include_dates: bool = True,
+        max_snippet_chars: int | None = DEFAULT_CONTEXT_MAX_SNIPPET_CHARS,
     ) -> str:
         """Render the results as a numbered, citable block for a prompt.
 
         Each result becomes a ``[n] title (url)`` header followed by its
         snippet, which lets the model cite sources by number and lets you map
-        those numbers back to URLs. Results are added whole until ``max_chars``
-        is reached, so a truncated context never ends mid-sentence. Snippets
-        are cleaned first (images dropped, relative links resolved), and the
-        budget counts the cleaned text; ``snippet`` itself is left untouched.
+        those numbers back to URLs. Snippets are cleaned first (images
+        dropped, relative links resolved, tables flattened), then each is cut
+        to ``max_snippet_chars`` at a word boundary and ends in "…". Results
+        are then added whole until ``max_chars`` is reached, and the budget
+        counts the cleaned, capped text; ``snippet`` itself is left untouched.
+        The first result is always kept, even if it alone exceeds
+        ``max_chars``.
 
         Args:
             max_chars: Approximate character budget for the whole block.
@@ -322,17 +399,21 @@ class SearchResponse:
                 applied.
             include_dates: Append the publication date to each header when the
                 page exposes one. Useful when recency matters to the answer.
+            max_snippet_chars: Cap each result's text at about this many
+                characters (plus the "…"), so one whole-page snippet cannot
+                take the whole budget. ``None`` means no cap.
         """
         return "\n\n".join(
             _context_block(
                 self._header(index, result, include_dates=include_dates),
-                _result_body(result),
+                _result_body(result, max_snippet_chars),
             )
             for index, result in enumerate(
                 self.cited(
                     max_chars=max_chars,
                     max_results=max_results,
                     include_dates=include_dates,
+                    max_snippet_chars=max_snippet_chars,
                 ),
                 start=1,
             )

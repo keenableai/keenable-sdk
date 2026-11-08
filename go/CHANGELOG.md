@@ -33,10 +33,23 @@ longer gets a second one before `Fix`. No migration.
 `ToContext` (on `SearchResponse` and `Page`) drops markdown images and `<img>`
 tags, and resolves relative links against the result's URL (or keeps just the
 link text when it cannot). Absolute links are unchanged, and lines left holding
-only table pipes are dropped. Fenced code blocks, inline code and `name[i](x)`
-calls are left alone, as is a table's header row. `MaxChars` counts the
-cleaned text. `Snippet` and
-`Content` are untouched. No migration.
+only pipes and dashes are dropped. Fenced code blocks, inline code and
+`name[i](x)` calls are left alone. `MaxChars` counts the cleaned text.
+`Snippet` and `Content` are untouched. No migration.
+
+`ToContext` (on `SearchResponse` and `Page`) flattens markdown tables:
+delimiter rows (`|---|:-:|`) are dropped, and each row becomes its non-empty
+cells joined with " · " (`\|` is a literal pipe). A row left with no cells,
+such as one that held only avatar images, is dropped. Tables inside fenced code
+are left alone, and a pipe inside inline code does not split a cell. No
+migration.
+
+New `ContextOptions.MaxSnippetChars` for `SearchResponse.ToContext` and
+`Cited` (zero means the new `DefaultContextMaxSnippetChars`, 2000): each
+result's cleaned text is cut at the last space at or before that many
+characters and ends in "…", so one whole-page snippet no longer takes the whole
+`MaxChars` budget. The budget counts the capped text. Set it negative for the
+old uncapped behaviour. `Page.ToContext` is unchanged.
 
 ## 0.1.1
 

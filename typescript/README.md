@@ -68,9 +68,13 @@ ${results.toContext()}
 Question: ...`;
 ```
 
-It emits `[n] Title (url)` headers followed by the page text, adds results whole
-until the character budget is reached (`maxChars: 12000` by default), and never
-truncates a source mid-sentence.
+It emits `[n] Title (url)` headers followed by the page text. Each result's
+text is cleaned (images dropped, relative links resolved, markdown tables
+flattened to `cell · cell` rows) and cut at a word boundary to
+`maxSnippetChars` (2000 by default, `null` for no cap), ending in "…". Results
+are then added whole until the character budget is reached (`maxChars: 12000`
+by default), so a later source is dropped rather than cut off. The first result
+is kept even when it alone is over the budget.
 
 To print a source list that matches the citations in the answer, ask which
 results were actually rendered rather than listing them all:

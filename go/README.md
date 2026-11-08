@@ -85,10 +85,13 @@ contextText := results.ToContext(nil)
 prompt := "Answer using only these sources, citing them by number.\n\n" + contextText
 ```
 
-It emits `[1] Title (url)` headers followed by the page text, adds results whole
-until the character budget is reached (`MaxChars` 12000 by default), and never
-truncates a source mid-sentence. The first result is kept even when it alone
-is over the budget. A later result that does not fit ends the block, so
+It emits `[1] Title (url)` headers followed by the page text. Each result's
+text is cleaned (images dropped, relative links resolved, markdown tables
+flattened to `cell · cell` rows) and cut at a word boundary to
+`MaxSnippetChars` (2000 by default, negative for no cap), ending in "…".
+Results are then added whole until the character budget is reached (`MaxChars`
+12000 by default). The first result is kept even when it alone is over the
+budget. A later result that does not fit ends the block, so
 citation numbers stay contiguous.
 
 To print a source list that matches the citations in the answer, ask which

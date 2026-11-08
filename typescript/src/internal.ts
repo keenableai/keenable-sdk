@@ -89,6 +89,41 @@ function isTableDelimiter(line: string): boolean {
   return line.includes("|") && line.includes("-") && ONLY_TABLE_RULE.test(line.trimEnd());
 }
 
+/** Whether `line` has a `|` that is not escaped as `\|`. */
+function hasCellPipe(line: string): boolean {
+  let i = line.indexOf("|");
+  while (i !== -1) {
+    if (i === 0 || line.charAt(i - 1) !== "\\") return true;
+    i = line.indexOf("|", i + 1);
+  }
+  return false;
+}
+
+/** The non-empty cells of a table row, trimmed, with `\|` read as `|`. */
+function tableCells(line: string): string[] {
+  const cells: string[] = [];
+  let cell = "";
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line.charAt(i);
+    if (ch === "\\" && line.charAt(i + 1) === "|") {
+      cell += "|";
+      i += 1;
+    } else if (ch === "|") {
+      cells.push(cell);
+      cell = "";
+    } else {
+      cell += ch;
+    }
+  }
+  cells.push(cell);
+  return cells.map((c) => c.replace(/[ \t]+/g, " ").trim()).filter(Boolean);
+}
+
+function restoreCodeSpans(text: string, spans: string[]): string {
+  if (!spans.length) return text;
+  return text.replace(PLACEHOLDER, (_m, n: string) => spans[Number(n)] ?? "");
+}
+
 /**
  * Swap inline code spans for placeholders the cleanup patterns skip.
  * Opening and closing backtick runs must be the same length, so a shorter
@@ -141,17 +176,20 @@ function protectCodeSpans(line: string): { protected: string; spans: string[] } 
  *
  * Markdown images and `<img>` tags are removed. Links with an absolute URL are
  * kept as written; relative links are resolved against `baseUrl` (the page the
- * text came from), or reduced to their text when that is not possible. Fenced
- * code blocks and inline code spans are left alone, and so is `name[i](x)`,
- * which is code rather than a link. Only lines that changed are tidied: runs of
- * spaces squeezed, and the line dropped if nothing but table pipes and dashes
- * is left (unless it is a table's header row). Text without such markup is
- * returned unchanged.
+ * text came from), or reduced to their text when that is not possible.
+ * Markdown tables are flattened: delimiter rows (`|---|:-:|`) are dropped, and
+ * each row becomes its non-empty cells joined with " · " (`\|` is a literal
+ * pipe); a row left with no cells is dropped. Fenced code blocks and inline
+ * code spans are left alone, and so is `name[i](x)`, which is code rather than
+ * a link. Other lines are tidied only if they changed: runs of spaces
+ * squeezed, and the line dropped if nothing but pipes and dashes is left. Text
+ * without images, links or tables is returned unchanged.
  */
 export function cleanContextText(text: string, baseUrl: string): string {
   const lines = text.split("\n");
   const out: string[] = [];
   let fence: string | undefined;
+  let inTable = false;
   lines.forEach((line, i) => {
     const marker = FENCE.exec(line);
     const run = marker?.[1] ?? "";
@@ -165,7 +203,12 @@ export function cleanContextText(text: string, baseUrl: string): string {
     }
     if (run && !(run[0] === "`" && info.includes("`"))) {
       fence = run;
+      inTable = false;
       out.push(line);
+      return;
+    }
+    if (isTableDelimiter(line)) {
+      inTable = true;
       return;
     }
 
@@ -176,22 +219,44 @@ export function cleanContextText(text: string, baseUrl: string): string {
       (match: string, linkText: string, href: string, offset: number, whole: string) =>
         resolveLink(match, linkText, href, offset, whole, baseUrl),
     );
+    // A table row: it starts with a pipe, or it has one and sits under a
+    // header (the next line is a delimiter row) or under another row.
+    if (
+      hasCellPipe(cleaned) &&
+      (cleaned.trimStart().startsWith("|") ||
+        inTable ||
+        (i + 1 < lines.length && isTableDelimiter(lines[i + 1] ?? "")))
+    ) {
+      inTable = true;
+      const cells = tableCells(cleaned);
+      if (cells.length) out.push(restoreCodeSpans(cells.join(" · "), spans));
+      return;
+    }
+    inTable = false;
     if (cleaned === protectedLine) {
       out.push(line);
       return;
     }
     const indent = /^[ \t]*/.exec(cleaned)?.[0] ?? "";
     cleaned = indent + cleaned.slice(indent.length).replace(/[ \t]+/g, " ").trimEnd();
-    if (
-      ONLY_TABLE_RULE.test(cleaned) &&
-      !(cleaned.includes("|") && i + 1 < lines.length && isTableDelimiter(lines[i + 1] ?? ""))
-    ) {
-      return;
-    }
-    if (spans.length) {
-      cleaned = cleaned.replace(PLACEHOLDER, (_m, n: string) => spans[Number(n)] ?? "");
-    }
-    out.push(cleaned);
+    if (ONLY_TABLE_RULE.test(cleaned)) return;
+    out.push(restoreCodeSpans(cleaned, spans));
   });
   return out.join("\n");
+}
+
+/**
+ * Cut `text` to `limit` characters at a word boundary, ending in "…".
+ *
+ * The cut falls at the last space at or before `limit` (a hard cut when there
+ * is none). Text at or under the limit, or a `limit` of `null`, `Infinity` or
+ * below 1, leaves the text as is.
+ */
+export function capSnippet(text: string, limit: number | null): string {
+  if (limit === null || !(limit >= 1) || text.length <= limit) return text;
+  const space = text.lastIndexOf(" ", limit);
+  let head = space > 0 ? text.slice(0, space) : text.slice(0, limit);
+  // A hard cut must not split a surrogate pair.
+  if (space <= 0 && /[\uD800-\uDBFF]$/.test(head)) head = head.slice(0, -1);
+  return `${head.trimEnd()}…`;
 }

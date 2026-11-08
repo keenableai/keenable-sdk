@@ -38,10 +38,22 @@ All notable changes to the `keenable` Python package. Versions follow
 - `to_context()` (search results and fetched pages) drops markdown images and
   `<img>` tags, and resolves relative links against the result's URL (or keeps
   just the link text when it cannot). Absolute links are unchanged, and lines
-  left holding only table pipes are dropped. The `max_chars` budget counts the
-  cleaned text. Fenced code blocks, inline code and `name[i](x)` calls are
-  left alone, as is a table's header row. `snippet` and `content` are
-  untouched.
+  left holding only pipes and dashes are dropped. The `max_chars` budget counts
+  the cleaned text. Fenced code blocks, inline code and `name[i](x)` calls are
+  left alone. `snippet` and `content` are untouched.
+
+- `to_context()` (search results and fetched pages) flattens markdown tables:
+  delimiter rows (`|---|:-:|`) are dropped, and each row becomes its non-empty
+  cells joined with " · " (`\|` is a literal pipe). A row left with no cells,
+  such as one that held only avatar images, is dropped. Tables inside fenced
+  code are left alone, and a pipe inside inline code does not split a cell.
+
+- `SearchResponse.to_context()` and `cited()` take `max_snippet_chars` (default 2000,
+  new constant `DEFAULT_CONTEXT_MAX_SNIPPET_CHARS`): each result's cleaned text
+  is cut at the last space at or before that many characters and ends in "…",
+  so one whole-page snippet no longer takes the whole `max_chars` budget. The
+  budget counts the capped text. Pass `None` for the old uncapped behaviour.
+  `Page.to_context()` is unchanged.
 
 - The wheel now ships a `py.typed` marker, so mypy and pyright read the SDK's
   type hints instead of treating `keenable` as untyped. If you run a strict
