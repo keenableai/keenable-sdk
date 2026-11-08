@@ -292,9 +292,14 @@ export function cleanContextText(text: string, baseUrl: string): string {
  */
 export function capSnippet(text: string, limit: number | null): string {
   if (limit === null || !(limit >= 1) || text.length <= limit) return text;
-  const space = text.lastIndexOf(" ", limit);
-  let head = space > 0 ? text.slice(0, space) : text.slice(0, limit);
-  // A hard cut must not split a surrogate pair.
-  if (space <= 0 && /[\uD800-\uDBFF]$/.test(head)) head = head.slice(0, -1);
+  // Count the limit in code points, as the Python and Go SDKs do, so an emoji
+  // costs one character and a hard cut never splits a surrogate pair.
+  let end = 0;
+  for (let points = 0; points < limit && end < text.length; points++) {
+    end += (text.codePointAt(end) ?? 0) > 0xffff ? 2 : 1;
+  }
+  if (end >= text.length) return text;
+  const space = text.lastIndexOf(" ", end);
+  const head = space > 0 ? text.slice(0, space) : text.slice(0, end);
   return `${head.trimEnd()}…`;
 }

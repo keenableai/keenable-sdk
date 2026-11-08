@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { Page, SearchResponse } from "../src/index.js";
-import { cleanContextText } from "../src/internal.js";
+import { capSnippet, cleanContextText } from "../src/internal.js";
 
 const BASE = "https://example.com/docs/guide?x=1";
 
@@ -235,6 +235,13 @@ function responseOf(...snippets: string[]): SearchResponse {
 }
 
 describe("toContext maxSnippetChars", () => {
+  it("counts the cap in code points, like the Python and Go SDKs", () => {
+    const emoji = "😀".repeat(5);
+    expect(capSnippet(emoji, 5)).toBe(emoji);
+    expect(capSnippet(emoji, 3)).toBe("😀😀😀…");
+    expect(capSnippet("😀😀 😀😀😀", 4)).toBe("😀😀…");
+  });
+
   it("caps a long snippet at a word boundary by default", () => {
     const words = Array(1000).fill("word").join(" "); // 4,999 characters
     const response = responseOf(words);
