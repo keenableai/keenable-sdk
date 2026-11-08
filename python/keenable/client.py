@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+import enum
 import ipaddress
 import math
-from collections.abc import Iterator
+import random
+import time
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -19,17 +23,26 @@ from .errors import (
     KeenableAPIError,
     KeenableAuthError,
     KeenableConnectionError,
+    KeenableError,
     KeenableInsufficientCreditsError,
     KeenableInvalidRequestError,
     KeenableRateLimitError,
+    KeenableTimeoutError,
     RateLimitInfo,
 )
 from .models import Page, SearchResponse
 
-__all__ = ["Keenable", "AsyncKeenable"]
+__all__ = ["Keenable", "AsyncKeenable", "DEFAULT_MAX_RETRIES"]
 
 DEFAULT_BASE_URL = "https://api.keenable.ai"
 DEFAULT_TIMEOUT = 30.0
+DEFAULT_MAX_RETRIES = 2
+
+# Retry timing, the same in the TypeScript and Go SDKs.
+_INITIAL_RETRY_DELAY = 0.5
+_MAX_RETRY_DELAY = 8.0
+# A server-requested wait longer than this (seconds) is not waited out.
+_MAX_RETRY_AFTER_WAIT = 60.0
 
 # Endpoints are named once; the keyless variant of each is the same path with a
 # `/public` suffix, so a new endpoint is one name rather than two constants.
@@ -287,10 +300,22 @@ def _to_api_error(response: httpx.Response) -> KeenableAPIError:
     return KeenableAPIError(message, status, detail or None, **fields)
 
 
-def _decode(response: httpx.Response) -> dict[str, Any]:
-    """Validate the status and decode a JSON object body."""
+class _RedirectError(KeenableConnectionError):
+    """A redirect this SDK refused to follow; retrying would refuse it again."""
+
+
+def _decode(response: httpx.Response) -> tuple[dict[str, Any], str | None]:
+    """Validate the status and decode a JSON object body, with the request id."""
+    if response.is_redirect or 300 <= response.status_code < 400:
+        location = response.headers.get("Location")
+        where = f" to {location}" if location else ""
+        raise _RedirectError(
+            f"the Keenable API redirected{where}. The redirect was not followed, "
+            "so the API key was not sent. Check KEENABLE_API_URL."
+        )
     if not response.is_success:
         raise _to_api_error(response)
+    request_id = (response.headers.get("X-Request-Id") or "").strip() or None
     try:
         data = response.json()
     except ValueError as exc:
@@ -298,17 +323,19 @@ def _decode(response: httpx.Response) -> dict[str, Any]:
         raise KeenableAPIError(
             f"Keenable API returned a non-JSON response: {snippet!r}",
             response.status_code,
+            request_id=request_id,
         ) from exc
     if not isinstance(data, dict):
         raise KeenableAPIError(
             f"Unexpected response from the Keenable API: {data!r}",
             response.status_code,
+            request_id=request_id,
         )
-    return data
+    return data, request_id
 
 
 @contextmanager
-def _transport_errors() -> Iterator[None]:
+def _transport_errors(timeout: Any) -> Iterator[None]:
     """Translate httpx transport failures into a KeenableConnectionError.
 
     Wrapping the ``await`` inside the ``with`` body works for the async client
@@ -316,10 +343,87 @@ def _transport_errors() -> Iterator[None]:
     """
     try:
         yield
+    except httpx.TimeoutException as exc:
+        within = f" within {timeout} s" if isinstance(timeout, (int, float)) else ""
+        raise KeenableTimeoutError(
+            f"the Keenable API did not respond{within}: {exc!r}"
+        ) from exc
     except httpx.HTTPError as exc:
         raise KeenableConnectionError(
             f"could not reach the Keenable API: {exc!r}"
         ) from exc
+
+
+def _backoff(retry: int, jitter: float | None = None) -> float:
+    """The exponential backoff in seconds before retry number ``retry`` (0 first).
+
+    0.5 s doubling up to 8 s, shortened by up to 25% of jitter so clients that
+    failed together do not retry together. Kept in step with TS and Go.
+    """
+    base = min(_INITIAL_RETRY_DELAY * 2.0**retry, _MAX_RETRY_DELAY)
+    return base * (1 - 0.25 * (random.random() if jitter is None else jitter))
+
+
+def _retry_delay(error: Exception, retry: int) -> float | None:
+    """Seconds to wait before retrying after ``error``, or None not to retry.
+
+    The API's ``retryable`` decides when it sent one; otherwise 408, 429 and
+    5xx are retried, and so are network failures and timeouts. A
+    ``Retry-After`` over a minute is not waited out.
+    """
+    if isinstance(error, KeenableAPIError):
+        status = error.status_code
+        retryable = error.retryable
+        if retryable is None:
+            retryable = status in (408, 429) or status >= 500
+        if not retryable:
+            return None
+        if error.retry_after_seconds is not None:
+            wait = float(error.retry_after_seconds)
+            return wait if wait <= _MAX_RETRY_AFTER_WAIT else None
+        return _backoff(retry)
+    if isinstance(error, _RedirectError):
+        return None
+    if isinstance(error, KeenableConnectionError):
+        return _backoff(retry)
+    return None
+
+
+def _check_max_retries(value: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise KeenableInvalidRequestError(
+            f"max_retries must be a non-negative integer, got {value!r}"
+        )
+    return value
+
+
+class _Unset(enum.Enum):
+    """Marks a ``timeout`` the caller did not pass, as distinct from ``None``."""
+
+    TOKEN = 0
+
+
+_UNSET = _Unset.TOKEN
+
+
+def _check_client_timeout(value: Any) -> Any:
+    """Validate a timeout: ``None`` (no deadline) and ``httpx.Timeout`` pass."""
+    if value is None or isinstance(value, httpx.Timeout):
+        return value
+    return _check_timeout(value)
+
+
+def _check_timeout(value: float) -> float:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value <= 0
+    ):
+        raise KeenableInvalidRequestError(
+            f"timeout must be a positive number of seconds, got {value!r}"
+        )
+    return value
 
 
 class _BaseClient:
@@ -330,34 +434,73 @@ class _BaseClient:
         api_key: str | None = None,
         *,
         base_url: str | None = None,
-        timeout: float = DEFAULT_TIMEOUT,
+        timeout: float | httpx.Timeout | None = DEFAULT_TIMEOUT,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        default_headers: Mapping[str, str] | None = None,
         client_source: str = "Keenable SDK",
     ) -> None:
         key = api_key if api_key is not None else environ.get("KEENABLE_API_KEY")
         self._api_key = (key or "").strip() or None
         self._base_url = _resolve_base_url(base_url)
         self._client_source = client_source
+        self._timeout: Any = _check_client_timeout(timeout)
+        self._max_retries = _check_max_retries(max_retries)
+        self._default_headers = dict(default_headers or {})
 
     @property
     def keyless(self) -> bool:
         """True when no API key is configured and the public tier is in use."""
         return self._api_key is None
 
-    def _headers(self) -> dict[str, str]:
-        headers = {
-            "Accept": "application/json",
-            "User-Agent": f"keenable-python/{__version__}",
-            # The public tier rejects requests without this header.
-            "X-Keenable-Title": self._client_source,
-        }
+    def _headers(
+        self, extra: Mapping[str, str] | None = None, *, json: bool = False
+    ) -> httpx.Headers:
+        """The SDK's headers, then ``default_headers``, then the call's.
+
+        The API key is always the configured one, so a stray header cannot
+        send a different key or turn a keyless call keyed.
+        """
+        headers = httpx.Headers(
+            {
+                "Accept": "application/json",
+                "User-Agent": f"keenable-python/{__version__}",
+                # The public tier rejects requests without this header.
+                "X-Keenable-Title": self._client_source,
+            }
+        )
+        for source in (self._default_headers, extra or {}):
+            for name, value in source.items():
+                if name.lower() != "x-api-key":
+                    headers[name] = value
         if self._api_key is not None:
             headers["X-API-Key"] = self._api_key
+        if json:
+            headers["Content-Type"] = "application/json"
         return headers
 
     def _url(self, endpoint: str) -> str:
         """The endpoint URL, keyless or keyed depending on the configured key."""
         suffix = "/public" if self.keyless else ""
         return f"{self._base_url}/v1/{endpoint}{suffix}"
+
+    def _call_settings(
+        self, timeout: float | httpx.Timeout | None, max_retries: int | None
+    ) -> tuple[Any, int]:
+        """The per-call timeout (or the client's) and retry budget."""
+        call_timeout: Any = (
+            _check_client_timeout(timeout)
+            if timeout is not None
+            else self._call_default_timeout()
+        )
+        retries = (
+            _check_max_retries(max_retries)
+            if max_retries is not None
+            else self._max_retries
+        )
+        return call_timeout, retries
+
+    def _call_default_timeout(self) -> Any:
+        return self._timeout
 
 
 class Keenable(_BaseClient):
@@ -381,11 +524,21 @@ class Keenable(_BaseClient):
     Args:
         api_key: Falls back to ``KEENABLE_API_KEY``; omit it for the free tier.
         base_url: Falls back to ``KEENABLE_API_URL``.
-        timeout: Request timeout in seconds.
+        timeout: Deadline in seconds for each attempt, or an
+            ``httpx.Timeout``; ``None`` means no deadline. With your own
+            ``client``, that client's timeout applies unless you pass this.
+        max_retries: How many times to retry a failed request (default 2,
+            ``0`` turns retries off). Connection errors, timeouts, 408, 429
+            and 5xx are retried, unless the API says the error is not
+            retryable. The wait is the API's ``Retry-After`` when it sent one,
+            else exponential backoff from 0.5 s to 8 s with jitter. A
+            ``Retry-After`` over 60 s (such as the keyless hourly cap) is not
+            waited out: the error is raised at once.
+        default_headers: Headers sent with every request.
         client_source: Name this client reports as its traffic source. Leave it
             alone unless you are building an integration on top of this SDK and
             want your own attribution.
-        client: Bring your own ``httpx.Client`` (proxies, retries, transport).
+        client: Bring your own ``httpx.Client`` (proxies, transport).
     """
 
     def __init__(
@@ -393,18 +546,27 @@ class Keenable(_BaseClient):
         api_key: str | None = None,
         *,
         base_url: str | None = None,
-        timeout: float = DEFAULT_TIMEOUT,
+        timeout: float | httpx.Timeout | None | _Unset = _UNSET,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        default_headers: Mapping[str, str] | None = None,
         client_source: str = "Keenable SDK",
         client: httpx.Client | None = None,
     ) -> None:
         super().__init__(
             api_key,
             base_url=base_url,
-            timeout=timeout,
+            timeout=DEFAULT_TIMEOUT if isinstance(timeout, _Unset) else timeout,
+            max_retries=max_retries,
+            default_headers=default_headers,
             client_source=client_source,
         )
-        self._client = client or httpx.Client(timeout=timeout)
+        # A client you pass keeps its own timeout unless you set one here.
+        self._use_client_timeout = client is not None and isinstance(timeout, _Unset)
+        self._client = client or httpx.Client(timeout=self._timeout)
         self._owns_client = client is None
+
+    def _call_default_timeout(self) -> Any:
+        return httpx.USE_CLIENT_DEFAULT if self._use_client_timeout else self._timeout
 
     def __enter__(self) -> Keenable:
         return self
@@ -423,24 +585,39 @@ class Keenable(_BaseClient):
         *,
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """Send one request and return its decoded body.
+        timeout: float | httpx.Timeout | None = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> tuple[dict[str, Any], str | None]:
+        """Send a request, retrying what can be retried, and decode the body.
 
-        Every transport concern lives here: endpoint selection, headers, error
-        translation and decoding, so a retry or a logging hook is one edit.
+        Every transport concern lives here: endpoint selection, headers,
+        timeout, retries, error translation and decoding.
         """
-        headers = self._headers()
-        with _transport_errors():
-            if json is None:
-                response = self._client.get(
-                    self._url(endpoint), params=params, headers=headers
-                )
-            else:
-                headers["Content-Type"] = "application/json"
-                response = self._client.post(
-                    self._url(endpoint), json=json, headers=headers
-                )
-        return _decode(response)
+        call_timeout, retries = self._call_settings(timeout, max_retries)
+        headers = self._headers(extra_headers, json=json is not None)
+        retry = 0
+        while True:
+            try:
+                with _transport_errors(call_timeout):
+                    response = self._client.request(
+                        "GET" if json is None else "POST",
+                        self._url(endpoint),
+                        params=params,
+                        json=json,
+                        headers=headers,
+                        timeout=call_timeout,
+                        # Never follow: httpx would carry X-API-Key to the
+                        # host a redirect names.
+                        follow_redirects=False,
+                    )
+                return _decode(response)
+            except KeenableError as error:
+                delay = _retry_delay(error, retry) if retry < retries else None
+                if delay is None:
+                    raise
+                time.sleep(delay)
+                retry += 1
 
     def search(
         self,
@@ -455,6 +632,9 @@ class Keenable(_BaseClient):
         snippet_max_length: int | None = None,
         max_results: int | None = None,
         query_time: str | None = None,
+        timeout: float | httpx.Timeout | None = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
     ) -> SearchResponse:
         """Search the web and return ranked results with page text.
 
@@ -478,6 +658,10 @@ class Keenable(_BaseClient):
                 not a recency filter: use ``published_after`` for that.
                 Accepts an ISO 8601 datetime, ``YYYY-MM-DD``, or an offset
                 back from now such as ``"7d"`` (as of 7 days ago).
+            timeout: Deadline in seconds (or an ``httpx.Timeout``) for each
+                attempt of this call. ``None`` keeps the client's timeout.
+            max_retries: Retry budget for this call; ``0`` turns retries off.
+            extra_headers: Headers for this call, over ``default_headers``.
 
         Returns:
             A :class:`SearchResponse`; iterate it for results or call
@@ -495,22 +679,44 @@ class Keenable(_BaseClient):
             max_results=max_results,
             query_time=query_time,
         )
-        return SearchResponse._from_json(self._request(_SEARCH, json=payload), query)
+        body, request_id = self._request(
+            _SEARCH,
+            json=payload,
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+        )
+        return SearchResponse._from_json(body, query, request_id)
 
-    def fetch(self, url: str) -> Page:
+    def fetch(
+        self,
+        url: str,
+        *,
+        timeout: float | httpx.Timeout | None = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> Page:
         """Fetch one URL and return its main content as markdown.
 
         Use this after :meth:`search` when a snippet is not enough and the
-        model needs the full page.
+        model needs the full page. ``timeout``, ``max_retries`` and
+        ``extra_headers`` apply to this call only, as in :meth:`search`.
         """
         _reject_private_fetch_target(url)
-        return Page._from_json(self._request(_FETCH, params={"url": url}), url)
+        body, request_id = self._request(
+            _FETCH,
+            params={"url": url},
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+        )
+        return Page._from_json(body, url, request_id)
 
 
 class AsyncKeenable(_BaseClient):
     """Asynchronous client for the Keenable web search API.
 
-    Mirrors :class:`Keenable` with awaitable methods.
+    Mirrors :class:`Keenable` with awaitable methods and the same arguments.
 
     Example:
         >>> import asyncio
@@ -527,18 +733,26 @@ class AsyncKeenable(_BaseClient):
         api_key: str | None = None,
         *,
         base_url: str | None = None,
-        timeout: float = DEFAULT_TIMEOUT,
+        timeout: float | httpx.Timeout | None | _Unset = _UNSET,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        default_headers: Mapping[str, str] | None = None,
         client_source: str = "Keenable SDK",
         client: httpx.AsyncClient | None = None,
     ) -> None:
         super().__init__(
             api_key,
             base_url=base_url,
-            timeout=timeout,
+            timeout=DEFAULT_TIMEOUT if isinstance(timeout, _Unset) else timeout,
+            max_retries=max_retries,
+            default_headers=default_headers,
             client_source=client_source,
         )
-        self._client = client or httpx.AsyncClient(timeout=timeout)
+        self._use_client_timeout = client is not None and isinstance(timeout, _Unset)
+        self._client = client or httpx.AsyncClient(timeout=self._timeout)
         self._owns_client = client is None
+
+    def _call_default_timeout(self) -> Any:
+        return httpx.USE_CLIENT_DEFAULT if self._use_client_timeout else self._timeout
 
     async def __aenter__(self) -> AsyncKeenable:
         return self
@@ -557,20 +771,33 @@ class AsyncKeenable(_BaseClient):
         *,
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+        timeout: float | httpx.Timeout | None = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> tuple[dict[str, Any], str | None]:
         """Async counterpart of :meth:`Keenable._request`."""
-        headers = self._headers()
-        with _transport_errors():
-            if json is None:
-                response = await self._client.get(
-                    self._url(endpoint), params=params, headers=headers
-                )
-            else:
-                headers["Content-Type"] = "application/json"
-                response = await self._client.post(
-                    self._url(endpoint), json=json, headers=headers
-                )
-        return _decode(response)
+        call_timeout, retries = self._call_settings(timeout, max_retries)
+        headers = self._headers(extra_headers, json=json is not None)
+        retry = 0
+        while True:
+            try:
+                with _transport_errors(call_timeout):
+                    response = await self._client.request(
+                        "GET" if json is None else "POST",
+                        self._url(endpoint),
+                        params=params,
+                        json=json,
+                        headers=headers,
+                        timeout=call_timeout,
+                        follow_redirects=False,
+                    )
+                return _decode(response)
+            except KeenableError as error:
+                delay = _retry_delay(error, retry) if retry < retries else None
+                if delay is None:
+                    raise
+                await asyncio.sleep(delay)
+                retry += 1
 
     async def search(
         self,
@@ -585,6 +812,9 @@ class AsyncKeenable(_BaseClient):
         snippet_max_length: int | None = None,
         max_results: int | None = None,
         query_time: str | None = None,
+        timeout: float | httpx.Timeout | None = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
     ) -> SearchResponse:
         """Search the web. See :meth:`Keenable.search` for the arguments."""
         payload = _search_payload(
@@ -599,11 +829,30 @@ class AsyncKeenable(_BaseClient):
             max_results=max_results,
             query_time=query_time,
         )
-        body = await self._request(_SEARCH, json=payload)
-        return SearchResponse._from_json(body, query)
+        body, request_id = await self._request(
+            _SEARCH,
+            json=payload,
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+        )
+        return SearchResponse._from_json(body, query, request_id)
 
-    async def fetch(self, url: str) -> Page:
+    async def fetch(
+        self,
+        url: str,
+        *,
+        timeout: float | httpx.Timeout | None = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> Page:
         """Fetch one URL as markdown. See :meth:`Keenable.fetch`."""
         _reject_private_fetch_target(url)
-        body = await self._request(_FETCH, params={"url": url})
-        return Page._from_json(body, url)
+        body, request_id = await self._request(
+            _FETCH,
+            params={"url": url},
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+        )
+        return Page._from_json(body, url, request_id)

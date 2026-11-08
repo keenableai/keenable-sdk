@@ -85,10 +85,14 @@ contextText := results.ToContext(nil)
 prompt := "Answer using only these sources, citing them by number.\n\n" + contextText
 ```
 
-It emits `[1] Title (url)` headers followed by the page text, adds results whole
-until the character budget is reached (`MaxChars` 12000 by default), and never
-truncates a source mid-sentence. The first result is kept even when it alone
-is over the budget. A later result that does not fit ends the block, so
+It emits `[1] Title (url)` headers followed by the page text. Each result's
+text is cleaned (images dropped, relative links resolved, markdown tables
+flattened to `cell · cell;` rows) and cut at a word boundary to
+`MaxSnippetChars` (0 means the default of 2000, and a negative value disables
+the cap), ending in "…".
+Results are then added whole until the character budget is reached (`MaxChars`
+12000 by default). The first result is kept even when it alone is over the
+budget. A later result that does not fit ends the block, so
 citation numbers stay contiguous.
 
 To print a source list that matches the citations in the answer, ask which
@@ -149,13 +153,14 @@ Pass the request's `context.Context`. Canceling it returns `ctx.Err()`
 (`context.Canceled` or `context.DeadlineExceeded`), not a connection error.
 Those two values do not implement `keenable.Error`.
 
-`Options.Timeout` (default 30s) covers response headers and the body when this
-SDK creates the HTTP client. A positive `Options.Timeout` also applies when
+`Options.Timeout` (default 30s) covers response headers and the body of each
+attempt when this SDK creates the HTTP client. A positive `Options.Timeout` also applies when
 you pass your own `http.Client`, and it does not change that client. When the
 SDK deadline fires and the caller's context is still live, the error is a
 `ConnectionError` that tells you to raise `Options.Timeout`. When the deadline
 that fires is `http.Client.Timeout`, the message tells you to raise that
-instead.
+instead. Either way `ConnectionError.Timeout()` reports true. Timed-out
+attempts are retried (see [Retries](#retries)).
 
 There is one client. Reuse it. `Close` drops idle connections on the client
 this SDK created, and does nothing when you passed your own `http.Client`.
@@ -186,37 +191,29 @@ if errors.As(err, &sdk) {
 | `AuthError` | `auth` | HTTP 401/403, the key was rejected |
 | `InsufficientCreditsError` (alias `CreditsError`) | `api_error` | HTTP 402, no credits left; retrying will not help. The message starts "Keenable: insufficient credits (402)" |
 | `APIError` | `api_error` | Any other non-2xx response; carries `StatusCode`, `Body`, and `RequestID` when the API sent `X-Request-Id` |
-| `ConnectionError` | `connection` | The API could not be reached, or the client deadline elapsed |
+| `ConnectionError` | `connection` | The API could not be reached, or the client deadline elapsed (`Timeout()` reports which) |
 | `InvalidRequestError` | `invalid_request` | Bad arguments; no request was sent |
 
 ## Handling errors
 
+The SDK already retries what can be retried (see
+[Retries](#retries)), so an error that reaches you is final for this call.
 Every `APIError` carries what the API says about the failure. Branch on
-`APICode`, not on the message, and wait `RetryAfter` before a retry. Each field
-is its zero value (nil for `Retryable` and `RateLimit`) when the API did not
-send it. `Code()` stays the SDK's coarser code above.
+`APICode`, not on the message. Each field is its zero value (nil for
+`Retryable` and `RateLimit`) when the API did not send it. `Code()` stays the
+SDK's coarser code above.
 
 ```go
-var (
-    resp *keenable.SearchResponse
-    err  error
-)
-for attempt := 0; ; attempt++ {
-    resp, err = client.Search(ctx, "wafer scale engine", nil)
-    var api *keenable.APIError
-    if err == nil || !errors.As(err, &api) {
-        break
-    }
+resp, err := client.Search(ctx, "wafer scale engine", nil)
+var rl *keenable.RateLimitError
+var api *keenable.APIError
+switch {
+case errors.As(err, &rl):
+    // Only reaches you when the wait is over a minute (e.g. the keyless
+    // hourly cap) or the retries ran out.
+    log.Printf("rate limited, retry in %s: %s", rl.RetryAfter, rl.Fix)
+case errors.As(err, &api):
     log.Println(api.APICode, api.Fix, api.DocsURL, api.RequestID)
-    // Not retryable: e.g. insufficient_credits, invalid_parameter.
-    if api.Retryable == nil || !*api.Retryable || attempt == 2 {
-        break
-    }
-    wait := api.RetryAfter
-    if wait == 0 {
-        wait = time.Second
-    }
-    time.Sleep(wait)
 }
 ```
 
@@ -240,7 +237,42 @@ SDK's generic advice (for every status, as in the Python and TypeScript SDKs),
 so a non-retryable error never tells an agent to retry. It then ends with
 `Docs: <DocsURL>`, `(code: <APICode>)` and `(request_id: <RequestID>)` before
 the SDK code, as in the Python and TypeScript SDKs. A 403 with type `target_error` (e.g. code
-`target_blocked`, the fetched site refused us) is a plain `APIError`, not an `AuthError`. The SDK does not retry on its own.
+`target_blocked`, the fetched site refused us) is a plain `APIError`, not an `AuthError`.
+
+## Retries
+
+Failed requests are retried twice by default. Connection errors, timeouts, 408,
+429 and 5xx are retried, unless the API marks the error `Retryable` false
+(credits, bad parameters and blocked pages never are). The SDK waits the API's
+`Retry-After` when it sent one, else backs off exponentially from 0.5s to 8s
+with jitter. A `Retry-After` over 60s, such as the keyless hourly cap, is not
+waited out: the error is returned at once so your code decides. Canceling
+`ctx` stops a pending retry.
+
+```go
+retries := 4
+client, err := keenable.New(&keenable.Options{
+    MaxRetries: &retries, // nil means 2; a pointer to 0 turns retries off
+    Headers:    map[string]string{"X-Team": "search"},
+})
+
+none := 0
+resp, err := client.Search(ctx, "wafer scale engine", &keenable.SearchOptions{
+    RequestOptions: keenable.RequestOptions{MaxRetries: &none},
+})
+page, err := client.FetchWithOptions(ctx, "https://example.com", &keenable.FetchOptions{
+    RequestOptions: keenable.RequestOptions{
+        Timeout: time.Minute,
+        Headers: map[string]string{"X-Trace": "abc"},
+    },
+})
+```
+
+`RequestOptions` (embedded in `SearchOptions` and in `FetchOptions`, which
+`FetchWithOptions` takes) overrides
+the client's `Timeout`, `MaxRetries` and `Headers` for one call. `X-API-Key`
+always comes from `APIKey`. `SearchResponse.RequestID` and `Page.RequestID`
+carry the API's request id; quote it when reporting a problem.
 
 ## Configuration
 

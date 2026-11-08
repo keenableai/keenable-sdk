@@ -71,6 +71,7 @@ def _client(
         api_key,
         client_source=client_source,
         client=httpx.Client(transport=transport),
+        max_retries=0,
     )
     return client, seen
 
@@ -81,7 +82,9 @@ def _aclient(
     """The async sibling of :func:`_client`, sharing its request log shape."""
     seen: Seen = []
     transport = httpx.MockTransport(_recording(handler, seen))
-    return AsyncKeenable(api_key, client=httpx.AsyncClient(transport=transport)), seen
+    return AsyncKeenable(
+        api_key, client=httpx.AsyncClient(transport=transport), max_retries=0
+    ), seen
 
 
 def _ok(body: dict[str, Any], status: int = 200) -> Handler:

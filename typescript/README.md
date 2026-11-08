@@ -68,9 +68,13 @@ ${results.toContext()}
 Question: ...`;
 ```
 
-It emits `[n] Title (url)` headers followed by the page text, adds results whole
-until the character budget is reached (`maxChars: 12000` by default), and never
-truncates a source mid-sentence.
+It emits `[n] Title (url)` headers followed by the page text. Each result's
+text is cleaned (images dropped, relative links resolved, markdown tables
+flattened to `cell · cell;` rows) and cut at a word boundary to
+`maxSnippetChars` (2000 by default, `null` for no cap; a value below 1 also
+disables the cap), ending in "…". Results are then added whole until the character budget is reached (`maxChars: 12000`
+by default), so a later source is dropped rather than cut off. The first result
+is kept even when it alone is over the budget.
 
 To print a source list that matches the citations in the answer, ask which
 results were actually rendered rather than listing them all:
@@ -129,29 +133,32 @@ All errors extend `KeenableError`:
 | `KeenableInsufficientCreditsError` (alias `KeenableCreditsError`) | HTTP 402, no credits left; retrying will not help |
 | `KeenableAPIError` | Any other non-2xx response; carries `statusCode` |
 | `KeenableConnectionError` | The API could not be reached |
+| `KeenableTimeoutError` | A `KeenableConnectionError`: the API did not answer within `timeoutMs` |
 | `KeenableInvalidRequestError` | Bad arguments; no request was sent |
 
 ## Handling errors
 
-Every `KeenableAPIError` carries what the API says about the failure. Branch on
-`code`, not on the message, and wait `retryAfterSeconds` before a retry. Each
-field is `undefined` when the API did not send it.
+The SDK already retries what can be retried (see
+[Retries and timeouts](#retries-and-timeouts)), so an error that reaches you is
+final for this call. Every `KeenableAPIError` carries what the API says about
+the failure. Branch on `code`, not on the message. Each field is `undefined`
+when the API did not send it.
 
 ```ts
-import { Keenable, KeenableAPIError } from "keenable";
+import { Keenable, KeenableAPIError, KeenableRateLimitError } from "keenable";
 
 const keenable = new Keenable();
-let results;
-for (let attempt = 0; ; attempt++) {
-  try {
-    results = await keenable.search("wafer scale engine");
-    break;
-  } catch (err) {
-    if (!(err instanceof KeenableAPIError)) throw err;
+try {
+  const results = await keenable.search("wafer scale engine");
+} catch (err) {
+  if (err instanceof KeenableRateLimitError) {
+    // Only reaches you when the wait is over a minute (e.g. the keyless
+    // hourly cap) or the retries ran out.
+    console.log(`rate limited, retry in ${err.retryAfterSeconds}s:`, err.fix);
+  } else if (err instanceof KeenableAPIError) {
     console.log(err.code, err.fix, err.docsUrl, err.requestId);
-    // Not retryable: e.g. insufficient_credits, invalid_parameter.
-    if (!err.retryable || attempt === 2) throw err;
-    await new Promise((r) => setTimeout(r, (err.retryAfterSeconds ?? 1) * 1000));
+  } else {
+    throw err;
   }
 }
 ```
@@ -174,8 +181,35 @@ When the API sends `fix`, the error message ends with it, then with
 `Docs: <docsUrl>`, `(code: <code>)` and `(request_id: <id>)`, as in the Go and
 Python SDKs. A 403
 with type `target_error` (e.g. code `target_blocked`, the fetched site refused
-us) is a plain `KeenableAPIError`, not a `KeenableAuthError`. The SDK does not retry on its
-own.
+us) is a plain `KeenableAPIError`, not a `KeenableAuthError`.
+
+## Retries and timeouts
+
+Failed requests are retried twice by default. Connection errors, timeouts, 408,
+429 and 5xx are retried, unless the API marks the error `retryable: false`
+(credits, bad parameters and blocked pages never are). The SDK waits the API's
+`Retry-After` when it sent one, else backs off exponentially from 0.5 s to 8 s
+with jitter. A `Retry-After` over 60 s, such as the keyless hourly cap, is not
+waited out: the error is thrown at once so your code decides.
+
+`timeoutMs` (default 30000) is the deadline for each attempt. A timed-out
+request throws `KeenableTimeoutError`, a subclass of `KeenableConnectionError`.
+Aborting your `signal` also cancels a pending retry.
+
+```ts
+const keenable = new Keenable({
+  maxRetries: 4,
+  timeoutMs: 10_000,
+  defaultHeaders: { "X-Team": "search" },
+});
+await keenable.search("wafer scale engine", { maxRetries: 0 }); // no retries for this call
+await keenable.fetch("https://example.com", { timeoutMs: 60_000, headers: { "X-Trace": "abc" } });
+```
+
+Every call takes `signal`, `timeoutMs`, `maxRetries` and `headers`, which
+override the client's settings for that call. Results carry `requestId` (quote
+it when reporting a problem). Redirects are never followed, so the API key
+cannot leak to another host.
 
 ## Configuration
 
@@ -185,7 +219,8 @@ own.
 | `KEENABLE_API_URL` | `https://api.keenable.ai` | Override the API base URL |
 
 Both can also be passed to the constructor as `apiKey` and `baseUrl`, alongside
-`timeoutMs`, a custom `fetch`, and `clientSource`. Building an integration on
+`timeoutMs`, `maxRetries`, `defaultHeaders`, a custom `fetch` (e.g. for a
+proxy), and `clientSource`. Building an integration on
 top of this SDK? Set `clientSource: "Your Integration"` so your traffic is
 attributed to you rather than to the bare SDK.
 

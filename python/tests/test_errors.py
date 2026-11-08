@@ -42,7 +42,7 @@ KINDS: dict[str, type[KeenableAPIError]] = {
 
 def _client(response: httpx.Response, api_key: str | None = "k") -> Keenable:
     transport = httpx.MockTransport(lambda request: response)
-    return Keenable(api_key, client=httpx.Client(transport=transport))
+    return Keenable(api_key, client=httpx.Client(transport=transport), max_retries=0)
 
 
 def _raise(response: httpx.Response) -> KeenableAPIError:
@@ -339,7 +339,9 @@ async def test_the_async_client_parses_the_same_contract() -> None:
     case = next(c for c in CASES if c["name"] == "insufficient_credits")
     response = httpx.Response(402, json=case["body"], headers=case["headers"])
     transport = httpx.MockTransport(lambda request: response)
-    client = AsyncKeenable("k", client=httpx.AsyncClient(transport=transport))
+    client = AsyncKeenable(
+        "k", client=httpx.AsyncClient(transport=transport), max_retries=0
+    )
 
     with pytest.raises(KeenableInsufficientCreditsError) as excinfo:
         await client.fetch("https://example.com")

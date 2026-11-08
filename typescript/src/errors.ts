@@ -11,6 +11,12 @@ export class KeenableError extends Error {
 /** The Keenable API could not be reached (DNS, TLS, timeout, ...). */
 export class KeenableConnectionError extends KeenableError {}
 
+/**
+ * The Keenable API did not answer within the deadline (`timeoutMs`). A
+ * `KeenableConnectionError`, so code that catches that keeps working.
+ */
+export class KeenableTimeoutError extends KeenableConnectionError {}
+
 /** The arguments passed to the SDK are invalid; no request was sent. */
 export class KeenableInvalidRequestError extends KeenableError {}
 

@@ -8,6 +8,7 @@ import {
   KeenableRateLimitError,
   runToolCall,
 } from "../src/index.js";
+import type { KeenableOptions } from "../src/index.js";
 
 const SEARCH_BODY = {
   query: "wafer scale engine",
@@ -39,13 +40,12 @@ const FETCH_BODY = {
 /** A client whose transport records requests and replays canned responses. */
 function mockClient(
   handler: (url: string, init: RequestInit) => Response,
-  options: { apiKey?: string; clientSource?: string; timeoutMs?: number } = {},
+  options: KeenableOptions = {},
 ) {
   const seen: Array<{ url: string; init: RequestInit }> = [];
   const client = new Keenable({
-    apiKey: options.apiKey,
-    clientSource: options.clientSource,
-    timeoutMs: options.timeoutMs,
+    maxRetries: 0,
+    ...options,
     fetch: (async (input: RequestInfo | URL, init: RequestInit = {}) => {
       const url = String(input);
       seen.push({ url, init });

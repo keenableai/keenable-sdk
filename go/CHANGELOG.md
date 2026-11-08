@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+Automatic retries. Connection errors, timeouts, 408, 429 and 5xx are retried
+up to `Options.MaxRetries` times (nil means `DefaultMaxRetries`, 2), unless the
+API marks the error `Retryable` false. The wait is the API's `Retry-After` when
+sent, else exponential backoff (0.5s to 8s, jittered). A `Retry-After` over
+60s, such as the keyless hourly cap, is returned at once instead of waited out.
+Canceling ctx stops a pending wait. `Options.Timeout` now applies to each
+attempt.
+
+New `RequestOptions` (`Timeout`, `MaxRetries`, `Headers`) for one call,
+embedded in `SearchOptions` and in the new `FetchOptions`, which the new
+`FetchWithOptions` takes. `Fetch` keeps its signature, so interfaces that mock
+it still compile. The `http.Client` this SDK creates no longer sets its own
+`Timeout`: the per-attempt context deadline covers headers and body, so a
+longer `RequestOptions.Timeout` is not cut short. `SearchOptions` gains the
+embedded `RequestOptions` field, so an unkeyed (positional) `SearchOptions{...}`
+literal no longer compiles; use field names, as `go vet` recommends. When the
+caller's ctx deadline would end before a retry's wait, the error that caused
+the retry is returned at once instead of `ctx.Err()`. `Options.Headers` adds headers to every request;
+`X-API-Key` always comes from `APIKey`. `ConnectionError.Timeout()` reports a
+deadline. `SearchResponse.RequestID` and `Page.RequestID` carry the request id
+(body `request_id`, else `X-Request-Id`). A negative `MaxRetries` or `Timeout`
+is an `InvalidRequestError`.
+
 `APIError` carries the API's agent-ready fields: `APICode`, `Title`, `Fix`,
 `DocsURL`, `Retryable`, `RetryAfter` (from the body's `retry_after_seconds`,
 else the `Retry-After` header), `Param`, `RateLimit` (a new `RateLimitInfo`),
@@ -33,10 +56,28 @@ longer gets a second one before `Fix`. No migration.
 `ToContext` (on `SearchResponse` and `Page`) drops markdown images and `<img>`
 tags, and resolves relative links against the result's URL (or keeps just the
 link text when it cannot). Absolute links are unchanged, and lines left holding
-only table pipes are dropped. Fenced code blocks, inline code and `name[i](x)`
-calls are left alone, as is a table's header row. `MaxChars` counts the
-cleaned text. `Snippet` and
-`Content` are untouched. No migration.
+only pipes and dashes are dropped. Fenced code blocks, inline code and
+`name[i](x)` calls are left alone. `MaxChars` counts the cleaned text.
+`Snippet` and `Content` are untouched. No migration.
+
+`ToContext` (on `SearchResponse` and `Page`) flattens markdown tables:
+delimiter rows (`|---|:-:|`) are dropped, and each row becomes its non-empty
+cells joined with " · " and ended with ";" (one is not added when the last cell
+already ends in ";"), so rows stay apart once a search snippet's whitespace is
+collapsed. A line is a row when it sits under another row or over a delimiter
+row, or looks like one on its own (`| a | b |`), so prose such as `|x| is ...`
+is left alone. A pipe after an odd run of backslashes (`\|`) is a literal pipe. A row left with no cells,
+such as one that held only avatar images, is dropped. Tables inside fenced code
+are left alone, and a pipe inside inline code does not split a cell. No
+migration.
+
+New `ContextOptions.MaxSnippetChars` for `SearchResponse.ToContext` and
+`Cited` (zero means the new `DefaultContextMaxSnippetChars`, 2000): each
+result's cleaned text is cut at the last space at or before that many
+characters and ends in "…", so one whole-page snippet no longer takes the whole
+`MaxChars` budget. The budget counts the capped text. Zero means the default and a negative
+value disables the cap, for the old uncapped behaviour (in Python and
+TypeScript, a value below 1 disables it). `Page.ToContext` is unchanged.
 
 ## 0.1.1
 
