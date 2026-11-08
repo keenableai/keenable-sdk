@@ -658,7 +658,8 @@ class Keenable(_BaseClient):
                 not a recency filter: use ``published_after`` for that.
                 Accepts an ISO 8601 datetime, ``YYYY-MM-DD``, or an offset
                 back from now such as ``"7d"`` (as of 7 days ago).
-            timeout: Deadline in seconds for each attempt of this call.
+            timeout: Deadline in seconds (or an ``httpx.Timeout``) for each
+                attempt of this call. ``None`` keeps the client's timeout.
             max_retries: Retry budget for this call; ``0`` turns retries off.
             extra_headers: Headers for this call, over ``default_headers``.
 

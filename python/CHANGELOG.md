@@ -23,8 +23,9 @@ All notable changes to the `keenable` Python package. Versions follow
   redirect raises `KeenableConnectionError`.
 - With your own `client`, its timeout now applies unless you pass `timeout`;
   before, the SDK's 30 s default was ignored silently either way.
-  `timeout=None` still means no deadline, and an `httpx.Timeout` is accepted on
-  the client and on each call.
+  On the client, `timeout=None` still means no deadline. A per-call `timeout`
+  overrides the client's for that call, and a per-call `None` (the default)
+  keeps the client's. An `httpx.Timeout` is accepted in both places.
 - `timeout` and `max_retries` are validated: a non-positive timeout or a
   negative retry count raises `KeenableInvalidRequestError`.
 
