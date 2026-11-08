@@ -364,8 +364,23 @@ def test_a_whole_float_limit_max_is_an_int() -> None:
 
 
 def test_a_body_nested_too_deeply_is_not_json() -> None:
-    text = "[" * 100_000 + "]" * 100_000
+    text = "[" * 513 + "]" * 513
     err = _raise(httpx.Response(500, text=text))
 
     assert err.type == "api_error"
     assert err.body == text
+
+
+def test_nesting_at_the_limit_is_still_json() -> None:
+    text = "[" * 512 + "]" * 512
+    err = _raise(httpx.Response(500, text=text))
+
+    assert err.type == "api_error"
+    assert err.body is None
+
+
+def test_brackets_inside_strings_do_not_count_as_nesting() -> None:
+    text = '{"message": "' + "[" * 20_000 + '"}'
+    err = _raise(httpx.Response(500, text=text))
+
+    assert err.body == "[" * 20_000

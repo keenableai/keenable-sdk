@@ -484,10 +484,42 @@ def _parse_json(content: bytes) -> Any:
     text = content.decode("utf-8", errors="replace")
     if text.startswith("\ufeff"):
         text = text[1:]
+    brackets = text.count("[") + text.count("{")
+    if brackets > _MAX_JSON_DEPTH and _nesting_depth(text) > _MAX_JSON_DEPTH:
+        raise ValueError("JSON nested too deeply")
     try:
         return jsonlib.loads(text, parse_constant=_reject_constant)
-    except RecursionError as exc:  # Nesting too deep to decode.
+    except RecursionError as exc:  # Nesting too deep for this interpreter.
         raise ValueError("JSON nested too deeply") from exc
+
+
+# Deeper nesting is "not JSON" on every supported Python, rather than only on
+# interpreters whose parser runs out of recursion first (3.9-3.13 do, 3.14
+# does not), so the outcome never depends on the Python version.
+_MAX_JSON_DEPTH = 512
+
+
+def _nesting_depth(text: str) -> int:
+    """The deepest array/object nesting in ``text``, ignoring brackets in strings."""
+    depth = deepest = 0
+    in_string = escaped = False
+    for ch in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+        elif ch == '"':
+            in_string = True
+        elif ch in "[{":
+            depth += 1
+            if depth > deepest:
+                deepest = depth
+        elif ch in "]}":
+            depth -= 1
+    return deepest
 
 
 def _reject_constant(name: str) -> Any:
