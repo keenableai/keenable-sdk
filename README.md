@@ -15,9 +15,9 @@ markdown.
 | Go 1.22+ | [`keenable`](https://pkg.go.dev/github.com/keenableai/keenable-sdk/go) | [`go/`](./go) |
 
 ```bash
-pip install keenable
-npm install keenable
-go get github.com/keenableai/keenable-sdk/go@v0.1.0
+pip install -U keenable
+npm install keenable@latest
+go get github.com/keenableai/keenable-sdk/go@latest
 ```
 
 ```python
@@ -66,6 +66,10 @@ Each SDK exposes the same surface: search, fetch, a `to_context()` /
 `toContext()` / `ToContext()` renderer for prompts, and OpenAI-compatible tool
 definitions for tool calling. See the per-language READMEs for the full
 reference.
+
+All three SDKs ship together at one version (see the
+[latest release](https://github.com/keenableai/keenable-sdk/releases/latest)),
+so `latest` means the same release on PyPI, npm and Go.
 
 ## Examples
 

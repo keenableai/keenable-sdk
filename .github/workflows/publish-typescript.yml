@@ -1,0 +1,67 @@
+name: Publish TypeScript to npm
+
+# Publishes the `keenable` npm package via npm Trusted Publishing (OIDC): no
+# tokens stored, and the package gets a provenance attestation. release.yml
+# starts it on the v<version> tag; it can also be run by hand on a tag.
+#
+# One-time setup on npmjs.com: package `keenable` -> Settings -> Trusted
+# Publisher -> GitHub Actions, organization `keenableai`, repository
+# `keenable-sdk`, workflow `publish-typescript.yml`, environment `npm`.
+#
+# A stable version goes to the `latest` dist-tag (what `npm install keenable`
+# and `keenable@latest` resolve to); a prerelease (X.Y.Z-rc.N) goes to `next`.
+
+on:
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/keenable
+    permissions:
+      contents: read
+      id-token: write # required for Trusted Publishing (OIDC)
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # Trusted Publishing needs npm 11.5.1 or newer.
+      - run: npm install -g npm@11
+      - name: Version matches VERSION
+        id: version
+        working-directory: .
+        run: |
+          set -euo pipefail
+          node scripts/release/release.ts check
+          version=$(tr -d '[:space:]' < VERSION)
+          case "$GITHUB_REF" in
+            refs/tags/v*) [ "${GITHUB_REF#refs/tags/v}" = "$version" ] \
+              || { echo "::error::tag $GITHUB_REF does not match VERSION $version"; exit 1; } ;;
+            *) echo "::error::run this on a v<version> tag, not $GITHUB_REF"; exit 1 ;;
+          esac
+          case "$version" in *-*) tag=next ;; *) tag=latest ;; esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Already published?
+        id: exists
+        run: |
+          if npm view "keenable@${{ steps.version.outputs.version }}" version > /dev/null 2>&1; then
+            echo "keenable@${{ steps.version.outputs.version }} is already on npm; skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      # See test.yml for why --legacy-peer-deps.
+      - if: steps.exists.outputs.skip != 'true'
+        run: npm install --legacy-peer-deps
+      - if: steps.exists.outputs.skip != 'true'
+        run: npm run typecheck && npm test && npm run build
+      - if: steps.exists.outputs.skip != 'true'
+        run: npm publish --access public --provenance --tag "${{ steps.version.outputs.tag }}"

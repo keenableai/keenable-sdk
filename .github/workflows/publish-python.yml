@@ -1,27 +1,35 @@
 name: Publish Python to PyPI
 
 # Publishes the `keenable` Python SDK to PyPI via Trusted Publishing (OIDC) —
-# no API tokens or passwords. Runs when a GitHub Release whose tag starts with
-# `python-v` is published; the tag must match the version in
-# python/pyproject.toml (e.g. python-v0.1.0 -> version 0.1.0).
+# no API tokens or passwords. release.yml starts it on the v<version> tag; it
+# can also be run by hand on a tag. The tag must match the root VERSION file,
+# which every package carries (e.g. v0.2.0 -> version 0.2.0).
 #
 # One-time setup on PyPI: register a Trusted Publisher for project `keenable`
 # pointing at this repo, workflow `publish-python.yml`, environment `pypi`.
 
 on:
-  release:
-    types: [published]
   workflow_dispatch: {}
 
 jobs:
   build:
     name: Build distribution
-    # Release-triggered runs are gated on the tag so a TypeScript release does
-    # not try to publish the Python package.
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'python-v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Version matches VERSION
+        run: |
+          set -euo pipefail
+          node scripts/release/release.ts check
+          version=$(tr -d '[:space:]' < VERSION)
+          case "$GITHUB_REF" in
+            refs/tags/v*) [ "${GITHUB_REF#refs/tags/v}" = "$version" ] \
+              || { echo "::error::tag $GITHUB_REF does not match VERSION $version"; exit 1; } ;;
+            *) echo "::error::run this on a v<version> tag, not $GITHUB_REF"; exit 1 ;;
+          esac
       - name: Install uv
         uses: astral-sh/setup-uv@v5
       - name: Build sdist + wheel
@@ -53,3 +61,6 @@ jobs:
           path: dist/
       - name: Publish to PyPI (Trusted Publishing)
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # A re-run after a partial release must not fail on files PyPI has.
+          skip-existing: true

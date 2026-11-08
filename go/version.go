@@ -2,5 +2,6 @@ package keenable
 
 // Version is the SDK version sent in the User-Agent.
 //
-// It is the only copy. A release bumps this constant and tags go/v<Version>.
-const Version = "0.1.1"
+// `make release` writes it from the repo's VERSION file, which all three SDKs
+// share; the release workflow then tags go/v<Version>.
+const Version = "0.1.4"

@@ -1,7 +1,8 @@
 # Changelog
 
 All notable changes to the `keenable` Python package. Versions follow
-[semver](https://semver.org); releases are tagged `python-v<version>`.
+[semver](https://semver.org); releases are tagged `v<version>`, the version
+all three SDKs share.
 
 ## Unreleased
 

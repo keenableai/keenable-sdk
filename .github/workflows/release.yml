@@ -1,0 +1,130 @@
+name: Release
+
+# Tags and publishes all three SDKs at the version in the root VERSION file.
+#
+# Runs when a push to main changes VERSION (the merge of a PR made with
+# `make release BUMP=...`), or by hand from the Actions tab. It:
+#   1. runs the full test suite (test.yml),
+#   2. checks every package carries the VERSION file's version,
+#   3. tags v<version>, python-v<version>, ts-v<version> and go/v<version>,
+#   4. creates the GitHub Release v<version>, its notes generated from the
+#      CHANGELOGs and the commits since the last release, marked "latest"
+#      (or "prerelease" for X.Y.Z-rc.N),
+#   5. starts publish-python.yml and publish-typescript.yml on the tag, and
+#   6. asks the Go module proxy for the new version so `@latest` sees it now.
+#
+# A version whose v<version> tag already exists is skipped, so re-running is
+# safe. The first commit that adds VERSION is a baseline, not a release.
+
+on:
+  push:
+    branches: [main]
+    paths: [VERSION]
+  workflow_dispatch: {}
+
+permissions: {}
+
+# Two releases must never race for the same tags.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Decide whether to release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      release: ${{ steps.plan.outputs.release }}
+      version: ${{ steps.plan.outputs.version }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: plan
+        run: |
+          set -euo pipefail
+          version=$(tr -d '[:space:]' < VERSION)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          case "$version" in *-*) pre=true ;; *) pre=false ;; esac
+          echo "prerelease=$pre" >> "$GITHUB_OUTPUT"
+          release=true
+          if git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
+            echo "v$version is already tagged; nothing to release."
+            release=false
+          elif [ "$GITHUB_EVENT_NAME" = push ]; then
+            previous=$(git show HEAD^:VERSION 2> /dev/null | tr -d '[:space:]' || true)
+            if [ -z "$previous" ]; then
+              echo "VERSION is new in this commit: a baseline, not a release."
+              release=false
+            elif [ "$previous" = "$version" ]; then
+              echo "VERSION did not change in this commit."
+              release=false
+            fi
+          fi
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
+  test:
+    name: Test
+    needs: plan
+    if: needs.plan.outputs.release == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/test.yml
+
+  release:
+    name: Tag and release v${{ needs.plan.outputs.version }}
+    needs: [plan, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push tags, create the release
+      actions: write # start the publish workflows
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      PRERELEASE: ${{ needs.plan.outputs.prerelease }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Versions agree
+        run: node scripts/release/release.ts check
+      - name: Tag
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          tags="v$VERSION python-v$VERSION ts-v$VERSION go/v$VERSION"
+          for t in $tags; do git tag -a "$t" -m "$t"; done
+          # Atomic: either every SDK gets its tag or none does.
+          git push --atomic origin $tags
+      - name: Release notes
+        run: node scripts/release/release.ts notes "$VERSION" > "$RUNNER_TEMP/notes.md"
+      - name: GitHub Release
+        run: |
+          set -euo pipefail
+          if [ "$PRERELEASE" = true ]; then flag=--prerelease; else flag=--latest; fi
+          gh release create "v$VERSION" --verify-tag --title "v$VERSION" \
+            --notes-file "$RUNNER_TEMP/notes.md" "$flag"
+      # workflow_dispatch is the one event GITHUB_TOKEN may start, and it keeps
+      # each publish in its own workflow file (PyPI's Trusted Publisher and
+      # npm's are registered by file name).
+      - name: Publish to PyPI and npm
+        run: |
+          set -euo pipefail
+          gh workflow run publish-python.yml --ref "v$VERSION"
+          gh workflow run publish-typescript.yml --ref "v$VERSION"
+          echo "Follow them at $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions" >> "$GITHUB_STEP_SUMMARY"
+      - name: Warm the Go module proxy
+        run: |
+          url="https://proxy.golang.org/github.com/keenableai/keenable-sdk/go/@v/v$VERSION.info"
+          for attempt in 1 2 3 4 5; do
+            if curl -fsS "$url"; then exit 0; fi
+            sleep $((attempt * 10))
+          done
+          echo "::warning::The Go proxy has not indexed v$VERSION yet; it will on the first go get."

@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request: {}
   workflow_dispatch: {}
+  # release.yml runs the whole suite before it tags anything.
+  workflow_call: {}
 
 # A follow-up push supersedes the run in flight; without this its jobs keep
 # burning runner minutes on a commit nobody is waiting for any more.
@@ -13,6 +15,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  versions:
+    name: SDK versions agree
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Every package carries the VERSION file's version
+        run: node scripts/release/release.ts check
+      - name: Release tooling tests
+        run: node --test scripts/release/release.test.ts
+
   # Version-independent checks, so they run once rather than once per matrix leg.
   lint:
     name: Lint and type check

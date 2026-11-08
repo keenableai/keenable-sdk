@@ -1,61 +1,90 @@
 # Publishing
 
-Three SDKs ship from this repo, on independent version numbers.
+The three SDKs ship together, at one version. The root `VERSION` file holds
+it, and each package keeps a copy that `make release` writes:
 
-## Python (`keenable` on PyPI)
+| File | Line |
+|---|---|
+| `python/pyproject.toml` | `version = "X.Y.Z"` |
+| `python/keenable/_version.py` | `__version__ = "X.Y.Z"` |
+| `typescript/package.json` | `"version": "X.Y.Z"` |
+| `go/version.go` | `const Version = "X.Y.Z"` |
 
-Trusted Publishing (OIDC), no tokens stored.
+Don't edit these by hand. CI (`make release-check`) fails when they disagree.
 
-One-time setup on PyPI: register a Trusted Publisher for project `keenable`
-pointing at repo `keenableai/keenable-sdk`, workflow `publish-python.yml`,
-environment `pypi`.
+## Release
 
-To release:
+Needs Node 22.18+.
 
-1. Bump `version` in `python/pyproject.toml` and `__version__` in
-   `python/keenable/_version.py` (the only two places it appears; `__init__`
-   and the User-Agent both read the latter).
-2. Create a GitHub Release tagged `python-v<version>` (e.g. `python-v0.1.1`).
-3. `publish-python.yml` builds with `uv` and publishes. The workflow ignores
-   releases whose tag does not start with `python-v`.
+```bash
+git checkout main && git pull
+make release BUMP=minor          # or patch, major, or an exact X.Y.Z / X.Y.Z-rc.1
+git diff                         # read the changelog entries it wrote
+git checkout -b release/v0.2.0
+git commit -am "release: v0.2.0"
+# open a PR, merge it
+```
 
-## TypeScript (`keenable` on npm)
+`make release` bumps every version and moves each `CHANGELOG.md`'s
+`## Unreleased` section under `## X.Y.Z (date)`. If an SDK's `Unreleased`
+section is empty, it fills the entry from the commits that touched that SDK's
+directory since the last release. If no commits touched it, the entry says the
+release only keeps the versions in step.
 
-Manual publish with OTP, matching how our other npm packages ship.
+Merging the PR changes `VERSION` on `main`, and
+[`release.yml`](.github/workflows/release.yml) then:
 
-1. Bump `version` in `typescript/package.json`. Nothing else: the build injects
-   it into the User-Agent, so there is no second copy to forget.
-2. Build and verify:
-   ```bash
-   cd typescript
-   npm install --legacy-peer-deps   # npm 10 crashes on vitest 4's peer set without it
-   npm run typecheck && npm test && npm run build
-   npm pack --dry-run    # check the file list
-   ```
-3. Publish:
-   ```bash
-   npm publish --access public --otp=<code>
-   ```
-4. Tag the release `ts-v<version>` on GitHub.
+1. runs the full test suite;
+2. tags `v<version>`, `python-v<version>`, `ts-v<version>` and
+   `go/v<version>` on the merge commit;
+3. creates the GitHub Release `v<version>`, marked **latest**. Its notes
+   (`make release-notes`) list the install commands, each SDK's changelog
+   entry and the commits since the last release;
+4. starts `publish-python.yml` (PyPI) and `publish-typescript.yml` (npm) on
+   the tag;
+5. asks the Go module proxy for the new version, so `@latest` resolves to it
+   at once.
 
-## Go (`github.com/keenableai/keenable-sdk/go`)
+Re-running the workflow is safe. It skips a version that is already tagged,
+and both publish jobs skip a version their registry already has. To release a
+`VERSION` that was merged without its workflow running, start **Release** by
+hand from the Actions tab.
 
-The module lives in `go/`. There is no registry workflow: `go get` and
-pkg.go.dev follow a git tag.
+After the release, update the install pins in
+[keenable-external-docs](https://github.com/keenableai/keenable-external-docs)
+if any pin a version (see AGENTS.md).
 
-1. Bump `Version` in `go/version.go`. That constant is the only copy. The
-   User-Agent reads it.
-2. Tag `go/v<version>` (for example `go/v0.1.0`) on the commit that contains
-   that constant. The tag prefix is the module directory. Users install with
-   `go get github.com/keenableai/keenable-sdk/go@v0.1.0`. The `@` version does
-   not repeat the `go/` prefix.
-3. The module proxy indexes the tag the first time someone fetches it.
+## "latest"
 
-A root `v0.1.0` tag does not version this module. `python-v*` and `ts-v*` do
-not publish it either.
+Every channel resolves "latest" to the newest stable release, and a
+prerelease (`X.Y.Z-rc.N`) never takes that slot:
 
-## Version sync
+| Channel | Latest | A prerelease |
+|---|---|---|
+| PyPI | `pip install -U keenable` | `pip install --pre keenable` |
+| npm | `npm install keenable@latest` (the `latest` dist-tag) | `npm install keenable@next` |
+| Go | `go get github.com/keenableai/keenable-sdk/go@latest` | `go get ...@v0.3.0-rc.1` |
+| GitHub | [`/releases/latest`](https://github.com/keenableai/keenable-sdk/releases/latest) | marked "Pre-release" |
 
-The three SDKs keep the same feature surface but version independently. When a
-change touches more than one, release each and note it in the same GitHub
-Release description.
+All three SDKs share one version. "Latest" is therefore the same number on
+every channel, and the GitHub Release `latest` lists all three.
+`make release-status` prints what each registry currently serves.
+
+## One-time setup
+
+- **PyPI**: register a Trusted Publisher for project `keenable`. Point it at
+  repo `keenableai/keenable-sdk`, workflow `publish-python.yml` and
+  environment `pypi`. If the `pypi` environment limits which tags may deploy,
+  allow `v*`.
+- **npm**: on npmjs.com, open package `keenable`, then Settings, then
+  Trusted Publisher. Choose GitHub Actions, organization `keenableai`,
+  repository `keenable-sdk`, workflow `publish-typescript.yml` and environment
+  `npm`.
+- **Go**: nothing to set up. `go get` and pkg.go.dev follow the `go/v<version>`
+  tag. Its prefix is the module directory, and it is not part of the
+  `@v<version>` that users type.
+
+Tags made before the shared version (`python-v0.1.x`, `ts-v0.1.x`,
+`go/v0.1.x`) stay as they are. `VERSION` starts at 0.1.4, the highest of the
+three, so the first shared release comes after it. Python and Go skip the
+numbers in between.

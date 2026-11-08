@@ -10,6 +10,10 @@ A new option, method, model field or error type goes into all three languages in
 - Python: `cd python && python -m pytest -q`
 - TypeScript: `cd typescript && npm install && npx vitest run && npx tsc --noEmit`
 
+## One version for all three SDKs
+
+The root `VERSION` file is the version of every SDK. Don't edit a package's version by hand. Release with `make release BUMP=patch|minor|major` (see PUBLISH.md), which bumps them all and turns each `CHANGELOG.md`'s `## Unreleased` section into the release entry. Note every user-facing change under `## Unreleased` in each SDK's changelog as you make it. Merging the release PR tags it, publishes it and marks the GitHub Release latest.
+
 ## The error contract comes from the backend's catalog
 
 `scripts/error-contract/error-catalog.json` is a copy of keenable-backend-ts `docs/error-catalog.json` (one entry per error code: type, status, fix, docs_url, ...). The three `error_contract.json` test fixtures are generated from it and must stay identical; each SDK's tests check that. After the backend adds or changes a code, refresh them with Node 22.18+:
