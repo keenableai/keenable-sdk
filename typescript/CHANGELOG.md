@@ -28,6 +28,14 @@ All notable changes to the `keenable` npm package. Versions follow
   `KeenableConnectionError`.
 - `timeoutMs` and `maxRetries` are validated: a non-positive timeout or a
   negative or fractional retry count throws `KeenableInvalidRequestError`.
+- Fix: a `Retry-After` header that is not a number or an HTTP date (`1.5`,
+  `-1`, `Jan 1`) was read as a date in the past, so the retry came at once. It
+  is now ignored, and the backoff applies, as in Python and Go. A date without
+  a zone is read as GMT rather than local time.
+- Fix: a call whose `signal` is already aborted throws without calling
+  `fetch`, even a custom `fetch` that ignores the signal.
+- Fix: `Page.url` falls back to the URL you asked for when the API sends an
+  empty one, as in Python and Go.
 
 - Errors carry the API's agent-ready fields: `code`, `error`, `fix`, `docsUrl`,
   `retryable`, `retryAfterSeconds` (from the body, else the `Retry-After`

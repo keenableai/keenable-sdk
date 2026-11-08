@@ -356,7 +356,8 @@ function toSearchResult(data: Record<string, unknown>): SearchResult {
 
 function toPage(data: Record<string, unknown>, url: string, requestId?: string): Page {
   return new Page({
-    url: String(data.url ?? url),
+    // An empty url falls back to the one asked for, as in Python and Go.
+    url: nonEmpty(data.url) ?? url,
     title: String(data.title ?? ""),
     content: String(data.content ?? ""),
     description: nonEmpty(data.description),
@@ -623,6 +624,9 @@ export class Keenable {
     timeoutMs: number,
     callerSignal: AbortSignal | undefined,
   ): Promise<{ data: Record<string, unknown>; requestId?: string }> {
+    // An already-aborted call sends nothing, whatever the fetch implementation
+    // does with the signal; Go's canceled ctx sends nothing either.
+    if (callerSignal?.aborted) throw callerSignal.reason;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     const onAbort = () => controller.abort();
@@ -773,6 +777,16 @@ function seconds(value: unknown): number | undefined {
   return Math.min(value, MAX_RETRY_AFTER);
 }
 
+/**
+ * The shapes of an HTTP date (RFC 9110 section 5.6.7): IMF-fixdate
+ * "Sun, 06 Nov 1994 08:49:37 GMT", RFC 850 "Sunday, 06-Nov-94 08:49:37 GMT"
+ * and asctime "Sun Nov  6 08:49:37 1994", with or without a zone, as Python's
+ * parser takes them. Date.parse alone reads "1.5", "-1" and "Jan 1" as dates in
+ * the past, which turned a malformed delay into an immediate retry.
+ */
+const HTTP_DATE =
+  /^(?:[a-z]{3,9},?\s+)?(?:\d{1,2}[\s-][a-z]{3}[\s-]\d{2,4}\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s+\S+)?|[a-z]{3}\s+\d{1,2}\s+\d{1,2}:\d{2}:\d{2}\s+\d{4})$/i;
+
 /** Parse a Retry-After header: delay-seconds or an HTTP date. */
 function retryAfterHeader(value: string | null | undefined): number | undefined {
   const text = value?.trim();
@@ -782,7 +796,11 @@ function retryAfterHeader(value: string | null | undefined): number | undefined 
     // Infinity.
     return Math.min(Number(text), MAX_RETRY_AFTER);
   }
-  const when = Date.parse(text);
+  if (!HTTP_DATE.test(text)) return undefined;
+  // A date without a zone is GMT, as HTTP dates are; Date.parse would read
+  // it as local time.
+  const zoned = /\s(?:[a-z]+|[+-]\d{4})$/i.test(text);
+  const when = Date.parse(zoned ? text : `${text} GMT`);
   if (Number.isNaN(when)) return undefined;
   return Math.min(Math.max(0, Math.ceil((when - Date.now()) / 1000)), MAX_RETRY_AFTER);
 }
