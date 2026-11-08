@@ -362,6 +362,9 @@ func TestRetryAfterSources(t *testing.T) {
 		{"malformed", map[string]any{"retry_after_seconds": -1}, map[string]string{"Retry-After": "soon"}, 0},
 		{"zero-padded header", map[string]any{"message": "m"}, map[string]string{"Retry-After": "0000000001"}, time.Second},
 		{"oversized header", map[string]any{"message": "m"}, map[string]string{"Retry-After": strings.Repeat("9", 400)}, 365 * 24 * time.Hour},
+		{"oversized body seconds", map[string]any{"retry_after_seconds": 1e300}, nil, 365 * 24 * time.Hour},
+		{"far-future http date", map[string]any{"message": "m"}, map[string]string{"Retry-After": "Fri, 31 Dec 9999 23:59:59 GMT"}, 365 * 24 * time.Hour},
+		{"http date two years ahead", map[string]any{"message": "m"}, map[string]string{"Retry-After": time.Now().AddDate(2, 0, 0).UTC().Format(http.TimeFormat)}, 365 * 24 * time.Hour},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -380,6 +383,52 @@ func TestRetryAfterSources(t *testing.T) {
 		got := apiErrorFrom(t, err).RetryAfter
 		if got < 25*time.Second || got > 31*time.Second {
 			t.Fatalf("got %v", got)
+		}
+	})
+
+	t.Run("far-future http date keeps the delay in the message", func(t *testing.T) {
+		c, _ := start(t, replyWith(429, map[string]any{"message": "m"}, map[string]string{"Retry-After": "Fri, 31 Dec 9999 23:59:59 GMT"}), keyed())
+		_, err := c.Search(context.Background(), "q", nil)
+		if msg := err.Error(); !strings.Contains(msg, "Retry after 8760h0m0s.") {
+			t.Fatalf("message lacks the capped delay: %q", msg)
+		}
+	})
+
+	t.Run("a body number too large for a float64 is dropped, not fatal", func(t *testing.T) {
+		raw := `{"error":"Too Many Requests","code":"rate_limited","type":"rate_limit_error","retry_after_seconds":1e400}`
+		h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Retry-After", "7")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(raw))
+		})
+		c, _ := start(t, h, keyed())
+		_, err := c.Search(context.Background(), "q", nil)
+		api := apiErrorFrom(t, err)
+		if api.APICode != "rate_limited" || api.Type != keenable.TypeRateLimitError {
+			t.Fatalf("lost the typed error: code %q type %q", api.APICode, api.Type)
+		}
+		if api.RetryAfter != 7*time.Second {
+			t.Fatalf("got %v, want the header's 7s", api.RetryAfter)
+		}
+		if _, ok := api.Raw["retry_after_seconds"]; ok {
+			t.Fatalf("Raw keeps the overflowing number: %v", api.Raw)
+		}
+		if api.Raw["code"] != "rate_limited" {
+			t.Fatalf("Raw lost the rest of the body: %v", api.Raw)
+		}
+		var rl *keenable.RateLimitError
+		if !errors.As(err, &rl) {
+			t.Fatalf("want a RateLimitError, got %T", err)
+		}
+	})
+
+	t.Run("a bare overflowing number body stays the error's detail", func(t *testing.T) {
+		c, _ := start(t, textHandler(http.StatusBadGateway, "1e400"), keyed())
+		_, err := c.Search(context.Background(), "q", nil)
+		api := apiErrorFrom(t, err)
+		if api.Body != "1e400" || !strings.Contains(err.Error(), "1e400") {
+			t.Fatalf("lost the body text: Body %q, message %q", api.Body, err.Error())
 		}
 	})
 

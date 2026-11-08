@@ -18,7 +18,10 @@ All notable changes to the `keenable` Python package. Versions follow
   `KeenableAuthError`. Without a `code`, 401/403 behave as before.
 - When the API sends `fix`, the error message ends with it (". <fix>"), as in
   the Go and TypeScript SDKs. A `Retry-After` header is capped at a year, so an
-  oversized value can never break error handling.
+  oversized value can never break error handling. The same year cap applies to
+  a far-future `Retry-After` date and to the body's `retry_after_seconds` and
+  `retryAfter`; a body value too large for a double (such as `1e400`) is
+  dropped and the next source of the delay is used, as in the other SDKs.
 - Errors carry the API's `type` (error format v1): `invalid_request_error`,
   `authentication_error`, `permission_error`, `billing_error`,
   `rate_limit_error`, `target_error` or `api_error`. An API that does not send

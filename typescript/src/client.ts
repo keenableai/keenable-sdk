@@ -563,13 +563,18 @@ function toApiError(status: number, text: string, headers?: Headers): KeenableAP
   return new KeenableAPIError(message, status, detail || undefined, details);
 }
 
-/** A non-negative, finite number of seconds, or undefined for anything else. */
-function seconds(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
-}
-
 /** The longest Retry-After delay reported, in seconds (a year). */
 const MAX_RETRY_AFTER = 365 * 24 * 60 * 60;
+
+/**
+ * A non-negative, finite number of seconds capped at a year, or undefined for
+ * anything else. JSON too large for a double (1e400) parses as Infinity and is
+ * dropped, as the Go and Python SDKs drop it.
+ */
+function seconds(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return undefined;
+  return Math.min(value, MAX_RETRY_AFTER);
+}
 
 /** Parse a Retry-After header: delay-seconds or an HTTP date. */
 function retryAfterHeader(value: string | null | undefined): number | undefined {

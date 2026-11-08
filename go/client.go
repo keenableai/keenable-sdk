@@ -523,9 +523,8 @@ var notYourLimitCodes = map[string]bool{
 
 func toAPIError(status int, raw []byte, header http.Header, keyless bool) error {
 	detail := ""
-	var body any
 	var obj map[string]any
-	if err := json.Unmarshal(raw, &body); err != nil {
+	if body, ok := decodeErrorBody(raw); !ok {
 		detail = strings.TrimSpace(string(raw))
 	} else if m, ok := body.(map[string]any); ok {
 		obj = m
@@ -704,6 +703,11 @@ func retryAfterHeader(v string) (time.Duration, bool) {
 	if d <= 0 {
 		return 0, true
 	}
+	// Cap before rounding: a date centuries ahead saturates time.Until at the
+	// largest Duration, and adding to that would wrap negative.
+	if d >= maxRetryAfter {
+		return maxRetryAfter, true
+	}
 	// Round up, as the other SDKs do, so waiting this long is never too early.
 	return (d + time.Second - 1).Truncate(time.Second), true
 }
@@ -741,6 +745,54 @@ func firstDetail(m map[string]any, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+// decodeErrorBody decodes an error body as json.Unmarshal into an any would,
+// except that a number too large for a float64 (such as a retry_after_seconds
+// of 1e400) is left out instead of failing the whole body. The other SDKs see
+// such a number as non-finite and drop it, so the response keeps its code and
+// typed error and the next source of the retry delay is used. Going through
+// json.Number keeps this the same on every Go version.
+func decodeErrorBody(raw []byte) (any, bool) {
+	if !json.Valid(raw) {
+		return nil, false
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var body any
+	if err := dec.Decode(&body); err != nil {
+		return nil, false
+	}
+	// A bare overflowing number (the whole body is 1e400) is not JSON to
+	// json.Unmarshal either, so the raw text stays the error's detail.
+	return plainNumbers(body)
+}
+
+// plainNumbers turns each json.Number into a float64, as json.Unmarshal does,
+// and reports false for one that does not fit, so its caller can drop it.
+func plainNumbers(v any) (any, bool) {
+	switch t := v.(type) {
+	case json.Number:
+		f, err := strconv.ParseFloat(string(t), 64)
+		if err != nil {
+			return nil, false
+		}
+		return f, true
+	case map[string]any:
+		for k, e := range t {
+			if p, ok := plainNumbers(e); ok {
+				t[k] = p
+			} else {
+				delete(t, k)
+			}
+		}
+	case []any:
+		for i, e := range t {
+			// An array keeps its length; an overflowing element becomes nil.
+			t[i], _ = plainNumbers(e)
+		}
+	}
+	return v, true
 }
 
 func decodeObject(status int, raw []byte, header http.Header) (map[string]any, error) {

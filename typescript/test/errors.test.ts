@@ -204,6 +204,35 @@ describe("retry hints", () => {
     expect(error.retryAfterSeconds).toBe(365 * 24 * 60 * 60);
   });
 
+  it("caps a far-future Retry-After date at a year", async () => {
+    const error = await errorFor(
+      reply(429, { message: "m" }, { "Retry-After": "Fri, 31 Dec 9999 23:59:59 GMT" }),
+    );
+
+    expect(error.retryAfterSeconds).toBe(365 * 24 * 60 * 60);
+  });
+
+  it("caps an oversized retry_after_seconds in the body at a year", async () => {
+    const error = await errorFor(reply(429, { retry_after_seconds: 1e300 }));
+
+    expect(error.retryAfterSeconds).toBe(365 * 24 * 60 * 60);
+  });
+
+  it("drops a body delay too large for a double and falls back to the header", async () => {
+    const body = '{"code":"rate_limited","retry_after_seconds":1e400,"retryAfter":1e400}';
+    const error = await errorFor(
+      () =>
+        new Response(body, {
+          status: 429,
+          headers: { "Content-Type": "application/json", "Retry-After": "7" },
+        }),
+    );
+
+    expect(error).toBeInstanceOf(KeenableRateLimitError);
+    expect(error.code).toBe("rate_limited");
+    expect(error.retryAfterSeconds).toBe(7);
+  });
+
   it("keeps a zero-padded Retry-After header's value", async () => {
     const error = await errorFor(reply(429, { message: "m" }, { "Retry-After": "0000000001" }));
 

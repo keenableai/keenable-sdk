@@ -199,6 +199,56 @@ def test_an_oversized_retry_after_header_is_capped_not_raised() -> None:
     assert err.retry_after_seconds == 365 * 24 * 60 * 60
 
 
+def test_a_far_future_retry_after_date_is_capped() -> None:
+    err = _raise(
+        httpx.Response(
+            429,
+            json={"message": "m"},
+            headers={"Retry-After": "Fri, 31 Dec 9999 23:59:59 GMT"},
+        )
+    )
+
+    assert err.retry_after_seconds == 365 * 24 * 60 * 60
+
+
+def test_a_retry_after_date_with_an_overflowing_year_is_ignored() -> None:
+    err = _raise(
+        httpx.Response(
+            429,
+            json={"message": "m"},
+            headers={"Retry-After": "Fri, 31 Dec 99999999999999999999 23:59:59 GMT"},
+        )
+    )
+
+    assert isinstance(err, KeenableRateLimitError)
+    assert err.retry_after_seconds is None
+
+
+def test_a_huge_integer_retry_delay_in_the_body_falls_back_not_crashes() -> None:
+    for field in ("retry_after_seconds", "retryAfter"):
+        err = _raise(
+            httpx.Response(
+                429,
+                json={"code": "rate_limited", field: 10**400},
+                headers={"Retry-After": "7"} if field == "retry_after_seconds" else {},
+            )
+        )
+
+        assert isinstance(err, KeenableRateLimitError), field
+        assert err.code == "rate_limited", field
+        # Too large for a float, so dropped like the non-finite value the Go
+        # and TypeScript SDKs decode it as; the next source is used.
+        want = 7 if field == "retry_after_seconds" else None
+        assert err.retry_after_seconds == want, field
+
+
+def test_an_oversized_finite_body_retry_delay_is_capped() -> None:
+    for value in (1e300, 10**12):
+        err = _raise(httpx.Response(429, json={"retry_after_seconds": value}))
+
+        assert err.retry_after_seconds == 365 * 24 * 60 * 60, value
+
+
 def test_a_zero_padded_retry_after_header_keeps_its_value() -> None:
     for header, want in (("0000000001", 1), ("0" * 5000 + "7", 7), ("000", 0)):
         err = _raise(
