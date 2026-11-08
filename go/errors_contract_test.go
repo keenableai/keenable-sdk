@@ -411,6 +411,12 @@ func TestRetryAfterSources(t *testing.T) {
 		if api.RetryAfter != 7*time.Second {
 			t.Fatalf("got %v, want the header's 7s", api.RetryAfter)
 		}
+		if _, ok := api.Raw["retry_after_seconds"]; ok {
+			t.Fatalf("Raw keeps the overflowing number: %v", api.Raw)
+		}
+		if api.Raw["code"] != "rate_limited" {
+			t.Fatalf("Raw lost the rest of the body: %v", api.Raw)
+		}
 		var rl *keenable.RateLimitError
 		if !errors.As(err, &rl) {
 			t.Fatalf("want a RateLimitError, got %T", err)
