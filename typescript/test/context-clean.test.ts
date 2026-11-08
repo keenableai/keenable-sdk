@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { Page, SearchResponse } from "../src/index.js";
-import { cleanContextText } from "../src/internal.js";
+import { capSnippet, cleanContextText } from "../src/internal.js";
 
 const BASE = "https://example.com/docs/guide?x=1";
 
@@ -17,7 +17,7 @@ describe("cleanContextText", () => {
       "![](https://cdn-avatars.huggingface.co/v1/production/uploads/x.png) " +
       "| [fireworks-ai](/fireworks-ai) fastest |";
     expect(cleanContextText(row, "https://huggingface.co/models")).toBe(
-      "| $0.44 | $1.32 | | [fireworks-ai](https://huggingface.co/fireworks-ai) fastest |",
+      "$0.44 · $1.32 · [fireworks-ai](https://huggingface.co/fireworks-ai) fastest;",
     );
   });
 
@@ -53,7 +53,7 @@ describe("cleanContextText", () => {
   });
 
   it("returns text without markup unchanged byte for byte", () => {
-    const text = "Plain  text\n\n|  a | b |\n|---|---|\n  indented\r\ntrailing  \n";
+    const text = "Plain  text\n\n  indented\r\ntrailing  \nCost | value, said nobody\n";
     expect(cleanContextText(text, BASE)).toBe(text);
   });
 
@@ -101,9 +101,73 @@ describe("cleanContextText", () => {
     );
   });
 
-  it("keeps a table header row of images", () => {
-    const text = "| ![a](x.png) | b |\n|---|---|\n| ![c](y.png) | |\n| 1 | 2 |";
-    expect(cleanContextText(text, BASE)).toBe("| | b |\n|---|---|\n| 1 | 2 |");
+  it("flattens table rows and drops delimiter rows", () => {
+    const text = "| ![a](x.png) | b |\n|---|:--:|\n| ![c](y.png) | |\n|  1 |  2  |\nafter";
+    expect(cleanContextText(text, BASE)).toBe("b;\n1 · 2;\nafter");
+  });
+
+  it("flattens a Hugging Face leaderboard table", () => {
+    const avatar = (id: string) => `https://cdn-avatars.huggingface.co/v1/production/uploads/${id}.png`;
+    const text = [
+      "Open LLM leaderboard",
+      "",
+      "| Rank | Model | Provider | Score |",
+      "|---:|:---|---|:-:|",
+      `| 1 | ![avatar](${avatar("a")}) [Llama-3](/meta/llama) | ![avatar](${avatar("b")}) meta | 90.1 |`,
+      `| ![](${avatar("c")}) | ![](${avatar("d")}) | | |`,
+      "| 2 | Qwen2 | ![](https://cdn-avatars.huggingface.co/e.png) qwen | 88 |",
+    ].join("\n");
+    expect(cleanContextText(text, "https://huggingface.co/spaces/lb")).toBe(
+      "Open LLM leaderboard\n\n" +
+        "Rank · Model · Provider · Score;\n" +
+        "1 · [Llama-3](https://huggingface.co/meta/llama) · meta · 90.1;\n" +
+        "2 · Qwen2 · qwen · 88;",
+    );
+  });
+
+  it("flattens a table without outer pipes", () => {
+    const text = "Name | Price\n--- | ---:\nA | $1\nB | $2\n\nprose";
+    expect(cleanContextText(text, BASE)).toBe("Name · Price;\nA · $1;\nB · $2;\n\nprose");
+  });
+
+  it("reads an escaped pipe in a cell as a literal pipe", () => {
+    const text = "| op | meaning |\n|---|---|\n| a \\| b | either |";
+    expect(cleanContextText(text, BASE)).toBe("op · meaning;\na | b · either;");
+  });
+
+  it("does not split cells on a pipe inside inline code", () => {
+    const text = "| flag | use |\n|---|---|\n| `a|b` | union |";
+    expect(cleanContextText(text, BASE)).toBe("flag · use;\n`a|b` · union;");
+  });
+
+  it("leaves a table inside a fence alone", () => {
+    const text = "```\n| a | b |\n|---|---|\n| 1 | 2 |\n```\n| c | d |";
+    expect(cleanContextText(text, BASE)).toBe("```\n| a | b |\n|---|---|\n| 1 | 2 |\n```\nc · d;");
+  });
+
+  it("adds no second semicolon to a row that already ends in one", () => {
+    const text = "| a | b; |\n|---|---|\n| `x;` | y |\n| c | `d;` |";
+    expect(cleanContextText(text, BASE)).toBe("a · b;\n`x;` · y;\nc · `d;`;");
+  });
+
+  it("escapes a pipe only after an odd run of backslashes", () => {
+    const text = "| x |\n|---|\n| a \\| b |\n| a \\\\| b |\n| a \\\\\\| b |";
+    expect(cleanContextText(text, BASE)).toBe("x;\na | b;\na \\\\ · b;\na \\\\| b;");
+  });
+
+  it("leaves prose that starts with a pipe alone", () => {
+    const text = "|x| is the absolute value of x\n| Warning: a | b\n|x|\n| a \\| b |";
+    expect(cleanContextText(text, BASE)).toBe(text);
+  });
+
+  it("flattens a row-shaped line without a header", () => {
+    const text = "...leaderboard\n| 1 | Llama | 90 |\n| 2 | Qwen | 88 |";
+    expect(cleanContextText(text, BASE)).toBe("...leaderboard\n1 · Llama · 90;\n2 · Qwen · 88;");
+  });
+
+  it("leaves prose with a single pipe alone", () => {
+    const text = "Home | About us\nUse a | b to pipe.\n`x | y`";
+    expect(cleanContextText(text, BASE)).toBe(text);
   });
 
   it("handles brackets in alt text and parentheses in URLs", () => {
@@ -154,5 +218,75 @@ describe("toContext budget counts cleaned text", () => {
     const expected = "[1] T (https://example.com/p)\nReal text. See [more](https://example.com/more).";
     expect(page.toContext({ maxChars: expected.length })).toBe(expected);
     expect(page.content.startsWith(noise)).toBe(true);
+  });
+});
+
+function responseOf(...snippets: string[]): SearchResponse {
+  return new SearchResponse({
+    query: "q",
+    results: snippets.map((snippet, i) => ({
+      title: `T${i + 1}`,
+      url: `https://e.com/${i + 1}`,
+      snippet,
+      raw: {},
+    })),
+    raw: {},
+  });
+}
+
+describe("toContext maxSnippetChars", () => {
+  it("counts the cap in code points, like the Python and Go SDKs", () => {
+    const emoji = "😀".repeat(5);
+    expect(capSnippet(emoji, 5)).toBe(emoji);
+    expect(capSnippet(emoji, 3)).toBe("😀😀😀…");
+    expect(capSnippet("😀😀 😀😀😀", 4)).toBe("😀😀…");
+  });
+
+  it("caps a long snippet at a word boundary by default", () => {
+    const words = Array(1000).fill("word").join(" "); // 4,999 characters
+    const response = responseOf(words);
+    const body = response.toContext().split("\n").slice(1).join("\n");
+    expect(body.endsWith("word…")).toBe(true);
+    // The last space at or before 2,000 sits at 1,999; the cut drops it.
+    expect(body.length).toBe(1999 + 1);
+    expect(response.results[0]!.snippet).toBe(words);
+  });
+
+  it("cuts at a space exactly at the limit", () => {
+    const response = responseOf("aaaa bbbb cccc");
+    expect(response.toContext({ maxSnippetChars: 4 }).endsWith("\naaaa…")).toBe(true);
+    expect(response.toContext({ maxSnippetChars: 7 }).endsWith("\naaaa…")).toBe(true);
+    expect(response.toContext({ maxSnippetChars: 9 }).endsWith("\naaaa bbbb…")).toBe(true);
+  });
+
+  it("hard cuts text without spaces", () => {
+    const response = responseOf("x".repeat(50));
+    expect(response.toContext({ maxSnippetChars: 10 }).endsWith(`\n${"x".repeat(10)}…`)).toBe(true);
+  });
+
+  it("leaves a snippet at or under the cap untouched", () => {
+    expect(responseOf("aaaa bbbb").toContext({ maxSnippetChars: 9 }).endsWith("\naaaa bbbb")).toBe(
+      true,
+    );
+  });
+
+  it("is disabled by null", () => {
+    const long = "y ".repeat(3000);
+    const context = responseOf(long).toContext({ maxSnippetChars: null, maxChars: 100_000 });
+    expect(context.endsWith(long.trim())).toBe(true);
+  });
+
+  it("is counted by the budget", () => {
+    const long = Array(1000).fill("word").join(" ");
+    const response = responseOf(long, long, long);
+    // Uncapped, the first result alone is over budget; capped, all three fit.
+    expect(response.cited({ maxChars: 6200 })).toHaveLength(3);
+    expect(response.cited({ maxChars: 6200, maxSnippetChars: null })).toHaveLength(1);
+    expect(response.toContext({ maxChars: 6200 }).split("…")).toHaveLength(4);
+  });
+
+  it("keeps the first result even over the budget", () => {
+    const cited = responseOf("a ".repeat(100), "b").cited({ maxChars: 10, maxSnippetChars: null });
+    expect(cited.map((r) => r.title)).toEqual(["T1"]);
   });
 });

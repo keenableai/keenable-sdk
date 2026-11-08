@@ -64,6 +64,14 @@ export interface ToContextOptions {
   maxResults?: number;
   /** Append the publication date to each header. Default true. */
   includeDates?: boolean;
+  /**
+   * Cap each result's text at about this many characters (plus the "…"), so
+   * one whole-page snippet cannot take the whole budget. Cut at a word
+   * boundary. Default 2000; `null` means no cap, and a value below 1 also
+   * disables the cap (in Go, 0 means the default and a negative value
+   * disables it).
+   */
+  maxSnippetChars?: number | null;
 }
 
 /** Configuration for a `Keenable` client. */
