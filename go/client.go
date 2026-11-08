@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -45,6 +46,9 @@ const (
 	// maxRetryAfterWait is the longest server-requested wait that is waited
 	// out. A longer one, such as the keyless hourly cap, is returned at once.
 	maxRetryAfterWait = 60 * time.Second
+	// maxTimeout is the longest per-attempt deadline: about 24.8 days, the
+	// longest a JavaScript timer can wait. A longer timeout is treated as it.
+	maxTimeout = 2147483647 * time.Millisecond
 )
 
 // Options configures a [Client].
@@ -89,8 +93,8 @@ type Options struct {
 	Headers map[string]string
 	// HTTPClient replaces the owned client (proxies, custom transports).
 	// Its Timeout and CheckRedirect are left alone, and [Client.Close] does
-	// not close it. Cross-host redirects are still refused, so X-API-Key is
-	// not sent to another host.
+	// not close it. Redirects are still never followed, whatever its
+	// CheckRedirect says, so X-API-Key goes only to the configured host.
 	HTTPClient *http.Client
 }
 
@@ -125,14 +129,19 @@ type Client struct {
 // setting for this call only. They are embedded in [SearchOptions] and
 // [FetchOptions].
 type RequestOptions struct {
-	// Timeout is the deadline for each attempt of this call. Zero keeps the
-	// client's. A ctx deadline also applies, to the whole call.
-	Timeout time.Duration
+	// Timeout is the deadline for each attempt of this call. Nil keeps the
+	// client's; a pointer to zero or less is an [InvalidRequestError]. A ctx
+	// deadline also applies, to the whole call.
+	//
+	//	timeout := 5 * time.Second
+	//	opts := &keenable.FetchOptions{RequestOptions: keenable.RequestOptions{Timeout: &timeout}}
+	Timeout *time.Duration
 	// MaxRetries is this call's retry budget. Nil keeps the client's; a
 	// pointer to zero turns retries off.
 	MaxRetries *int
 	// Headers are sent with this call, over Options.Headers. X-API-Key is
-	// ignored.
+	// ignored. A name that is not an HTTP token, or a value with CR, LF or
+	// NUL, is an [InvalidRequestError].
 	Headers map[string]string
 }
 
@@ -164,6 +173,9 @@ func New(opts *Options) (*Client, error) {
 	if opts.Timeout < 0 {
 		return nil, &InvalidRequestError{msg: fmt.Sprintf("Timeout must be zero or more, got %s", opts.Timeout)}
 	}
+	if err := checkHeaders(opts.Headers); err != nil {
+		return nil, err
+	}
 	headers := make(map[string]string, len(opts.Headers))
 	for k, v := range opts.Headers {
 		headers[k] = v
@@ -191,7 +203,7 @@ func New(opts *Options) (*Client, error) {
 	// No http.Client.Timeout: the per-attempt context deadline covers headers
 	// and body, and a fixed client timeout would cut off a longer
 	// RequestOptions.Timeout.
-	c.http = &http.Client{CheckRedirect: ownedCheckRedirect}
+	c.http = &http.Client{CheckRedirect: refuseRedirect}
 	c.ownsClient = true
 	return c, nil
 }
@@ -366,11 +378,11 @@ func (c *Client) do(ctx context.Context, method, endpoint string, body []byte, f
 	retries := c.maxRetries
 	var extra map[string]string
 	if opts != nil {
-		if opts.Timeout < 0 {
-			return nil, "", &InvalidRequestError{msg: fmt.Sprintf("Timeout must be zero or more, got %s", opts.Timeout)}
-		}
-		if opts.Timeout > 0 {
-			timeout = opts.Timeout
+		if opts.Timeout != nil {
+			if *opts.Timeout <= 0 {
+				return nil, "", &InvalidRequestError{msg: fmt.Sprintf("RequestOptions.Timeout must be more than zero, got %s. Leave it nil to keep the client's.", *opts.Timeout)}
+			}
+			timeout = *opts.Timeout
 		}
 		if opts.MaxRetries != nil {
 			if *opts.MaxRetries < 0 {
@@ -378,8 +390,14 @@ func (c *Client) do(ctx context.Context, method, endpoint string, body []byte, f
 			}
 			retries = *opts.MaxRetries
 		}
+		if err := checkHeaders(opts.Headers); err != nil {
+			return nil, "", err
+		}
 		extra = opts.Headers
 	}
+	// The longest wait a JavaScript timer can hold, so every SDK treats a
+	// huge timeout the same way.
+	timeout = min(timeout, maxTimeout)
 	header := c.headers(body != nil, extra)
 	for retry := 0; ; retry++ {
 		data, id, err := c.attempt(ctx, method, rawURL, body, header, timeout)
@@ -433,16 +451,15 @@ func (c *Client) attempt(ctx context.Context, method, rawURL string, body []byte
 		return nil, "", c.transportError(ctx, reqCtx, err, timeout)
 	}
 	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
-		// A redirect that was not followed: a caller's CheckRedirect returned
-		// http.ErrUseLastResponse, or there was no Location. Report it as
-		// Python and TypeScript do, not as an API error that says to retry.
+		// No redirect is followed (refuseRedirect). Report it as Python and
+		// TypeScript do, not as an API error that says to retry.
 		where := ""
 		if loc := headerValue(resp.Header, "Location"); loc != "" {
 			where = " to " + loc
 		}
 		return nil, "", &ConnectionError{redirect: true, msg: fmt.Sprintf(
-			"the Keenable API redirected%s (%d). The redirect was not followed. Check KEENABLE_API_URL.",
-			where, resp.StatusCode,
+			"the Keenable API redirected%s. The redirect was not followed, so the API key was not sent. Check KEENABLE_API_URL.",
+			where,
 		)}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -459,65 +476,22 @@ func (c *Client) requestClient() *http.Client {
 		return c.http
 	}
 	clone := *c.http
-	user := c.http.CheckRedirect
-	clone.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if err := refuseCrossHostRedirect(req, via); err != nil {
-			return err
-		}
-		if user != nil {
-			return user(req, via)
-		}
-		if len(via) >= 10 {
-			return errors.New("stopped after 10 redirects")
-		}
-		return nil
-	}
+	clone.CheckRedirect = refuseRedirect
 	return &clone
 }
 
-func ownedCheckRedirect(req *http.Request, via []*http.Request) error {
-	if err := refuseCrossHostRedirect(req, via); err != nil {
-		return err
-	}
-	if len(via) >= 10 {
-		return errors.New("stopped after 10 redirects")
-	}
-	return nil
-}
-
-type crossHostRedirectError struct {
-	to string
-}
-
-func (e *crossHostRedirectError) Error() string {
-	return "refusing to follow a redirect to " + e.to
-}
-
-// refuseCrossHostRedirect drops X-API-Key and stops the redirect when the
-// next hop is a different host or scheme. Go strips Authorization on those
-// hops and leaves a custom header in place, which would send the API key away.
-func refuseCrossHostRedirect(req *http.Request, via []*http.Request) error {
-	if len(via) == 0 || req == nil || req.URL == nil || via[0].URL == nil {
-		return nil
-	}
-	initial := via[0].URL
-	if strings.EqualFold(initial.Scheme, req.URL.Scheme) && strings.EqualFold(initial.Host, req.URL.Host) {
-		return nil
-	}
-	req.Header.Del("X-API-Key")
-	return &crossHostRedirectError{to: req.URL.Host}
+// refuseRedirect stops every redirect, the same host included, before the
+// next hop is sent: Go strips Authorization on a cross-host hop but keeps a
+// custom header such as X-API-Key, and no hop is needed to reach the API. The
+// 3xx is then returned as is and becomes the redirect ConnectionError, as in
+// Python and TypeScript. A caller's own CheckRedirect is not consulted.
+func refuseRedirect(*http.Request, []*http.Request) error {
+	return http.ErrUseLastResponse
 }
 
 func (c *Client) transportError(caller, reqCtx context.Context, err error, timeout time.Duration) error {
 	if caller.Err() != nil {
 		return caller.Err()
-	}
-	var redirected *crossHostRedirectError
-	if errors.As(err, &redirected) {
-		return &ConnectionError{redirect: true, msg: fmt.Sprintf(
-			"the Keenable API redirected to %s. The redirect was not followed, so the API key was not sent. Check KEENABLE_API_URL.",
-			redirected.to,
-		)}
 	}
 	if reqCtx.Err() != nil {
 		return &ConnectionError{timeout: true, msg: fmt.Sprintf(
@@ -546,6 +520,30 @@ func (c *Client) transportError(caller, reqCtx context.Context, err error, timeo
 func isTimeout(err error) bool {
 	var netErr net.Error
 	return errors.As(err, &netErr) && netErr.Timeout()
+}
+
+// checkHeaders refuses a header the transport would refuse, before anything
+// is sent: a name that is not an HTTP token, or a value with CR, LF or NUL.
+// Sent anyway, it fails as a connection error that is retried for nothing.
+func checkHeaders(h map[string]string) error {
+	for name, value := range h {
+		if name == "" || strings.IndexFunc(name, func(r rune) bool { return !isTokenRune(r) }) >= 0 {
+			return &InvalidRequestError{msg: fmt.Sprintf("header name %q is not a valid HTTP header name. Use letters, digits and -.", name)}
+		}
+		if strings.ContainsAny(value, "\r\n\x00") {
+			return &InvalidRequestError{msg: fmt.Sprintf("header %q has a CR, LF or NUL in its value. Remove it.", name)}
+		}
+	}
+	return nil
+}
+
+// isTokenRune reports whether r may appear in an HTTP token (RFC 9110).
+func isTokenRune(r rune) bool {
+	switch {
+	case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		return true
+	}
+	return strings.ContainsRune("!#$%&'*+-.^_`|~", r)
 }
 
 // headers are the SDK's own, then Options.Headers, then the call's. The API
@@ -652,23 +650,42 @@ var blockedHosts = map[string]struct{}{
 
 // rejectPrivateFetchTarget refuses obviously internal fetch targets before a
 // request leaves the process. The API enforces this too. Stopping here keeps
-// an internal hostname out of an outbound request.
+// an internal hostname out of an outbound request. The rules are the same in
+// every SDK: scripts/conformance/README.md.
 func rejectPrivateFetchTarget(raw string) error {
+	notHTTP := &InvalidRequestError{msg: fmt.Sprintf("fetch() needs an http(s) URL, got %q. Use an https URL on the public internet.", raw)}
+	// Parsers disagree on what control characters and surrounding spaces
+	// mean (WHATWG deletes a tab, Go refuses it), so none is accepted.
+	if strings.ContainsFunc(raw, func(r rune) bool { return r < 0x20 || r == 0x7f }) || strings.Trim(raw, " ") != raw {
+		return notHTTP
+	}
+	// Exactly "scheme://": a WHATWG parser reads https:host, https:/host and
+	// https:///host all as https://host/, which Go reads as hostless.
+	sep := strings.Index(raw, "://")
+	if sep < 0 {
+		return notHTTP
+	}
+	if scheme := raw[:sep]; !strings.EqualFold(scheme, "http") && !strings.EqualFold(scheme, "https") {
+		return notHTTP
+	}
+	authority := raw[sep+3:]
+	if end := strings.IndexAny(authority, "/?#"); end >= 0 {
+		authority = authority[:end]
+	}
+	// A WHATWG parser reads a backslash as a slash and Go does not, so they
+	// would disagree on the host.
+	if strings.Contains(authority, `\`) {
+		return &InvalidRequestError{msg: fmt.Sprintf("fetch() URL has a backslash in its host: %q. Pass an https URL with a public host.", raw)}
+	}
 	u, err := url.Parse(raw)
 	if err != nil {
-		return &InvalidRequestError{msg: fmt.Sprintf("fetch() needs an http(s) URL, got %q. Use an https URL on the public internet.", raw)}
+		return notHTTP
 	}
-	scheme := strings.ToLower(u.Scheme)
-	if scheme != "http" && scheme != "https" {
-		return &InvalidRequestError{msg: fmt.Sprintf("fetch() needs an http(s) URL, got %q. Use an https URL on the public internet.", raw)}
-	}
-	// A trailing dot resolves to the same host but does not match it as a
-	// string, which is enough to walk past a blocklist.
-	host := normalizeHost(u.Hostname())
+	host := fetchHost(u.Hostname())
 	if host == "" {
 		return &InvalidRequestError{msg: fmt.Sprintf("fetch() URL has no host: %q. Pass an https URL with a public host.", raw)}
 	}
-	if _, blocked := blockedHosts[host]; blocked {
+	if _, blocked := blockedHosts[host]; blocked || strings.HasSuffix(host, ".localhost") {
 		return &InvalidRequestError{msg: fmt.Sprintf("refusing to fetch internal host %q. Pass a public http(s) URL.", host)}
 	}
 	addr, err := netip.ParseAddr(host)
@@ -678,11 +695,28 @@ func rejectPrivateFetchTarget(raw string) error {
 			return nil // A hostname. The API's SSRF guard is the backstop.
 		}
 	}
-	// ::ffff:127.0.0.1 and ::ffff:7f00:1 reach the same machine as 127.0.0.1.
-	if isNonPublic(addr.Unmap()) {
+	if isNonPublic(addr) {
 		return &InvalidRequestError{msg: fmt.Sprintf("refusing to fetch private address %q. Pass a public http(s) URL.", host)}
 	}
 	return nil
+}
+
+// fetchHost is the host a URL parser connects to: width-folded, without the
+// characters IDNA mapping deletes, lowercased, without brackets, an IPv6
+// zone or trailing dots. url.Parse has already percent-decoded it.
+func fetchHost(host string) string {
+	host = strings.Map(func(r rune) rune {
+		switch r {
+		case 0x00AD, 0x200B, 0x2060, 0xFEFF:
+			return -1
+		}
+		return r
+	}, host)
+	host = normalizeHost(host)
+	if i := strings.IndexByte(host, '%'); i >= 0 && strings.Contains(host, ":") {
+		host = host[:i]
+	}
+	return strings.TrimRight(host, ".")
 }
 
 // numericIPv4 is the IPv4 address a host spelled as numbers names, as a URL
@@ -754,17 +788,54 @@ func normalizeHost(host string) string {
 	return strings.TrimRight(host, ".")
 }
 
+// blockedIPv4 are the IPv4 ranges fetch() refuses: this network, private,
+// carrier-grade NAT (where some clouds keep their metadata service),
+// loopback, link-local, IETF assignments, documentation, benchmarking,
+// multicast and reserved. The list is explicit, and the same in every SDK,
+// because each standard library draws "private" differently.
+var blockedIPv4 = prefixes(
+	"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8",
+	"169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24", "192.0.2.0/24",
+	"192.168.0.0/16", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24",
+	"224.0.0.0/4", "240.0.0.0/4",
+)
+
+// An IPv6 address must be global unicast (2000::/3) and outside these:
+// IETF assignments (Teredo among them), documentation, 6to4 (which embeds an
+// IPv4 address) and documentation again.
+var (
+	globalIPv6  = netip.MustParsePrefix("2000::/3")
+	blockedIPv6 = prefixes("2001::/23", "2001:db8::/32", "2002::/16", "3fff::/20")
+)
+
+func prefixes(cidrs ...string) []netip.Prefix {
+	out := make([]netip.Prefix, len(cidrs))
+	for i, cidr := range cidrs {
+		out[i] = netip.MustParsePrefix(cidr)
+	}
+	return out
+}
+
 func isNonPublic(addr netip.Addr) bool {
-	return addr.IsLoopback() ||
-		addr.IsPrivate() ||
-		addr.IsLinkLocalUnicast() ||
-		addr.IsLinkLocalMulticast() ||
-		addr.IsMulticast() ||
-		addr.IsUnspecified() ||
-		!addr.IsGlobalUnicast() ||
-		// 240.0.0.0/4 is reserved, and IsGlobalUnicast counts it as public.
-		// Python and TypeScript refuse it.
-		(addr.Is4() && addr.As4()[0] >= 240)
+	// Prefix.Contains never matches an address with a zone.
+	addr = addr.WithZone("")
+	// ::ffff:127.0.0.1 and ::ffff:7f00:1 reach the same machine as 127.0.0.1.
+	if addr.Is4In6() {
+		addr = addr.Unmap()
+	}
+	if addr.Is4() {
+		return inAny(blockedIPv4, addr)
+	}
+	return !globalIPv6.Contains(addr) || inAny(blockedIPv6, addr)
+}
+
+func inAny(ranges []netip.Prefix, addr netip.Addr) bool {
+	for _, p := range ranges {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
 }
 
 var statusLabels = map[int]string{
@@ -811,12 +882,15 @@ var notYourLimitCodes = map[string]bool{
 func toAPIError(status int, raw []byte, header http.Header, keyless bool) error {
 	detail := ""
 	var obj map[string]any
-	if body, ok := decodeErrorBody(raw); !ok {
+	if body, ok := decodeJSON(raw); !ok {
+		// Not JSON: the text is the best detail there is.
 		detail = strings.TrimSpace(string(raw))
 	} else if m, ok := body.(map[string]any); ok {
 		obj = m
 		detail = firstDetail(m, "message", "error", "detail")
 	}
+	// JSON that is not an object ("oops", null, 42) gives no detail, as in
+	// Python and TypeScript; the error maps by status alone.
 	api := parseErrorBody(obj, header)
 	api.StatusCode = status
 	api.Body = detail
@@ -830,6 +904,12 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 	if !ok || ((status == 401 || status == 403) && !auth) {
 		label = fmt.Sprintf("Keenable API error (%d)", status)
 	}
+	if status == 402 {
+		// The API's text for a 402 points at billing pages and payment
+		// offers, which the SDKs do not pass on; the next step is the SDK's.
+		api.msg = paymentMessage(obj, api.APICode)
+		return classifyStatus(api, auth, header)
+	}
 	msg := label
 	if detail != "" {
 		msg = label + ": " + detail
@@ -842,8 +922,6 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 		msg = sentence(msg, api.Fix)
 	case auth:
 		msg += ". Check KEENABLE_API_KEY, or pass Options.APIKey."
-	case status == 402:
-		msg += ". Add credits at https://keenable.ai/console."
 	case status == 429 && notYourLimitCodes[api.APICode]:
 		// Not the caller's own limit, so a key would not lift it.
 		msg += ". Wait for the rate limit window to reset, then retry."
@@ -864,13 +942,20 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 			msg += " Retry after " + api.RetryAfter.String() + "."
 		}
 	}
-	// Where to read more, as Stripe's SDKs print it; Error() adds the request
-	// id after it. Python and TypeScript end their messages the same way.
-	if api.DocsURL != "" {
-		msg = sentence(msg, "Docs: "+api.DocsURL)
-	}
 	api.msg = msg
 	return classifyStatus(api, auth, header)
+}
+
+// paymentMessage is a 402's message, the same in every SDK. A pay-per-request
+// (x402) response is one this SDK cannot pay, so it says to use a key; its
+// offer (accepts, payTo, networks) is not passed on.
+func paymentMessage(body map[string]any, code string) string {
+	_, accepts := body["accepts"]
+	_, x402 := body["x402Version"]
+	if strings.HasPrefix(code, "payment_") || accepts || x402 {
+		return "Keenable: payment required (402). This SDK does not pay per request: set KEENABLE_API_KEY to call the API with a key instead."
+	}
+	return "Keenable: insufficient credits (402). The organization is out of credits; retrying fails the same way until a human with console access adds more."
 }
 
 // sentence appends more as a new sentence, without doubling a final period.
@@ -908,17 +993,12 @@ func classifyStatus(api *APIError, auth bool, header http.Header) error {
 // then the X-Request-Id header.
 func parseErrorBody(m map[string]any, header http.Header) *APIError {
 	api := &APIError{
-		Raw:           m,
-		APICode:       stringField(m, "code"),
-		Type:          stringField(m, "type"),
-		Title:         stringField(m, "error"),
-		Fix:           stringField(m, "fix"),
-		DocsURL:       stringField(m, "docs_url"),
-		RequestID:     stringField(m, "request_id"),
-		Param:         stringField(m, "param"),
-		BillingURL:    stringField(m, "billing_url"),
-		AutoTopUpURL:  stringField(m, "auto_top_up_url"),
-		PayPerRequest: stringField(m, "pay_per_request"),
+		APICode:   stringField(m, "code"),
+		Type:      stringField(m, "type"),
+		Title:     stringField(m, "error"),
+		Fix:       stringField(m, "fix"),
+		RequestID: stringField(m, "request_id"),
+		Param:     stringField(m, "param"),
 	}
 	if api.RequestID == "" {
 		api.RequestID = headerValue(header, "X-Request-Id")
@@ -942,7 +1022,8 @@ func parseErrorBody(m map[string]any, header http.Header) *APIError {
 			Window:   stringField(l, "window"),
 			ResetsAt: stringField(l, "resets_at"),
 		}
-		if n, ok := l["max"].(float64); ok && n == math.Trunc(n) && !math.IsInf(n, 0) {
+		// An integer a double holds exactly, as in Python and TypeScript.
+		if n, ok := l["max"].(float64); ok && n == math.Trunc(n) && n >= 0 && n <= maxSafeInteger {
 			info.Max = int(n)
 		}
 		api.RateLimit = info
@@ -957,6 +1038,9 @@ func stringField(m map[string]any, key string) string {
 	}
 	return s
 }
+
+// maxSafeInteger is 2^53 - 1, the largest integer every SDK reads exactly.
+const maxSafeInteger = 1<<53 - 1
 
 // maxRetryAfter caps a hint so converting it to a Duration cannot overflow.
 const maxRetryAfter = 365 * 24 * time.Hour
@@ -974,6 +1058,15 @@ func secondsField(m map[string]any, key string) (time.Duration, bool) {
 
 // retryAfterHeader parses a Retry-After header: delay-seconds or an HTTP date.
 func retryAfterHeader(v string) (time.Duration, bool) {
+	return retryAfterAt(v, time.Now())
+}
+
+// retryAfterAt is retryAfterHeader as of now. The rules are the same in every
+// SDK (scripts/conformance/README.md): delay-seconds, or one of the three RFC
+// 9110 HTTP-date forms in GMT; anything else is no value, so the next source
+// of the delay is used.
+func retryAfterAt(v string, now time.Time) (time.Duration, bool) {
+	v = strings.TrimSpace(v)
 	if v == "" {
 		return 0, false
 	}
@@ -988,21 +1081,84 @@ func retryAfterHeader(v string) (time.Duration, bool) {
 		// All digits, just too many for a uint64: still a delay, capped.
 		return maxRetryAfter, true
 	}
-	when, err := http.ParseTime(v)
-	if err != nil {
+	when, ok := parseHTTPDate(v)
+	if !ok {
 		return 0, false
 	}
-	d := time.Until(when)
+	d := when.Sub(now)
 	if d <= 0 {
 		return 0, true
 	}
-	// Cap before rounding: a date centuries ahead saturates time.Until at the
+	// Cap before rounding: a date centuries ahead saturates Sub at the
 	// largest Duration, and adding to that would wrap negative.
 	if d >= maxRetryAfter {
 		return maxRetryAfter, true
 	}
 	// Round up, as the other SDKs do, so waiting this long is never too early.
 	return (d + time.Second - 1).Truncate(time.Second), true
+}
+
+// The three HTTP-date forms of RFC 9110 section 5.6.7. http.ParseTime also
+// takes any zone abbreviation in the RFC 850 form, and a one-digit hour.
+var (
+	imfFixdate  = regexp.MustCompile(`^([A-Za-z]{3}), ([0-9]{2}) ([A-Za-z]{3}) ([0-9]{4}) ([0-9]{2}):([0-9]{2}):([0-9]{2}) GMT$`)
+	rfc850Date  = regexp.MustCompile(`^([A-Za-z]+), ([0-9]{2})-([A-Za-z]{3})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2}) GMT$`)
+	asctimeDate = regexp.MustCompile(`^([A-Za-z]{3}) ([A-Za-z]{3}) ( [0-9]|[0-9]{1,2}) ([0-9]{2}):([0-9]{2}):([0-9]{2}) ([0-9]{4})$`)
+
+	shortDays = []string{"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
+	longDays  = []string{"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
+	months    = []string{"jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"}
+)
+
+// parseHTTPDate reads an IMF-fixdate, RFC 850 or asctime date. Day and month
+// names may be in any case; the weekday is not checked against the date.
+func parseHTTPDate(v string) (time.Time, bool) {
+	var weekday, day, month, year, hour, minute, second string
+	var days []string
+	if m := imfFixdate.FindStringSubmatch(v); m != nil {
+		weekday, day, month, year, hour, minute, second, days = m[1], m[2], m[3], m[4], m[5], m[6], m[7], shortDays
+	} else if m := rfc850Date.FindStringSubmatch(v); m != nil {
+		weekday, day, month, year, hour, minute, second, days = m[1], m[2], m[3], m[4], m[5], m[6], m[7], longDays
+	} else if m := asctimeDate.FindStringSubmatch(v); m != nil {
+		weekday, month, day, hour, minute, second, year, days = m[1], m[2], m[3], m[4], m[5], m[6], m[7], shortDays
+	} else {
+		return time.Time{}, false
+	}
+	if indexFold(days, weekday) < 0 {
+		return time.Time{}, false
+	}
+	mon := indexFold(months, month)
+	if mon < 0 {
+		return time.Time{}, false
+	}
+	y, _ := strconv.Atoi(year)
+	if len(year) == 2 {
+		// RFC 850's two-digit year, read as Go's time package and Python's
+		// email.utils read it: 69 to 99 are 19xx, 00 to 68 are 20xx.
+		if y >= 69 {
+			y += 1900
+		} else {
+			y += 2000
+		}
+	}
+	d, _ := strconv.Atoi(strings.TrimSpace(day))
+	h, _ := strconv.Atoi(hour)
+	mi, _ := strconv.Atoi(minute)
+	sec, _ := strconv.Atoi(second)
+	lastDay := time.Date(y, time.Month(mon+2), 0, 0, 0, 0, 0, time.UTC).Day()
+	if d < 1 || d > lastDay || h > 23 || mi > 59 || sec > 59 {
+		return time.Time{}, false
+	}
+	return time.Date(y, time.Month(mon+1), d, h, mi, sec, 0, time.UTC), true
+}
+
+func indexFold(names []string, name string) int {
+	for i, n := range names {
+		if strings.EqualFold(n, name) {
+			return i
+		}
+	}
+	return -1
 }
 
 func headerValue(h http.Header, key string) string {
@@ -1020,34 +1176,27 @@ func headerInt(h http.Header, key string) int {
 	return n
 }
 
+// firstDetail is the first of keys whose value is a string with more than
+// whitespace. Other types are skipped, not formatted into the message.
 func firstDetail(m map[string]any, keys ...string) string {
 	for _, key := range keys {
-		v, ok := m[key]
-		if !ok || v == nil {
-			continue
-		}
-		var s string
-		switch t := v.(type) {
-		case string:
-			s = t
-		default:
-			s = fmt.Sprint(t)
-		}
-		if strings.TrimSpace(s) != "" {
+		if s := stringField(m, key); s != "" {
 			return s
 		}
 	}
 	return ""
 }
 
-// decodeErrorBody decodes an error body as json.Unmarshal into an any would,
-// except that a number too large for a float64 (such as a retry_after_seconds
-// of 1e400) is left out instead of failing the whole body. The other SDKs see
-// such a number as non-finite and drop it, so the response keeps its code and
-// typed error and the next source of the retry delay is used. Going through
-// json.Number keeps this the same on every Go version.
-func decodeErrorBody(raw []byte) (any, bool) {
-	if !json.Valid(raw) {
+// decodeJSON decodes a body as json.Unmarshal into an any would, except
+// that a leading UTF-8 byte order mark is skipped and a number too large for
+// a float64 (such as a retry_after_seconds of 1e400) is left out instead of
+// failing the whole body. The other SDKs read such a number as non-finite and
+// drop it, so the response keeps its other fields. Going through json.Number
+// keeps this the same on every Go version. ok is false when the body is not
+// JSON.
+func decodeJSON(raw []byte) (any, bool) {
+	raw = bytes.TrimPrefix(raw, []byte("\ufeff"))
+	if nestedTooDeeply(raw) || !json.Valid(raw) {
 		return nil, false
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
@@ -1056,9 +1205,49 @@ func decodeErrorBody(raw []byte) (any, bool) {
 	if err := dec.Decode(&body); err != nil {
 		return nil, false
 	}
-	// A bare overflowing number (the whole body is 1e400) is not JSON to
-	// json.Unmarshal either, so the raw text stays the error's detail.
-	return plainNumbers(body)
+	// A bare overflowing number (the whole body is 1e400) is still JSON; it
+	// is just not an object, so it carries nothing.
+	body, _ = plainNumbers(body)
+	return body, true
+}
+
+// maxJSONDepth is the nesting past which a body is "not JSON" in all three SDKs
+// (scripts/conformance), below encoding/json's own limit of 10000.
+const maxJSONDepth = 512
+
+// nestedTooDeeply reports whether a JSON-looking body nests arrays or objects
+// deeper than maxJSONDepth. Only a body that starts like JSON is walked, and
+// the walk stops at the first level past the limit.
+func nestedTooDeeply(raw []byte) bool {
+	trimmed := bytes.TrimLeft(raw, " \t\r\n")
+	if len(trimmed) == 0 || (trimmed[0] != '[' && trimmed[0] != '{') {
+		return false
+	}
+	depth := 0
+	inString, escaped := false, false
+	for _, c := range trimmed {
+		switch {
+		case inString:
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\':
+				escaped = true
+			case c == '"':
+				inString = false
+			}
+		case c == '"':
+			inString = true
+		case c == '[' || c == '{':
+			depth++
+			if depth > maxJSONDepth {
+				return true
+			}
+		case c == ']' || c == '}':
+			depth--
+		}
+	}
+	return false
 }
 
 // plainNumbers turns each json.Number into a float64, as json.Unmarshal does,
@@ -1094,8 +1283,8 @@ func decodeObject(status int, raw []byte, header http.Header) (map[string]any, e
 		snippet = snippet[:200]
 	}
 	id := headerValue(header, "X-Request-Id")
-	var data any
-	if err := json.Unmarshal(raw, &data); err != nil {
+	data, ok := decodeJSON(raw)
+	if !ok {
 		return nil, &APIError{
 			StatusCode: status,
 			RequestID:  id,
@@ -1103,8 +1292,8 @@ func decodeObject(status int, raw []byte, header http.Header) (map[string]any, e
 			msg:        fmt.Sprintf("Keenable API returned a non-JSON response: %q. Retry the request. If it keeps failing, confirm KEENABLE_API_URL.", string(snippet)),
 		}
 	}
-	obj, ok := data.(map[string]any)
-	if !ok {
+	obj, isObject := data.(map[string]any)
+	if !isObject {
 		return nil, &APIError{
 			StatusCode: status,
 			RequestID:  id,

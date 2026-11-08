@@ -2,6 +2,55 @@
 
 ## Unreleased
 
+The Python, TypeScript and Go SDKs now behave the same, and a shared suite of
+cases (`scripts/conformance`, run by `conformance_test.go`) keeps them so.
+Behaviour changes:
+
+- **Redirects are never followed, the same host included.** Every 3xx is a
+  `ConnectionError` that is not retried, with the owned client and with your
+  `HTTPClient` alike; your `CheckRedirect` is no longer consulted. Before, a
+  same-host redirect was followed with the API key.
+- **`RequestOptions.Timeout` is now a `*time.Duration`.** Nil keeps the
+  client's timeout; a pointer to zero or less is an `InvalidRequestError`
+  (zero used to mean "the client's"). `Options.Timeout` is unchanged: zero
+  still means `DefaultTimeout`. A timeout over about 24.8 days
+  (2,147,483.647 s) is treated as that long, as in TypeScript.
+- **`Fetch` refuses more targets:** 100.64.0.0/10 (carrier-grade NAT, where
+  some clouds put their metadata service), 192.0.0.0/24, 192.0.2.0/24,
+  198.18.0.0/15, 198.51.100.0/24 and 203.0.113.0/24; any IPv6 address outside
+  2000::/3 (NAT64 `64:ff9b::/96`, `100::/64`, IPv4-compatible `::a.b.c.d`,
+  `fec0::/10` and the like) and, inside it, 2001::/23, 2001:db8::/32,
+  2002::/16 and 3fff::/20; names under `.localhost`; and URLs with a control
+  character, a leading or trailing space, anything but `scheme://` after the
+  scheme, or a backslash in the host part. A soft hyphen or zero-width
+  character in the host is ignored, as a browser ignores it. The ranges are an
+  explicit list, the same in every SDK.
+- **`Retry-After` dates are read strictly:** only the three RFC 9110 forms
+  (IMF-fixdate, RFC 850 and asctime) in GMT, with two-digit fields and a real
+  calendar date. Any other zone, a one-digit hour and similar fall back to the
+  next source of the delay, as in Python and TypeScript.
+- **Error details:** a non-string `message`, `error` or `detail` is skipped,
+  not formatted into the message. A body that is JSON but not an object
+  (`"oops"`, `null`, `42`, `1e400`) gives no detail; it used to keep `1e400`
+  as text. A leading byte order mark no longer makes a body unreadable, and a
+  number too large for a float64 in a success body no longer fails the call.
+- **Removed `APIError.DocsURL`, `BillingURL`, `AutoTopUpURL`,
+  `PayPerRequest` and `Raw`**, all added since v0.1.1, and the "Docs: ..."
+  sentence in messages. The SDK no longer exposes the API's docs link, a
+  402's billing, checkout or top-up links, or a pay-per-request (x402) offer.
+  `Body`, `Fix`, `Title`, `APICode`, `Type`, `Retryable`, `RetryAfter` and
+  `RequestID` stay. A 402's message is now the SDK's own sentence: "Keenable:
+  payment required (402)" for an x402 or `payment_*` response, which this SDK
+  cannot pay, else "Keenable: insufficient credits (402)"; it no longer
+  includes the API's text or "Add credits at https://keenable.ai/console".
+- **Header validation:** a header name that is not an HTTP token, or a value
+  with CR, LF or NUL, in `Options.Headers` or `RequestOptions.Headers` is an
+  `InvalidRequestError` before anything is sent, instead of a connection
+  error that was retried.
+- `RateLimitInfo.Max` is set only for an integer from 0 to 2^53 - 1.
+- A blank `url` in a fetch response falls back to the URL asked for, as an
+  empty one did.
+
 Fixes: `Fetch` refuses 240.0.0.0/4 (reserved) and a loopback or private host
 spelled as a number (`2130706433`, `0x7f.0.0.1`, `127.1`) or in fullwidth
 digits, as Python and TypeScript do. A 3xx the client does not follow (your

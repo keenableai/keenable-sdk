@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 
 class KeenableError(Exception):
@@ -58,18 +57,15 @@ class KeenableAPIError(KeenableError):
       error.
     - ``error``: the API's short error title, e.g. ``"Rate limit exceeded"``.
     - ``fix``: one sentence on what to do next.
-    - ``docs_url``: the docs page for this error.
     - ``retryable``: whether sending the same request again can succeed.
     - ``retry_after_seconds``: how long to wait before retrying, from the
       body's ``retry_after_seconds`` or else the ``Retry-After`` header.
     - ``request_id``: quote it when reporting a problem.
     - ``param``: the request parameter a 400 is about.
     - ``limit``: a :class:`RateLimitInfo` on 429s.
-    - ``billing_url``, ``auto_top_up_url``, ``pay_per_request``: on 402s.
-    - ``raw``: the whole decoded JSON body, for fields not listed here.
 
-    ``str(err)`` ends with ``Docs: <docs_url>``, ``(code: <code>)`` and
-    ``(request_id: <id>)`` when the API sent them.
+    ``str(err)`` ends with ``(code: <code>)`` and ``(request_id: <id>)`` when
+    the API sent them.
     """
 
     def __init__(
@@ -82,16 +78,11 @@ class KeenableAPIError(KeenableError):
         type: str | None = None,
         error: str | None = None,
         fix: str | None = None,
-        docs_url: str | None = None,
         retryable: bool | None = None,
         retry_after_seconds: float | None = None,
         request_id: str | None = None,
         param: str | None = None,
         limit: RateLimitInfo | None = None,
-        billing_url: str | None = None,
-        auto_top_up_url: str | None = None,
-        pay_per_request: str | None = None,
-        raw: dict[str, Any] | None = None,
     ):
         super().__init__(message)
         self.status_code = status_code
@@ -100,16 +91,11 @@ class KeenableAPIError(KeenableError):
         self.type = type
         self.error = error
         self.fix = fix
-        self.docs_url = docs_url
         self.retryable = retryable
         self.retry_after_seconds = retry_after_seconds
         self.request_id = request_id
         self.param = param
         self.limit = limit
-        self.billing_url = billing_url
-        self.auto_top_up_url = auto_top_up_url
-        self.pay_per_request = pay_per_request
-        self.raw = raw
 
 
 class KeenableAuthError(KeenableAPIError):
@@ -128,9 +114,9 @@ class KeenableRateLimitError(KeenableAPIError):
 class KeenableInsufficientCreditsError(KeenableAPIError):
     """The organization has no credits left (HTTP 402).
 
-    Retrying returns the same error until credits are added. ``billing_url``
-    is where a human can buy credits, and ``auto_top_up_url`` explains how to
-    keep the balance from running out.
+    Retrying returns the same error until credits are added. Also raised for
+    a pay-per-request (x402) 402, which this SDK cannot pay: call the API with
+    a key instead. The SDK does not expose billing links or payment offers.
     """
 
 

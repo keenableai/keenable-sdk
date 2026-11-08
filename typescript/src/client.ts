@@ -62,11 +62,28 @@ const STATUS_LABELS: Record<number, string> = {
   429: "Keenable rate limit exceeded (429)",
 };
 
+/** The host as written in a URL, before a WHATWG parser rewrites it. */
+function writtenHost(raw: string): string {
+  const authority = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]*)/i.exec(raw)?.[1] ?? "";
+  const host = authority.slice(authority.lastIndexOf("@") + 1);
+  const port = host.startsWith("[") ? host.indexOf("]") + 1 : host.lastIndexOf(":");
+  const bare = (port > 0 ? host.slice(0, port) : host)
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "");
+  return trimTrailing(bare, ".");
+}
+
+/** `text` without any trailing `char`s, in linear time (a /x+$/ regex is polynomial). */
+function trimTrailing(text: string, char: string): string {
+  let end = text.length;
+  while (end > 0 && text[end - 1] === char) end--;
+  return text.slice(0, end);
+}
+
 function resolveBaseUrl(baseUrl: string | undefined): string {
-  const raw = (baseUrl ?? readEnv("KEENABLE_API_URL") ?? DEFAULT_BASE_URL).replace(
-    /\/+$/,
-    "",
-  );
+  // A blank KEENABLE_API_URL is unset, as in Python and Go.
+  const env = nonEmpty(readEnv("KEENABLE_API_URL"));
+  const raw = trimTrailing((baseUrl ?? env ?? DEFAULT_BASE_URL).trim(), "/");
   let parsed: URL;
   try {
     parsed = new URL(raw);
@@ -75,7 +92,16 @@ function resolveBaseUrl(baseUrl: string | undefined): string {
       `baseUrl must be an absolute https:// URL, got ${JSON.stringify(raw)}`,
     );
   }
-  const isLocal = LOCAL_HOSTS.has(normalizeHost(parsed));
+  // The endpoint path is appended to the base URL, so a query or fragment
+  // would swallow it.
+  if (raw.includes("?") || raw.includes("#")) {
+    throw new KeenableInvalidRequestError(
+      `baseUrl must be an https:// URL with a host and no query or fragment, got ${JSON.stringify(raw)}`,
+    );
+  }
+  // The host as written: the URL parser would read 127.1 as 127.0.0.1, which
+  // Python and Go do not accept for plain http.
+  const isLocal = LOCAL_HOSTS.has(writtenHost(raw));
   if (parsed.protocol === "https:" || (parsed.protocol === "http:" && isLocal)) {
     return raw;
   }
@@ -88,9 +114,37 @@ function resolveBaseUrl(baseUrl: string | undefined): string {
  * Refuse obviously internal fetch targets before a request leaves the process.
  *
  * The backend enforces this too; stopping here keeps an internal hostname out
- * of an outbound request in the first place.
+ * of an outbound request in the first place. The rules are the same in the
+ * Python and Go SDKs: see scripts/conformance/README.md.
  */
-function rejectPrivateFetchTarget(url: string): void {
+function rejectPrivateFetchTarget(url: unknown): void {
+  if (typeof url !== "string") {
+    throw new KeenableInvalidRequestError(
+      `fetch() needs a URL string, got ${typeof url}`,
+    );
+  }
+  // WHATWG parsers delete tabs and newlines and trim spaces, which other
+  // parsers do not, so the two would read different hosts.
+  if (/[\x00-\x1f\x7f]/.test(url) || url.startsWith(" ") || url.endsWith(" ")) {
+    throw new KeenableInvalidRequestError(
+      `fetch() URL has a control character or surrounding space: ${JSON.stringify(url)}`,
+    );
+  }
+  // Exactly "scheme://": WHATWG reads https:host, https:/host and
+  // https:///host as https://host/, other parsers see no host.
+  const scheme = /^(https?):\/\/([^/?#]*)/i.exec(url);
+  if (!scheme) {
+    throw new KeenableInvalidRequestError(
+      `fetch() needs an http(s) URL, got ${JSON.stringify(url)}`,
+    );
+  }
+  // WHATWG reads a backslash as a slash and RFC 3986 parsers do not, so
+  // https://127.0.0.1\@example.com has two different hosts.
+  if (scheme[2]?.includes("\\")) {
+    throw new KeenableInvalidRequestError(
+      `fetch() URL has a backslash in its host: ${JSON.stringify(url)}`,
+    );
+  }
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -99,14 +153,12 @@ function rejectPrivateFetchTarget(url: string): void {
       `fetch() needs an absolute URL, got ${JSON.stringify(url)}`,
     );
   }
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    throw new KeenableInvalidRequestError(
-      `fetch() needs an http(s) URL, got ${JSON.stringify(url)}`,
-    );
-  }
 
   const host = normalizeHost(parsed);
-  if (BLOCKED_HOSTS.has(host)) {
+  if (!scheme[2] || !host) {
+    throw new KeenableInvalidRequestError(`fetch() URL has no host: ${JSON.stringify(url)}`);
+  }
+  if (BLOCKED_HOSTS.has(host) || host.endsWith(".localhost")) {
     throw new KeenableInvalidRequestError(
       `refusing to fetch internal host ${JSON.stringify(host)}`,
     );
@@ -118,46 +170,99 @@ function rejectPrivateFetchTarget(url: string): void {
   }
 }
 
-/**
- * The IPv4 address embedded in an IPv4-mapped IPv6 host, if there is one.
- *
- * `::ffff:127.0.0.1` reaches the same machine as `127.0.0.1`, so it has to be
- * classified as that address. Note the hex form: `new URL()` rewrites the
- * dotted tail into two 16-bit groups (`::ffff:7f00:1`), so a check that only
- * knows the dotted spelling never fires on a real URL.
- */
-function mappedIPv4(host: string): string | undefined {
-  const dotted = /^(?:0*:)*ffff:((?:\d{1,3}\.){3}\d{1,3})$/i.exec(host);
-  if (dotted?.[1]) return dotted[1];
+/** IPv4 ranges fetch() refuses, as [first address, prefix length]. */
+const BLOCKED_IPV4: [number, number][] = (
+  [
+    ["0.0.0.0", 8],
+    ["10.0.0.0", 8],
+    ["100.64.0.0", 10],
+    ["127.0.0.0", 8],
+    ["169.254.0.0", 16],
+    ["172.16.0.0", 12],
+    ["192.0.0.0", 24],
+    ["192.0.2.0", 24],
+    ["192.168.0.0", 16],
+    ["198.18.0.0", 15],
+    ["198.51.100.0", 24],
+    ["203.0.113.0", 24],
+    ["224.0.0.0", 4],
+    ["240.0.0.0", 4],
+  ] as const
+).map(([address, bits]) => [ipv4Number(address) ?? 0, bits]);
 
-  const hex = /^(?:0*:)*ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(host);
-  if (!hex?.[1] || !hex[2]) return undefined;
-  const high = parseInt(hex[1], 16);
-  const low = parseInt(hex[2], 16);
-  return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
+/** A dotted-decimal IPv4 address as an unsigned 32-bit number. */
+function ipv4Number(host: string): number | undefined {
+  const parts = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!parts) return undefined;
+  let value = 0;
+  for (const part of parts.slice(1)) {
+    const n = Number(part);
+    if (n > 255) return undefined;
+    value = value * 256 + n;
+  }
+  return value;
+}
+
+function isBlockedIPv4(value: number): boolean {
+  return BLOCKED_IPV4.some(([first, bits]) => {
+    const size = 2 ** (32 - bits);
+    return value >= first && value < first + size;
+  });
+}
+
+/**
+ * An IPv6 literal as eight 16-bit groups, or undefined if it is not one. The
+ * host comes from `new URL()`, which has already validated it and rewritten a
+ * dotted IPv4 tail (`::ffff:1.2.3.4`) as two hex groups (`::ffff:102:304`).
+ */
+function parseIPv6(host: string): number[] | undefined {
+  const halves = host.split("::");
+  if (halves.length > 2) return undefined;
+  const groups = (part: string | undefined): number[] | undefined => {
+    if (!part) return [];
+    const out: number[] = [];
+    for (const group of part.split(":")) {
+      if (!/^[0-9a-f]{1,4}$/i.test(group)) return undefined;
+      out.push(parseInt(group, 16));
+    }
+    return out;
+  };
+  const head = groups(halves[0]);
+  const tail = groups(halves[1]);
+  if (!head || !tail) return undefined;
+  const known = head.length + tail.length;
+  if (halves.length === 1) return known === 8 ? head : undefined;
+  if (known > 7) return undefined;
+  return [...head, ...new Array<number>(8 - known).fill(0), ...tail];
+}
+
+/**
+ * Whether an IPv6 address is outside what fetch() may reach: an IPv4-mapped
+ * address is judged by its IPv4 address; anything else must be global unicast
+ * (2000::/3) outside the special blocks inside it.
+ */
+function isBlockedIPv6(g: number[]): boolean {
+  const [g0 = 0, g1 = 0, , , , g5 = 0, g6 = 0, g7 = 0] = g;
+  if (g.slice(0, 5).every((n) => n === 0) && g5 === 0xffff) {
+    return isBlockedIPv4(g6 * 65536 + g7);
+  }
+  if ((g0 & 0xe000) !== 0x2000) return true; // outside 2000::/3
+  if (g0 === 0x2001 && (g1 & 0xfe00) === 0) return true; // 2001::/23
+  if (g0 === 0x2001 && g1 === 0x0db8) return true; // 2001:db8::/32
+  if (g0 === 0x2002) return true; // 6to4, 2002::/16
+  if (g0 === 0x3fff && (g1 & 0xf000) === 0) return true; // 3fff::/20
+  return false;
 }
 
 function isPrivateAddress(host: string): boolean {
-  const candidate = mappedIPv4(host) ?? host;
-
-  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(candidate);
-  if (ipv4) {
-    const [a, b] = [Number(ipv4[1]), Number(ipv4[2])];
-    if (a === 10 || a === 127 || a === 0) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 169 && b === 254) return true; // link-local, incl. cloud metadata
-    if (a >= 224) return true; // multicast, reserved and broadcast
-    return false;
-  }
+  const v4 = ipv4Number(host);
+  if (v4 !== undefined) return isBlockedIPv4(v4);
   // Only an IPv6 literal from here on: a hostname such as fdic.gov or
   // fcbarcelona.com starts with the same letters as fc00::/7 and must not match.
   if (!host.includes(":")) return false;
-  // Loopback and unspecified.
-  if (/^(?:0*:)*:?0*1?$/.test(host)) return true;
-  // Unique-local (fc00::/7), link-local (fe80::/10), multicast (ff00::/8).
-  // The first group has all four digits: `fc::1` is 00fc::1, a public address.
-  return /^(?:f[cd][0-9a-f]{2}|fe[89ab][0-9a-f]|ff[0-9a-f]{2}):/i.test(host);
+  const groups = parseIPv6(host);
+  // A host with a colon that is not an address does not survive URL parsing.
+  return groups === undefined || isBlockedIPv6(groups);
 }
 
 function sourceHeader(index: number, title: string, url: string, date?: string): string {
@@ -342,11 +447,16 @@ export class Page {
   }
 }
 
+/** A required text field: the string sent, or "" for anything else. */
+function text(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
 function toSearchResult(data: Record<string, unknown>): SearchResult {
   return {
-    title: String(data.title ?? ""),
-    url: String(data.url ?? ""),
-    snippet: String(data.snippet ?? ""),
+    title: text(data.title),
+    url: text(data.url),
+    snippet: text(data.snippet),
     description: nonEmpty(data.description),
     publishedAt: nonEmpty(data.published_at),
     acquiredAt: nonEmpty(data.acquired_at),
@@ -358,8 +468,8 @@ function toPage(data: Record<string, unknown>, url: string, requestId?: string):
   return new Page({
     // An empty url falls back to the one asked for, as in Python and Go.
     url: nonEmpty(data.url) ?? url,
-    title: String(data.title ?? ""),
-    content: String(data.content ?? ""),
+    title: text(data.title),
+    content: text(data.content),
     description: nonEmpty(data.description),
     author: nonEmpty(data.author),
     publishedAt: nonEmpty(data.published_at),
@@ -432,6 +542,32 @@ function nonNegativeInteger(name: string, value: number): number {
   return value;
 }
 
+/** An HTTP token: the characters a header name may hold (RFC 9110). */
+const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+
+/**
+ * Refuse a header no HTTP stack would send. Left to the transport, it fails
+ * as a connection error and is retried, though it can never succeed.
+ */
+function checkHeaders(name: string, headers: Record<string, string>): Record<string, string> {
+  for (const [key, value] of Object.entries(headers)) {
+    if (!HEADER_NAME.test(key)) {
+      throw new KeenableInvalidRequestError(
+        `${name} has an invalid header name ${JSON.stringify(key)}`,
+      );
+    }
+    if (/[\r\n\0]/.test(String(value))) {
+      throw new KeenableInvalidRequestError(
+        `${name} value for ${JSON.stringify(key)} holds CR, LF or NUL`,
+      );
+    }
+  }
+  return headers;
+}
+
+/** The longest delay a JavaScript timer can wait; a longer one fires at once. */
+const MAX_TIMER_MS = 2_147_483_647;
+
 function positiveTimeout(name: string, value: number): number {
   if (!Number.isFinite(value) || value <= 0) {
     throw new KeenableInvalidRequestError(
@@ -469,7 +605,7 @@ export class Keenable {
     this.clientSource = options.clientSource ?? "Keenable SDK";
     this.timeoutMs = positiveTimeout("timeoutMs", options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
     this.maxRetries = nonNegativeInteger("maxRetries", options.maxRetries ?? DEFAULT_MAX_RETRIES);
-    this.defaultHeaders = { ...options.defaultHeaders };
+    this.defaultHeaders = checkHeaders("defaultHeaders", { ...options.defaultHeaders });
     const fetchImpl = options.fetch ?? globalThis.fetch;
     if (typeof fetchImpl !== "function") {
       throw new KeenableInvalidRequestError(
@@ -532,13 +668,14 @@ export class Keenable {
       throw new KeenableInvalidRequestError("search() needs a non-empty query");
     }
 
+    // An empty string is unset, as Go cannot tell the two apart.
     const payload: Record<string, unknown> = {
       query,
-      mode: options.mode ?? "pro",
+      mode: options.mode || "pro",
     };
     for (const filter of SEARCH_FILTERS) {
       const value = (options as Record<string, unknown>)[filter.option];
-      if (value !== undefined) payload[filter.wire] = value;
+      if (value !== undefined && value !== "") payload[filter.wire] = value;
     }
 
     const { data, requestId } = await this.request(
@@ -552,10 +689,7 @@ export class Keenable {
       query: nonEmpty(data.query) ?? query,
       mode: nonEmpty(data.mode),
       results: rawResults
-        .filter(
-          (item): item is Record<string, unknown> =>
-            typeof item === "object" && item !== null,
-        )
+        .filter(isRecord)
         .map(toSearchResult),
       requestId,
       raw: data,
@@ -604,7 +738,10 @@ export class Keenable {
       options.maxRetries === undefined
         ? this.maxRetries
         : nonNegativeInteger("maxRetries", options.maxRetries);
-    const headers = this.headers(options.headers, init.body !== undefined);
+    const headers = this.headers(
+      checkHeaders("headers", options.headers ?? {}),
+      init.body !== undefined,
+    );
 
     for (let retry = 0; ; retry += 1) {
       try {
@@ -628,7 +765,7 @@ export class Keenable {
     // does with the signal; Go's canceled ctx sends nothing either.
     if (callerSignal?.aborted) throw callerSignal.reason;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timer = setTimeout(() => controller.abort(), Math.min(timeoutMs, MAX_TIMER_MS));
     const onAbort = () => controller.abort();
     callerSignal?.addEventListener("abort", onAbort);
     if (callerSignal?.aborted) controller.abort();
@@ -661,6 +798,13 @@ export class Keenable {
       callerSignal?.removeEventListener("abort", onAbort);
     }
 
+    if (response.redirected) {
+      // A custom fetch followed the redirect although the SDK passed
+      // redirect: "manual"; the reply came from wherever it led.
+      throw new KeenableRedirectError(
+        `the Keenable API redirected to ${response.url || "another URL"}, and the fetch function you passed followed it although the SDK asked it not to. The response was discarded. Check KEENABLE_API_URL and the fetch option.`,
+      );
+    }
     if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400)) {
       const location = response.headers.get("Location");
       throw new KeenableRedirectError(
@@ -670,10 +814,8 @@ export class Keenable {
     if (!response.ok) throw toApiError(response.status, text, response.headers);
 
     const requestId = nonEmpty(response.headers.get("X-Request-Id")?.trim());
-    let data: unknown;
-    try {
-      data = JSON.parse(text);
-    } catch {
+    const parsed = parseJson(text);
+    if (!parsed) {
       throw new KeenableAPIError(
         `Keenable API returned a non-JSON response: ${JSON.stringify(text.slice(0, 200))}`,
         response.status,
@@ -681,7 +823,8 @@ export class Keenable {
         { requestId },
       );
     }
-    if (typeof data !== "object" || data === null || Array.isArray(data)) {
+    const data = parsed.value;
+    if (!isRecord(data)) {
       throw new KeenableAPIError(
         `unexpected response from the Keenable API: ${JSON.stringify(data)}`,
         response.status,
@@ -689,8 +832,7 @@ export class Keenable {
         { requestId },
       );
     }
-    const record = data as Record<string, unknown>;
-    return { data: record, requestId: nonEmpty(record.request_id) ?? requestId };
+    return { data, requestId: nonEmpty(data.request_id) ?? requestId };
   }
 }
 
@@ -718,37 +860,105 @@ function sentence(message: string, more: string): string {
   return `${message}${message.endsWith(".") ? " " : ". "}${more}`;
 }
 
+/**
+ * A response body decoded as strict JSON: `undefined` when it is not JSON.
+ * A leading byte order mark is ignored, as Python and Go ignore it.
+ */
+function parseJson(text: string): { value: unknown } | undefined {
+  const body = text.replace(/^﻿/, "");
+  if (nestedTooDeeply(body)) return undefined;
+  try {
+    return { value: JSON.parse(body) };
+  } catch {
+    return undefined;
+  }
+}
+
+/** Nesting deeper than this is "not JSON" in all three SDKs (scripts/conformance). */
+const MAX_JSON_DEPTH = 512;
+
+/**
+ * Whether a JSON-looking body nests arrays/objects deeper than MAX_JSON_DEPTH.
+ * Only a body that starts like JSON is walked, and the walk stops at the first
+ * level past the limit.
+ */
+function nestedTooDeeply(text: string): boolean {
+  const first = text.trimStart()[0];
+  if (first !== "[" && first !== "{") return false;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (const ch of text) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"') {
+      inString = true;
+    } else if (ch === "[" || ch === "{") {
+      depth++;
+      if (depth > MAX_JSON_DEPTH) return true;
+    } else if (ch === "]" || ch === "}") {
+      depth--;
+    }
+  }
+  return false;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * A 402's message. The API's own text links to billing and checkout pages, or
+ * carries an x402 payment offer, none of which this SDK exposes; so the
+ * message is the SDK's own, the same in the Python and Go SDKs.
+ */
+function paymentMessage(code: string | undefined, body: Record<string, unknown> | undefined): string {
+  const payment =
+    code?.startsWith("payment_") === true ||
+    (body !== undefined && ("accepts" in body || "x402Version" in body));
+  return payment
+    ? "Keenable: payment required (402). This SDK does not pay per request: set KEENABLE_API_KEY to call the API with a key instead."
+    : "Keenable: insufficient credits (402). The organization is out of credits; retrying fails the same way until a human with console access adds more.";
+}
+
 function toApiError(status: number, text: string, headers?: Headers): KeenableAPIError {
   let detail = text.trim();
   let record: Record<string, unknown> | undefined;
-  try {
-    const body: unknown = JSON.parse(text);
-    if (typeof body === "object" && body !== null) {
-      record = body as Record<string, unknown>;
+  const parsed = parseJson(text);
+  if (parsed) {
+    // JSON that is not an object (a string, number, null or array) carries no
+    // detail: its text is not shown, and the error maps by status.
+    detail = "";
+    if (isRecord(parsed.value)) {
+      record = parsed.value;
       detail =
         nonEmpty(record.message) ??
         nonEmpty(record.error) ??
         nonEmpty(record.detail) ??
         "";
     }
-  } catch {
-    // Not JSON; the raw body is the best detail we have.
   }
 
-  const details = errorDetails(status, Array.isArray(record) ? undefined : record, headers);
+  const details = errorDetails(status, record, headers);
   // A 401/403 about the page being fetched is not an authentication failure.
   const auth = (status === 401 || status === 403) && details.type !== "target_error";
-  const label =
-    (status === 401 || status === 403) && !auth
-      ? `Keenable API error (${status})`
-      : (STATUS_LABELS[status] ?? `Keenable API error (${status})`);
-  let message = detail ? `${label}: ${detail}` : label;
-  // The API's next step, appended the same way in the Go and Python SDKs.
-  if (details.fix) message = sentence(message, details.fix);
-  // Where to read more and what to quote, as Stripe's SDKs print them; the same
-  // tail as the Go and Python SDKs. The code goes in its own parentheses so the
-  // "(request_id: ...)" Go has shipped reads the same everywhere.
-  if (details.docsUrl) message = sentence(message, `Docs: ${details.docsUrl}`);
+  let message: string;
+  if (status === 402) {
+    message = paymentMessage(details.code, record);
+  } else {
+    const label =
+      (status === 401 || status === 403) && !auth
+        ? `Keenable API error (${status})`
+        : (STATUS_LABELS[status] ?? `Keenable API error (${status})`);
+    message = detail ? `${label}: ${detail}` : label;
+    // The API's next step, appended the same way in the Go and Python SDKs.
+    if (details.fix) message = sentence(message, details.fix);
+  }
+  // What to quote, the same tail as the Go and Python SDKs. The code goes in
+  // its own parentheses so the "(request_id: ...)" Go has shipped reads the
+  // same everywhere.
   if (details.code) message = `${message} (code: ${details.code})`;
   if (details.requestId) message = `${message} (request_id: ${details.requestId})`;
 
@@ -777,18 +987,68 @@ function seconds(value: unknown): number | undefined {
   return Math.min(value, MAX_RETRY_AFTER);
 }
 
-/**
- * The shapes of an HTTP date (RFC 9110 section 5.6.7): IMF-fixdate
- * "Sun, 06 Nov 1994 08:49:37 GMT", RFC 850 "Sunday, 06-Nov-94 08:49:37 GMT"
- * and asctime "Sun Nov  6 08:49:37 1994", with or without a zone, as Python's
- * parser takes them. Date.parse alone reads "1.5", "-1" and "Jan 1" as dates in
- * the past, which turned a malformed delay into an immediate retry.
- */
-const HTTP_DATE =
-  /^(?:[a-z]{3,9},?\s+)?(?:\d{1,2}[\s-][a-z]{3}[\s-]\d{2,4}\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s+\S+)?|[a-z]{3}\s+\d{1,2}\s+\d{1,2}:\d{2}:\d{2}\s+\d{4})$/i;
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+const LONG_DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 
-/** Parse a Retry-After header: delay-seconds or an HTTP date. */
-function retryAfterHeader(value: string | null | undefined): number | undefined {
+// The three HTTP-date forms of RFC 9110 section 5.6.7. Day and month names may
+// be in any case, as Go's http.ParseTime reads them; the zone must be GMT.
+const IMF_FIXDATE =
+  /^([A-Za-z]{3}), (\d{2}) ([A-Za-z]{3}) (\d{4}) (\d{2}):(\d{2}):(\d{2}) GMT$/;
+const RFC_850 =
+  /^([A-Za-z]{6,9}), (\d{2})-([A-Za-z]{3})-(\d{2}) (\d{2}):(\d{2}):(\d{2}) GMT$/;
+const ASCTIME =
+  /^([A-Za-z]{3}) ([A-Za-z]{3}) ( \d|\d{1,2}) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/;
+
+/** An HTTP date in milliseconds since the epoch, or undefined. */
+function httpDate(text: string): number | undefined {
+  let parts: (string | undefined)[];
+  let weekdays = DAYS;
+  let m = IMF_FIXDATE.exec(text);
+  if (m) {
+    parts = [m[1], m[2], m[3], m[4], m[5], m[6], m[7]];
+  } else if ((m = RFC_850.exec(text))) {
+    // RFC 850's two-digit year: 69 to 99 are 19xx, as Go and Python read it.
+    const yy = Number(m[4]);
+    parts = [m[1], m[2], m[3], String(yy >= 69 ? 1900 + yy : 2000 + yy), m[5], m[6], m[7]];
+    weekdays = LONG_DAYS;
+  } else if ((m = ASCTIME.exec(text))) {
+    parts = [m[1], m[3], m[2], m[7], m[4], m[5], m[6]];
+  } else {
+    return undefined;
+  }
+  const [weekday = "", day = "", month = "", year = "", hour = "", minute = "", second = ""] =
+    parts.map((p) => p ?? "");
+  const monthIndex = MONTHS.indexOf(month.toLowerCase());
+  if (!weekdays.includes(weekday.toLowerCase()) || monthIndex < 0) return undefined;
+  // asctime pads a one-digit day with a space.
+  const [d, y, h, mi, s] = [day.trim(), year, hour, minute, second].map(Number) as [
+    number,
+    number,
+    number,
+    number,
+    number,
+  ];
+  // The weekday is not checked against the date, as Go and Python do not.
+  const date = new Date(0);
+  date.setUTCFullYear(y, monthIndex + 1, 0);
+  if (d < 1 || d > date.getUTCDate() || h > 23 || mi > 59 || s > 59) return undefined;
+  date.setUTCFullYear(y, monthIndex, d);
+  date.setUTCHours(h, mi, s, 0);
+  return date.getTime();
+}
+
+/**
+ * Parse a Retry-After header: delay-seconds, or an HTTP date in one of the
+ * three RFC 9110 forms, as seconds from `now` (milliseconds since the epoch),
+ * rounded up, at least 0 and capped at a year. Anything else is undefined, so
+ * the next source of the delay is used. The same rules as Python and Go: see
+ * scripts/conformance/README.md.
+ */
+export function retryAfterHeader(
+  value: string | null | undefined,
+  now: number = Date.now(),
+): number | undefined {
   const text = value?.trim();
   if (!text) return undefined;
   if (/^[0-9]+$/.test(text)) {
@@ -796,23 +1056,19 @@ function retryAfterHeader(value: string | null | undefined): number | undefined 
     // Infinity.
     return Math.min(Number(text), MAX_RETRY_AFTER);
   }
-  if (!HTTP_DATE.test(text)) return undefined;
-  // A date without a zone is GMT, as HTTP dates are; Date.parse would read
-  // it as local time.
-  const zoned = /\s(?:[a-z]+|[+-]\d{4})$/i.test(text);
-  const when = Date.parse(zoned ? text : `${text} GMT`);
-  if (Number.isNaN(when)) return undefined;
-  return Math.min(Math.max(0, Math.ceil((when - Date.now()) / 1000)), MAX_RETRY_AFTER);
+  const when = httpDate(text);
+  if (when === undefined) return undefined;
+  return Math.min(Math.max(0, Math.ceil((when - now) / 1000)), MAX_RETRY_AFTER);
 }
 
 function rateLimitInfo(value: unknown): RateLimitInfo | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
-  const limit = value as Record<string, unknown>;
+  if (!isRecord(value)) return undefined;
+  const max = value.max;
   return {
-    scope: nonEmpty(limit.scope),
-    window: nonEmpty(limit.window),
-    max: Number.isInteger(limit.max) ? (limit.max as number) : undefined,
-    resetsAt: nonEmpty(limit.resets_at),
+    scope: nonEmpty(value.scope),
+    window: nonEmpty(value.window),
+    max: Number.isSafeInteger(max) && (max as number) >= 0 ? (max as number) : undefined,
+    resetsAt: nonEmpty(value.resets_at),
   };
 }
 
@@ -835,7 +1091,6 @@ function errorDetails(
     type: nonEmpty(b.type) ?? deriveType(status, code),
     error: nonEmpty(b.error),
     fix: nonEmpty(b.fix),
-    docsUrl: nonEmpty(b.docs_url),
     retryable: typeof b.retryable === "boolean" ? b.retryable : undefined,
     retryAfterSeconds:
       seconds(b.retry_after_seconds) ??
@@ -844,9 +1099,5 @@ function errorDetails(
     requestId: nonEmpty(b.request_id) ?? nonEmpty(headers?.get("X-Request-Id")?.trim()),
     param: nonEmpty(b.param),
     limit: rateLimitInfo(b.limit),
-    billingUrl: nonEmpty(b.billing_url),
-    autoTopUpUrl: nonEmpty(b.auto_top_up_url),
-    payPerRequest: nonEmpty(b.pay_per_request),
-    raw: body,
   };
 }

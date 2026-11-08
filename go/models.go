@@ -319,8 +319,9 @@ func searchResultFromJSON(data map[string]any) SearchResult {
 
 func pageFromJSON(data map[string]any, fallbackURL string) *Page {
 	pageURL := fallbackURL
-	if s := asString(data["url"]); s != "" {
-		pageURL = s
+	// A blank or non-string url falls back to the one asked for.
+	if s := nonEmptyString(data["url"]); s != nil {
+		pageURL = *s
 	}
 	return &Page{
 		URL:         pageURL,

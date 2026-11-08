@@ -31,13 +31,10 @@ interface Case {
     retry_after_seconds: number | null;
     request_id: string | null;
     param: string | null;
-    docs_url: string | null;
     fix: string | null;
     limit: { scope: string; window: string; max: number; resets_at: string } | null;
-    billing_url: string | null;
-    auto_top_up_url: string | null;
-    pay_per_request: string | null;
     message_contains: string;
+    absent: string[];
   };
 }
 
@@ -55,6 +52,9 @@ const KINDS = {
 } as const;
 
 const orUndefined = <T>(value: T | null): T | undefined => (value === null ? undefined : value);
+
+/** Fields the SDK reads from an error body but never exposes. */
+const UNEXPOSED = ["docsUrl", "billingUrl", "autoTopUpUrl", "payPerRequest", "raw"];
 
 async function errorFor(response: () => Response, call: "search" | "fetch" = "search") {
   const client = new Keenable({
@@ -85,21 +85,24 @@ describe("backend error bodies", () => {
     expect(error.type).toBe(want.type);
     expect(error.error).toBe(c.body.error);
     expect(error.fix).toBe(orUndefined(want.fix));
-    expect(error.docsUrl).toBe(orUndefined(want.docs_url));
     expect(error.retryable).toBe(orUndefined(want.retryable));
     expect(error.retryAfterSeconds).toBe(orUndefined(want.retry_after_seconds));
     expect(error.requestId).toBe(orUndefined(want.request_id));
     expect(error.param).toBe(orUndefined(want.param));
-    expect(error.billingUrl).toBe(orUndefined(want.billing_url));
-    expect(error.autoTopUpUrl).toBe(orUndefined(want.auto_top_up_url));
-    expect(error.payPerRequest).toBe(orUndefined(want.pay_per_request));
-    expect(error.raw).toEqual(c.body);
+    for (const name of UNEXPOSED) expect(name in error, name).toBe(false);
     expect(error.message).toContain(want.message_contains);
-    expect(
-      error.message.endsWith(
-        `Docs: ${want.docs_url} (code: ${want.code}) (request_id: ${want.request_id})`,
-      ),
-    ).toBe(true);
+    expect(error.message.endsWith(` (code: ${want.code}) (request_id: ${want.request_id})`)).toBe(
+      true,
+    );
+    // The docs link and a 402's billing, top-up and x402 pointers appear in
+    // no field but the API's own body and fix text, and not in the message.
+    const exposed = Object.entries(error)
+      .filter(([key]) => key !== "body" && key !== "fix")
+      .map(([, value]) => JSON.stringify(value) ?? "");
+    for (const text of want.absent) {
+      expect(error.message).not.toContain(text);
+      for (const field of exposed) expect(field).not.toContain(text);
+    }
     if (want.limit === null) {
       expect(error.limit).toBeUndefined();
     } else {
@@ -144,8 +147,12 @@ describe("compatibility with today's API", () => {
 
     expect(error).toBeInstanceOf(KeenableInsufficientCreditsError);
     expect(error).toBeInstanceOf(KeenableCreditsError);
-    expect(error.message).toBe("Keenable: insufficient credits (402): no credits");
-    expect(error.billingUrl).toBeUndefined();
+    // A 402's message is the SDK's own: the API's text links to billing pages.
+    expect(error.message).toBe(
+      "Keenable: insufficient credits (402). The organization is out of credits; retrying fails the same way until a human with console access adds more.",
+    );
+    expect(error.body).toBe("no credits");
+    expect("billingUrl" in error).toBe(false);
   });
 
   it("leaves every new field undefined when the API does not send it", async () => {
@@ -158,24 +165,20 @@ describe("compatibility with today's API", () => {
     for (const field of [
       "code",
       "fix",
-      "docsUrl",
       "retryable",
       "retryAfterSeconds",
       "requestId",
       "param",
       "limit",
-      "billingUrl",
-      "autoTopUpUrl",
-      "payPerRequest",
     ] as const) {
       expect(error[field], field).toBeUndefined();
     }
   });
 
-  it("keeps raw undefined for a non-JSON body", async () => {
+  it("carries no raw body", async () => {
     const error = await errorFor(reply(502, "upstream exploded"));
 
-    expect(error.raw).toBeUndefined();
+    expect("raw" in error).toBe(false);
     expect(error.type).toBe("api_error");
     expect(error.message).toBe("Keenable API error (502): upstream exploded");
   });
@@ -246,7 +249,7 @@ describe("retry hints", () => {
     expect(error.message).toBe("Keenable authentication failed (403): Forbidden. Create a new key.");
   });
 
-  it("ends the message with the docs link and request id", async () => {
+  it("ends the message with the request id and leaves the docs link out", async () => {
     const error = await errorFor(
       reply(
         500,
@@ -256,8 +259,9 @@ describe("retry hints", () => {
     );
 
     expect(error.message).toBe(
-      "Keenable API error (500): Internal server error. Docs: https://d/e#x (request_id: req-h)",
+      "Keenable API error (500): Internal server error (request_id: req-h)",
     );
+    expect("docsUrl" in error).toBe(false);
     expect(error.body).toBe("Internal server error");
   });
 

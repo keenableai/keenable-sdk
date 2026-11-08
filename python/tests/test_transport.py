@@ -617,46 +617,41 @@ async def test_a_redirect_is_never_followed(
 
 
 @pytest.mark.parametrize(
-    ("reply", "detail", "raw", "error_type"),
+    ("reply", "detail", "error_type"),
     [
-        (httpx.Response(400), None, None, "invalid_request_error"),
-        (httpx.Response(400, text="   "), None, None, "invalid_request_error"),
+        (httpx.Response(400), None, "invalid_request_error"),
+        (httpx.Response(400, text="   "), None, "invalid_request_error"),
         (
             httpx.Response(400, text='{"code": "x"'),
             '{"code": "x"',
-            None,
             "invalid_request_error",
         ),
-        (httpx.Response(400, text="[1, 2]"), None, None, "invalid_request_error"),
-        (httpx.Response(400, text='"oops"'), None, None, "invalid_request_error"),
-        (httpx.Response(400, text="null"), None, None, "invalid_request_error"),
+        (httpx.Response(400, text="[1, 2]"), None, "invalid_request_error"),
+        (httpx.Response(400, text='"oops"'), None, "invalid_request_error"),
+        (httpx.Response(400, text="null"), None, "invalid_request_error"),
         (
             httpx.Response(403, text="<h1>Forbidden</h1>"),
             "<h1>Forbidden</h1>",
-            None,
             "permission_error",
         ),
         (
             httpx.Response(400, json={"message": " ", "error": "Bad", "detail": "d"}),
             "Bad",
-            {"message": " ", "error": "Bad", "detail": "d"},
             "invalid_request_error",
         ),
         (
             httpx.Response(400, json={"detail": "only"}),
             "only",
-            {"detail": "only"},
             "invalid_request_error",
         ),
-        (httpx.Response(400, json={}), None, {}, "invalid_request_error"),
-        (httpx.Response(451, json={}), None, {}, "billing_error"),
+        (httpx.Response(400, json={}), None, "invalid_request_error"),
+        (httpx.Response(451, json={}), None, "billing_error"),
     ],
 )
 async def test_a_malformed_error_body_still_maps_by_status(
     run: Runner,
     reply: httpx.Response,
     detail: str | None,
-    raw: Any,
     error_type: str,
 ) -> None:
     outcome = await run([reply])
@@ -664,7 +659,7 @@ async def test_a_malformed_error_body_still_maps_by_status(
     assert isinstance(error, KeenableAPIError)
     assert error.status_code == reply.status_code
     assert error.body == detail
-    assert error.raw == raw
+    assert not hasattr(error, "raw")
     assert error.type == error_type
     assert error.code is None
     assert str(error).startswith("Keenable ")
@@ -872,12 +867,14 @@ async def test_a_huge_numeric_host_is_a_hostname_not_a_crash(run: Runner) -> Non
     assert outcome.error is None
 
 
-async def test_a_zoneless_retry_after_date_is_read_as_gmt(run: Runner) -> None:
+async def test_a_zoneless_retry_after_date_is_not_an_http_date(run: Runner) -> None:
+    # RFC 9110 dates are GMT and say so; Go's http.ParseTime refuses one
+    # without the zone, so all three SDKs fall back to backoff.
     when = datetime.now(timezone.utc) + timedelta(seconds=30)
     header = when.strftime("%a, %d %b %Y %H:%M:%S")
     outcome = await run([_limited({"Retry-After": header}), ok()])
     assert outcome.error is None
-    assert 28 <= outcome.waits[0] <= 31
+    assert in_backoff(outcome.waits[0], 0)
 
 
 @pytest.mark.parametrize(

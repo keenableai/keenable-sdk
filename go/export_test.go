@@ -37,3 +37,5 @@ var (
 	Backoff    = backoff
 	RetryDelay = retryDelay
 )
+
+var RetryAfterAt = retryAfterAt

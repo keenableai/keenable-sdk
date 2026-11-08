@@ -554,7 +554,8 @@ func TestStatusErrors(t *testing.T) {
 		if errors.As(err, new(*keenable.AuthError)) || errors.As(err, new(*keenable.RateLimitError)) {
 			t.Fatal("402 should stay a plain APIError")
 		}
-		if !strings.Contains(err.Error(), "insufficient credits") || !strings.Contains(err.Error(), "no credits") {
+		// The SDK's own sentence; the API's text stays in Body.
+		if !strings.Contains(err.Error(), "insufficient credits (402)") || api.Body != "no credits" {
 			t.Fatal(err)
 		}
 	})
@@ -904,30 +905,37 @@ func TestCrossHostRedirectDoesNotSendTheAPIKey(t *testing.T) {
 	}
 }
 
-func TestSameHostRedirectKeepsTheAPIKey(t *testing.T) {
-	var saw string
+func TestASameHostRedirectIsNotFollowed(t *testing.T) {
+	// Python and TypeScript follow no redirect, so neither does Go: a
+	// same-host hop used to be followed with the key.
+	var hits, followed int
 	var srv *httptest.Server
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
 		if r.URL.Query().Get("ok") == "" {
 			http.Redirect(w, r, srv.URL+r.URL.Path+"?ok=1", http.StatusTemporaryRedirect)
 			return
 		}
-		saw = r.Header.Get("X-API-Key")
+		followed++
 		jsonHandler(http.StatusOK, searchBody).ServeHTTP(w, r)
 	}))
 	t.Cleanup(srv.Close)
 	key := "keen_secret"
 	base := srv.URL
-	c, err := keenable.New(&keenable.Options{APIKey: &key, BaseURL: &base})
-	if err != nil {
-		t.Fatal(err)
+	for _, hc := range []*http.Client{nil, {}} {
+		c, err := keenable.New(&keenable.Options{APIKey: &key, BaseURL: &base, HTTPClient: hc})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(c.Close)
+		_, err = c.Search(context.Background(), "q", nil)
+		var conn *keenable.ConnectionError
+		if !errors.As(err, &conn) || !strings.Contains(err.Error(), "redirect") || strings.Contains(err.Error(), key) {
+			t.Fatal(err)
+		}
 	}
-	t.Cleanup(c.Close)
-	if _, err := c.Search(context.Background(), "q", nil); err != nil {
-		t.Fatal(err)
-	}
-	if saw != key {
-		t.Fatalf("same-host redirect dropped the key: %q", saw)
+	if hits != 2 || followed != 0 {
+		t.Fatalf("hits=%d followed=%d", hits, followed)
 	}
 }
 
@@ -999,3 +1007,5 @@ func titles(results []keenable.SearchResult) string {
 }
 
 func intPtr(n int) *int { return &n }
+
+func durPtr(d time.Duration) *time.Duration { return &d }

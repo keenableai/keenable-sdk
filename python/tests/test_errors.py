@@ -38,6 +38,8 @@ KINDS: dict[str, type[KeenableAPIError]] = {
     "insufficient_credits": KeenableInsufficientCreditsError,
     "api": KeenableAPIError,
 }
+# Body fields the SDK reads past: no attribute holds them.
+UNEXPOSED = ("docs_url", "billing_url", "auto_top_up_url", "pay_per_request", "raw")
 
 
 def _client(response: httpx.Response, api_key: str | None = "k") -> Keenable:
@@ -65,20 +67,21 @@ def test_backend_error_bodies_parse_into_typed_errors(case: dict[str, Any]) -> N
     assert err.type == want["type"]
     assert err.error == case["body"]["error"]
     assert err.fix == want["fix"]
-    assert err.docs_url == want["docs_url"]
     assert err.retryable is want["retryable"]
     assert err.retry_after_seconds == want["retry_after_seconds"]
     assert err.request_id == want["request_id"]
     assert err.param == want["param"]
-    assert err.billing_url == want["billing_url"]
-    assert err.auto_top_up_url == want["auto_top_up_url"]
-    assert err.pay_per_request == want["pay_per_request"]
-    assert err.raw == case["body"]
     assert want["message_contains"] in str(err)
     assert str(err).endswith(
-        f"Docs: {want['docs_url']}"
         f" (code: {want['code']}) (request_id: {want['request_id']})"
     )
+    for field in UNEXPOSED:
+        assert not hasattr(err, field), field
+    # Not in the message nor any field but body and fix, the API's own text.
+    visible = {k: v for k, v in vars(err).items() if k not in ("body", "fix")}
+    for text in want["absent"]:
+        assert text not in str(err)
+        assert text not in repr(visible)
     if want["limit"] is None:
         assert err.limit is None
     else:
@@ -121,14 +124,19 @@ def test_a_blocked_fetch_target_is_not_an_auth_failure() -> None:
     assert str(err).startswith("Keenable API error (403): ")
 
 
-def test_insufficient_credits_is_still_an_api_error_with_the_old_message() -> None:
+def test_insufficient_credits_is_still_an_api_error_with_its_own_message() -> None:
     err = _raise(httpx.Response(402, json={"detail": "no credits"}))
 
     assert isinstance(err, KeenableInsufficientCreditsError)
     assert isinstance(err, KeenableCreditsError)
     assert isinstance(err, KeenableAPIError)
-    assert str(err) == "Keenable: insufficient credits (402): no credits"
-    assert err.billing_url is None
+    # The SDK's sentence, not the API's text, which links to billing pages.
+    assert str(err) == (
+        "Keenable: insufficient credits (402). The organization is out of "
+        "credits; retrying fails the same way until a human with console "
+        "access adds more."
+    )
+    assert err.body == "no credits"
 
 
 def test_todays_api_without_the_new_fields_leaves_them_none() -> None:
@@ -141,23 +149,19 @@ def test_todays_api_without_the_new_fields_leaves_them_none() -> None:
     for field in (
         "code",
         "fix",
-        "docs_url",
         "retryable",
         "retry_after_seconds",
         "request_id",
         "param",
         "limit",
-        "billing_url",
-        "auto_top_up_url",
-        "pay_per_request",
     ):
         assert getattr(err, field) is None, field
 
 
-def test_non_json_error_body_keeps_raw_none() -> None:
+def test_non_json_error_body_is_the_detail() -> None:
     err = _raise(httpx.Response(502, text="upstream exploded"))
 
-    assert err.raw is None
+    assert err.body == "upstream exploded"
     assert err.code is None
     assert err.type == "api_error"
     assert str(err) == "Keenable API error (502): upstream exploded"
@@ -267,7 +271,7 @@ def test_the_message_ends_with_the_apis_fix() -> None:
     )
 
 
-def test_the_message_ends_with_the_docs_link_and_request_id() -> None:
+def test_the_message_ends_with_the_request_id_and_no_docs_link() -> None:
     err = _raise(
         httpx.Response(
             500,
@@ -277,10 +281,10 @@ def test_the_message_ends_with_the_docs_link_and_request_id() -> None:
     )
 
     assert str(err) == (
-        "Keenable API error (500): Internal server error. Docs: https://d/e#x"
-        " (request_id: req-h)"
+        "Keenable API error (500): Internal server error (request_id: req-h)"
     )
     assert err.body == "Internal server error"
+    assert not hasattr(err, "docs_url")
 
 
 def test_the_message_names_the_api_code_before_the_request_id() -> None:
@@ -348,4 +352,35 @@ async def test_the_async_client_parses_the_same_contract() -> None:
 
     assert excinfo.value.code == "insufficient_credits"
     assert excinfo.value.retryable is False
-    assert excinfo.value.billing_url == "https://app.keenable.ai/console/billing"
+    assert not hasattr(excinfo.value, "billing_url")
+    assert "https://" not in str(excinfo.value)
+
+
+def test_a_whole_float_limit_max_is_an_int() -> None:
+    err = _raise(httpx.Response(429, json={"limit": {"max": 1000.0}}))
+
+    assert err.limit == RateLimitInfo(max=1000)
+    assert err.limit is not None and isinstance(err.limit.max, int)
+
+
+def test_a_body_nested_too_deeply_is_not_json() -> None:
+    text = "[" * 513 + "]" * 513
+    err = _raise(httpx.Response(500, text=text))
+
+    assert err.type == "api_error"
+    assert err.body == text
+
+
+def test_nesting_at_the_limit_is_still_json() -> None:
+    text = "[" * 512 + "]" * 512
+    err = _raise(httpx.Response(500, text=text))
+
+    assert err.type == "api_error"
+    assert err.body is None
+
+
+def test_brackets_inside_strings_do_not_count_as_nesting() -> None:
+    text = '{"message": "' + "[" * 20_000 + '"}'
+    err = _raise(httpx.Response(500, text=text))
+
+    assert err.body == "[" * 20_000
