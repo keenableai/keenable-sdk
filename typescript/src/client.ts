@@ -10,12 +10,15 @@ import {
 import type { KeenableAPIErrorDetails, KeenableErrorType, RateLimitInfo } from "./errors.js";
 import { SEARCH_FILTERS } from "./filters.js";
 import {
+  bool,
   capSnippet,
   cleanContextText,
   collapse,
+  count,
   nonEmpty,
   normalizeHost,
   readEnv,
+  timestamp,
 } from "./internal.js";
 import type {
   KeenableOptions,
@@ -403,9 +406,25 @@ export class Page {
    */
   readonly description?: string;
   readonly author?: string;
+  /**
+   * When the page was published, as ISO 8601. The API sends Unix seconds for
+   * a fetch; they are given in UTC to the second, such as
+   * "2024-05-01T12:00:00Z", the form search results use. Undefined when
+   * unknown.
+   */
   readonly publishedAt?: string;
   /** The API's id for this request. Quote it when reporting a problem. */
   readonly requestId?: string;
+  /**
+   * True when the page was longer than the API's `max_chars` and `content`
+   * was cut (cut content ends with `...`). Undefined when the API did not say.
+   */
+  readonly truncated?: boolean;
+  /**
+   * Length of the full extracted content in Unicode code points, before any
+   * cut. Undefined when the API did not say.
+   */
+  readonly totalChars?: number;
   readonly raw: Record<string, unknown>;
 
   constructor(init: {
@@ -416,6 +435,8 @@ export class Page {
     author?: string;
     publishedAt?: string;
     requestId?: string;
+    truncated?: boolean;
+    totalChars?: number;
     raw: Record<string, unknown>;
   }) {
     this.url = init.url;
@@ -425,6 +446,8 @@ export class Page {
     this.author = init.author;
     this.publishedAt = init.publishedAt;
     this.requestId = init.requestId;
+    this.truncated = init.truncated;
+    this.totalChars = init.totalChars;
     this.raw = init.raw;
   }
 
@@ -458,8 +481,8 @@ function toSearchResult(data: Record<string, unknown>): SearchResult {
     url: text(data.url),
     snippet: text(data.snippet),
     description: nonEmpty(data.description),
-    publishedAt: nonEmpty(data.published_at),
-    acquiredAt: nonEmpty(data.acquired_at),
+    publishedAt: timestamp(data.published_at),
+    acquiredAt: timestamp(data.acquired_at),
     raw: data,
   };
 }
@@ -472,8 +495,10 @@ function toPage(data: Record<string, unknown>, url: string, requestId?: string):
     content: text(data.content),
     description: nonEmpty(data.description),
     author: nonEmpty(data.author),
-    publishedAt: nonEmpty(data.published_at),
+    publishedAt: timestamp(data.published_at),
     requestId,
+    truncated: bool(data.truncated),
+    totalChars: count(data.total_chars),
     raw: data,
   });
 }

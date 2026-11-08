@@ -6,6 +6,18 @@ The Python, TypeScript and Go SDKs now behave the same, and a shared suite of
 cases (`scripts/conformance`, run by `conformance_test.go`) keeps them so.
 Behaviour changes:
 
+- **`Page.PublishedAt` is now set for fetched pages.** The API sends a fetch's
+  publish date as Unix seconds, which the SDK dropped; it is now an ISO 8601
+  UTC string to the second, such as `"2024-05-01T12:00:00Z"`, the form search
+  results use. An ISO 8601 string is still kept as sent, so both forms work.
+  The same applies to `SearchResult.PublishedAt` and `AcquiredAt`. A number
+  below 1, past the year 9999 (a millisecond value too) or not finite is nil,
+  as before.
+- **New `Page.Truncated` (`*bool`) and `Page.TotalChars` (`*int`):** whether
+  the API cut `Content` at `max_chars`, and the full content's length in code
+  points. Nil when the API leaves them out or sends another type. `Content`
+  and `ToContext` are unchanged.
+
 - **Redirects are never followed, the same host included.** Every 3xx is a
   `ConnectionError` that is not retried, with the owned client and with your
   `HTTPClient` alike; your `CheckRedirect` is no longer consulted. Before, a

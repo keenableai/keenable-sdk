@@ -3483,6 +3483,8 @@
       "body": "{\"url\":\"https://e.com/final\",\"title\":\"T\",\"content\":\"C\",\"description\":\"D\",\"author\":\"A\",\"published_at\":\"2024-01-01\"}",
       "expect": {
         "error": null,
+        "truncated": null,
+        "total_chars": null,
         "url": "https://e.com/final",
         "title": "T",
         "content": "C",
@@ -3501,6 +3503,8 @@
       "body": "{}",
       "expect": {
         "error": null,
+        "truncated": null,
+        "total_chars": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -3519,6 +3523,8 @@
       "body": "{\"url\":\"  \"}",
       "expect": {
         "error": null,
+        "truncated": null,
+        "total_chars": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -3537,6 +3543,8 @@
       "body": "{\"url\":\"\"}",
       "expect": {
         "error": null,
+        "truncated": null,
+        "total_chars": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -3555,6 +3563,8 @@
       "body": "{\"url\":5}",
       "expect": {
         "error": null,
+        "truncated": null,
+        "total_chars": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -3573,6 +3583,8 @@
       "body": "{\"title\":5,\"content\":[\"x\"],\"description\":{},\"author\":1,\"published_at\":true}",
       "expect": {
         "error": null,
+        "truncated": null,
+        "total_chars": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -3593,6 +3605,8 @@
       "body": "{\"content\":\"C\"}",
       "expect": {
         "error": null,
+        "truncated": null,
+        "total_chars": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "C",
@@ -3611,6 +3625,622 @@
       "body": "[{\"content\":\"C\"}]",
       "expect": {
         "error": "api"
+      }
+    },
+    {
+      "name": "a page date as an ISO string is kept",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"published_at\":\"2024-05-01T12:00:00Z\"}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": null,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": "2024-05-01T12:00:00Z",
+        "request_id": null
+      }
+    },
+    {
+      "name": "a page date in Unix seconds is ISO 8601 UTC",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"published_at\":1714564800}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": null,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": "2024-05-01T12:00:00Z",
+        "request_id": null
+      }
+    },
+    {
+      "name": "a page date in fractional seconds drops the fraction",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"published_at\":1714564800.75}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": null,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": "2024-05-01T12:00:00Z",
+        "request_id": null
+      }
+    },
+    {
+      "name": "a page date of 1 second is the epoch's first second",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"published_at\":1}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": null,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": "1970-01-01T00:00:01Z",
+        "request_id": null
+      }
+    },
+    {
+      "name": "a page date of 0 is unset",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"published_at\":0}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": null,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": null,
+        "request_id": null
+      }
+    },
+    {
+      "name": "a page date of half a second is unset",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"published_at\":0.5}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": null,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": null,
+        "request_id": null
+      }
+    },
+    {
+      "name": "a negative page date is unset",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"published_at\":-1}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": null,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": null,
+        "request_id": null
+      }
+    },
+    {
+      "name": "the last second of 9999 is kept",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"published_at\":253402300799}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": null,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": "9999-12-31T23:59:59Z",
+        "request_id": null
+      }
+    },
+    {
+      "name": "a page date past 9999 is unset",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"published_at\":253402300800}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": null,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": null,
+        "request_id": null
+      }
+    },
+    {
+      "name": "a page date in milliseconds is unset",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"published_at\":1714564800000}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": null,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": null,
+        "request_id": null
+      }
+    },
+    {
+      "name": "a huge page date is unset",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"published_at\":100000000000000000000}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": null,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": null,
+        "request_id": null
+      }
+    },
+    {
+      "name": "an overflowing page date is unset",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"published_at\":1e400}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": null,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": null,
+        "request_id": null
+      }
+    },
+    {
+      "name": "a page date as a numeric string is kept as sent",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"published_at\":\"1714564800\"}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": null,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": "1714564800",
+        "request_id": null
+      }
+    },
+    {
+      "name": "a null page date is unset",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"published_at\":null}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": null,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": null,
+        "request_id": null
+      }
+    },
+    {
+      "name": "a page date of false is unset",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"published_at\":false}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": null,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": null,
+        "request_id": null
+      }
+    },
+    {
+      "name": "a truncated page",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"content\":\"abc...\",\"truncated\":true,\"total_chars\":120000}",
+      "expect": {
+        "error": null,
+        "truncated": true,
+        "total_chars": 120000,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "abc...",
+        "description": null,
+        "author": null,
+        "published_at": null,
+        "request_id": null
+      }
+    },
+    {
+      "name": "a page that was not cut",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"content\":\"\",\"truncated\":false,\"total_chars\":0}",
+      "expect": {
+        "error": null,
+        "truncated": false,
+        "total_chars": 0,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": null,
+        "request_id": null
+      }
+    },
+    {
+      "name": "a whole-number float total_chars is kept",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"total_chars\":5.0}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": 5,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": null,
+        "request_id": null
+      }
+    },
+    {
+      "name": "the largest safe total_chars is kept",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"total_chars\":9007199254740991}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": 9007199254740991,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": null,
+        "request_id": null
+      }
+    },
+    {
+      "name": "total_chars past 2^53 - 1 is unset",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"total_chars\":9007199254740992}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": null,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": null,
+        "request_id": null
+      }
+    },
+    {
+      "name": "mistyped truncated and total_chars are unset",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"truncated\":\"true\",\"total_chars\":\"10\"}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": null,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": null,
+        "request_id": null
+      }
+    },
+    {
+      "name": "numeric truncated and boolean total_chars are unset",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"truncated\":1,\"total_chars\":true}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": null,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": null,
+        "request_id": null
+      }
+    },
+    {
+      "name": "a negative total_chars is unset",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"total_chars\":-1}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": null,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": null,
+        "request_id": null
+      }
+    },
+    {
+      "name": "a fractional total_chars is unset",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"total_chars\":1.5}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": null,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": null,
+        "request_id": null
+      }
+    },
+    {
+      "name": "an overflowing total_chars is unset",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"truncated\":true,\"total_chars\":1e400}",
+      "expect": {
+        "error": null,
+        "truncated": true,
+        "total_chars": null,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": null,
+        "request_id": null
+      }
+    },
+    {
+      "name": "null truncated and total_chars are unset",
+      "endpoint": "fetch",
+      "arg": "https://e.com/p",
+      "status": 200,
+      "headers": {},
+      "body": "{\"truncated\":null,\"total_chars\":null}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": null,
+        "url": "https://e.com/p",
+        "title": "",
+        "content": "",
+        "description": null,
+        "author": null,
+        "published_at": null,
+        "request_id": null
+      }
+    },
+    {
+      "name": "result dates as ISO strings are kept",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\",\"published_at\":\"2024-05-01T12:00:00Z\",\"acquired_at\":\"2024-05-02T00:00:00Z\"}]}",
+      "expect": {
+        "error": null,
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": [
+          {
+            "title": "T",
+            "url": "u",
+            "snippet": "s",
+            "description": null,
+            "published_at": "2024-05-01T12:00:00Z",
+            "acquired_at": "2024-05-02T00:00:00Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "result dates in Unix seconds are ISO 8601 UTC",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\",\"published_at\":1714564800,\"acquired_at\":1714608000.5}]}",
+      "expect": {
+        "error": null,
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": [
+          {
+            "title": "T",
+            "url": "u",
+            "snippet": "s",
+            "description": null,
+            "published_at": "2024-05-01T12:00:00Z",
+            "acquired_at": "2024-05-02T00:00:00Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "out-of-range result dates are unset",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\",\"published_at\":-1,\"acquired_at\":100000000000000000000}]}",
+      "expect": {
+        "error": null,
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": [
+          {
+            "title": "T",
+            "url": "u",
+            "snippet": "s",
+            "description": null,
+            "published_at": null,
+            "acquired_at": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "zero and numeric-string result dates",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\",\"published_at\":0,\"acquired_at\":\"1714564800\"}]}",
+      "expect": {
+        "error": null,
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": [
+          {
+            "title": "T",
+            "url": "u",
+            "snippet": "s",
+            "description": null,
+            "published_at": null,
+            "acquired_at": "1714564800"
+          }
+        ]
       }
     }
   ],

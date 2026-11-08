@@ -279,6 +279,8 @@ async def test_responses(kind: str, case: dict[str, Any], waits: list[float]) ->
             "author": result.author,
             "published_at": result.published_at,
             "request_id": result.request_id,
+            "truncated": result.truncated,
+            "total_chars": result.total_chars,
         }
     assert got == {key: want[key] for key in got}
 

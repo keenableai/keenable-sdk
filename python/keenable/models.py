@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urljoin, urlsplit
 
@@ -24,6 +26,53 @@ def _str_or_none(value: Any) -> str | None:
     if isinstance(value, str) and value.strip():
         return value
     return None
+
+
+# The last Unix second with a four-digit year, 9999-12-31T23:59:59Z. A larger
+# number is not a date the API sends (a millisecond value lands past it).
+_MAX_UNIX_SECONDS = 253_402_300_799
+
+# The largest integer every SDK holds exactly (JavaScript's Number.MAX_SAFE_INTEGER).
+_MAX_SAFE_INTEGER = 2**53 - 1
+
+
+def _timestamp_or_none(value: Any) -> str | None:
+    """A date as the API sends it, as one ISO 8601 string, or None.
+
+    Search sends ISO 8601 strings, kept as sent (when not blank). Fetch sends
+    Unix seconds, which become ISO 8601 UTC to the second, such as
+    ``"2024-05-01T12:00:00Z"``; a fraction is dropped. A number below 1 (the
+    API omits an unknown date rather than send 0), past the year 9999, not
+    finite, or a boolean is None, as is anything else.
+    """
+    if isinstance(value, str):
+        return _str_or_none(value)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    seconds = math.floor(value)
+    if not 1 <= seconds <= _MAX_UNIX_SECONDS:
+        return None
+    return datetime.fromtimestamp(seconds, tz=timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+
+
+def _bool_or_none(value: Any) -> bool | None:
+    """A JSON boolean, or None for anything else (never ``bool()``)."""
+    return value if isinstance(value, bool) else None
+
+
+def _count_or_none(value: Any) -> int | None:
+    """A whole number from 0 to 2**53 - 1, or None for anything else."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, float) and not value.is_integer():
+        return None  # Also NaN and infinities.
+    if not 0 <= value <= _MAX_SAFE_INTEGER:
+        return None
+    return int(value)
 
 
 def _str_or_empty(value: Any) -> str:
@@ -308,10 +357,13 @@ class SearchResult:
     Kept for compatibility; see https://docs.keenable.ai/versioning."""
 
     published_at: str | None = None
-    """ISO-8601 timestamp of publication, when the page exposes one."""
+    """ISO-8601 timestamp of publication, when the page exposes one. A date the
+    API sends as Unix seconds is given as ISO 8601 UTC, such as
+    ``"2024-05-01T12:00:00Z"``."""
 
     acquired_at: str | None = None
-    """ISO-8601 timestamp of when Keenable indexed the page."""
+    """ISO-8601 timestamp of when Keenable indexed the page, in the same form
+    as ``published_at``."""
 
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
     """The unmodified JSON object, so new API fields are reachable before this
@@ -324,8 +376,8 @@ class SearchResult:
             url=_str_or_empty(data.get("url")),
             snippet=_str_or_empty(data.get("snippet")),
             description=_str_or_none(data.get("description")),
-            published_at=_str_or_none(data.get("published_at")),
-            acquired_at=_str_or_none(data.get("acquired_at")),
+            published_at=_timestamp_or_none(data.get("published_at")),
+            acquired_at=_timestamp_or_none(data.get("acquired_at")),
             raw=data,
         )
 
@@ -481,9 +533,23 @@ class Page:
 
     author: str | None = None
     published_at: str | None = None
+    """When the page was published, as ISO 8601. The API sends Unix seconds
+    for a fetch; they are given in UTC to the second, such as
+    ``"2024-05-01T12:00:00Z"``, the form search results use. None when
+    unknown."""
+
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
     request_id: str | None = None
     """The API's id for this request. Quote it when reporting a problem."""
+
+    truncated: bool | None = None
+    """True when the page was longer than the API's ``max_chars`` and
+    ``content`` was cut (cut content ends with ``...``). None when the API did
+    not say."""
+
+    total_chars: int | None = None
+    """Length of the full extracted content in Unicode code points, before
+    any cut. None when the API did not say."""
 
     @classmethod
     def _from_json(
@@ -495,9 +561,11 @@ class Page:
             content=_str_or_empty(data.get("content")),
             description=_str_or_none(data.get("description")),
             author=_str_or_none(data.get("author")),
-            published_at=_str_or_none(data.get("published_at")),
+            published_at=_timestamp_or_none(data.get("published_at")),
             raw=data,
             request_id=_str_or_none(data.get("request_id")) or request_id,
+            truncated=_bool_or_none(data.get("truncated")),
+            total_chars=_count_or_none(data.get("total_chars")),
         )
 
     def to_context(self, max_chars: int = DEFAULT_CONTEXT_MAX_CHARS) -> str:

@@ -9,6 +9,18 @@ The SDK now matches the Python and Go SDKs case for case: all three run the
 shared cases in `scripts/conformance`. Changes marked **Behaviour change** alter
 what an existing call does.
 
+- **Fixed:** `Page.publishedAt` is now set for fetched pages. The API sends a
+  fetch's publish date as Unix seconds, which the SDK dropped; it is now an
+  ISO 8601 UTC string to the second, such as `"2024-05-01T12:00:00Z"`, the
+  form search results use. An ISO 8601 string is still kept as sent, so both
+  forms work. The same applies to `SearchResult.publishedAt` and
+  `acquiredAt`. A number below 1, past the year 9999 (a millisecond value
+  too) or not finite is `undefined`, as before.
+- **Added:** `Page.truncated` (`boolean | undefined`) and `Page.totalChars`
+  (`number | undefined`): whether the API cut `content` at `max_chars`, and
+  the full content's length in code points. `undefined` when the API leaves
+  them out or sends another type. `content` and `toContext()` are unchanged.
+
 - **Behaviour change:** errors no longer expose `docsUrl`, `billingUrl`,
   `autoTopUpUrl`, `payPerRequest` or `raw`, and the message no longer ends with
   `Docs: <url>`. None of these was in a release. `body` (the API's message) is

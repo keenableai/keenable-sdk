@@ -1,8 +1,10 @@
 package keenable
 
 import (
+	"math"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -68,8 +70,11 @@ type SearchResult struct {
 	// in prompts. Nil when the API omitted it or sent an empty string.
 	Description *string `json:"description,omitempty"`
 	// PublishedAt is the ISO-8601 publication time, when the page exposes one.
+	// A date the API sends as Unix seconds is given as ISO 8601 UTC, such as
+	// "2024-05-01T12:00:00Z".
 	PublishedAt *string `json:"published_at,omitempty"`
-	// AcquiredAt is when Keenable indexed the page.
+	// AcquiredAt is when Keenable indexed the page, in the same form as
+	// PublishedAt.
 	AcquiredAt *string `json:"acquired_at,omitempty"`
 	// Raw is the unmodified JSON object, so new API fields stay reachable.
 	Raw map[string]any `json:"-"`
@@ -96,11 +101,21 @@ type Page struct {
 	Content     string  `json:"content"`
 	Description *string `json:"description,omitempty"`
 	Author      *string `json:"author,omitempty"`
+	// PublishedAt is when the page was published, as ISO 8601. The API sends
+	// Unix seconds for a fetch; they are given in UTC to the second, such as
+	// "2024-05-01T12:00:00Z", the form search results use. Nil when unknown.
 	PublishedAt *string `json:"published_at,omitempty"`
 	// RequestID is the API's id for this request. Quote it when reporting a
 	// problem. Empty when the API sent none.
 	RequestID string         `json:"request_id,omitempty"`
 	Raw       map[string]any `json:"-"`
+	// Truncated is true when the page was longer than the API's max_chars and
+	// Content was cut (cut content ends with "..."). Nil when the API did not
+	// say.
+	Truncated *bool `json:"truncated,omitempty"`
+	// TotalChars is the length of the full extracted content in Unicode code
+	// points, before any cut. Nil when the API did not say.
+	TotalChars *int `json:"total_chars,omitempty"`
 }
 
 // Cited returns the results ToContext would render, in citation order.
@@ -311,8 +326,8 @@ func searchResultFromJSON(data map[string]any) SearchResult {
 		URL:         asString(data["url"]),
 		Snippet:     asString(data["snippet"]),
 		Description: nonEmptyString(data["description"]),
-		PublishedAt: nonEmptyString(data["published_at"]),
-		AcquiredAt:  nonEmptyString(data["acquired_at"]),
+		PublishedAt: timestamp(data["published_at"]),
+		AcquiredAt:  timestamp(data["acquired_at"]),
 		Raw:         data,
 	}
 }
@@ -329,9 +344,60 @@ func pageFromJSON(data map[string]any, fallbackURL string) *Page {
 		Content:     asString(data["content"]),
 		Description: nonEmptyString(data["description"]),
 		Author:      nonEmptyString(data["author"]),
-		PublishedAt: nonEmptyString(data["published_at"]),
+		PublishedAt: timestamp(data["published_at"]),
 		Raw:         data,
+		Truncated:   optionalBool(data["truncated"]),
+		TotalChars:  count(data["total_chars"]),
 	}
+}
+
+// maxUnixSeconds is the last Unix second with a four-digit year,
+// 9999-12-31T23:59:59Z. A larger number is not a date the API sends (a
+// millisecond value lands past it).
+const maxUnixSeconds = 253402300799
+
+// timestamp reads a date as the API sends it, as one ISO 8601 string.
+//
+// Search sends ISO 8601 strings, kept as sent (when not blank). Fetch sends
+// Unix seconds, which become ISO 8601 UTC to the second, such as
+// "2024-05-01T12:00:00Z"; a fraction is dropped. A number below 1 (the API
+// omits an unknown date rather than send 0), past the year 9999 or not finite
+// is nil, as is anything else.
+func timestamp(v any) *string {
+	switch t := v.(type) {
+	case string:
+		return nonEmptyString(t)
+	case float64:
+		if math.IsNaN(t) || math.IsInf(t, 0) {
+			return nil
+		}
+		seconds := math.Floor(t)
+		if seconds < 1 || seconds > maxUnixSeconds {
+			return nil
+		}
+		s := time.Unix(int64(seconds), 0).UTC().Format("2006-01-02T15:04:05Z")
+		return &s
+	}
+	return nil
+}
+
+// optionalBool is a JSON boolean, or nil for anything else.
+func optionalBool(v any) *bool {
+	b, ok := v.(bool)
+	if !ok {
+		return nil
+	}
+	return &b
+}
+
+// count is a whole number from 0 to 2^53 - 1, or nil for anything else.
+func count(v any) *int {
+	f, ok := v.(float64)
+	if !ok || f != math.Trunc(f) || f < 0 || f > maxSafeInteger || f > math.MaxInt {
+		return nil
+	}
+	n := int(f)
+	return &n
 }
 
 func nonEmptyString(v any) *string {
