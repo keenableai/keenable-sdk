@@ -41,7 +41,9 @@ only pipes and dashes are dropped. Fenced code blocks, inline code and
 delimiter rows (`|---|:-:|`) are dropped, and each row becomes its non-empty
 cells joined with " · " and ended with ";" (one is not added when the last cell
 already ends in ";"), so rows stay apart once a search snippet's whitespace is
-collapsed. `\|` is a literal pipe. A row left with no cells,
+collapsed. A line is a row when it sits under another row or over a delimiter
+row, or looks like one on its own (`| a | b |`), so prose such as `|x| is ...`
+is left alone. A pipe after an odd run of backslashes (`\|`) is a literal pipe. A row left with no cells,
 such as one that held only avatar images, is dropped. Tables inside fenced code
 are left alone, and a pipe inside inline code does not split a cell. No
 migration.
@@ -50,8 +52,9 @@ New `ContextOptions.MaxSnippetChars` for `SearchResponse.ToContext` and
 `Cited` (zero means the new `DefaultContextMaxSnippetChars`, 2000): each
 result's cleaned text is cut at the last space at or before that many
 characters and ends in "…", so one whole-page snippet no longer takes the whole
-`MaxChars` budget. The budget counts the capped text. Set it negative for the
-old uncapped behaviour. `Page.ToContext` is unchanged.
+`MaxChars` budget. The budget counts the capped text. Zero means the default and a negative
+value disables the cap, for the old uncapped behaviour (in Python and
+TypeScript, a value below 1 disables it). `Page.ToContext` is unchanged.
 
 ## 0.1.1
 

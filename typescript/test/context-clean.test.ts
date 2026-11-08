@@ -150,6 +150,21 @@ describe("cleanContextText", () => {
     expect(cleanContextText(text, BASE)).toBe("a · b;\n`x;` · y;\nc · `d;`;");
   });
 
+  it("escapes a pipe only after an odd run of backslashes", () => {
+    const text = "| x |\n|---|\n| a \\| b |\n| a \\\\| b |\n| a \\\\\\| b |";
+    expect(cleanContextText(text, BASE)).toBe("x;\na | b;\na \\\\ · b;\na \\\\| b;");
+  });
+
+  it("leaves prose that starts with a pipe alone", () => {
+    const text = "|x| is the absolute value of x\n| Warning: a | b\n|x|\n| a \\| b |";
+    expect(cleanContextText(text, BASE)).toBe(text);
+  });
+
+  it("flattens a row-shaped line without a header", () => {
+    const text = "...leaderboard\n| 1 | Llama | 90 |\n| 2 | Qwen | 88 |";
+    expect(cleanContextText(text, BASE)).toBe("...leaderboard\n1 · Llama · 90;\n2 · Qwen · 88;");
+  });
+
   it("leaves prose with a single pipe alone", () => {
     const text = "Home | About us\nUse a | b to pipe.\n`x | y`";
     expect(cleanContextText(text, BASE)).toBe(text);

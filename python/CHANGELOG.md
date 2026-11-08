@@ -46,7 +46,10 @@ All notable changes to the `keenable` Python package. Versions follow
   delimiter rows (`|---|:-:|`) are dropped, and each row becomes its non-empty
   cells joined with " · " and ended with ";" (one is not added when the last
   cell already ends in ";"), so rows stay apart once a search snippet's
-  whitespace is collapsed. `\|` is a literal pipe. A row left with no cells,
+  whitespace is collapsed. A line is a row when it sits under another
+  row or over a delimiter row, or looks like one on its own (`| a | b |`), so
+  prose such as `|x| is ...` is left alone. A pipe after an odd run of
+  backslashes (`\|`) is a literal pipe. A row left with no cells,
   such as one that held only avatar images, is dropped. Tables inside fenced
   code are left alone, and a pipe inside inline code does not split a cell.
 
@@ -54,7 +57,8 @@ All notable changes to the `keenable` Python package. Versions follow
   new constant `DEFAULT_CONTEXT_MAX_SNIPPET_CHARS`): each result's cleaned text
   is cut at the last space at or before that many characters and ends in "…",
   so one whole-page snippet no longer takes the whole `max_chars` budget. The
-  budget counts the capped text. Pass `None` for the old uncapped behaviour.
+  budget counts the capped text. Pass `None` for the old uncapped behaviour;
+  a value below 1 also disables the cap (in Go, 0 means the default and a negative value disables it).
   `Page.to_context()` is unchanged.
 
 - The wheel now ships a `py.typed` marker, so mypy and pyright read the SDK's

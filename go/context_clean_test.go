@@ -170,6 +170,24 @@ func TestCleanContextText(t *testing.T) {
 			want: "a · b;\n`x;` · y;\nc · `d;`;",
 		},
 		{
+			name: "only an odd backslash run escapes a pipe",
+			text: "| x |\n|---|\n" + `| a \| b |` + "\n" + `| a \\| b |` + "\n" + `| a \\\| b |`,
+			base: cleanBase,
+			want: "x;\n" + `a | b;` + "\n" + `a \\ · b;` + "\n" + `a \\| b;`,
+		},
+		{
+			name: "prose that starts with a pipe left alone",
+			text: "|x| is the absolute value of x\n| Warning: a | b\n|x|\n" + `| a \| b |`,
+			base: cleanBase,
+			want: "|x| is the absolute value of x\n| Warning: a | b\n|x|\n" + `| a \| b |`,
+		},
+		{
+			name: "row-shaped line without a header flattened",
+			text: "...leaderboard\n| 1 | Llama | 90 |\n| 2 | Qwen | 88 |",
+			base: cleanBase,
+			want: "...leaderboard\n1 · Llama · 90;\n2 · Qwen · 88;",
+		},
+		{
 			name: "prose with a single pipe left alone",
 			text: "Home | About us\nUse a | b to pipe.\n`x | y`",
 			base: cleanBase,

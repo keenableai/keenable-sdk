@@ -63,8 +63,8 @@ prompt = f"Answer using only these sources, citing them by number.\n\n{context}\
 It emits `[1] Title (url)` headers followed by the page text. Each result's
 text is cleaned (images dropped, relative links resolved, markdown tables
 flattened to `cell · cell;` rows) and cut at a word boundary to
-`max_snippet_chars` (2000 by default, `None` for no cap), ending in "…". Results
-are then added whole until the character budget is reached (`max_chars=12000`
+`max_snippet_chars` (2000 by default, `None` for no cap; a value below 1 also
+disables the cap), ending in "…". Results are then added whole until the character budget is reached (`max_chars=12000`
 by default), so a later source is dropped rather than cut off. The first result
 is kept even when it alone is over the budget.
 

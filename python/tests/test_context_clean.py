@@ -160,6 +160,23 @@ def test_row_already_ending_in_a_semicolon_gets_no_second_one() -> None:
     assert clean_context_text(text, BASE) == "a · b;\n`x;` · y;\nc · `d;`;"
 
 
+def test_only_an_odd_backslash_run_escapes_a_pipe() -> None:
+    text = "| x |\n|---|\n| a \\| b |\n| a \\\\| b |\n| a \\\\\\| b |"
+    assert clean_context_text(text, BASE) == "x;\na | b;\na \\\\ · b;\na \\\\| b;"
+
+
+def test_prose_that_starts_with_a_pipe_is_left_alone() -> None:
+    text = "|x| is the absolute value of x\n| Warning: a | b\n|x|\n| a \\| b |"
+    assert clean_context_text(text, BASE) == text
+
+
+def test_row_shaped_line_without_a_header_is_flattened() -> None:
+    text = "...leaderboard\n| 1 | Llama | 90 |\n| 2 | Qwen | 88 |"
+    assert clean_context_text(text, BASE) == (
+        "...leaderboard\n1 · Llama · 90;\n2 · Qwen · 88;"
+    )
+
+
 def test_prose_with_a_single_pipe_is_left_alone() -> None:
     text = "Home | About us\nUse a | b to pipe.\n`x | y`"
     assert clean_context_text(text, BASE) == text

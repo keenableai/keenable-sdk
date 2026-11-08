@@ -145,34 +145,54 @@ def _is_table_delimiter(line: str) -> bool:
     return "|" in line and "-" in line and bool(_ONLY_TABLE_RULE.match(line.rstrip()))
 
 
-def _has_cell_pipe(line: str) -> bool:
-    """Whether ``line`` has a ``|`` that is not escaped as ``\\|``."""
-    i = line.find("|")
-    while i != -1:
-        if i == 0 or line[i - 1] != "\\":
-            return True
-        i = line.find("|", i + 1)
-    return False
+def _cell_pipes(line: str) -> int:
+    """How many ``|`` in ``line`` separate cells.
+
+    A pipe after an odd run of backslashes (``\\|``, ``\\\\\\|``) is
+    escaped; after an even run (``\\\\|``) the backslashes escape each other.
+    """
+    count = 0
+    backslashes = 0
+    for ch in line:
+        if ch == "\\":
+            backslashes += 1
+            continue
+        if ch == "|" and backslashes % 2 == 0:
+            count += 1
+        backslashes = 0
+    return count
+
+
+def _looks_like_row(line: str) -> bool:
+    """Whether ``line`` has a row's shape on its own: ``| a | b |``.
+
+    It must start and end with a cell pipe and hold at least two cells, so
+    prose that merely starts with a pipe (``|x| is ...``) is not a row.
+    """
+    trimmed = line.strip(" \t\r")
+    if not (trimmed.startswith("|") and trimmed.endswith("|")):
+        return False
+    body = trimmed[:-1]
+    escapes = len(body) - len(body.rstrip("\\"))
+    return escapes % 2 == 0 and _cell_pipes(trimmed) >= 3
 
 
 def _table_cells(line: str) -> list[str]:
     """The non-empty cells of a table row, trimmed, with ``\\|`` read as ``|``."""
     cells: list[str] = []
     cell: list[str] = []
-    i = 0
-    n = len(line)
-    while i < n:
-        ch = line[i]
-        if ch == "\\" and i + 1 < n and line[i + 1] == "|":
-            cell.append("|")
-            i += 2
-            continue
-        if ch == "|":
+    backslashes = 0
+    for ch in line:
+        if ch == "|" and backslashes % 2 == 1:
+            cell[-1] = "|"
+        elif ch == "|":
             cells.append("".join(cell))
             cell = []
         else:
             cell.append(ch)
-        i += 1
+            backslashes = backslashes + 1 if ch == "\\" else 0
+            continue
+        backslashes = 0
     cells.append("".join(cell))
     return [c for c in (_SPACE_RUN.sub(" ", c).strip() for c in cells) if c]
 
@@ -186,7 +206,9 @@ def _clean_context_text(text: str, base_url: str) -> str:
     possible. Markdown tables are flattened: delimiter rows (``|---|:-:|``)
     are dropped, and each row becomes its non-empty cells joined with " · "
     and ended with ";" (``\\|`` is a literal pipe), so rows stay apart once
-    whitespace is collapsed; a row left with no cells is dropped. Fenced
+    whitespace is collapsed; a row left with no cells is dropped. A line is
+    a row when it sits under another row or over a delimiter row, or has a
+    row's shape on its own (``| a | b |``). Fenced
     code blocks and inline code spans are left alone, and so is
     ``name[i](x)``, which is code rather than a link. Other lines are tidied
     only if they changed: runs of spaces squeezed, and the line dropped if
@@ -221,12 +243,13 @@ def _clean_context_text(text: str, base_url: str) -> str:
         protected, spans = _protect_code_spans(line)
         cleaned = _HTML_IMAGE.sub("", _MD_IMAGE.sub("", protected))
         cleaned = _MD_LINK.sub(lambda m: _resolve_link(m, base_url), cleaned)
-        # A table row: it starts with a pipe, or it has one and sits under a
-        # header (the next line is a delimiter row) or under another row.
-        if _has_cell_pipe(cleaned) and (
-            cleaned.lstrip().startswith("|")
-            or in_table
+        # A table row has a cell pipe and sits under another row or over a
+        # delimiter row, or has a row's shape on its own (a snippet can start
+        # below the header).
+        if _cell_pipes(cleaned) and (
+            in_table
             or (i + 1 < len(lines) and _is_table_delimiter(lines[i + 1]))
+            or _looks_like_row(cleaned)
         ):
             in_table = True
             cells = _table_cells(cleaned)
@@ -403,7 +426,9 @@ class SearchResponse:
                 page exposes one. Useful when recency matters to the answer.
             max_snippet_chars: Cap each result's text at about this many
                 characters (plus the "…"), so one whole-page snippet cannot
-                take the whole budget. ``None`` means no cap.
+                take the whole budget. ``None`` means no cap; a value below 1
+                also disables the cap (in Go, 0 means the default and a
+                negative value disables it).
         """
         return "\n\n".join(
             _context_block(

@@ -37,7 +37,9 @@ var (
 // Markdown tables are flattened: delimiter rows (|---|:-:|) are dropped, and
 // each row becomes its non-empty cells joined with " · " and ended with ";"
 // (\| is a literal pipe), so rows stay apart once whitespace is collapsed;
-// a row left with no cells is dropped. Fenced code blocks and inline
+// a row left with no cells is dropped. A line is a row when it sits under
+// another row or over a delimiter row, or has a row's shape on its own
+// (| a | b |). Fenced code blocks and inline
 // code spans are left alone, and so is name[i](x), which is code rather than
 // a link. Other lines are tidied only if they changed: runs of spaces
 // squeezed, and the line dropped if nothing but pipes and dashes is left.
@@ -78,10 +80,11 @@ func cleanContextText(text, baseURL string) string {
 		protected, spans := protectCodeSpans(line)
 		cleaned := htmlImage.ReplaceAllString(mdImage.ReplaceAllString(protected, ""), "")
 		cleaned = replaceLinks(cleaned, base)
-		// A table row: it starts with a pipe, or it has one and sits under a
-		// header (the next line is a delimiter row) or under another row.
-		if hasCellPipe(cleaned) && (strings.HasPrefix(strings.TrimLeftFunc(cleaned, unicode.IsSpace), "|") ||
-			inTable || (i+1 < len(lines) && isTableDelimiter(lines[i+1]))) {
+		// A table row has a cell pipe and sits under another row or over a
+		// delimiter row, or has a row's shape on its own (a snippet can start
+		// below the header).
+		if cellPipes(cleaned) > 0 && (inTable ||
+			(i+1 < len(lines) && isTableDelimiter(lines[i+1])) || looksLikeRow(cleaned)) {
 			inTable = true
 			if cells := tableCells(cleaned); len(cells) > 0 {
 				row := restoreCodeSpans(strings.Join(cells, " · "), spans)
@@ -173,38 +176,66 @@ func restoreCodeSpans(text string, spans []string) string {
 	})
 }
 
-// hasCellPipe reports whether line has a | that is not escaped as \|.
-func hasCellPipe(line string) bool {
+// cellPipes counts the | in line that separate cells. A pipe after an odd
+// run of backslashes (\|, \\\|) is escaped; after an even run (\\|) the
+// backslashes escape each other.
+func cellPipes(line string) int {
+	count, backslashes := 0, 0
 	for i := 0; i < len(line); i++ {
-		if line[i] == '|' && (i == 0 || line[i-1] != '\\') {
-			return true
+		switch {
+		case line[i] == '\\':
+			backslashes++
+			continue
+		case line[i] == '|' && backslashes%2 == 0:
+			count++
 		}
+		backslashes = 0
 	}
-	return false
+	return count
+}
+
+// looksLikeRow reports whether line has a row's shape on its own: | a | b |.
+// It must start and end with a cell pipe and hold at least two cells, so
+// prose that merely starts with a pipe (|x| is ...) is not a row.
+func looksLikeRow(line string) bool {
+	trimmed := strings.Trim(line, " \t\r")
+	if len(trimmed) < 2 || trimmed[0] != '|' || trimmed[len(trimmed)-1] != '|' {
+		return false
+	}
+	body := trimmed[:len(trimmed)-1]
+	escapes := len(body) - len(strings.TrimRight(body, `\`))
+	return escapes%2 == 0 && cellPipes(trimmed) >= 3
 }
 
 // tableCells returns the non-empty cells of a table row, trimmed, with \|
 // read as |.
 func tableCells(line string) []string {
 	var cells []string
-	var cell strings.Builder
+	cell := []byte{}
 	flush := func() {
-		c := strings.TrimSpace(spaceRun.ReplaceAllString(cell.String(), " "))
+		c := strings.TrimSpace(spaceRun.ReplaceAllString(string(cell), " "))
 		if c != "" {
 			cells = append(cells, c)
 		}
-		cell.Reset()
+		cell = cell[:0]
 	}
+	backslashes := 0
 	for i := 0; i < len(line); i++ {
 		switch {
-		case line[i] == '\\' && i+1 < len(line) && line[i+1] == '|':
-			cell.WriteByte('|')
-			i++
+		case line[i] == '|' && backslashes%2 == 1:
+			cell[len(cell)-1] = '|'
 		case line[i] == '|':
 			flush()
 		default:
-			cell.WriteByte(line[i])
+			cell = append(cell, line[i])
+			if line[i] == '\\' {
+				backslashes++
+			} else {
+				backslashes = 0
+			}
+			continue
 		}
+		backslashes = 0
 	}
 	flush()
 	return cells

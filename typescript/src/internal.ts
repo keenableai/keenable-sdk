@@ -89,31 +89,62 @@ function isTableDelimiter(line: string): boolean {
   return line.includes("|") && line.includes("-") && ONLY_TABLE_RULE.test(line.trimEnd());
 }
 
-/** Whether `line` has a `|` that is not escaped as `\|`. */
-function hasCellPipe(line: string): boolean {
-  let i = line.indexOf("|");
-  while (i !== -1) {
-    if (i === 0 || line.charAt(i - 1) !== "\\") return true;
-    i = line.indexOf("|", i + 1);
+/**
+ * How many `|` in `line` separate cells. A pipe after an odd run of
+ * backslashes (`\|`, `\\\|`) is escaped; after an even run (`\\|`) the
+ * backslashes escape each other.
+ */
+function cellPipes(line: string): number {
+  let count = 0;
+  let backslashes = 0;
+  for (const ch of line) {
+    if (ch === "\\") {
+      backslashes += 1;
+      continue;
+    }
+    if (ch === "|" && backslashes % 2 === 0) count += 1;
+    backslashes = 0;
   }
-  return false;
+  return count;
+}
+
+/**
+ * Whether `line` has a row's shape on its own: `| a | b |`. It must start and
+ * end with a cell pipe and hold at least two cells, so prose that merely
+ * starts with a pipe (`|x| is ...`) is not a row.
+ */
+function looksLikeRow(line: string): boolean {
+  // Trimmed by hand: /[ \t\r]+$/ is quadratic on long inner runs of spaces.
+  const isBlank = (ch: string) => ch === " " || ch === "\t" || ch === "\r";
+  let start = 0;
+  let end = line.length;
+  while (start < end && isBlank(line.charAt(start))) start += 1;
+  while (end > start && isBlank(line.charAt(end - 1))) end -= 1;
+  const trimmed = line.slice(start, end);
+  if (!(trimmed.startsWith("|") && trimmed.endsWith("|"))) return false;
+  const body = trimmed.slice(0, -1);
+  let escapes = 0;
+  while (escapes < body.length && body.charAt(body.length - 1 - escapes) === "\\") escapes += 1;
+  return escapes % 2 === 0 && cellPipes(trimmed) >= 3;
 }
 
 /** The non-empty cells of a table row, trimmed, with `\|` read as `|`. */
 function tableCells(line: string): string[] {
   const cells: string[] = [];
   let cell = "";
-  for (let i = 0; i < line.length; i += 1) {
-    const ch = line.charAt(i);
-    if (ch === "\\" && line.charAt(i + 1) === "|") {
-      cell += "|";
-      i += 1;
+  let backslashes = 0;
+  for (const ch of line) {
+    if (ch === "|" && backslashes % 2 === 1) {
+      cell = `${cell.slice(0, -1)}|`;
     } else if (ch === "|") {
       cells.push(cell);
       cell = "";
     } else {
       cell += ch;
+      backslashes = ch === "\\" ? backslashes + 1 : 0;
+      continue;
     }
+    backslashes = 0;
   }
   cells.push(cell);
   return cells.map((c) => c.replace(/[ \t]+/g, " ").trim()).filter(Boolean);
@@ -180,7 +211,9 @@ function protectCodeSpans(line: string): { protected: string; spans: string[] } 
  * Markdown tables are flattened: delimiter rows (`|---|:-:|`) are dropped, and
  * each row becomes its non-empty cells joined with " · " and ended with ";"
  * (`\|` is a literal pipe), so rows stay apart once whitespace is collapsed;
- * a row left with no cells is dropped. Fenced code blocks and inline
+ * a row left with no cells is dropped. A line is a row when it sits under
+ * another row or over a delimiter row, or has a row's shape on its own
+ * (`| a | b |`). Fenced code blocks and inline
  * code spans are left alone, and so is `name[i](x)`, which is code rather than
  * a link. Other lines are tidied only if they changed: runs of spaces
  * squeezed, and the line dropped if nothing but pipes and dashes is left. Text
@@ -220,13 +253,14 @@ export function cleanContextText(text: string, baseUrl: string): string {
       (match: string, linkText: string, href: string, offset: number, whole: string) =>
         resolveLink(match, linkText, href, offset, whole, baseUrl),
     );
-    // A table row: it starts with a pipe, or it has one and sits under a
-    // header (the next line is a delimiter row) or under another row.
+    // A table row has a cell pipe and sits under another row or over a
+    // delimiter row, or has a row's shape on its own (a snippet can start
+    // below the header).
     if (
-      hasCellPipe(cleaned) &&
-      (cleaned.trimStart().startsWith("|") ||
-        inTable ||
-        (i + 1 < lines.length && isTableDelimiter(lines[i + 1] ?? "")))
+      cellPipes(cleaned) > 0 &&
+      (inTable ||
+        (i + 1 < lines.length && isTableDelimiter(lines[i + 1] ?? "")) ||
+        looksLikeRow(cleaned))
     ) {
       inTable = true;
       const cells = tableCells(cleaned);
