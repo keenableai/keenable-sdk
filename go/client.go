@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/netip"
@@ -32,7 +33,18 @@ const (
 	// DefaultTimeout is the deadline for one request, including the body.
 	DefaultTimeout = 30 * time.Second
 
+	// DefaultMaxRetries is how many times a failed request is retried when
+	// Options.MaxRetries is nil.
+	DefaultMaxRetries = 2
+
 	defaultClientSource = "Keenable SDK"
+
+	// Retry timing, the same in the Python and TypeScript SDKs.
+	initialRetryDelay = 500 * time.Millisecond
+	maxRetryDelay     = 8 * time.Second
+	// maxRetryAfterWait is the longest server-requested wait that is waited
+	// out. A longer one, such as the keyless hourly cap, is returned at once.
+	maxRetryAfterWait = 60 * time.Second
 )
 
 // Options configures a [Client].
@@ -62,6 +74,19 @@ type Options struct {
 	// ClientSource is sent as X-Keenable-Title. Empty means "Keenable SDK".
 	// Set it when you wrap this SDK and want your own traffic attribution.
 	ClientSource string
+	// MaxRetries is how many times to retry a failed request. Nil means
+	// [DefaultMaxRetries]; a pointer to zero turns retries off.
+	//
+	// Connection errors, timeouts, 408, 429 and 5xx are retried, unless the
+	// API says the error is not retryable (APIError.Retryable decides when
+	// sent). The wait is the API's Retry-After when it sent one, else
+	// exponential backoff from 0.5s up to 8s with jitter. A Retry-After
+	// longer than 60s is not waited out: the error is returned at once. A
+	// canceled ctx stops the wait.
+	MaxRetries *int
+	// Headers are sent with every request, e.g. for a proxy or gateway.
+	// X-API-Key is ignored here: it always comes from APIKey.
+	Headers map[string]string
 	// HTTPClient replaces the owned client (proxies, custom transports).
 	// Its Timeout and CheckRedirect are left alone, and [Client.Close] does
 	// not close it. Cross-host redirects are still refused, so X-API-Key is
@@ -91,6 +116,29 @@ type Client struct {
 	clientTimeout time.Duration
 	http          *http.Client
 	ownsClient    bool
+	maxRetries    int
+	// defaultHeaders is a copy of Options.Headers.
+	defaultHeaders map[string]string
+}
+
+// RequestOptions are per-call transport settings. Each overrides the client's
+// setting for this call only. They are embedded in [SearchOptions] and
+// [FetchOptions].
+type RequestOptions struct {
+	// Timeout is the deadline for each attempt of this call. Zero keeps the
+	// client's. A ctx deadline also applies, to the whole call.
+	Timeout time.Duration
+	// MaxRetries is this call's retry budget. Nil keeps the client's; a
+	// pointer to zero turns retries off.
+	MaxRetries *int
+	// Headers are sent with this call, over Options.Headers. X-API-Key is
+	// ignored.
+	Headers map[string]string
+}
+
+// FetchOptions are the optional arguments to [Client.Fetch].
+type FetchOptions struct {
+	RequestOptions
 }
 
 // New builds a client. A nil opts reads the environment and uses the defaults.
@@ -106,10 +154,26 @@ func New(opts *Options) (*Client, error) {
 	if source == "" {
 		source = defaultClientSource
 	}
+	maxRetries := DefaultMaxRetries
+	if opts.MaxRetries != nil {
+		if *opts.MaxRetries < 0 {
+			return nil, &InvalidRequestError{msg: fmt.Sprintf("MaxRetries must be zero or more, got %d", *opts.MaxRetries)}
+		}
+		maxRetries = *opts.MaxRetries
+	}
+	if opts.Timeout < 0 {
+		return nil, &InvalidRequestError{msg: fmt.Sprintf("Timeout must be zero or more, got %s", opts.Timeout)}
+	}
+	headers := make(map[string]string, len(opts.Headers))
+	for k, v := range opts.Headers {
+		headers[k] = v
+	}
 	c := &Client{
-		apiKey:       resolveAPIKey(opts.APIKey),
-		baseURL:      base,
-		clientSource: source,
+		apiKey:         resolveAPIKey(opts.APIKey),
+		baseURL:        base,
+		clientSource:   source,
+		maxRetries:     maxRetries,
+		defaultHeaders: headers,
 	}
 	if opts.HTTPClient != nil {
 		c.http = opts.HTTPClient
@@ -124,7 +188,10 @@ func New(opts *Options) (*Client, error) {
 		timeout = DefaultTimeout
 	}
 	c.sdkTimeout = timeout
-	c.http = &http.Client{Timeout: timeout, CheckRedirect: ownedCheckRedirect}
+	// No http.Client.Timeout: the per-attempt context deadline covers headers
+	// and body, and a fixed client timeout would cut off a longer
+	// RequestOptions.Timeout.
+	c.http = &http.Client{CheckRedirect: ownedCheckRedirect}
 	c.ownsClient = true
 	return c, nil
 }
@@ -169,18 +236,38 @@ func (c *Client) Search(ctx context.Context, query string, opts *SearchOptions) 
 	if err != nil {
 		return nil, &InvalidRequestError{msg: "could not encode the search request. Retry with a string query."}
 	}
-	data, err := c.do(ctx, http.MethodPost, "search", body, "")
+	var req *RequestOptions
+	if opts != nil {
+		req = &opts.RequestOptions
+	}
+	data, id, err := c.do(ctx, http.MethodPost, "search", body, "", req)
 	if err != nil {
 		return nil, err
 	}
-	return searchResponseFromJSON(data, query), nil
+	resp := searchResponseFromJSON(data, query)
+	resp.RequestID = requestID(data, id)
+	return resp, nil
+}
+
+// requestID prefers the body's request_id, then the X-Request-Id header.
+func requestID(data map[string]any, header string) string {
+	if id := stringField(data, "request_id"); id != "" {
+		return id
+	}
+	return header
 }
 
 // Fetch returns one URL's main content as markdown.
 //
 // Use it after Search when a snippet is not enough. Internal hosts and private
-// addresses are refused here, before a request is sent.
+// addresses are refused here, before a request is sent. Use
+// [Client.FetchWithOptions] to set a timeout, retries or headers for one call.
 func (c *Client) Fetch(ctx context.Context, pageURL string) (*Page, error) {
+	return c.FetchWithOptions(ctx, pageURL, nil)
+}
+
+// FetchWithOptions is [Client.Fetch] with per-call settings. opts may be nil.
+func (c *Client) FetchWithOptions(ctx context.Context, pageURL string, opts *FetchOptions) (*Page, error) {
 	if err := requireClient(c); err != nil {
 		return nil, err
 	}
@@ -190,11 +277,17 @@ func (c *Client) Fetch(ctx context.Context, pageURL string) (*Page, error) {
 	if err := rejectPrivateFetchTarget(pageURL); err != nil {
 		return nil, err
 	}
-	data, err := c.do(ctx, http.MethodGet, "fetch", nil, pageURL)
+	var req *RequestOptions
+	if opts != nil {
+		req = &opts.RequestOptions
+	}
+	data, id, err := c.do(ctx, http.MethodGet, "fetch", nil, pageURL, req)
 	if err != nil {
 		return nil, err
 	}
-	return pageFromJSON(data, pageURL), nil
+	page := pageFromJSON(data, pageURL)
+	page.RequestID = requestID(data, id)
+	return page, nil
 }
 
 func requireClient(c *Client) error {
@@ -211,40 +304,139 @@ func requireContext(ctx context.Context) error {
 	return nil
 }
 
-func (c *Client) do(ctx context.Context, method, endpoint string, body []byte, fetchURL string) (map[string]any, error) {
+// sleep waits d or until ctx ends. Tests replace it to skip the waits.
+var sleep = func(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
+// backoff is the wait before retry number retry (0 for the first): 0.5s
+// doubling up to 8s, shortened by up to 25% of jitter (jitter in [0, 1)) so
+// clients that failed together do not retry together. Kept in step with the
+// Python and TypeScript SDKs.
+func backoff(retry int, jitter float64) time.Duration {
+	d := maxRetryDelay
+	if retry < 5 {
+		d = min(initialRetryDelay<<retry, maxRetryDelay)
+	}
+	return time.Duration(float64(d) * (1 - 0.25*jitter))
+}
+
+// retryDelay is how long to wait before retrying after err, and false when it
+// should not be retried. The API's Retryable decides when it sent one;
+// otherwise 408, 429 and 5xx are retried, and so are network failures and
+// timeouts. A Retry-After over a minute is not waited out.
+func retryDelay(err error, retry int, jitter float64) (time.Duration, bool) {
+	var api *APIError
+	if errors.As(err, &api) {
+		retryable := api.StatusCode == 408 || api.StatusCode == 429 || api.StatusCode >= 500
+		if api.Retryable != nil {
+			retryable = *api.Retryable
+		}
+		if !retryable {
+			return 0, false
+		}
+		if api.retryAfterSet {
+			if api.RetryAfter > maxRetryAfterWait {
+				return 0, false
+			}
+			return api.RetryAfter, true
+		}
+		return backoff(retry, jitter), true
+	}
+	var conn *ConnectionError
+	if errors.As(err, &conn) && !conn.redirect {
+		return backoff(retry, jitter), true
+	}
+	return 0, false
+}
+
+func (c *Client) do(ctx context.Context, method, endpoint string, body []byte, fetchURL string, opts *RequestOptions) (map[string]any, string, error) {
 	rawURL, err := c.endpointURL(endpoint, fetchURL)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
+	timeout := c.sdkTimeout
+	retries := c.maxRetries
+	var extra map[string]string
+	if opts != nil {
+		if opts.Timeout < 0 {
+			return nil, "", &InvalidRequestError{msg: fmt.Sprintf("Timeout must be zero or more, got %s", opts.Timeout)}
+		}
+		if opts.Timeout > 0 {
+			timeout = opts.Timeout
+		}
+		if opts.MaxRetries != nil {
+			if *opts.MaxRetries < 0 {
+				return nil, "", &InvalidRequestError{msg: fmt.Sprintf("MaxRetries must be zero or more, got %d", *opts.MaxRetries)}
+			}
+			retries = *opts.MaxRetries
+		}
+		extra = opts.Headers
+	}
+	header := c.headers(body != nil, extra)
+	for retry := 0; ; retry++ {
+		data, id, err := c.attempt(ctx, method, rawURL, body, header, timeout)
+		if err == nil {
+			return data, id, nil
+		}
+		if retry >= retries {
+			return nil, "", err
+		}
+		wait, ok := retryDelay(err, retry, rand.Float64())
+		if !ok {
+			return nil, "", err
+		}
+		// A wait the caller's deadline cannot outlast would only end in
+		// ctx.Err(); return the error that caused it instead, with its
+		// RetryAfter, Fix and RequestID.
+		if deadline, has := ctx.Deadline(); has && time.Until(deadline) <= wait {
+			return nil, "", err
+		}
+		if serr := sleep(ctx, wait); serr != nil {
+			return nil, "", serr
+		}
+	}
+}
+
+// attempt sends one request with its own deadline and decodes the reply.
+func (c *Client) attempt(ctx context.Context, method, rawURL string, body []byte, header http.Header, timeout time.Duration) (map[string]any, string, error) {
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body)
 	}
 	reqCtx := ctx
-	if c.sdkTimeout > 0 {
+	if timeout > 0 {
 		var stop context.CancelFunc
-		reqCtx, stop = context.WithTimeout(ctx, c.sdkTimeout)
+		reqCtx, stop = context.WithTimeout(ctx, timeout)
 		defer stop()
 	}
 	req, err := http.NewRequestWithContext(reqCtx, method, rawURL, reader)
 	if err != nil {
-		return nil, &InvalidRequestError{msg: "could not build the request: " + err.Error() + ". Check Options.BaseURL or KEENABLE_API_URL."}
+		return nil, "", &InvalidRequestError{msg: "could not build the request: " + err.Error() + ". Check Options.BaseURL or KEENABLE_API_URL."}
 	}
-	req.Header = c.headers(body != nil)
+	req.Header = header.Clone()
 
 	resp, err := c.requestClient().Do(req)
 	if err != nil {
-		return nil, c.transportError(ctx, reqCtx, err)
+		return nil, "", c.transportError(ctx, reqCtx, err, timeout)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, c.transportError(ctx, reqCtx, err)
+		return nil, "", c.transportError(ctx, reqCtx, err, timeout)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, toAPIError(resp.StatusCode, raw, resp.Header, c.Keyless())
+		return nil, "", toAPIError(resp.StatusCode, raw, resp.Header, c.Keyless())
 	}
-	return decodeObject(resp.StatusCode, raw, resp.Header)
+	data, err := decodeObject(resp.StatusCode, raw, resp.Header)
+	return data, headerValue(resp.Header, "X-Request-Id"), err
 }
 
 // requestClient applies the redirect guard. A caller-supplied client is cloned
@@ -303,36 +495,36 @@ func refuseCrossHostRedirect(req *http.Request, via []*http.Request) error {
 	return &crossHostRedirectError{to: req.URL.Host}
 }
 
-func (c *Client) transportError(caller, reqCtx context.Context, err error) error {
+func (c *Client) transportError(caller, reqCtx context.Context, err error, timeout time.Duration) error {
 	if caller.Err() != nil {
 		return caller.Err()
 	}
 	var redirected *crossHostRedirectError
 	if errors.As(err, &redirected) {
-		return &ConnectionError{msg: fmt.Sprintf(
+		return &ConnectionError{redirect: true, msg: fmt.Sprintf(
 			"the Keenable API redirected to %s. The redirect was not followed, so the API key was not sent. Check KEENABLE_API_URL.",
 			redirected.to,
 		)}
 	}
 	if reqCtx.Err() != nil {
-		return &ConnectionError{msg: fmt.Sprintf(
+		return &ConnectionError{timeout: true, msg: fmt.Sprintf(
 			"the Keenable API did not respond within %s. Raise Options.Timeout.",
-			c.sdkTimeout,
+			timeout,
 		)}
 	}
 	if errors.Is(err, context.DeadlineExceeded) || isTimeout(err) {
 		if !c.ownsClient {
 			if c.clientTimeout > 0 {
-				return &ConnectionError{msg: fmt.Sprintf(
+				return &ConnectionError{timeout: true, msg: fmt.Sprintf(
 					"the Keenable API did not respond within %s. Raise Timeout on the http.Client you passed to New.",
 					c.clientTimeout,
 				)}
 			}
-			return &ConnectionError{msg: "the Keenable API did not respond before the request deadline. Set Timeout on the http.Client you passed to New, or set Options.Timeout."}
+			return &ConnectionError{timeout: true, msg: "the Keenable API did not respond before the request deadline. Set Timeout on the http.Client you passed to New, or set Options.Timeout."}
 		}
-		return &ConnectionError{msg: fmt.Sprintf(
+		return &ConnectionError{timeout: true, msg: fmt.Sprintf(
 			"the Keenable API did not respond within %s. Raise Options.Timeout.",
-			c.sdkTimeout,
+			timeout,
 		)}
 	}
 	return &ConnectionError{msg: fmt.Sprintf("could not reach the Keenable API: %v. Check KEENABLE_API_URL and retry.", err)}
@@ -343,12 +535,22 @@ func isTimeout(err error) bool {
 	return errors.As(err, &netErr) && netErr.Timeout()
 }
 
-func (c *Client) headers(jsonBody bool) http.Header {
+// headers are the SDK's own, then Options.Headers, then the call's. The API
+// key always comes from the client, so a stray header cannot send a
+// different key or turn a keyless call keyed.
+func (c *Client) headers(jsonBody bool, extra map[string]string) http.Header {
 	h := make(http.Header)
 	h.Set("Accept", "application/json")
 	h.Set("User-Agent", "keenable-go/"+Version)
 	// The public tier rejects requests without this header.
 	h.Set("X-Keenable-Title", c.clientSource)
+	for _, src := range []map[string]string{c.defaultHeaders, extra} {
+		for k, v := range src {
+			if !strings.EqualFold(k, "X-API-Key") {
+				h.Set(k, v)
+			}
+		}
+	}
 	if c.apiKey != "" {
 		h.Set("X-API-Key", c.apiKey)
 	}
@@ -642,10 +844,13 @@ func parseErrorBody(m map[string]any, header http.Header) *APIError {
 	}
 	if d, ok := secondsField(m, "retry_after_seconds"); ok {
 		api.RetryAfter = d
+		api.retryAfterSet = true
 	} else if d, ok := retryAfterHeader(headerValue(header, "Retry-After")); ok {
 		api.RetryAfter = d
+		api.retryAfterSet = true
 	} else if d, ok := secondsField(m, "retryAfter"); ok {
 		api.RetryAfter = d
+		api.retryAfterSet = true
 	}
 	if l, ok := m["limit"].(map[string]any); ok {
 		info := &RateLimitInfo{

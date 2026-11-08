@@ -12,6 +12,8 @@ import (
 // Empty strings are left unset and are not sent. SnippetMaxLength uses a
 // pointer so zero can be sent; nil means unset. Mode defaults to "pro".
 type SearchOptions struct {
+	// RequestOptions holds this call's timeout, retry budget and headers.
+	RequestOptions
 	// Mode is the search mode. Empty means "pro".
 	Mode string
 	// Site restricts results to one domain, for example "arxiv.org".
@@ -81,18 +83,24 @@ type SearchResponse struct {
 	Query   string         `json:"query"`
 	Mode    *string        `json:"mode,omitempty"`
 	Results []SearchResult `json:"results"`
-	Raw     map[string]any `json:"-"`
+	// RequestID is the API's id for this request. Quote it when reporting a
+	// problem. Empty when the API sent none.
+	RequestID string         `json:"request_id,omitempty"`
+	Raw       map[string]any `json:"-"`
 }
 
 // Page is a URL fetched by [Client.Fetch], with main content as markdown.
 type Page struct {
-	URL         string         `json:"url"`
-	Title       string         `json:"title"`
-	Content     string         `json:"content"`
-	Description *string        `json:"description,omitempty"`
-	Author      *string        `json:"author,omitempty"`
-	PublishedAt *string        `json:"published_at,omitempty"`
-	Raw         map[string]any `json:"-"`
+	URL         string  `json:"url"`
+	Title       string  `json:"title"`
+	Content     string  `json:"content"`
+	Description *string `json:"description,omitempty"`
+	Author      *string `json:"author,omitempty"`
+	PublishedAt *string `json:"published_at,omitempty"`
+	// RequestID is the API's id for this request. Quote it when reporting a
+	// problem. Empty when the API sent none.
+	RequestID string         `json:"request_id,omitempty"`
+	Raw       map[string]any `json:"-"`
 }
 
 // Cited returns the results ToContext would render, in citation order.

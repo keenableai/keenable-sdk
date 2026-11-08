@@ -59,6 +59,7 @@ const orUndefined = <T>(value: T | null): T | undefined => (value === null ? und
 async function errorFor(response: () => Response, call: "search" | "fetch" = "search") {
   const client = new Keenable({
     apiKey: "k",
+    maxRetries: 0,
     fetch: (async () => response()) as unknown as typeof globalThis.fetch,
   });
   const pending = call === "search" ? client.search("q") : client.fetch("https://example.com");

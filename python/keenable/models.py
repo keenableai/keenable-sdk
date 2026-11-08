@@ -341,6 +341,8 @@ class SearchResponse:
     results: list[SearchResult]
     mode: str | None = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
+    request_id: str | None = None
+    """The API's id for this request. Quote it when reporting a problem."""
 
     def __iter__(self) -> Iterator[SearchResult]:
         return iter(self.results)
@@ -352,7 +354,9 @@ class SearchResponse:
         return self.results[index]
 
     @classmethod
-    def _from_json(cls, data: dict[str, Any], query: str) -> SearchResponse:
+    def _from_json(
+        cls, data: dict[str, Any], query: str, request_id: str | None = None
+    ) -> SearchResponse:
         raw_results = data.get("results")
         results = (
             [SearchResult._from_json(r) for r in raw_results if isinstance(r, dict)]
@@ -364,6 +368,7 @@ class SearchResponse:
             results=results,
             mode=_str_or_none(data.get("mode")),
             raw=data,
+            request_id=_str_or_none(data.get("request_id")) or request_id,
         )
 
     def cited(
@@ -471,9 +476,13 @@ class Page:
     author: str | None = None
     published_at: str | None = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
+    request_id: str | None = None
+    """The API's id for this request. Quote it when reporting a problem."""
 
     @classmethod
-    def _from_json(cls, data: dict[str, Any], url: str) -> Page:
+    def _from_json(
+        cls, data: dict[str, Any], url: str, request_id: str | None = None
+    ) -> Page:
         return cls(
             url=str(data.get("url") or url),
             title=str(data.get("title") or ""),
@@ -482,6 +491,7 @@ class Page:
             author=_str_or_none(data.get("author")),
             published_at=_str_or_none(data.get("published_at")),
             raw=data,
+            request_id=_str_or_none(data.get("request_id")) or request_id,
         )
 
     def to_context(self, max_chars: int = DEFAULT_CONTEXT_MAX_CHARS) -> str:

@@ -5,6 +5,30 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
+- Automatic retries. Connection errors, timeouts, 408, 429 and 5xx are retried
+  up to `max_retries` times (default 2), unless the API marks the error
+  `retryable: false`. The wait is the API's `Retry-After` when sent, else
+  exponential backoff (0.5 s to 8 s, jittered). A `Retry-After` over 60 s, such
+  as the keyless hourly cap, is raised at once instead of waited out. Pass
+  `max_retries=0` to turn retries off.
+- New `KeenableTimeoutError`, a `KeenableConnectionError` subclass, for a
+  request that did not answer within `timeout`.
+- `search()` and `fetch()` take `timeout`, `max_retries` and `extra_headers`
+  for that call; the clients take `max_retries` and `default_headers`.
+  `X-API-Key` can only come from `api_key`.
+- `SearchResponse.request_id` and `Page.request_id` (body `request_id`, else
+  the `X-Request-Id` header).
+- Redirects are never followed, even by an `httpx.Client` you pass with
+  `follow_redirects=True`, so the API key cannot reach another host. A
+  redirect raises `KeenableConnectionError`.
+- With your own `client`, its timeout now applies unless you pass `timeout`;
+  before, the SDK's 30 s default was ignored silently either way.
+  On the client, `timeout=None` still means no deadline. A per-call `timeout`
+  overrides the client's for that call, and a per-call `None` (the default)
+  keeps the client's. An `httpx.Timeout` is accepted in both places.
+- `timeout` and `max_retries` are validated: a non-positive timeout or a
+  negative retry count raises `KeenableInvalidRequestError`.
+
 - Errors carry the API's agent-ready fields: `code`, `error`, `fix`,
   `docs_url`, `retryable`, `retry_after_seconds` (from the body, else the
   `Retry-After` header), `request_id` (body, else `X-Request-Id`), `param`,
