@@ -854,3 +854,61 @@ func firstURL(t *testing.T, h http.Handler) string {
 	t.Cleanup(srv.Close)
 	return srv.URL
 }
+
+// --- error values ----------------------------------------------------------------
+
+func TestEveryErrorIsAKeenableErrorWithItsCode(t *testing.T) {
+	cases := []struct {
+		status int
+		body   string
+		code   string
+	}{
+		{401, `{}`, keenable.CodeAuth},
+		{429, `{}`, keenable.CodeRateLimit},
+		{402, `{}`, keenable.CodeAPI},
+		{500, `{}`, keenable.CodeAPI},
+	}
+	for _, tc := range cases {
+		c, _, _ := scripted(t, &keenable.Options{MaxRetries: intPtr(0)}, raw(tc.status, tc.body))
+		_, err := c.Search(context.Background(), "q", nil)
+		var ke keenable.Error
+		if !errors.As(err, &ke) || ke.Code() != tc.code || !strings.HasSuffix(err.Error(), "("+tc.code+")") {
+			t.Fatalf("%d: %T %v", tc.status, err, err)
+		}
+		// Each typed error unwraps to the APIError underneath.
+		if api := errors.Unwrap(err); tc.status != 500 && api == nil {
+			t.Fatalf("%d: %T does not unwrap", tc.status, err)
+		}
+	}
+
+	_, err := (*keenable.Client)(nil).Search(context.Background(), "q", nil)
+	var ke keenable.Error
+	if !errors.As(err, &ke) || ke.Code() != keenable.CodeInvalidRequest {
+		t.Fatalf("nil client: %v", err)
+	}
+	c, _, _ := scripted(t, &keenable.Options{MaxRetries: intPtr(0)}, hangUp)
+	_, err = c.Search(context.Background(), "q", nil)
+	if !errors.As(err, &ke) || ke.Code() != keenable.CodeConnection {
+		t.Fatalf("connection: %v", err)
+	}
+}
+
+func TestNilErrorValuesDoNotPanic(t *testing.T) {
+	var (
+		inv  *keenable.InvalidRequestError
+		conn *keenable.ConnectionError
+		api  *keenable.APIError
+		auth *keenable.AuthError
+		rl   *keenable.RateLimitError
+		cred *keenable.InsufficientCreditsError
+	)
+	if inv.Error() != "" || conn.Error() != "" || conn.Timeout() || api.Error() != "" || api.Code() != "" {
+		t.Fatal("a nil error value printed something")
+	}
+	if auth.Unwrap() != nil || rl.Unwrap() != nil || cred.Unwrap() != nil {
+		t.Fatal("a nil typed error unwrapped to something")
+	}
+	if inv.Code() != keenable.CodeInvalidRequest || conn.Code() != keenable.CodeConnection {
+		t.Fatal("codes of nil values")
+	}
+}
