@@ -285,7 +285,6 @@ describe("Retry-After", () => {
 
   it.each([
     ["IMF-fixdate", (d: Date) => d.toUTCString()],
-    ["no zone, read as GMT", (d: Date) => d.toUTCString().replace(" GMT", "")],
     [
       "asctime",
       (d: Date) => {
@@ -547,28 +546,21 @@ describe("redirects: the API key never leaves the configured host", () => {
 
 describe("malformed and empty bodies", () => {
   it.each([
-    [400, undefined, undefined, undefined, "invalid_request_error"],
-    [400, "   ", undefined, undefined, "invalid_request_error"],
-    [400, '{"code": "x"', '{"code": "x"', undefined, "invalid_request_error"],
-    [400, "[1, 2]", undefined, undefined, "invalid_request_error"],
-    [403, "<h1>Forbidden</h1>", "<h1>Forbidden</h1>", undefined, "permission_error"],
-    [
-      400,
-      { message: " ", error: "Bad", detail: "d" },
-      "Bad",
-      { message: " ", error: "Bad", detail: "d" },
-      "invalid_request_error",
-    ],
-    [400, { detail: "only" }, "only", { detail: "only" }, "invalid_request_error"],
-    [400, {}, undefined, {}, "invalid_request_error"],
-    [451, {}, undefined, {}, "billing_error"],
-  ] as const)("%i %j still maps by status", async (status, body, detail, raw, type) => {
+    [400, undefined, undefined, "invalid_request_error"],
+    [400, "   ", undefined, "invalid_request_error"],
+    [400, '{"code": "x"', '{"code": "x"', "invalid_request_error"],
+    [400, "[1, 2]", undefined, "invalid_request_error"],
+    [403, "<h1>Forbidden</h1>", "<h1>Forbidden</h1>", "permission_error"],
+    [400, { message: " ", error: "Bad", detail: "d" }, "Bad", "invalid_request_error"],
+    [400, { detail: "only" }, "only", "invalid_request_error"],
+    [400, {}, undefined, "invalid_request_error"],
+    [451, {}, undefined, "billing_error"],
+  ] as const)("%i %j still maps by status", async (status, body, detail, type) => {
     const outcome = await run([res(status, body)]);
     const error = outcome.error as KeenableAPIError;
     expect(error).toBeInstanceOf(KeenableAPIError);
     expect(error.statusCode).toBe(status);
     expect(error.body).toBe(detail);
-    expect(error.raw).toEqual(raw);
     expect(error.type).toBe(type);
     expect(error.code).toBeUndefined();
     if (detail) expect(error.message).toContain(detail);
@@ -674,5 +666,39 @@ describe("fetch targets", () => {
     const outcome = await run([page()], { method: "fetch", arg: url });
     expect(outcome.error).toBeUndefined();
     expect(new URL(outcome.requests[0]!.url).searchParams.get("url")).toBe(url);
+  });
+});
+
+describe("transport guards the shared cases cannot reach", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("refuses a reply a custom fetch got by following a redirect anyway", async () => {
+    const followed: Reply = () => {
+      const response = new Response(JSON.stringify(SEARCH_BODY), { status: 200 });
+      Object.defineProperty(response, "redirected", { value: true });
+      Object.defineProperty(response, "url", { value: "https://elsewhere.example/v1/search" });
+      return response;
+    };
+    const outcome = await run([followed, ok()], { maxRetries: 2 });
+    expect(outcome.error).toBeInstanceOf(KeenableConnectionError);
+    expect(outcome.error).not.toBeInstanceOf(KeenableTimeoutError);
+    expect((outcome.error as Error).message).toContain("https://elsewhere.example/v1/search");
+    expect((outcome.error as Error).message).toContain("followed it");
+    expect(outcome.requests).toHaveLength(1);
+    expect(waits).toEqual([]);
+  });
+
+  it("treats a blank KEENABLE_API_URL as unset", async () => {
+    vi.stubEnv("KEENABLE_API_URL", "   ");
+    const outcome = await run([ok()]);
+    expect(outcome.error).toBeUndefined();
+    expect(outcome.requests[0]?.url).toBe("https://api.keenable.ai/v1/search");
+  });
+
+  it("caps a timer past the longest a JavaScript timer can wait", async () => {
+    await run([ok()], { timeoutMs: 1e12 });
+    expect(waits).toContain(2_147_483_647);
   });
 });

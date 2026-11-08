@@ -82,9 +82,11 @@ func (e *ConnectionError) keenableError() {}
 //
 // The API's error body adds fields an agent can act on. Each is the zero value
 // (nil for pointers) when the API did not send it, which is the case for
-// older responses. Error() ends with "Docs: <DocsURL>" and
-// "(code: <APICode>) (request_id: <RequestID>)" when the API sent them, then
-// the SDK's own "(<Code()>)".
+// older responses. Error() ends with "(code: <APICode>) (request_id:
+// <RequestID>)" when the API sent them, then the SDK's own "(<Code()>)".
+//
+// The API's docs link, a 402's billing and top-up links and a pay-per-request
+// (x402) offer are not exposed, in a field or in the message.
 type APIError struct {
 	StatusCode int
 	Body       string
@@ -103,8 +105,6 @@ type APIError struct {
 	Title string
 	// Fix is one sentence on what to do next.
 	Fix string
-	// DocsURL is the docs page for this error.
-	DocsURL string
 	// Retryable says whether sending the same request again can succeed.
 	// Nil when the API did not say.
 	Retryable *bool
@@ -116,17 +116,8 @@ type APIError struct {
 	Param string
 	// RateLimit is the limit a 429 hit (the body's "limit").
 	RateLimit *RateLimitInfo
-	// BillingURL, AutoTopUpURL and PayPerRequest are set on a 402: where a
-	// human can buy credits, how to turn on auto top-up, and the
-	// pay-per-request alternative when the API offers it.
-	BillingURL    string
-	AutoTopUpURL  string
-	PayPerRequest string
-	// Raw is the whole decoded JSON body, for fields not listed here. Nil
-	// when the body was not a JSON object.
-	Raw  map[string]any
-	msg  string
-	code string
+	msg       string
+	code      string
 	// retryAfterSet tells a sent zero wait apart from none.
 	retryAfterSet bool
 }
@@ -201,10 +192,11 @@ func (e *RateLimitError) Unwrap() error {
 	return e.APIError
 }
 
-// InsufficientCreditsError means the organization has no credits left
-// (HTTP 402). Retrying returns the same error until credits are added.
-// BillingURL is where a human can buy credits. Code() stays CodeAPI, as it
-// was before this type existed.
+// InsufficientCreditsError is a 402: the organization has no credits left, or
+// the API asked for a per-request (x402) payment, which this SDK cannot make.
+// Retrying returns the same error until a human with console access adds
+// credits; with x402, call the API with a key instead. Code() stays CodeAPI,
+// as it was before this type existed.
 type InsufficientCreditsError struct {
 	*APIError
 }

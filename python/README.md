@@ -167,7 +167,7 @@ except KeenableRateLimitError as err:
     # hourly cap) or the retries ran out.
     print(f"rate limited, retry in {err.retry_after_seconds}s:", err.fix)
 except KeenableAPIError as err:
-    print(err.code, err.fix, err.docs_url, err.request_id)
+    print(err.code, err.fix, err.request_id)
 ```
 
 | Field | Meaning |
@@ -175,18 +175,18 @@ except KeenableAPIError as err:
 | `code` | Stable reason, e.g. `rate_limit_per_second`, `insufficient_credits`, `target_blocked` |
 | `type` | The category: `invalid_request_error`, `authentication_error`, `permission_error`, `billing_error`, `rate_limit_error`, `target_error` (the page being fetched failed, not Keenable) or `api_error`; derived from the status when an older API leaves it out |
 | `fix` | One sentence on what to do next |
-| `docs_url` | The docs page for this error |
 | `retryable` | Whether the same request can succeed later |
 | `retry_after_seconds` | Seconds to wait (body, else the `Retry-After` header) |
 | `request_id` | Quote it when reporting a problem |
 | `param` | The parameter a 400 is about |
 | `limit` | On a 429: `RateLimitInfo(scope, window, max, resets_at)` |
-| `billing_url`, `auto_top_up_url`, `pay_per_request` | On a 402: where to add credits and the alternatives |
-| `raw` | The whole JSON error body |
 
 When the API sends `fix`, the error message ends with it, then with
-`Docs: <docs_url>`, `(code: <code>)` and `(request_id: <id>)`, as in the Go and
-TypeScript SDKs.
+`(code: <code>)` and `(request_id: <id>)`, as in the Go and TypeScript SDKs.
+A 402 is a `KeenableInsufficientCreditsError` whose message is the SDK's own:
+"insufficient credits", or "payment required" for a pay-per-request (x402)
+response, which this SDK cannot pay (call the API with a key instead). The SDK
+does not expose billing links or payment offers.
 A 403 with type `target_error` (e.g. code `target_blocked`, the fetched site
 refused us) is a plain `KeenableAPIError`, not a `KeenableAuthError`.
 

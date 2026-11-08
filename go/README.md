@@ -116,7 +116,11 @@ fmt.Println(page.Content)       // markdown, boilerplate stripped
 fmt.Println(page.ToContext(nil)) // same citable block shape as search results
 ```
 
-Internal hosts and private addresses are refused before a request is sent.
+Internal hosts and private addresses are refused before a request is sent:
+`localhost` and names under `.localhost`, `metadata.google.internal`, and IP
+addresses in private, loopback, link-local, carrier-grade NAT, documentation,
+benchmarking, multicast and reserved ranges, however the address is spelled.
+The rules are the same in every SDK (`scripts/conformance/README.md`).
 
 ## Tool calling
 
@@ -189,7 +193,7 @@ if errors.As(err, &sdk) {
 |---|---|---|
 | `RateLimitError` | `rate_limit` | HTTP 429. The message names `X-RateLimit-Reset` when the API sent it. A keyless call is told to set `KEENABLE_API_KEY`. A keyed call is told to wait for the window |
 | `AuthError` | `auth` | HTTP 401/403, the key was rejected |
-| `InsufficientCreditsError` (alias `CreditsError`) | `api_error` | HTTP 402, no credits left; retrying will not help. The message starts "Keenable: insufficient credits (402)" |
+| `InsufficientCreditsError` (alias `CreditsError`) | `api_error` | HTTP 402, no credits left, or a pay-per-request (x402) payment this SDK cannot make; retrying will not help. The message starts "Keenable: insufficient credits (402)" or "Keenable: payment required (402)" |
 | `APIError` | `api_error` | Any other non-2xx response; carries `StatusCode`, `Body`, and `RequestID` when the API sent `X-Request-Id` |
 | `ConnectionError` | `connection` | The API could not be reached, or the client deadline elapsed (`Timeout()` reports which) |
 | `InvalidRequestError` | `invalid_request` | Bad arguments; no request was sent |
@@ -213,7 +217,7 @@ case errors.As(err, &rl):
     // hourly cap) or the retries ran out.
     log.Printf("rate limited, retry in %s: %s", rl.RetryAfter, rl.Fix)
 case errors.As(err, &api):
-    log.Println(api.APICode, api.Fix, api.DocsURL, api.RequestID)
+    log.Println(api.APICode, api.Fix, api.RequestID)
 }
 ```
 
@@ -223,20 +227,22 @@ case errors.As(err, &api):
 | `Type` | The category, one of the `Type*` constants: `invalid_request_error`, `authentication_error`, `permission_error`, `billing_error`, `rate_limit_error`, `target_error` (the page being fetched failed, not Keenable) or `api_error`; derived from the status when an older API leaves it out |
 | `Title` | The API's short error title (its `error` field) |
 | `Fix` | One sentence on what to do next |
-| `DocsURL` | The docs page for this error |
 | `Retryable` | Whether the same request can succeed later |
 | `RetryAfter` | How long to wait (body `retry_after_seconds`, else the `Retry-After` header) |
 | `RequestID` | Quote it when reporting a problem |
 | `Param` | The parameter a 400 is about |
 | `RateLimit` | On a 429: `Scope`, `Window`, `Max`, `ResetsAt` |
-| `BillingURL`, `AutoTopUpURL`, `PayPerRequest` | On a 402: where to add credits and the alternatives |
-| `Raw` | The whole JSON error body |
+| `Body` | The API's error message (its `message`, `error` or `detail` string), or the text of a body that is not JSON |
 
 When the API sends `Fix`, the error message ends with it in place of the
 SDK's generic advice (for every status, as in the Python and TypeScript SDKs),
 so a non-retryable error never tells an agent to retry. It then ends with
-`Docs: <DocsURL>`, `(code: <APICode>)` and `(request_id: <RequestID>)` before
-the SDK code, as in the Python and TypeScript SDKs. A 403 with type `target_error` (e.g. code
+`(code: <APICode>)` and `(request_id: <RequestID>)` before the SDK code, as in
+the Python and TypeScript SDKs. The API's docs link, a 402's billing and
+top-up links and a pay-per-request (x402) offer are not exposed. A 402's
+message is the SDK's own: "Keenable: payment required (402)" when the API asks
+for a per-request payment, which this SDK cannot make (use an API key), else
+"Keenable: insufficient credits (402)". A 403 with type `target_error` (e.g. code
 `target_blocked`, the fetched site refused us) is a plain `APIError`, not an `AuthError`.
 
 ## Retries
@@ -260,9 +266,10 @@ none := 0
 resp, err := client.Search(ctx, "wafer scale engine", &keenable.SearchOptions{
     RequestOptions: keenable.RequestOptions{MaxRetries: &none},
 })
+minute := time.Minute
 page, err := client.FetchWithOptions(ctx, "https://example.com", &keenable.FetchOptions{
     RequestOptions: keenable.RequestOptions{
-        Timeout: time.Minute,
+        Timeout: &minute, // nil keeps the client's
         Headers: map[string]string{"X-Trace": "abc"},
     },
 })
@@ -270,7 +277,10 @@ page, err := client.FetchWithOptions(ctx, "https://example.com", &keenable.Fetch
 
 `RequestOptions` (embedded in `SearchOptions` and in `FetchOptions`, which
 `FetchWithOptions` takes) overrides
-the client's `Timeout`, `MaxRetries` and `Headers` for one call. `X-API-Key`
+the client's `Timeout`, `MaxRetries` and `Headers` for one call. `Timeout` is a
+pointer: nil keeps the client's, and zero or less is an `InvalidRequestError`.
+A header whose name is not an HTTP token, or whose value has a CR, LF or NUL, is
+an `InvalidRequestError` too, before anything is sent. `X-API-Key`
 always comes from `APIKey`. `SearchResponse.RequestID` and `Page.RequestID`
 carry the API's request id; quote it when reporting a problem.
 

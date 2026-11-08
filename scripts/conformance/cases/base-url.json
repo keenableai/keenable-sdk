@@ -1,0 +1,24 @@
+{
+  "_comment": "Explicit base URLs, each [value, why]. A valid one builds a client; an invalid one raises the invalid-request error when the client is built. Surrounding whitespace and trailing slashes are dropped first.",
+  "valid": [
+    ["https://api.keenable.ai", "the default"],
+    ["https://api.keenable.ai/", "a trailing slash"],
+    ["https://proxy.example.com/keenable", "a path prefix"],
+    ["HTTPS://API.KEENABLE.AI", "uppercase"],
+    ["  https://api.keenable.ai  ", "surrounding whitespace"],
+    ["http://localhost:8080", "http to localhost"],
+    ["http://localhost.:8080", "http to localhost with a trailing dot"],
+    ["http://127.0.0.1:3000", "http to 127.0.0.1"],
+    ["http://[::1]:8080", "http to ::1"]
+  ],
+  "invalid": [
+    ["http://api.keenable.ai", "http off localhost"],
+    ["http://10.0.0.1", "http to a private address"],
+    ["http://127.1", "http to loopback not spelled 127.0.0.1"],
+    ["ftp://api.keenable.ai", "not http(s)"],
+    ["api.keenable.ai", "no scheme"],
+    ["https://", "no host"],
+    ["https://api.keenable.ai?x=1", "a query, which the endpoint path would be appended to"],
+    ["https://api.keenable.ai#frag", "a fragment, which the endpoint path would be appended to"]
+  ]
+}

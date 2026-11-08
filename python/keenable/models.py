@@ -26,6 +26,11 @@ def _str_or_none(value: Any) -> str | None:
     return None
 
 
+def _str_or_empty(value: Any) -> str:
+    """Return the string as sent, or "" for anything else (never ``str()``)."""
+    return value if isinstance(value, str) else ""
+
+
 def _collapse(text: str) -> str:
     """Squeeze runs of whitespace into single spaces.
 
@@ -315,9 +320,9 @@ class SearchResult:
     @classmethod
     def _from_json(cls, data: dict[str, Any]) -> SearchResult:
         return cls(
-            title=str(data.get("title") or ""),
-            url=str(data.get("url") or ""),
-            snippet=str(data.get("snippet") or ""),
+            title=_str_or_empty(data.get("title")),
+            url=_str_or_empty(data.get("url")),
+            snippet=_str_or_empty(data.get("snippet")),
             description=_str_or_none(data.get("description")),
             published_at=_str_or_none(data.get("published_at")),
             acquired_at=_str_or_none(data.get("acquired_at")),
@@ -485,9 +490,9 @@ class Page:
         cls, data: dict[str, Any], url: str, request_id: str | None = None
     ) -> Page:
         return cls(
-            url=str(data.get("url") or url),
-            title=str(data.get("title") or ""),
-            content=str(data.get("content") or ""),
+            url=_str_or_none(data.get("url")) or url,
+            title=_str_or_empty(data.get("title")),
+            content=_str_or_empty(data.get("content")),
             description=_str_or_none(data.get("description")),
             author=_str_or_none(data.get("author")),
             published_at=_str_or_none(data.get("published_at")),

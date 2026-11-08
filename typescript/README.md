@@ -156,7 +156,7 @@ try {
     // hourly cap) or the retries ran out.
     console.log(`rate limited, retry in ${err.retryAfterSeconds}s:`, err.fix);
   } else if (err instanceof KeenableAPIError) {
-    console.log(err.code, err.fix, err.docsUrl, err.requestId);
+    console.log(err.code, err.fix, err.requestId);
   } else {
     throw err;
   }
@@ -168,18 +168,17 @@ try {
 | `code` | Stable reason, e.g. `rate_limit_per_second`, `insufficient_credits`, `target_blocked` |
 | `type` | The category (`KeenableErrorType`): `invalid_request_error`, `authentication_error`, `permission_error`, `billing_error`, `rate_limit_error`, `target_error` (the page being fetched failed, not Keenable) or `api_error`; derived from the status when an older API leaves it out |
 | `fix` | One sentence on what to do next |
-| `docsUrl` | The docs page for this error |
 | `retryable` | Whether the same request can succeed later |
 | `retryAfterSeconds` | Seconds to wait (body, else the `Retry-After` header) |
 | `requestId` | Quote it when reporting a problem |
 | `param` | The parameter a 400 is about |
 | `limit` | On a 429: `{ scope, window, max, resetsAt }` |
-| `billingUrl`, `autoTopUpUrl`, `payPerRequest` | On a 402: where to add credits and the alternatives |
-| `raw` | The whole JSON error body |
 
 When the API sends `fix`, the error message ends with it, then with
-`Docs: <docsUrl>`, `(code: <code>)` and `(request_id: <id>)`, as in the Go and
-Python SDKs. A 403
+`(code: <code>)` and `(request_id: <id>)`, as in the Go and Python SDKs. A 402
+is a `KeenableInsufficientCreditsError` whose message is the SDK's own: the
+SDK does not expose billing or checkout links, and it cannot pay an x402
+payment offer, so set `KEENABLE_API_KEY` instead. A 403
 with type `target_error` (e.g. code `target_blocked`, the fetched site refused
 us) is a plain `KeenableAPIError`, not a `KeenableAuthError`.
 

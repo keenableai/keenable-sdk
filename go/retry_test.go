@@ -242,7 +242,7 @@ func TestPerCallTimeoutLongerThanClientDefault(t *testing.T) {
 		okBody(w, r)
 	}
 	c, _, _ := scripted(t, &keenable.Options{Timeout: 50 * time.Millisecond, MaxRetries: intPtr(0)}, slowOK)
-	opts := &keenable.SearchOptions{RequestOptions: keenable.RequestOptions{Timeout: 2 * time.Second}}
+	opts := &keenable.SearchOptions{RequestOptions: keenable.RequestOptions{Timeout: durPtr(2 * time.Second)}}
 	if _, err := c.Search(context.Background(), "q", opts); err != nil {
 		t.Fatalf("a 2s per-call timeout was cut short: %v", err)
 	}

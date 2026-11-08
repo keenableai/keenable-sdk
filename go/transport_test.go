@@ -196,7 +196,13 @@ func TestTheLastErrorIsReturnedWhenTheBudgetRunsOut(t *testing.T) {
 }
 
 func TestABadPerCallSettingIsRejectedBeforeSending(t *testing.T) {
-	for _, req := range []keenable.RequestOptions{{MaxRetries: intPtr(-1)}, {Timeout: -time.Second}} {
+	for _, req := range []keenable.RequestOptions{
+		{MaxRetries: intPtr(-1)},
+		{Timeout: durPtr(-time.Second)},
+		{Timeout: durPtr(0)},
+		{Headers: map[string]string{"X-Bad": "a\r\nb"}},
+		{Headers: map[string]string{"Bad Name": "v"}},
+	} {
 		c, n, _ := scripted(t, nil, okBody)
 		_, err := search(c, req)
 		var bad *keenable.InvalidRequestError
@@ -206,6 +212,9 @@ func TestABadPerCallSettingIsRejectedBeforeSending(t *testing.T) {
 	}
 	if _, err := keenable.New(&keenable.Options{Timeout: -1}); err == nil {
 		t.Fatal("a negative client timeout was accepted")
+	}
+	if _, err := keenable.New(&keenable.Options{Headers: map[string]string{"X-Bad": "a\nb"}}); err == nil {
+		t.Fatal("a header with a newline was accepted")
 	}
 }
 
@@ -378,20 +387,20 @@ func TestATimeoutIsNotRetriedWithRetriesOff(t *testing.T) {
 func TestPerCallAndClientTimeouts(t *testing.T) {
 	// A per-call deadline shorter than the client's applies.
 	c, _, _ := scripted(t, &keenable.Options{Timeout: 5 * time.Second, MaxRetries: intPtr(0)}, slowFor(2*time.Second))
-	_, err := search(c, keenable.RequestOptions{Timeout: 30 * time.Millisecond})
+	_, err := search(c, keenable.RequestOptions{Timeout: durPtr(30 * time.Millisecond)})
 	var conn *keenable.ConnectionError
 	if !errors.As(err, &conn) || !conn.Timeout() || !strings.Contains(err.Error(), "within 30ms") {
 		t.Fatalf("short per-call timeout: %v", err)
 	}
-	// Zero per call keeps the client's.
+	// Nil per call keeps the client's.
 	c, _, _ = scripted(t, &keenable.Options{Timeout: 30 * time.Millisecond, MaxRetries: intPtr(0)}, slowFor(2*time.Second))
-	_, err = search(c, keenable.RequestOptions{Timeout: 0})
+	_, err = search(c, keenable.RequestOptions{})
 	if !errors.As(err, &conn) || !conn.Timeout() {
-		t.Fatalf("zero per-call timeout: %v", err)
+		t.Fatalf("nil per-call timeout: %v", err)
 	}
 	// Each retry gets the whole per-call deadline again.
 	c, n, _ := scripted(t, &keenable.Options{Timeout: 30 * time.Millisecond, MaxRetries: intPtr(1)}, slowFor(2*time.Second), slowFor(60*time.Millisecond))
-	if _, err := search(c, keenable.RequestOptions{Timeout: time.Second}); err != nil {
+	if _, err := search(c, keenable.RequestOptions{Timeout: durPtr(time.Second)}); err != nil {
 		t.Fatalf("err=%v attempts=%d", err, n.Load())
 	}
 	keenable.TakeWaits()
@@ -611,8 +620,8 @@ func TestASameHostHopThenAnotherHostIsNotFollowed(t *testing.T) {
 	if !errors.As(err, &conn) || tr.hits.Load() != 0 {
 		t.Fatalf("err=%v other-host hits=%d", err, tr.hits.Load())
 	}
-	// One attempt of two hops, not retried.
-	if hits.Load() != 2 {
+	// One request: not even the same-host hop is followed, nor retried.
+	if hits.Load() != 1 {
 		t.Fatalf("hits = %d", hits.Load())
 	}
 	keenable.TakeWaits()
@@ -649,26 +658,25 @@ func TestAMalformedErrorBodyStillMapsByStatus(t *testing.T) {
 		status  int
 		body    string
 		detail  string
-		hasRaw  bool
 		errType string
 	}{
-		{400, ``, "", false, keenable.TypeInvalidRequestError},
-		{400, `   `, "", false, keenable.TypeInvalidRequestError},
-		{400, `{"code": "x"`, `{"code": "x"`, false, keenable.TypeInvalidRequestError},
-		{400, `[1, 2]`, "", false, keenable.TypeInvalidRequestError},
-		{400, `"oops"`, "", false, keenable.TypeInvalidRequestError},
-		{400, `null`, "", false, keenable.TypeInvalidRequestError},
-		{403, `<h1>Forbidden</h1>`, "<h1>Forbidden</h1>", false, keenable.TypePermissionError},
-		{400, `{"message":" ","error":"Bad","detail":"d"}`, "Bad", true, keenable.TypeInvalidRequestError},
-		{400, `{"detail":"only"}`, "only", true, keenable.TypeInvalidRequestError},
-		{400, `{}`, "", true, keenable.TypeInvalidRequestError},
-		{451, `{}`, "", true, keenable.TypeBillingError},
+		{400, ``, "", keenable.TypeInvalidRequestError},
+		{400, `   `, "", keenable.TypeInvalidRequestError},
+		{400, `{"code": "x"`, `{"code": "x"`, keenable.TypeInvalidRequestError},
+		{400, `[1, 2]`, "", keenable.TypeInvalidRequestError},
+		{400, `"oops"`, "", keenable.TypeInvalidRequestError},
+		{400, `null`, "", keenable.TypeInvalidRequestError},
+		{403, `<h1>Forbidden</h1>`, "<h1>Forbidden</h1>", keenable.TypePermissionError},
+		{400, `{"message":" ","error":"Bad","detail":"d"}`, "Bad", keenable.TypeInvalidRequestError},
+		{400, `{"detail":"only"}`, "only", keenable.TypeInvalidRequestError},
+		{400, `{}`, "", keenable.TypeInvalidRequestError},
+		{451, `{}`, "", keenable.TypeBillingError},
 	}
 	for i, tc := range cases {
 		c, n, _ := scripted(t, nil, raw(tc.status, tc.body))
 		_, err := c.Search(context.Background(), "q", nil)
 		api := apiErrorFrom(t, err)
-		if api.StatusCode != tc.status || api.Body != tc.detail || (api.Raw != nil) != tc.hasRaw ||
+		if api.StatusCode != tc.status || api.Body != tc.detail ||
 			api.Type != tc.errType || api.APICode != "" || n.Load() != 1 {
 			t.Fatalf("case %d: %+v attempts=%d", i, api, n.Load())
 		}

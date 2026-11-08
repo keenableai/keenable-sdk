@@ -66,8 +66,6 @@ export interface KeenableAPIErrorDetails {
   error?: string;
   /** One sentence on what to do next. */
   fix?: string;
-  /** The docs page for this error. */
-  docsUrl?: string;
   /** Whether sending the same request again can succeed. */
   retryable?: boolean;
   /** Seconds to wait before retrying: the body's `retry_after_seconds`, else the `Retry-After` header. */
@@ -78,20 +76,11 @@ export interface KeenableAPIErrorDetails {
   param?: string;
   /** The limit a 429 hit. */
   limit?: RateLimitInfo;
-  /** On a 402: where a human can buy credits. */
-  billingUrl?: string;
-  /** On a 402: how to turn on auto top-up. */
-  autoTopUpUrl?: string;
-  /** On a 402: the pay-per-request alternative, when the API offers it. */
-  payPerRequest?: string;
-  /** The whole decoded JSON body, for fields not listed here. */
-  raw?: Record<string, unknown>;
 }
 
 /**
  * The Keenable API returned a non-2xx response. The message ends with
- * `Docs: <docsUrl>`, `(code: <code>)` and `(request_id: <requestId>)` when the
- * API sent them.
+ * `(code: <code>)` and `(request_id: <requestId>)` when the API sent them.
  */
 export class KeenableAPIError extends KeenableError implements KeenableAPIErrorDetails {
   readonly statusCode: number;
@@ -100,16 +89,11 @@ export class KeenableAPIError extends KeenableError implements KeenableAPIErrorD
   readonly type?: KeenableErrorType | (string & {});
   readonly error?: string;
   readonly fix?: string;
-  readonly docsUrl?: string;
   readonly retryable?: boolean;
   readonly retryAfterSeconds?: number;
   readonly requestId?: string;
   readonly param?: string;
   readonly limit?: RateLimitInfo;
-  readonly billingUrl?: string;
-  readonly autoTopUpUrl?: string;
-  readonly payPerRequest?: string;
-  readonly raw?: Record<string, unknown>;
 
   constructor(
     message: string,
@@ -124,16 +108,11 @@ export class KeenableAPIError extends KeenableError implements KeenableAPIErrorD
     this.type = details.type;
     this.error = details.error;
     this.fix = details.fix;
-    this.docsUrl = details.docsUrl;
     this.retryable = details.retryable;
     this.retryAfterSeconds = details.retryAfterSeconds;
     this.requestId = details.requestId;
     this.param = details.param;
     this.limit = details.limit;
-    this.billingUrl = details.billingUrl;
-    this.autoTopUpUrl = details.autoTopUpUrl;
-    this.payPerRequest = details.payPerRequest;
-    this.raw = details.raw;
   }
 }
 
@@ -150,11 +129,11 @@ export class KeenableAuthError extends KeenableAPIError {}
 export class KeenableRateLimitError extends KeenableAPIError {}
 
 /**
- * The organization has no credits left (HTTP 402).
+ * The organization has no credits left, or the API asked for a payment this
+ * SDK cannot make (HTTP 402).
  *
- * Retrying returns the same error until credits are added. `billingUrl` is
- * where a human can buy credits, and `autoTopUpUrl` explains how to keep the
- * balance from running out.
+ * Retrying returns the same error until a human with console access adds
+ * credits. The SDK does not expose billing, checkout or payment-offer details.
  */
 export class KeenableInsufficientCreditsError extends KeenableAPIError {}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"reflect"
@@ -31,7 +32,6 @@ type contractCase struct {
 		RetryAfterSeconds *float64 `json:"retry_after_seconds"`
 		RequestID         *string  `json:"request_id"`
 		Param             *string  `json:"param"`
-		DocsURL           *string  `json:"docs_url"`
 		Fix               *string  `json:"fix"`
 		Limit             *struct {
 			Scope    string `json:"scope"`
@@ -39,10 +39,8 @@ type contractCase struct {
 			Max      int    `json:"max"`
 			ResetsAt string `json:"resets_at"`
 		} `json:"limit"`
-		BillingURL      *string `json:"billing_url"`
-		AutoTopUpURL    *string `json:"auto_top_up_url"`
-		PayPerRequest   *string `json:"pay_per_request"`
-		MessageContains string  `json:"message_contains"`
+		MessageContains string   `json:"message_contains"`
+		Absent          []string `json:"absent"`
 	} `json:"expect"`
 }
 
@@ -117,14 +115,11 @@ func TestBackendErrorBodiesParseIntoTypedErrors(t *testing.T) {
 			if api.Type != want.Type {
 				t.Fatalf("type %q, want %q", api.Type, want.Type)
 			}
-			if api.Fix != deref(want.Fix) || api.DocsURL != deref(want.DocsURL) || api.Param != deref(want.Param) {
-				t.Fatalf("fix=%q docs=%q param=%q", api.Fix, api.DocsURL, api.Param)
+			if api.Fix != deref(want.Fix) || api.Param != deref(want.Param) {
+				t.Fatalf("fix=%q param=%q", api.Fix, api.Param)
 			}
 			if api.RequestID != deref(want.RequestID) {
 				t.Fatalf("request id %q", api.RequestID)
-			}
-			if api.BillingURL != deref(want.BillingURL) || api.AutoTopUpURL != deref(want.AutoTopUpURL) || api.PayPerRequest != deref(want.PayPerRequest) {
-				t.Fatalf("billing=%q topup=%q ppr=%q", api.BillingURL, api.AutoTopUpURL, api.PayPerRequest)
 			}
 			if (api.Retryable == nil) != (want.Retryable == nil) || (api.Retryable != nil && *api.Retryable != *want.Retryable) {
 				t.Fatalf("retryable %v, want %v", api.Retryable, want.Retryable)
@@ -146,17 +141,70 @@ func TestBackendErrorBodiesParseIntoTypedErrors(t *testing.T) {
 					t.Fatalf("limit %+v, want %+v", api.RateLimit, got)
 				}
 			}
-			if !reflect.DeepEqual(api.Raw, tc.Body) {
-				t.Fatalf("raw %v", api.Raw)
-			}
+			assertAbsent(t, err, want.Absent)
 			if !strings.Contains(err.Error(), want.MessageContains) {
 				t.Fatal(err)
 			}
-			tail := "Docs: " + deref(want.DocsURL) + " (code: " + deref(want.Code) + ") (request_id: " + deref(want.RequestID) + ") (" + api.Code() + ")"
+			if strings.Contains(err.Error(), "Docs:") {
+				t.Fatal(err)
+			}
+			tail := " (code: " + deref(want.Code) + ") (request_id: " + deref(want.RequestID) + ") (" + api.Code() + ")"
 			if !strings.HasSuffix(err.Error(), tail) {
 				t.Fatalf("%q does not end with %q", err.Error(), tail)
 			}
 		})
+	}
+}
+
+// exposedText is every string an error shows a caller except Body and Fix,
+// the API's own text: its message and each exported string field, nested
+// ones included.
+func exposedText(err error) []string {
+	out := []string{err.Error()}
+	var walk func(v reflect.Value)
+	walk = func(v reflect.Value) {
+		switch v.Kind() {
+		case reflect.Pointer, reflect.Interface:
+			if !v.IsNil() {
+				walk(v.Elem())
+			}
+		case reflect.Struct:
+			for i := 0; i < v.NumField(); i++ {
+				f := v.Type().Field(i)
+				if !f.IsExported() || f.Name == "Body" || f.Name == "Fix" {
+					continue
+				}
+				walk(v.Field(i))
+			}
+		case reflect.String:
+			out = append(out, v.String())
+		case reflect.Map, reflect.Slice:
+			out = append(out, fmt.Sprint(v.Interface()))
+		}
+	}
+	walk(reflect.ValueOf(err))
+	return out
+}
+
+// assertAbsent fails when any of absent shows up in the error's message or
+// fields: the SDKs do not expose docs, billing or payment-offer data.
+func assertAbsent(t *testing.T, err error, absent []string) {
+	t.Helper()
+	for _, text := range exposedText(err) {
+		for _, a := range absent {
+			if a != "" && strings.Contains(text, a) {
+				t.Fatalf("%q exposed in %q", a, text)
+			}
+		}
+	}
+}
+
+func TestTheRemovedFieldsAreGone(t *testing.T) {
+	typ := reflect.TypeOf(keenable.APIError{})
+	for _, name := range []string{"DocsURL", "BillingURL", "AutoTopUpURL", "PayPerRequest", "Raw"} {
+		if _, ok := typ.FieldByName(name); ok {
+			t.Fatalf("APIError.%s is back", name)
+		}
 	}
 }
 
@@ -219,11 +267,11 @@ func TestAMessageEndingInAPeriodIsNotDoubled(t *testing.T) {
 	}
 }
 
-func TestTheMessageEndsWithTheDocsLinkAndRequestID(t *testing.T) {
+func TestTheMessageEndsWithTheRequestIDAndNoDocsLink(t *testing.T) {
 	c, _ := start(t, replyWith(500, map[string]any{"error": "Internal server error", "docs_url": "https://d/e#x"},
 		map[string]string{"X-Request-Id": "req-h"}), keyed())
 	_, err := c.Search(context.Background(), "q", nil)
-	want := "Keenable API error (500): Internal server error. Retry the request. If it keeps failing, confirm KEENABLE_API_URL. Docs: https://d/e#x (request_id: req-h) (api_error)"
+	want := "Keenable API error (500): Internal server error. Retry the request. If it keeps failing, confirm KEENABLE_API_URL. (request_id: req-h) (api_error)"
 	if err.Error() != want {
 		t.Fatalf("%q", err.Error())
 	}
@@ -295,7 +343,7 @@ func TestNotYourLimitWithoutFixStillDoesNotAskForAKey(t *testing.T) {
 }
 
 func TestTheAPIsFixIsTheNextStepForEveryStatus(t *testing.T) {
-	for _, name := range []string{"credentials_forbidden", "insufficient_credits", "rate_limit_per_second"} {
+	for _, name := range []string{"credentials_forbidden", "rate_limit_per_second"} {
 		t.Run(name, func(t *testing.T) {
 			tc := contractCaseNamed(t, name)
 			c, _ := startKeyless(t, replyWith(tc.Status, tc.Body, tc.Headers), nil)
@@ -319,9 +367,34 @@ func TestInsufficientCreditsKeepsTheOldCodeAndMessage(t *testing.T) {
 	if !errors.As(err, new(*keenable.CreditsError)) {
 		t.Fatal("CreditsError is the same type")
 	}
-	want := "Keenable: insufficient credits (402): no credits. Add credits at https://keenable.ai/console. (api_error)"
+	want := "Keenable: insufficient credits (402). The organization is out of credits; retrying fails the same way until a human with console access adds more. (api_error)"
 	if err.Error() != want {
 		t.Fatalf("%q", err.Error())
+	}
+	if credits.Body != "no credits" {
+		t.Fatalf("body %q", credits.Body)
+	}
+}
+
+func TestA402MessageIsTheSDKsOwnSentence(t *testing.T) {
+	for _, name := range []string{"insufficient_credits", "payment_required", "payment_settlement_failed",
+		"insufficient_credits (before v1)", "insufficient_credits with pay_per_request (before v1)"} {
+		t.Run(name, func(t *testing.T) {
+			tc := contractCaseNamed(t, name)
+			c, _ := startKeyless(t, replyWith(tc.Status, tc.Body, tc.Headers), nil)
+			_, err := c.Search(context.Background(), "q", nil)
+			msg := err.Error()
+			if strings.Contains(msg, "http") || strings.Contains(msg, deref(tc.Expect.Fix)) {
+				t.Fatal(msg)
+			}
+			payment := strings.HasPrefix(name, "payment_")
+			if payment != strings.HasPrefix(msg, "Keenable: payment required (402).") {
+				t.Fatal(msg)
+			}
+			if api := apiErrorFrom(t, err); api.Fix != deref(tc.Expect.Fix) {
+				t.Fatalf("Fix %q", api.Fix)
+			}
+		})
 	}
 }
 
@@ -329,9 +402,8 @@ func TestTodaysAPILeavesTheNewFieldsEmpty(t *testing.T) {
 	c, _ := startKeyless(t, jsonHandler(http.StatusTooManyRequests, map[string]any{"message": "hourly cap reached"}), nil)
 	_, err := c.Search(context.Background(), "q", nil)
 	api := apiErrorFrom(t, err)
-	if api.APICode != "" || api.Fix != "" || api.DocsURL != "" || api.Retryable != nil || api.RetryAfter != 0 ||
-		api.RequestID != "" || api.Param != "" || api.RateLimit != nil || api.BillingURL != "" ||
-		api.AutoTopUpURL != "" || api.PayPerRequest != "" {
+	if api.APICode != "" || api.Fix != "" || api.Retryable != nil || api.RetryAfter != 0 ||
+		api.RequestID != "" || api.Param != "" || api.RateLimit != nil {
 		t.Fatalf("%+v", api)
 	}
 	want := "Keenable rate limit exceeded (429): hourly cap reached. Set KEENABLE_API_KEY to lift the keyless hourly cap. Create a key at https://keenable.ai/console. (rate_limit)"
@@ -340,12 +412,6 @@ func TestTodaysAPILeavesTheNewFieldsEmpty(t *testing.T) {
 	}
 	if api.Type != keenable.TypeRateLimitError {
 		t.Fatalf("type %q", api.Type)
-	}
-
-	c, _ = startKeyless(t, textHandler(http.StatusBadGateway, "upstream exploded"), nil)
-	_, err = c.Search(context.Background(), "q", nil)
-	if apiErrorFrom(t, err).Raw != nil {
-		t.Fatal("a non-JSON body has no Raw")
 	}
 }
 
@@ -411,24 +477,18 @@ func TestRetryAfterSources(t *testing.T) {
 		if api.RetryAfter != 7*time.Second {
 			t.Fatalf("got %v, want the header's 7s", api.RetryAfter)
 		}
-		if _, ok := api.Raw["retry_after_seconds"]; ok {
-			t.Fatalf("Raw keeps the overflowing number: %v", api.Raw)
-		}
-		if api.Raw["code"] != "rate_limited" {
-			t.Fatalf("Raw lost the rest of the body: %v", api.Raw)
-		}
 		var rl *keenable.RateLimitError
 		if !errors.As(err, &rl) {
 			t.Fatalf("want a RateLimitError, got %T", err)
 		}
 	})
 
-	t.Run("a bare overflowing number body stays the error's detail", func(t *testing.T) {
+	t.Run("a bare overflowing number body is JSON, not an object: no detail", func(t *testing.T) {
 		c, _ := start(t, textHandler(http.StatusBadGateway, "1e400"), keyed())
 		_, err := c.Search(context.Background(), "q", nil)
 		api := apiErrorFrom(t, err)
-		if api.Body != "1e400" || !strings.Contains(err.Error(), "1e400") {
-			t.Fatalf("lost the body text: Body %q, message %q", api.Body, err.Error())
+		if api.Body != "" || strings.Contains(err.Error(), "1e400") || api.Type != keenable.TypeAPIError {
+			t.Fatalf("Body %q, message %q", api.Body, err.Error())
 		}
 	})
 

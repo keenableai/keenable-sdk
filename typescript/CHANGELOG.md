@@ -5,6 +5,60 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+The SDK now matches the Python and Go SDKs case for case: all three run the
+shared cases in `scripts/conformance`. Changes marked **Behaviour change** alter
+what an existing call does.
+
+- **Behaviour change:** errors no longer expose `docsUrl`, `billingUrl`,
+  `autoTopUpUrl`, `payPerRequest` or `raw`, and the message no longer ends with
+  `Docs: <url>`. None of these was in a release. `body` (the API's message) is
+  unchanged.
+- **Behaviour change:** a 402's message is the SDK's own sentence rather than
+  the API's text, which links to billing and checkout pages:
+  "Keenable: insufficient credits (402). ..." or, for an x402 or `payment_*`
+  response, "Keenable: payment required (402). This SDK does not pay per
+  request ...". It is still a `KeenableInsufficientCreditsError`, with `code`,
+  `fix`, `requestId` and `body` set, and carries no payment offer.
+- **Behaviour change:** `fetch()` refuses more special-purpose addresses, the
+  same list in every SDK: `100.64.0.0/10` (carrier-grade NAT, including Alibaba
+  Cloud's metadata address), `192.0.0.0/24`, `192.0.2.0/24`, `198.18.0.0/15`,
+  `198.51.100.0/24`, `203.0.113.0/24`, and every IPv6 address outside
+  `2000::/3` or inside `2001::/23`, `2001:db8::/32`, `2002::/16` or `3fff::/20`
+  (so `fc::1`, NAT64 `64:ff9b::/96`, `fec0::/10` and IPv4-compatible
+  addresses). It also refuses names under `.localhost`.
+- **Behaviour change:** `fetch()` refuses a URL whose host other parsers read
+  differently: `https:///host`, `https:host` and `https:/host` (read as
+  `https://host/` before), a backslash in the host part, a control character
+  anywhere, or a leading or trailing space.
+- **Behaviour change:** a `Retry-After` date must be one of the three RFC 9110
+  forms with the zone `GMT`. A date with a numeric zone (`+0000`) or none at all
+  is ignored and the backoff applies, as in Go.
+- **Behaviour change:** an error body that is JSON but not an object (`"oops"`,
+  `42`, `null`) no longer becomes the error's detail; the error maps by status
+  alone.
+- **Behaviour change:** a search result's `title`, `url` and `snippet`, and a
+  page's `title` and `content`, are `""` when the API sends something other
+  than a string (they were `"42"`, `"[object Object]"` or `"false"`). An array
+  inside `results` is skipped like any other non-object.
+- **Behaviour change:** a `fetch` you pass that follows a redirect although the
+  SDK asks it not to (`redirect: "manual"`) now throws the same, non-retried
+  redirect error instead of returning the other host's reply.
+- **Behaviour change:** a header name that is not an HTTP token, or a value
+  with CR, LF or NUL, in `defaultHeaders` or a call's `headers`, throws
+  `KeenableInvalidRequestError` before anything is sent, rather than failing as
+  a connection error that was retried.
+- **Behaviour change:** `mode: ""` sends `"pro"`, and an empty string filter
+  (such as `site: ""`) is not sent, as in Go.
+- **Behaviour change:** `baseUrl` with a query or fragment is refused (the path
+  was appended after it), surrounding whitespace is ignored, `localhost.` counts
+  as localhost, and `http://127.1` is refused as in Python and Go. A blank
+  `KEENABLE_API_URL` means the default instead of throwing.
+- **Behaviour change:** `limit.max` is set only for an integer from 0 to
+  2^53 - 1.
+- Fix: a `timeoutMs` over 2147483647 (about 24.8 days) timed out at once,
+  because a JavaScript timer fires immediately past that. It now waits that
+  long.
+
 - Automatic retries. Connection errors, timeouts, 408, 429 and 5xx are retried
   up to `maxRetries` times (default 2), unless the API marks the error
   `retryable: false`. The wait is the API's `Retry-After` when sent, else
@@ -30,21 +84,18 @@ All notable changes to the `keenable` npm package. Versions follow
   negative or fractional retry count throws `KeenableInvalidRequestError`.
 - Fix: a `Retry-After` header that is not a number or an HTTP date (`1.5`,
   `-1`, `Jan 1`) was read as a date in the past, so the retry came at once. It
-  is now ignored, and the backoff applies, as in Python and Go. A date without
-  a zone is read as GMT rather than local time.
+  is now ignored, and the backoff applies, as in Python and Go.
 - Fix: a call whose `signal` is already aborted throws without calling
   `fetch`, even a custom `fetch` that ignores the signal.
 - Fix: `Page.url` falls back to the URL you asked for when the API sends an
   empty one, as in Python and Go.
 
-- Errors carry the API's agent-ready fields: `code`, `error`, `fix`, `docsUrl`,
+- Errors carry the API's agent-ready fields: `code`, `error`, `fix`,
   `retryable`, `retryAfterSeconds` (from the body, else the `Retry-After`
-  header), `requestId` (body, else `X-Request-Id`), `param`, `limit` (a new
-  `RateLimitInfo` type), `billingUrl`, `autoTopUpUrl`, `payPerRequest` and
-  `raw`. Each is `undefined` when the API does not send it.
+  header), `requestId` (body, else `X-Request-Id`), `param` and `limit` (a new
+  `RateLimitInfo` type). Each is `undefined` when the API does not send it.
 - New `KeenableInsufficientCreditsError` (alias `KeenableCreditsError`) for HTTP 402. It extends
-  `KeenableAPIError`, and the message is unchanged, so existing handlers keep
-  working.
+  `KeenableAPIError`, so existing handlers keep working.
 - A 403 whose `code` is `target_blocked` (the fetched site refused us) is now a
   plain `KeenableAPIError` labelled "Keenable API error (403)" rather than a
   `KeenableAuthError`. Without a `code`, 401/403 behave as before.
@@ -60,9 +111,8 @@ All notable changes to the `keenable` npm package. Versions follow
   that does not send it gets one derived from the status and `code`, so `type`
   is set on every `KeenableAPIError` from a response. A 401/403 whose type is
   `target_error` is not a `KeenableAuthError` (as `target_blocked` already was).
-- `error.message` ends with `Docs: <docsUrl>`, `(code: <code>)` and
-  `(request_id: <id>)` when the API sends them, the way Stripe's SDKs print the
-  doc link and request id. `body` is unchanged, and so is the message of a
+- `error.message` ends with `(code: <code>)` and `(request_id: <id>)` when the
+  API sends them, the way Stripe's SDKs print the request id. `body` is unchanged, and so is the message of a
   response without any of these fields.
   A message that already ends in a period no longer gets a second one before
   the fix.

@@ -10,6 +10,10 @@ A new option, method, model field or error type goes into all three languages in
 - Python: `cd python && python -m pytest -q`
 - TypeScript: `cd typescript && npm install && npx vitest run && npx tsc --noEmit`
 
+## Shared conformance cases keep the SDKs alike
+
+`scripts/conformance/cases/*.json` pin down behaviour that must be the same in every SDK: which fetch() URLs are refused, base URL checks, Retry-After parsing, the retry decision, error fields and classes, success-body parsing and argument validation. `scripts/conformance/README.md` states the rules. `node scripts/conformance/sync.ts` writes them to `go/testdata/conformance.json`, `python/tests/fixtures/conformance.json` and `typescript/test/fixtures/conformance.json`, and each SDK's conformance test runs every case. To change one of these behaviours, change the case first, regenerate, and make all three SDKs pass. CI runs `--check` on both sync scripts.
+
 ## The error contract comes from the backend's catalog
 
 `scripts/error-contract/error-catalog.json` is a copy of keenable-backend-ts `docs/error-catalog.json` (one entry per error code: type, status, fix, docs_url, ...). The three `error_contract.json` test fixtures are generated from it and must stay identical; each SDK's tests check that. After the backend adds or changes a code, refresh them with Node 22.18+:

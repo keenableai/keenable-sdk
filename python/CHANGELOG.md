@@ -5,6 +5,54 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
+The Python, TypeScript and Go SDKs now run one shared set of conformance cases
+(`scripts/conformance/`), and these changes make them behave the same.
+Behaviour changes are marked **Changed**.
+
+- **Changed:** errors no longer have `docs_url`, `billing_url`,
+  `auto_top_up_url`, `pay_per_request` or `raw` (none was in a release), and
+  `str(err)` no longer ends with `Docs: <url>`. The SDK does not expose docs
+  links, billing or checkout URLs, or x402 payment offers.
+- **Changed:** a 402's message is the SDK's own sentence, without the API's
+  text or `fix`: "Keenable: payment required (402). This SDK does not pay per
+  request: ..." for a pay-per-request (x402) or `payment_*` response, else
+  "Keenable: insufficient credits (402). ...". It is still a
+  `KeenableInsufficientCreditsError`, and `body`, `fix`, `code` and
+  `request_id` are still set.
+- **Changed:** `fetch()` refuses more targets before sending: `100.64.0.0/10`
+  (carrier-grade NAT, including Alibaba Cloud's metadata address),
+  `192.0.0.0/24`, `fec0::/10`, `2002::/16`, `3fff::/20`, any IPv6 address
+  outside `2000::/3`, names under `.localhost`, percent-encoded hosts
+  (`127.0.0.%31`), hosts with a soft hyphen or zero-width character, URLs with
+  a control character or surrounding space, a backslash in the host part, or
+  anything other than exactly `http://` or `https://` before the host. The
+  ranges are now a fixed list shared with the other SDKs rather than Python's
+  `ipaddress` flags, which differ between Python versions; an IPv4-mapped
+  public address (`::ffff:8.8.8.8`) is now allowed on every version.
+- **Changed:** a `Retry-After` date must be an RFC 9110 HTTP date
+  (IMF-fixdate, RFC 850 or asctime, in GMT). A date with a numeric zone or no
+  zone is ignored, so the next source of the delay (else backoff) is used.
+- **Changed:** an error body field of the wrong type is ignored: a numeric or
+  object `message` no longer becomes the detail (`str()` of it was shown), and
+  an error body that is JSON but not an object (`"oops"`, `42`, `null`) gives
+  no detail. `NaN` and `Infinity` in a body are not JSON, a leading byte order
+  mark is ignored, and invalid UTF-8 no longer makes a JSON body unreadable.
+- **Changed:** in results and pages, a `title`, `url`, `snippet` or `content`
+  that is not a string is `""` instead of its `str()`; a page `url` that is
+  blank or not a string falls back to the URL you fetched.
+- **Changed:** `limit.max` is set only for a whole number from 0 to 2^53 - 1.
+- **Changed:** an invalid header name, or a header value with CR, LF or NUL, in
+  `default_headers` or `extra_headers` raises `KeenableInvalidRequestError`
+  before anything is sent, instead of a connection error that was retried.
+- **Changed:** a non-string `search()` query or `fetch()` URL raises
+  `KeenableInvalidRequestError` (was `AttributeError` or `TypeError`), and an
+  empty-string search filter is not sent, as in Go.
+- **Changed:** `base_url` may not have a query or fragment, surrounding
+  whitespace is dropped, `http://localhost.` counts as localhost, and a blank
+  `KEENABLE_API_URL` means the default.
+- **Changed:** a timeout over 2,147,483.647 s (about 24.8 days) is treated as
+  that long; a larger one raised `OverflowError` from the socket layer.
+
 - Automatic retries. Connection errors, timeouts, 408, 429 and 5xx are retried
   up to `max_retries` times (default 2), unless the API marks the error
   `retryable: false`. The wait is the API's `Retry-After` when sent, else
@@ -36,13 +84,11 @@ All notable changes to the `keenable` Python package. Versions follow
   error's detail, and a blank `query` in a response keeps the query you sent.
 
 - Errors carry the API's agent-ready fields: `code`, `error`, `fix`,
-  `docs_url`, `retryable`, `retry_after_seconds` (from the body, else the
-  `Retry-After` header), `request_id` (body, else `X-Request-Id`), `param`,
-  `limit` (a new `RateLimitInfo`), `billing_url`, `auto_top_up_url`,
-  `pay_per_request` and `raw`. Each is `None` when the API does not send it.
+  `retryable`, `retry_after_seconds` (from the body, else the `Retry-After`
+  header), `request_id` (body, else `X-Request-Id`), `param` and `limit` (a
+  new `RateLimitInfo`). Each is `None` when the API does not send it.
 - New `KeenableInsufficientCreditsError` (alias `KeenableCreditsError`) for HTTP 402. It subclasses
-  `KeenableAPIError`, and the message is unchanged, so existing handlers keep
-  working.
+  `KeenableAPIError`, so existing handlers keep working.
 - A 403 whose `code` is `target_blocked` (the fetched site refused us) is now a
   plain `KeenableAPIError` labelled "Keenable API error (403)" rather than a
   `KeenableAuthError`. Without a `code`, 401/403 behave as before.
@@ -58,10 +104,9 @@ All notable changes to the `keenable` Python package. Versions follow
   it gets one derived from the status and `code`, so `type` is set on every
   `KeenableAPIError` from a response. A 401/403 whose type is `target_error`
   is not a `KeenableAuthError` (as `target_blocked` already was).
-- `str(err)` ends with `Docs: <docs_url>`, `(code: <code>)` and
-  `(request_id: <id>)` when the API sends them, the way Stripe's SDKs print the
-  doc link and request id. `body` is unchanged, and so is the message of a
-  response without any of these fields.
+- `str(err)` ends with `(code: <code>)` and `(request_id: <id>)` when the API
+  sends them, the way Stripe's SDKs print the request id. `body` is unchanged,
+  and so is the message of a response without either field.
   A message that already ends in a period no longer gets a second one before
   the fix.
 

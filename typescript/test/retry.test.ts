@@ -251,9 +251,11 @@ describe("fetch target check", () => {
     }
   });
 
-  it("allows public IPv6 literals such as 00fc::1", async () => {
+  it("allows global IPv6 literals and refuses 00fc::1, which is outside 2000::/3", async () => {
     const { client } = scripted([ok]);
-    await expect(client.fetch("https://[fc::1]/")).resolves.toBeDefined();
+    await expect(client.fetch("https://[fc::1]/")).rejects.toBeInstanceOf(
+      KeenableInvalidRequestError,
+    );
     await expect(client.fetch("https://[2606:4700::1111]/")).resolves.toBeDefined();
   });
 });

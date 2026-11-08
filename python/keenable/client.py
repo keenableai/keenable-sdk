@@ -5,17 +5,18 @@ from __future__ import annotations
 import asyncio
 import enum
 import ipaddress
+import json as jsonlib
 import math
 import random
+import re
 import time
 import unicodedata
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from email.utils import parsedate_to_datetime
 from os import environ
 from typing import Any, Literal
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 import httpx
 
@@ -62,16 +63,26 @@ _STATUS_LABELS = {
 
 
 def _resolve_base_url(base_url: str | None) -> str:
-    """Resolve and validate the API base URL, enforcing HTTPS off-localhost."""
-    base = (base_url or environ.get("KEENABLE_API_URL") or DEFAULT_BASE_URL).rstrip("/")
-    parsed = urlsplit(base)
-    if parsed.hostname:
+    """Resolve and validate the API base URL, enforcing HTTPS off-localhost.
+
+    Surrounding whitespace and trailing slashes are dropped, and a blank
+    ``KEENABLE_API_URL`` counts as unset, as in the Go and TypeScript SDKs.
+    """
+    env = (environ.get("KEENABLE_API_URL") or "").strip()
+    base = (base_url or env or DEFAULT_BASE_URL).strip().rstrip("/")
+    try:
+        parsed = urlsplit(base)
+        host = parsed.hostname
+    except ValueError:
+        host = None
+    if host and not parsed.query and not parsed.fragment:
         if parsed.scheme == "https":
             return base
-        if parsed.scheme == "http" and parsed.hostname in _LOCAL_HOSTS:
+        if parsed.scheme == "http" and _canonical_host(host) in _LOCAL_HOSTS:
             return base
     raise KeenableInvalidRequestError(
-        f"base_url must be an https:// URL with a host, got {base!r}"
+        "base_url must be an https:// URL with a host and no query or fragment "
+        f"(http only to localhost, 127.0.0.1 or ::1), got {base!r}"
     )
 
 
@@ -85,10 +96,15 @@ def _canonical_host(host: str) -> str:
     folded = unicodedata.normalize("NFKC", host)
     for stop in _IDEOGRAPHIC_STOPS:
         folded = folded.replace(stop, ".")
+    # IDNA mapping deletes these, so "local\u00adhost" is localhost to a
+    # WHATWG parser (and to the TypeScript SDK).
+    for ignored in _IDNA_IGNORED:
+        folded = folded.replace(ignored, "")
     return folded.strip().lower().rstrip(".")
 
 
 _IDEOGRAPHIC_STOPS = ("\u3002", "\uff0e", "\uff61")
+_IDNA_IGNORED = ("\u00ad", "\u200b", "\u2060", "\ufeff")
 
 
 def _numeric_ipv4(host: str) -> ipaddress.IPv4Address | None:
@@ -127,22 +143,88 @@ def _numeric_ipv4(host: str) -> ipaddress.IPv4Address | None:
     return ipaddress.IPv4Address(value)
 
 
-def _reject_private_fetch_target(url: str) -> None:
+# The ranges fetch() refuses, the same list in every SDK (see
+# scripts/conformance/README.md). Written out rather than read from
+# ipaddress's is_private and is_reserved, which change between Python versions.
+_BLOCKED_IPV4 = tuple(
+    ipaddress.IPv4Network(net)
+    for net in (
+        "0.0.0.0/8",
+        "10.0.0.0/8",
+        "100.64.0.0/10",
+        "127.0.0.0/8",
+        "169.254.0.0/16",
+        "172.16.0.0/12",
+        "192.0.0.0/24",
+        "192.0.2.0/24",
+        "192.168.0.0/16",
+        "198.18.0.0/15",
+        "198.51.100.0/24",
+        "203.0.113.0/24",
+        "224.0.0.0/4",
+        "240.0.0.0/4",
+    )
+)
+# IPv6 outside 2000::/3 is refused, and so are these special blocks inside it.
+_GLOBAL_IPV6 = ipaddress.IPv6Network("2000::/3")
+_BLOCKED_IPV6 = tuple(
+    ipaddress.IPv6Network(net)
+    for net in ("2001::/23", "2001:db8::/32", "2002::/16", "3fff::/20")
+)
+
+_FETCH_SCHEME = re.compile(r"(?i)https?://")
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _is_blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    if isinstance(ip, ipaddress.IPv6Address):
+        mapped = ip.ipv4_mapped
+        if mapped is None:
+            return ip not in _GLOBAL_IPV6 or any(ip in net for net in _BLOCKED_IPV6)
+        ip = mapped
+    return any(ip in net for net in _BLOCKED_IPV4)
+
+
+def _reject_private_fetch_target(url: Any) -> None:
     """Refuse obviously internal fetch targets before a request leaves the host.
 
     The backend enforces this too, but stopping here keeps an internal hostname
-    out of an outbound request in the first place.
+    out of an outbound request in the first place. The rules are shared with
+    the Go and TypeScript SDKs (scripts/conformance/README.md).
     """
-    parsed = urlsplit(url)
-    if parsed.scheme not in {"http", "https"}:
+    if not isinstance(url, str):
+        raise KeenableInvalidRequestError(
+            f"fetch() needs a URL string, got {type(url).__name__}"
+        )
+    if _CONTROL_CHARS.search(url) or url[:1] == " " or url[-1:] == " ":
+        raise KeenableInvalidRequestError(
+            f"fetch() URL has a control character or surrounding space: {url!r}"
+        )
+    # Exactly "scheme://": WHATWG parsers read "https:host", "https:/host" and
+    # "https:\\host" as https://host/, where this parser sees no host at all.
+    scheme = _FETCH_SCHEME.match(url)
+    if scheme is None:
         raise KeenableInvalidRequestError(f"fetch() needs an http(s) URL, got {url!r}")
+    # A backslash in the authority makes WHATWG and RFC 3986 parsers disagree
+    # on the host: https://127.0.0.1\@example.com is 127.0.0.1 to one of them.
+    authority = re.split(r"[/?#]", url[scheme.end() :], maxsplit=1)[0]
+    if "\\" in authority:
+        raise KeenableInvalidRequestError(
+            f"fetch() URL has a backslash in its host: {url!r}"
+        )
+    try:
+        hostname = urlsplit(url).hostname or ""
+    except ValueError as exc:
+        raise KeenableInvalidRequestError(f"fetch() URL is not valid: {url!r}") from exc
 
-    # A trailing dot resolves to the same host but does not match it as a
-    # string, which is enough to walk past the blocklist below.
-    host = _canonical_host(parsed.hostname or "")
+    # Percent-decoded as a URL parser decodes a host; a trailing dot resolves
+    # to the same host but does not match it as a string.
+    host = _canonical_host(unquote(hostname))
+    if ":" in host:
+        host = host.split("%", 1)[0]  # an IPv6 zone
     if not host:
         raise KeenableInvalidRequestError(f"fetch() URL has no host: {url!r}")
-    if host in _BLOCKED_HOSTS:
+    if host in _BLOCKED_HOSTS or host.endswith(".localhost"):
         raise KeenableInvalidRequestError(f"refusing to fetch internal host {host!r}")
     ip: ipaddress.IPv4Address | ipaddress.IPv6Address | None
     try:
@@ -151,25 +233,23 @@ def _reject_private_fetch_target(url: str) -> None:
         ip = _numeric_ipv4(host)
         if ip is None:
             return  # A hostname; the backend's SSRF guard is the backstop.
-    if (
-        ip.is_loopback
-        or ip.is_private
-        or ip.is_link_local
-        or ip.is_reserved
-        or ip.is_multicast
-        or ip.is_unspecified
-    ):
+    if _is_blocked_ip(ip):
         raise KeenableInvalidRequestError(f"refusing to fetch private address {host!r}")
 
 
 def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, Any]:
     """Build the search request body, dropping filters the caller left unset."""
-    if not query or not query.strip():
-        raise KeenableInvalidRequestError("search() needs a non-empty query")
+    if not isinstance(query, str) or not query.strip():
+        raise KeenableInvalidRequestError("search() needs a non-empty query string")
 
     payload: dict[str, Any] = {"query": query, "mode": mode or "pro"}
+    # An empty string is unset, as in Go, which cannot tell the two apart.
     payload.update(
-        {name: value for name, value in filters.items() if value is not None}
+        {
+            name: value
+            for name, value in filters.items()
+            if value is not None and value != ""
+        }
     )
     return payload
 
@@ -231,8 +311,85 @@ def _seconds(value: Any) -> float | None:
     return exact
 
 
-def _retry_after_header(value: str | None) -> float | None:
-    """Parse a Retry-After header: delay-seconds or an HTTP date."""
+_WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+_LONG_WEEKDAYS = (
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+)
+_MONTHS = (
+    "jan",
+    "feb",
+    "mar",
+    "apr",
+    "may",
+    "jun",
+    "jul",
+    "aug",
+    "sep",
+    "oct",
+    "nov",
+    "dec",
+)
+# The three HTTP-date forms of RFC 9110 section 5.6.7, as Go's http.ParseTime
+# reads them: IMF-fixdate, RFC 850 and asctime. Names match in any case; the
+# zone is GMT. A numeric or missing zone is not an HTTP date.
+_IMF_FIXDATE = re.compile(
+    r"((?i:[a-z]{3})), (\d\d) ((?i:[a-z]{3})) (\d{4}) (\d\d):(\d\d):(\d\d) GMT",
+    re.ASCII,
+)
+_RFC_850 = re.compile(
+    r"((?i:[a-z]{6,9})), (\d\d)-((?i:[a-z]{3}))-(\d\d) (\d\d):(\d\d):(\d\d) GMT",
+    re.ASCII,
+)
+_ASCTIME = re.compile(
+    r"((?i:[a-z]{3})) ((?i:[a-z]{3})) ( \d|\d\d?) (\d\d):(\d\d):(\d\d) (\d{4})",
+    re.ASCII,
+)
+
+
+def _http_date(text: str) -> datetime | None:
+    """An RFC 9110 HTTP-date in UTC, or None for anything else.
+
+    The weekday must be a weekday name but is not checked against the date.
+    """
+    weekdays = _WEEKDAYS
+    if match := _IMF_FIXDATE.fullmatch(text):
+        weekday, day, month, year, hour, minute, second = match.groups()
+    elif match := _RFC_850.fullmatch(text):
+        weekday, day, month, short_year, hour, minute, second = match.groups()
+        # Two-digit years: 69 to 99 are 19xx, as Go's time.Parse reads them.
+        year = str((1900 if int(short_year) >= 69 else 2000) + int(short_year))
+        weekdays = _LONG_WEEKDAYS
+    elif match := _ASCTIME.fullmatch(text):
+        weekday, month, day, hour, minute, second, year = match.groups()
+    else:
+        return None
+    if weekday.lower() not in weekdays or month.lower() not in _MONTHS:
+        return None
+    try:
+        return datetime(
+            int(year),
+            _MONTHS.index(month.lower()) + 1,
+            int(day),
+            int(hour),
+            int(minute),
+            int(second),
+            tzinfo=timezone.utc,
+        )
+    except ValueError:  # Day, hour, minute or second out of range.
+        return None
+
+
+def _retry_after_header(value: str | None, now: datetime | None = None) -> float | None:
+    """Parse a Retry-After header: delay-seconds or an RFC 9110 HTTP date.
+
+    ``now`` is when a date is measured from; tests pin it.
+    """
     if not value or not value.strip():
         return None
     text = value.strip()
@@ -244,33 +401,46 @@ def _retry_after_header(value: str | None) -> float | None:
         if len(text) > len(str(_MAX_RETRY_AFTER)):
             return _MAX_RETRY_AFTER
         return min(int(text), _MAX_RETRY_AFTER)
-    try:
-        when = parsedate_to_datetime(text)
-    except (TypeError, ValueError, IndexError, OverflowError):
-        # OverflowError: a year too large for a C long.
+    when = _http_date(text)
+    if when is None:
         return None
-    if when.tzinfo is None:
-        when = when.replace(tzinfo=timezone.utc)
-    delay = math.ceil((when - datetime.now(timezone.utc)).total_seconds())
+    delay = math.ceil((when - (now or datetime.now(timezone.utc))).total_seconds())
     return min(max(0, delay), _MAX_RETRY_AFTER)
 
 
 def _limit_info(value: Any) -> RateLimitInfo | None:
     if not isinstance(value, dict):
         return None
-    max_ = value.get("max")
     return RateLimitInfo(
         scope=_str_field(value, "scope"),
         window=_str_field(value, "window"),
-        max=max_ if isinstance(max_, int) and not isinstance(max_, bool) else None,
+        max=_limit_max(value.get("max")),
         resets_at=_str_field(value, "resets_at"),
     )
+
+
+# The largest integer every SDK reads exactly: TypeScript's numbers are doubles.
+_MAX_SAFE_INTEGER = 2**53 - 1
+
+
+def _limit_max(value: Any) -> int | None:
+    """A whole number from 0 to 2**53 - 1, else None. ``1000.0`` is 1000."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, float) and not value.is_integer():
+        return None  # Also NaN and infinity.
+    if not 0 <= value <= _MAX_SAFE_INTEGER:
+        return None
+    return int(value)
 
 
 def _error_fields(
     raw: dict[str, Any] | None, response: httpx.Response
 ) -> dict[str, Any]:
     """The agent-ready fields of an error body, None where the API left one out.
+
+    The docs link, billing and top-up URLs and x402 payment offers a body may
+    carry are not read: the SDK does not expose them.
 
     ``retry_after_seconds`` prefers the body, then the ``Retry-After`` header,
     then the older ``retryAfter`` body field; ``request_id`` prefers the body,
@@ -291,16 +461,11 @@ def _error_fields(
         "type": _str_field(body, "type") or _derive_type(response.status_code, code),
         "error": _str_field(body, "error"),
         "fix": _str_field(body, "fix"),
-        "docs_url": _str_field(body, "docs_url"),
         "retryable": retryable if isinstance(retryable, bool) else None,
         "retry_after_seconds": retry_after,
         "request_id": _str_field(body, "request_id") or header_id,
         "param": _str_field(body, "param"),
         "limit": _limit_info(body.get("limit")),
-        "billing_url": _str_field(body, "billing_url"),
-        "auto_top_up_url": _str_field(body, "auto_top_up_url"),
-        "pay_per_request": _str_field(body, "pay_per_request"),
-        "raw": raw,
     }
 
 
@@ -309,47 +474,87 @@ def _sentence(message: str, more: str) -> str:
     return f"{message}{' ' if message.endswith('.') else '. '}{more}"
 
 
+def _parse_json(content: bytes) -> Any:
+    """Decode a JSON body as the Go and TypeScript SDKs do, or raise ValueError.
+
+    Invalid UTF-8 is replaced rather than fatal and a leading byte order mark
+    is ignored, as in a browser's ``response.text()``. ``NaN`` and
+    ``Infinity`` are not JSON, although Python's parser takes them.
+    """
+    text = content.decode("utf-8", errors="replace")
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    try:
+        return jsonlib.loads(text, parse_constant=_reject_constant)
+    except RecursionError as exc:  # Nesting too deep to decode.
+        raise ValueError("JSON nested too deeply") from exc
+
+
+def _reject_constant(name: str) -> Any:
+    raise ValueError(f"{name} is not JSON")
+
+
+# A 402's message is the SDK's own: the API's text links to billing pages and
+# payment offers, which the SDK does not expose.
+_PAYMENT_REQUIRED = (
+    "Keenable: payment required (402). This SDK does not pay per request: "
+    "set KEENABLE_API_KEY to call the API with a key instead."
+)
+_INSUFFICIENT_CREDITS = (
+    "Keenable: insufficient credits (402). The organization is out of credits; "
+    "retrying fails the same way until a human with console access adds more."
+)
+
+
+def _is_payment_offer(code: str | None, body: dict[str, Any] | None) -> bool:
+    """Whether a 402 asks to pay per request (x402) rather than for credits."""
+    if code is not None and code.startswith("payment_"):
+        return True
+    return body is not None and ("accepts" in body or "x402Version" in body)
+
+
 def _to_api_error(response: httpx.Response) -> KeenableAPIError:
     """Map a non-2xx response to the most specific SDK error available."""
     detail = ""
     body: dict[str, Any] | None = None
     try:
-        decoded = response.json()
-        if isinstance(decoded, dict):
-            body = decoded
-            # The first of these that is not blank, as Go and TypeScript pick
-            # it: a whitespace-only message falls through to the next one.
-            detail = next(
-                (
-                    text
-                    for text in (
-                        str(body.get(key) or "")
-                        for key in ("message", "error", "detail")
-                    )
-                    if text.strip()
-                ),
-                "",
-            )
+        decoded = _parse_json(response.content)
     except ValueError:
         detail = (response.text or "").strip()
+    else:
+        # JSON that is not an object has no fields and no detail.
+        if isinstance(decoded, dict):
+            body = decoded
+            # The first that is a string with more than whitespace, as Go and
+            # TypeScript pick it; other types are skipped, not stringified.
+            for key in ("message", "error", "detail"):
+                text = body.get(key)
+                if isinstance(text, str) and text.strip():
+                    detail = text
+                    break
 
     fields = _error_fields(body, response)
     status = response.status_code
     # A 401/403 about the page being fetched is not an authentication failure.
     auth = status in (401, 403) and fields["type"] != "target_error"
-    if status in (401, 403) and not auth:
-        label = f"Keenable API error ({status})"
+    if status == 402:
+        message = (
+            _PAYMENT_REQUIRED
+            if _is_payment_offer(fields["code"], body)
+            else _INSUFFICIENT_CREDITS
+        )
     else:
-        label = _STATUS_LABELS.get(status, f"Keenable API error ({status})")
-    message = f"{label}: {detail}" if detail else label
-    if fields["fix"]:
-        # The API's next step, appended the same way in the Go and TS SDKs.
-        message = _sentence(message, fields["fix"])
-    # Where to read more and what to quote, as Stripe's SDKs print them; the
-    # same tail as the Go and TS SDKs. The code goes in its own parentheses so
-    # the "(request_id: ...)" Go has shipped reads the same everywhere.
-    if fields["docs_url"]:
-        message = _sentence(message, f"Docs: {fields['docs_url']}")
+        if status in (401, 403) and not auth:
+            label = f"Keenable API error ({status})"
+        else:
+            label = _STATUS_LABELS.get(status, f"Keenable API error ({status})")
+        message = f"{label}: {detail}" if detail else label
+        if fields["fix"]:
+            # The API's next step, appended the same way in the Go and TS SDKs.
+            message = _sentence(message, fields["fix"])
+    # What to quote, as Stripe's SDKs print it; the same tail as the Go and TS
+    # SDKs. The code goes in its own parentheses so the "(request_id: ...)" Go
+    # has shipped reads the same everywhere.
     if fields["code"]:
         message = f"{message} (code: {fields['code']})"
     if fields["request_id"]:
@@ -383,7 +588,7 @@ def _decode(response: httpx.Response) -> tuple[dict[str, Any], str | None]:
         raise _to_api_error(response)
     request_id = (response.headers.get("X-Request-Id") or "").strip() or None
     try:
-        data = response.json()
+        data = _parse_json(response.content)
     except ValueError as exc:
         snippet = (response.text or "")[:200]
         raise KeenableAPIError(
@@ -481,6 +686,12 @@ def _check_client_timeout(value: Any) -> Any:
     return _check_timeout(value)
 
 
+# The longest timeout honoured, in seconds: the longest a JavaScript timer can
+# wait, so the TypeScript SDK can keep it too. Longer ones are treated as this
+# (a socket timeout past a C timeval would raise OverflowError anyway).
+_MAX_TIMEOUT = 2_147_483.647
+
+
 def _check_timeout(value: float) -> float:
     if (
         isinstance(value, bool)
@@ -491,7 +702,30 @@ def _check_timeout(value: float) -> float:
         raise KeenableInvalidRequestError(
             f"timeout must be a positive number of seconds, got {value!r}"
         )
-    return value
+    return min(value, _MAX_TIMEOUT)
+
+
+# An HTTP header name is a token (RFC 9110 section 5.6.2).
+_HEADER_NAME = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+")
+
+
+def _check_headers(headers: Mapping[str, str], where: str) -> dict[str, str]:
+    """Refuse a header httpx would fail to send, before anything is sent.
+
+    Otherwise the failure is a transport error, which is retried although it
+    can never succeed.
+    """
+    for name, value in headers.items():
+        if not isinstance(name, str) or not _HEADER_NAME.fullmatch(name):
+            raise KeenableInvalidRequestError(
+                f"{where} has an invalid header name: {name!r}"
+            )
+        if not isinstance(value, str) or any(c in value for c in "\r\n\x00"):
+            raise KeenableInvalidRequestError(
+                f"{where} has an invalid value for {name!r}: a header value is a "
+                "string without CR, LF or NUL"
+            )
+    return dict(headers)
 
 
 class _BaseClient:
@@ -513,7 +747,7 @@ class _BaseClient:
         self._client_source = client_source
         self._timeout: Any = _check_client_timeout(timeout)
         self._max_retries = _check_max_retries(max_retries)
-        self._default_headers = dict(default_headers or {})
+        self._default_headers = _check_headers(default_headers or {}, "default_headers")
 
     @property
     def keyless(self) -> bool:
@@ -536,7 +770,10 @@ class _BaseClient:
                 "X-Keenable-Title": self._client_source,
             }
         )
-        for source in (self._default_headers, extra or {}):
+        for source in (
+            self._default_headers,
+            _check_headers(extra or {}, "extra_headers"),
+        ):
             for name, value in source.items():
                 if name.lower() != "x-api-key":
                     headers[name] = value
