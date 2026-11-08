@@ -484,8 +484,7 @@ def _parse_json(content: bytes) -> Any:
     text = content.decode("utf-8", errors="replace")
     if text.startswith("\ufeff"):
         text = text[1:]
-    brackets = text.count("[") + text.count("{")
-    if brackets > _MAX_JSON_DEPTH and _nesting_depth(text) > _MAX_JSON_DEPTH:
+    if _nested_too_deeply(text):
         raise ValueError("JSON nested too deeply")
     try:
         return jsonlib.loads(text, parse_constant=_reject_constant)
@@ -493,15 +492,23 @@ def _parse_json(content: bytes) -> Any:
         raise ValueError("JSON nested too deeply") from exc
 
 
-# Deeper nesting is "not JSON" on every supported Python, rather than only on
-# interpreters whose parser runs out of recursion first (3.9-3.13 do, 3.14
-# does not), so the outcome never depends on the Python version.
+# Nesting deeper than this is "not JSON" in all three SDKs (scripts/conformance),
+# whatever the interpreter's own recursion limit is.
 _MAX_JSON_DEPTH = 512
 
 
-def _nesting_depth(text: str) -> int:
-    """The deepest array/object nesting in ``text``, ignoring brackets in strings."""
-    depth = deepest = 0
+def _nested_too_deeply(text: str) -> bool:
+    """Whether a JSON-looking body nests arrays/objects deeper than the limit.
+
+    Only a body that starts like JSON and has enough brackets is walked, and
+    the walk stops at the first level past the limit, so HTML and other error
+    pages cost one count.
+    """
+    if text.lstrip()[:1] not in ("[", "{"):
+        return False
+    if text.count("[") + text.count("{") <= _MAX_JSON_DEPTH:
+        return False
+    depth = 0
     in_string = escaped = False
     for ch in text:
         if in_string:
@@ -515,11 +522,11 @@ def _nesting_depth(text: str) -> int:
             in_string = True
         elif ch in "[{":
             depth += 1
-            if depth > deepest:
-                deepest = depth
+            if depth > _MAX_JSON_DEPTH:
+                return True
         elif ch in "]}":
             depth -= 1
-    return deepest
+    return False
 
 
 def _reject_constant(name: str) -> Any:

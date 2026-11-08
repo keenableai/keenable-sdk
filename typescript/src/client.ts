@@ -865,11 +865,44 @@ function sentence(message: string, more: string): string {
  * A leading byte order mark is ignored, as Python and Go ignore it.
  */
 function parseJson(text: string): { value: unknown } | undefined {
+  const body = text.replace(/^﻿/, "");
+  if (nestedTooDeeply(body)) return undefined;
   try {
-    return { value: JSON.parse(text.replace(/^﻿/, "")) };
+    return { value: JSON.parse(body) };
   } catch {
     return undefined;
   }
+}
+
+/** Nesting deeper than this is "not JSON" in all three SDKs (scripts/conformance). */
+const MAX_JSON_DEPTH = 512;
+
+/**
+ * Whether a JSON-looking body nests arrays/objects deeper than MAX_JSON_DEPTH.
+ * Only a body that starts like JSON is walked, and the walk stops at the first
+ * level past the limit.
+ */
+function nestedTooDeeply(text: string): boolean {
+  const first = text.trimStart()[0];
+  if (first !== "[" && first !== "{") return false;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (const ch of text) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"') {
+      inString = true;
+    } else if (ch === "[" || ch === "{") {
+      depth++;
+      if (depth > MAX_JSON_DEPTH) return true;
+    } else if (ch === "]" || ch === "}") {
+      depth--;
+    }
+  }
+  return false;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1196,7 +1196,7 @@ func firstDetail(m map[string]any, keys ...string) string {
 // JSON.
 func decodeJSON(raw []byte) (any, bool) {
 	raw = bytes.TrimPrefix(raw, []byte("\ufeff"))
-	if !json.Valid(raw) {
+	if nestedTooDeeply(raw) || !json.Valid(raw) {
 		return nil, false
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
@@ -1209,6 +1209,45 @@ func decodeJSON(raw []byte) (any, bool) {
 	// is just not an object, so it carries nothing.
 	body, _ = plainNumbers(body)
 	return body, true
+}
+
+// maxJSONDepth is the nesting past which a body is "not JSON" in all three SDKs
+// (scripts/conformance), below encoding/json's own limit of 10000.
+const maxJSONDepth = 512
+
+// nestedTooDeeply reports whether a JSON-looking body nests arrays or objects
+// deeper than maxJSONDepth. Only a body that starts like JSON is walked, and
+// the walk stops at the first level past the limit.
+func nestedTooDeeply(raw []byte) bool {
+	trimmed := bytes.TrimLeft(raw, " \t\r\n")
+	if len(trimmed) == 0 || (trimmed[0] != '[' && trimmed[0] != '{') {
+		return false
+	}
+	depth := 0
+	inString, escaped := false, false
+	for _, c := range trimmed {
+		switch {
+		case inString:
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\':
+				escaped = true
+			case c == '"':
+				inString = false
+			}
+		case c == '"':
+			inString = true
+		case c == '[' || c == '{':
+			depth++
+			if depth > maxJSONDepth {
+				return true
+			}
+		case c == ']' || c == '}':
+			depth--
+		}
+	}
+	return false
 }
 
 // plainNumbers turns each json.Number into a float64, as json.Unmarshal does,
