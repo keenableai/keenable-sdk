@@ -103,6 +103,11 @@ func start(t *testing.T, h http.Handler, opts *keenable.Options) (*keenable.Clie
 	if opts == nil {
 		opts = &keenable.Options{}
 	}
+	if opts.MaxRetries == nil {
+		// Most tests check one response's handling; retries have their own.
+		none := 0
+		opts.MaxRetries = &none
+	}
 	base := srv.URL
 	opts.BaseURL = &base
 	c, err := keenable.New(opts)

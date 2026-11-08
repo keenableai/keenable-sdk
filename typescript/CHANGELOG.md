@@ -5,6 +5,30 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- Automatic retries. Connection errors, timeouts, 408, 429 and 5xx are retried
+  up to `maxRetries` times (default 2), unless the API marks the error
+  `retryable: false`. The wait is the API's `Retry-After` when sent, else
+  exponential backoff (0.5 s to 8 s, jittered). A `Retry-After` over 60 s, such
+  as the keyless hourly cap, is thrown at once instead of waited out. Pass
+  `maxRetries: 0` to turn retries off. Aborting `signal` cancels a pending
+  retry.
+- New `KeenableTimeoutError`, a `KeenableConnectionError` subclass, for a
+  request that did not answer within `timeoutMs`.
+- `search()` and `fetch()` take `timeoutMs`, `maxRetries` and `headers` for
+  that call (the new `RequestOptions` type); the client takes `maxRetries` and
+  `defaultHeaders`. `X-API-Key` can only come from `apiKey`.
+- `SearchResponse.requestId` and `Page.requestId` (body `request_id`, else the
+  `X-Request-Id` header).
+- Fix: `fetch()` refused every hostname starting with `fc`, `fd` or
+  `fe8`-`feb` (such as `fdic.gov` or `fcbarcelona.com`) as a "private
+  address". Only IPv6 literals in those ranges are refused now, and IPv4
+  multicast, reserved and broadcast addresses are refused as in Python and Go.
+- Fix: redirects are no longer followed. `fetch` would have carried the
+  `X-API-Key` header to whatever host a redirect named. A redirect now throws
+  `KeenableConnectionError`.
+- `timeoutMs` and `maxRetries` are validated: a non-positive timeout or a
+  negative or fractional retry count throws `KeenableInvalidRequestError`.
+
 - Errors carry the API's agent-ready fields: `code`, `error`, `fix`, `docsUrl`,
   `retryable`, `retryAfterSeconds` (from the body, else the `Retry-After`
   header), `requestId` (body, else `X-Request-Id`), `param`, `limit` (a new

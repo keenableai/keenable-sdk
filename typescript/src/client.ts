@@ -5,12 +5,14 @@ import {
   KeenableInsufficientCreditsError,
   KeenableInvalidRequestError,
   KeenableRateLimitError,
+  KeenableTimeoutError,
 } from "./errors.js";
 import type { KeenableAPIErrorDetails, KeenableErrorType, RateLimitInfo } from "./errors.js";
 import { SEARCH_FILTERS } from "./filters.js";
 import { cleanContextText, collapse, nonEmpty, normalizeHost, readEnv } from "./internal.js";
 import type {
   KeenableOptions,
+  RequestOptions,
   SearchOptions,
   SearchResult,
   ToContextOptions,
@@ -24,6 +26,13 @@ const VERSION = typeof __VERSION__ === "string" ? __VERSION__ : "0.0.0-dev";
 export const DEFAULT_BASE_URL = "https://api.keenable.ai";
 export const DEFAULT_CONTEXT_MAX_CHARS = 12_000;
 const DEFAULT_TIMEOUT_MS = 30_000;
+export const DEFAULT_MAX_RETRIES = 2;
+
+// Retry timing, the same in the Python and Go SDKs.
+const INITIAL_RETRY_DELAY_MS = 500;
+const MAX_RETRY_DELAY_MS = 8_000;
+/** A server-requested wait longer than this is not waited out. */
+const MAX_RETRY_AFTER_WAIT_SECONDS = 60;
 
 // Endpoints are named once; the keyless variant of each is the same path with a
 // `/public` suffix, so a new endpoint is one name rather than two constants.
@@ -125,11 +134,17 @@ function isPrivateAddress(host: string): boolean {
     if (a === 172 && b >= 16 && b <= 31) return true;
     if (a === 192 && b === 168) return true;
     if (a === 169 && b === 254) return true; // link-local, incl. cloud metadata
+    if (a >= 224) return true; // multicast, reserved and broadcast
     return false;
   }
-  // IPv6 loopback, unique-local (fc00::/7) and link-local (fe80::/10).
-  if (host === "::" || host === "::1") return true;
-  return /^f[cd]|^fe[89ab]/i.test(host);
+  // Only an IPv6 literal from here on: a hostname such as fdic.gov or
+  // fcbarcelona.com starts with the same letters as fc00::/7 and must not match.
+  if (!host.includes(":")) return false;
+  // Loopback and unspecified.
+  if (/^(?:0*:)*:?0*1?$/.test(host)) return true;
+  // Unique-local (fc00::/7), link-local (fe80::/10), multicast (ff00::/8).
+  // The first group has all four digits: `fc::1` is 00fc::1, a public address.
+  return /^(?:f[cd][0-9a-f]{2}|fe[89ab][0-9a-f]|ff[0-9a-f]{2}):/i.test(host);
 }
 
 function sourceHeader(index: number, title: string, url: string, date?: string): string {
@@ -152,17 +167,21 @@ export class SearchResponse {
   readonly query: string;
   readonly mode?: string;
   readonly results: SearchResult[];
+  /** The API's id for this request. Quote it when reporting a problem. */
+  readonly requestId?: string;
   readonly raw: Record<string, unknown>;
 
   constructor(init: {
     query: string;
     mode?: string;
     results: SearchResult[];
+    requestId?: string;
     raw: Record<string, unknown>;
   }) {
     this.query = init.query;
     this.mode = init.mode;
     this.results = init.results;
+    this.requestId = init.requestId;
     this.raw = init.raw;
   }
 
@@ -254,6 +273,8 @@ export class Page {
   readonly description?: string;
   readonly author?: string;
   readonly publishedAt?: string;
+  /** The API's id for this request. Quote it when reporting a problem. */
+  readonly requestId?: string;
   readonly raw: Record<string, unknown>;
 
   constructor(init: {
@@ -263,6 +284,7 @@ export class Page {
     description?: string;
     author?: string;
     publishedAt?: string;
+    requestId?: string;
     raw: Record<string, unknown>;
   }) {
     this.url = init.url;
@@ -271,6 +293,7 @@ export class Page {
     this.description = init.description;
     this.author = init.author;
     this.publishedAt = init.publishedAt;
+    this.requestId = init.requestId;
     this.raw = init.raw;
   }
 
@@ -305,7 +328,7 @@ function toSearchResult(data: Record<string, unknown>): SearchResult {
   };
 }
 
-function toPage(data: Record<string, unknown>, url: string): Page {
+function toPage(data: Record<string, unknown>, url: string, requestId?: string): Page {
   return new Page({
     url: String(data.url ?? url),
     title: String(data.title ?? ""),
@@ -313,8 +336,82 @@ function toPage(data: Record<string, unknown>, url: string): Page {
     description: nonEmpty(data.description),
     author: nonEmpty(data.author),
     publishedAt: nonEmpty(data.published_at),
+    requestId,
     raw: data,
   });
+}
+
+/** Wait `ms`, or reject with the signal's reason as soon as it aborts. */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/**
+ * The exponential backoff before retry number `retry` (0 for the first):
+ * 0.5 s doubling up to 8 s, shortened by up to 25% of jitter so clients that
+ * failed together do not retry together. Kept in step with Python and Go.
+ */
+export function backoffMs(retry: number, random: number = Math.random()): number {
+  const base = Math.min(INITIAL_RETRY_DELAY_MS * 2 ** retry, MAX_RETRY_DELAY_MS);
+  return base * (1 - 0.25 * random);
+}
+
+/** A redirect this SDK refused to follow; retrying would refuse it again. */
+class KeenableRedirectError extends KeenableConnectionError {}
+
+/**
+ * How long to wait before retrying after `error`, or undefined when it should
+ * not be retried. The API's `retryable` decides when it sent one; otherwise
+ * 408, 429 and 5xx are retried, and so are network failures and timeouts. A
+ * `Retry-After` over a minute is not waited out.
+ */
+export function retryDelayMs(error: unknown, retry: number): number | undefined {
+  if (error instanceof KeenableAPIError) {
+    const status = error.statusCode;
+    const retryable = error.retryable ?? (status === 408 || status === 429 || status >= 500);
+    if (!retryable) return undefined;
+    if (error.retryAfterSeconds !== undefined) {
+      return error.retryAfterSeconds <= MAX_RETRY_AFTER_WAIT_SECONDS
+        ? error.retryAfterSeconds * 1000
+        : undefined;
+    }
+    return backoffMs(retry);
+  }
+  if (error instanceof KeenableRedirectError) return undefined;
+  if (error instanceof KeenableConnectionError) return backoffMs(retry);
+  return undefined;
+}
+
+function nonNegativeInteger(name: string, value: number): number {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new KeenableInvalidRequestError(
+      `${name} must be a non-negative integer, got ${JSON.stringify(value)}`,
+    );
+  }
+  return value;
+}
+
+function positiveTimeout(name: string, value: number): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new KeenableInvalidRequestError(
+      `${name} must be a positive number of milliseconds, got ${JSON.stringify(value)}`,
+    );
+  }
+  return value;
 }
 
 /**
@@ -335,13 +432,17 @@ export class Keenable {
   private readonly baseUrl: string;
   private readonly clientSource: string;
   private readonly timeoutMs: number;
+  private readonly maxRetries: number;
+  private readonly defaultHeaders: Record<string, string>;
   private readonly fetchImpl: typeof globalThis.fetch;
 
   constructor(options: KeenableOptions = {}) {
     this.apiKey = nonEmpty(options.apiKey ?? readEnv("KEENABLE_API_KEY"))?.trim();
     this.baseUrl = resolveBaseUrl(options.baseUrl);
     this.clientSource = options.clientSource ?? "Keenable SDK";
-    this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.timeoutMs = positiveTimeout("timeoutMs", options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+    this.maxRetries = nonNegativeInteger("maxRetries", options.maxRetries ?? DEFAULT_MAX_RETRIES);
+    this.defaultHeaders = { ...options.defaultHeaders };
     const fetchImpl = options.fetch ?? globalThis.fetch;
     if (typeof fetchImpl !== "function") {
       throw new KeenableInvalidRequestError(
@@ -356,14 +457,35 @@ export class Keenable {
     return this.apiKey === undefined;
   }
 
-  private headers(): Record<string, string> {
+  /**
+   * The headers for one request: the SDK's own, then `defaultHeaders`, then
+   * the call's `headers`. The API key is always the configured one, so a
+   * stray header cannot send a different key or turn a keyless call keyed.
+   */
+  private headers(
+    extra: Record<string, string> | undefined,
+    json: boolean,
+  ): Record<string, string> {
     const headers: Record<string, string> = {
       Accept: "application/json",
       "User-Agent": `keenable-typescript/${VERSION}`,
       // The public tier rejects requests without this header.
       "X-Keenable-Title": this.clientSource,
     };
-    if (this.apiKey !== undefined) headers["X-API-Key"] = this.apiKey;
+    // Header names are case-insensitive: a caller's "user-agent" replaces ours.
+    const set = (name: string, value: string) => {
+      for (const existing of Object.keys(headers)) {
+        if (existing.toLowerCase() === name.toLowerCase()) delete headers[existing];
+      }
+      headers[name] = value;
+    };
+    for (const source of [this.defaultHeaders, extra ?? {}]) {
+      for (const [name, value] of Object.entries(source)) {
+        if (name.toLowerCase() !== "x-api-key") set(name, value);
+      }
+    }
+    if (this.apiKey !== undefined) set("X-API-Key", this.apiKey);
+    if (json) set("Content-Type", "application/json");
     return headers;
   }
 
@@ -392,12 +514,11 @@ export class Keenable {
       if (value !== undefined) payload[filter.wire] = value;
     }
 
-    const data = await this.request("search", {
-      method: "POST",
-      headers: { ...this.headers(), "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: options.signal,
-    });
+    const { data, requestId } = await this.request(
+      "search",
+      { method: "POST", body: JSON.stringify(payload) },
+      options,
+    );
 
     const rawResults = Array.isArray(data.results) ? data.results : [];
     return new SearchResponse({
@@ -409,6 +530,7 @@ export class Keenable {
             typeof item === "object" && item !== null,
         )
         .map(toSearchResult),
+      requestId,
       raw: data,
     });
   }
@@ -419,49 +541,86 @@ export class Keenable {
    * Use this after `search()` when a snippet is not enough and the model needs
    * the full page.
    */
-  async fetch(url: string, options: { signal?: AbortSignal } = {}): Promise<Page> {
+  async fetch(url: string, options: RequestOptions = {}): Promise<Page> {
     rejectPrivateFetchTarget(url);
 
     const target = new URL(this.url("fetch"));
     target.searchParams.set("url", url);
 
-    const data = await this.request(
+    const { data, requestId } = await this.request(
       "fetch",
-      { method: "GET", headers: this.headers(), signal: options.signal },
+      { method: "GET" },
+      options,
       target.toString(),
     );
-    return toPage(data, url);
+    return toPage(data, url, requestId);
   }
 
   /**
-   * Send one request and return its decoded body.
+   * Send a request, retrying what can be retried, and return the decoded body
+   * with the request id.
    *
-   * Every transport concern lives here: timeout, abort wiring, error
-   * translation and decoding, so a retry or a logging hook is one edit.
+   * Every transport concern lives here: headers, timeout, abort wiring,
+   * retries, error translation and decoding.
    */
   private async request(
     endpoint: Endpoint,
-    init: RequestInit,
+    init: { method: "GET" | "POST"; body?: string },
+    options: RequestOptions,
     url: string = this.url(endpoint),
-  ): Promise<Record<string, unknown>> {
-    const { signal: callerSignal, ...rest } = init;
+  ): Promise<{ data: Record<string, unknown>; requestId?: string }> {
+    const timeoutMs =
+      options.timeoutMs === undefined
+        ? this.timeoutMs
+        : positiveTimeout("timeoutMs", options.timeoutMs);
+    const maxRetries =
+      options.maxRetries === undefined
+        ? this.maxRetries
+        : nonNegativeInteger("maxRetries", options.maxRetries);
+    const headers = this.headers(options.headers, init.body !== undefined);
+
+    for (let retry = 0; ; retry += 1) {
+      try {
+        return await this.attempt(url, { ...init, headers }, timeoutMs, options.signal);
+      } catch (error) {
+        const delay = retry < maxRetries ? retryDelayMs(error, retry) : undefined;
+        if (delay === undefined) throw error;
+        await sleep(delay, options.signal);
+      }
+    }
+  }
+
+  /** One attempt: send, read the body under the deadline, decode. */
+  private async attempt(
+    url: string,
+    init: RequestInit,
+    timeoutMs: number,
+    callerSignal: AbortSignal | undefined,
+  ): Promise<{ data: Record<string, unknown>; requestId?: string }> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     const onAbort = () => controller.abort();
     callerSignal?.addEventListener("abort", onAbort);
+    if (callerSignal?.aborted) controller.abort();
 
     let response: Response;
     let text: string;
     try {
-      response = await this.fetchImpl(url, { ...rest, signal: controller.signal });
+      // Redirects are not followed: fetch would carry X-API-Key to whatever
+      // host the redirect names.
+      response = await this.fetchImpl(url, {
+        ...init,
+        redirect: "manual",
+        signal: controller.signal,
+      });
       // fetch() resolves on headers. The body can still take arbitrarily long,
       // so the deadline and the caller's signal must stay armed until it is read.
       text = await response.text();
     } catch (cause) {
-      if (callerSignal?.aborted) throw cause;
+      if (callerSignal?.aborted) throw callerSignal.reason ?? cause;
       if (controller.signal.aborted) {
-        throw new KeenableConnectionError(
-          `the Keenable API did not respond within ${this.timeoutMs} ms`,
+        throw new KeenableTimeoutError(
+          `the Keenable API did not respond within ${timeoutMs} ms`,
         );
       }
       throw new KeenableConnectionError(
@@ -472,8 +631,15 @@ export class Keenable {
       callerSignal?.removeEventListener("abort", onAbort);
     }
 
+    if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400)) {
+      const location = response.headers.get("Location");
+      throw new KeenableRedirectError(
+        `the Keenable API redirected${location ? ` to ${location}` : ""}. The redirect was not followed, so the API key was not sent. Check KEENABLE_API_URL.`,
+      );
+    }
     if (!response.ok) throw toApiError(response.status, text, response.headers);
 
+    const requestId = nonEmpty(response.headers.get("X-Request-Id")?.trim());
     let data: unknown;
     try {
       data = JSON.parse(text);
@@ -481,15 +647,20 @@ export class Keenable {
       throw new KeenableAPIError(
         `Keenable API returned a non-JSON response: ${JSON.stringify(text.slice(0, 200))}`,
         response.status,
+        undefined,
+        { requestId },
       );
     }
     if (typeof data !== "object" || data === null || Array.isArray(data)) {
       throw new KeenableAPIError(
         `unexpected response from the Keenable API: ${JSON.stringify(data)}`,
         response.status,
+        undefined,
+        { requestId },
       );
     }
-    return data as Record<string, unknown>;
+    const record = data as Record<string, unknown>;
+    return { data: record, requestId: nonEmpty(record.request_id) ?? requestId };
   }
 }
 

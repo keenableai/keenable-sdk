@@ -141,29 +141,29 @@ All errors subclass `KeenableError`:
 | `KeenableInsufficientCreditsError` (alias `KeenableCreditsError`) | HTTP 402, no credits left; retrying will not help |
 | `KeenableAPIError` | Any other non-2xx response; carries `status_code` |
 | `KeenableConnectionError` | The API could not be reached |
+| `KeenableTimeoutError` | A `KeenableConnectionError`: the API did not answer within `timeout` |
 | `KeenableInvalidRequestError` | Bad arguments; no request was sent |
 
 ## Handling errors
 
-Every `KeenableAPIError` carries what the API says about the failure. Branch on
-`code`, not on the message, and wait `retry_after_seconds` before a retry. Each
-field is `None` when the API did not send it.
+The SDK already retries what can be retried (see
+[Retries and timeouts](#retries-and-timeouts)), so an error that reaches you is
+final for this call. Every `KeenableAPIError` carries what the API says about
+the failure. Branch on `code`, not on the message. Each field is `None` when the
+API did not send it.
 
 ```python
-import time
-
-from keenable import Keenable, KeenableAPIError
+from keenable import Keenable, KeenableAPIError, KeenableRateLimitError
 
 keenable = Keenable()
-for attempt in range(3):
-    try:
-        results = keenable.search("wafer scale engine")
-        break
-    except KeenableAPIError as err:
-        print(err.code, err.fix, err.docs_url, err.request_id)
-        if not err.retryable or attempt == 2:
-            raise  # e.g. insufficient_credits, invalid_parameter
-        time.sleep(err.retry_after_seconds or 1)
+try:
+    results = keenable.search("wafer scale engine")
+except KeenableRateLimitError as err:
+    # Only reaches you when the wait is over a minute (e.g. the keyless
+    # hourly cap) or the retries ran out.
+    print(f"rate limited, retry in {err.retry_after_seconds}s:", err.fix)
+except KeenableAPIError as err:
+    print(err.code, err.fix, err.docs_url, err.request_id)
 ```
 
 | Field | Meaning |
@@ -184,8 +184,30 @@ When the API sends `fix`, the error message ends with it, then with
 `Docs: <docs_url>`, `(code: <code>)` and `(request_id: <id>)`, as in the Go and
 TypeScript SDKs.
 A 403 with type `target_error` (e.g. code `target_blocked`, the fetched site
-refused us) is a plain `KeenableAPIError`, not a `KeenableAuthError`. The SDK does not retry on its
-own.
+refused us) is a plain `KeenableAPIError`, not a `KeenableAuthError`.
+
+## Retries and timeouts
+
+Failed requests are retried twice by default. Connection errors, timeouts, 408,
+429 and 5xx are retried, unless the API marks the error `retryable: false`
+(credits, bad parameters and blocked pages never are). The SDK waits the API's
+`Retry-After` when it sent one, else backs off exponentially from 0.5 s to 8 s
+with jitter. A `Retry-After` over 60 s, such as the keyless hourly cap, is not
+waited out: the error is raised at once so your code decides.
+
+`timeout` (default 30 s) is the deadline for each attempt. A timed-out request
+raises `KeenableTimeoutError`, a subclass of `KeenableConnectionError`.
+
+```python
+keenable = Keenable(max_retries=4, timeout=10, default_headers={"X-Team": "search"})
+keenable.search("wafer scale engine", max_retries=0)  # no retries for this call
+keenable.fetch("https://example.com", timeout=60, extra_headers={"X-Trace": "abc"})
+```
+
+Every call takes `timeout`, `max_retries` and `extra_headers`, which override
+the client's settings for that call. Results carry `request_id` (quote it when
+reporting a problem). Redirects are never followed, so the API key cannot leak
+to another host.
 
 ## Configuration
 
@@ -195,7 +217,8 @@ own.
 | `KEENABLE_API_URL` | `https://api.keenable.ai` | Override the API base URL |
 
 Both can also be passed to the constructor as `api_key` and `base_url`, alongside
-`timeout` and `client_source`. Building an integration on top of this SDK? Set
+`timeout`, `max_retries`, `default_headers`, `client` (your own `httpx.Client`,
+e.g. for a proxy) and `client_source`. Building an integration on top of this SDK? Set
 `client_source="Your Integration"` so your traffic is attributed to you rather
 than to the bare SDK.
 

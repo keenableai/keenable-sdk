@@ -14,6 +14,13 @@ class KeenableConnectionError(KeenableError):
     """The Keenable API could not be reached (DNS, TLS, timeout, ...)."""
 
 
+class KeenableTimeoutError(KeenableConnectionError):
+    """The Keenable API did not answer within the deadline (``timeout``).
+
+    A :class:`KeenableConnectionError`, so code that catches that keeps working.
+    """
+
+
 @dataclass(frozen=True)
 class RateLimitInfo:
     """The limit a 429 hit, from the API's ``limit`` object.

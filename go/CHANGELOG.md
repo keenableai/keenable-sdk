@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+Automatic retries. Connection errors, timeouts, 408, 429 and 5xx are retried
+up to `Options.MaxRetries` times (nil means `DefaultMaxRetries`, 2), unless the
+API marks the error `Retryable` false. The wait is the API's `Retry-After` when
+sent, else exponential backoff (0.5s to 8s, jittered). A `Retry-After` over
+60s, such as the keyless hourly cap, is returned at once instead of waited out.
+Canceling ctx stops a pending wait. `Options.Timeout` now applies to each
+attempt.
+
+New `RequestOptions` (`Timeout`, `MaxRetries`, `Headers`) for one call,
+embedded in `SearchOptions` and in the new `FetchOptions`; `Fetch` takes an
+optional `*FetchOptions`. `Options.Headers` adds headers to every request;
+`X-API-Key` always comes from `APIKey`. `ConnectionError.Timeout()` reports a
+deadline. `SearchResponse.RequestID` and `Page.RequestID` carry the request id
+(body `request_id`, else `X-Request-Id`). A negative `MaxRetries` or `Timeout`
+is an `InvalidRequestError`.
+
 `APIError` carries the API's agent-ready fields: `APICode`, `Title`, `Fix`,
 `DocsURL`, `Retryable`, `RetryAfter` (from the body's `retry_after_seconds`,
 else the `Retry-After` header), `Param`, `RateLimit` (a new `RateLimitInfo`),

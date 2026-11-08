@@ -56,8 +56,14 @@ func (e *InvalidRequestError) keenableError() {}
 // elapsed before the body arrived. A canceled caller context is returned as
 // that context's own error, not as a ConnectionError.
 type ConnectionError struct {
-	msg string
+	msg      string
+	timeout  bool
+	redirect bool
 }
+
+// Timeout reports whether the deadline (Options.Timeout, RequestOptions.Timeout
+// or the http.Client's) elapsed, as [net.Error] does.
+func (e *ConnectionError) Timeout() bool { return e != nil && e.timeout }
 
 func (e *ConnectionError) Error() string {
 	if e == nil {
@@ -121,6 +127,8 @@ type APIError struct {
 	Raw  map[string]any
 	msg  string
 	code string
+	// retryAfterSet tells a sent zero wait apart from none.
+	retryAfterSet bool
 }
 
 // RateLimitInfo is the limit a 429 hit. A field the API left out is zero.
