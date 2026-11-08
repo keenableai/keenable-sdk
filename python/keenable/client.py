@@ -136,18 +136,30 @@ def _str_field(body: dict[str, Any], key: str) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
-def _seconds(value: Any) -> float | None:
-    """A non-negative, finite number of seconds, or None for anything else."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    seconds: float = value
-    if not math.isfinite(seconds) or seconds < 0:
-        return None
-    return seconds
-
-
 # The longest Retry-After delay reported, in seconds (a year).
 _MAX_RETRY_AFTER = 365 * 24 * 60 * 60
+
+
+def _seconds(value: Any) -> float | None:
+    """A non-negative, finite number of seconds capped at a year, else None.
+
+    An integer too large for a float is treated like the non-finite number
+    the Go and TypeScript SDKs see for it, and dropped, so the next source of
+    the delay is used; ``math.isfinite`` would raise OverflowError on it.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        seconds = float(value)
+    except OverflowError:
+        return None
+    if not math.isfinite(seconds) or seconds < 0:
+        return None
+    if seconds > _MAX_RETRY_AFTER:
+        return _MAX_RETRY_AFTER
+    # The value itself, so an integer delay stays an int.
+    exact: float = value
+    return exact
 
 
 def _retry_after_header(value: str | None) -> float | None:
@@ -165,7 +177,8 @@ def _retry_after_header(value: str | None) -> float | None:
         return min(int(text), _MAX_RETRY_AFTER)
     try:
         when = parsedate_to_datetime(text)
-    except (TypeError, ValueError, IndexError):
+    except (TypeError, ValueError, IndexError, OverflowError):
+        # OverflowError: a year too large for a C long.
         return None
     if when.tzinfo is None:
         when = when.replace(tzinfo=timezone.utc)

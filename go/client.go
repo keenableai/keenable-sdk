@@ -525,7 +525,7 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 	detail := ""
 	var body any
 	var obj map[string]any
-	if err := json.Unmarshal(raw, &body); err != nil {
+	if err := json.Unmarshal(raw, &body); err != nil && !numberOverflow(err, body) {
 		detail = strings.TrimSpace(string(raw))
 	} else if m, ok := body.(map[string]any); ok {
 		obj = m
@@ -704,6 +704,11 @@ func retryAfterHeader(v string) (time.Duration, bool) {
 	if d <= 0 {
 		return 0, true
 	}
+	// Cap before rounding: a date centuries ahead saturates time.Until at the
+	// largest Duration, and adding to that would wrap negative.
+	if d >= maxRetryAfter {
+		return maxRetryAfter, true
+	}
 	// Round up, as the other SDKs do, so waiting this long is never too early.
 	return (d + time.Second - 1).Truncate(time.Second), true
 }
@@ -741,6 +746,20 @@ func firstDetail(m map[string]any, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+// numberOverflow reports whether err only says a number in an error body did
+// not fit a float64 (such as a retry_after_seconds of 1e400). encoding/json
+// checks the syntax first and still decodes the rest of the object, storing
+// that key as a non-finite or nil value that secondsField drops, as the other
+// SDKs drop it; so the response keeps its code and typed error.
+func numberOverflow(err error, data any) bool {
+	var typeErr *json.UnmarshalTypeError
+	if !errors.As(err, &typeErr) || !strings.HasPrefix(typeErr.Value, "number") {
+		return false
+	}
+	_, ok := data.(map[string]any)
+	return ok
 }
 
 func decodeObject(status int, raw []byte, header http.Header) (map[string]any, error) {

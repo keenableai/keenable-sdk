@@ -16,7 +16,7 @@ not the caller's (`search_rate_limited`, `fetch_rate_limited`,
 `X-RateLimit-Reset` says "Retry after <duration>". A 403 with code
 `target_blocked` is a plain `APIError`, not an `AuthError`. Responses without
 the new fields produce the same errors and messages as before. A digit-only
-`Retry-After` too large for a uint64 is capped at a year like other large values. No migration.
+`Retry-After` too large for a uint64 is capped at a year like other large values, and so is a `Retry-After` date more than a year ahead (a date centuries ahead no longer gives a negative `RetryAfter`). An error body whose `retry_after_seconds` is too large for a float64 (such as `1e400`) keeps its code and type; that value is dropped and the next source of the delay is used, as in the other SDKs. No migration.
 
 `APIError.Type` carries the API's error type (error format v1), with constants
 `TypeInvalidRequestError`, `TypeAuthenticationError`, `TypePermissionError`,
