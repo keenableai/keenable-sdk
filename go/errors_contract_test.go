@@ -423,6 +423,15 @@ func TestRetryAfterSources(t *testing.T) {
 		}
 	})
 
+	t.Run("a bare overflowing number body stays the error's detail", func(t *testing.T) {
+		c, _ := start(t, textHandler(http.StatusBadGateway, "1e400"), keyed())
+		_, err := c.Search(context.Background(), "q", nil)
+		api := apiErrorFrom(t, err)
+		if api.Body != "1e400" || !strings.Contains(err.Error(), "1e400") {
+			t.Fatalf("lost the body text: Body %q, message %q", api.Body, err.Error())
+		}
+	})
+
 	t.Run("request id falls back to the header", func(t *testing.T) {
 		c, _ := start(t, replyWith(429, map[string]any{"message": "m"}, map[string]string{"X-Request-Id": "req-h"}), keyed())
 		_, err := c.Search(context.Background(), "q", nil)

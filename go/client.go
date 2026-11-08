@@ -763,8 +763,9 @@ func decodeErrorBody(raw []byte) (any, bool) {
 	if err := dec.Decode(&body); err != nil {
 		return nil, false
 	}
-	v, _ := plainNumbers(body)
-	return v, true
+	// A bare overflowing number (the whole body is 1e400) is not JSON to
+	// json.Unmarshal either, so the raw text stays the error's detail.
+	return plainNumbers(body)
 }
 
 // plainNumbers turns each json.Number into a float64, as json.Unmarshal does,
