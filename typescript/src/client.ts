@@ -67,16 +67,23 @@ function writtenHost(raw: string): string {
   const authority = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]*)/i.exec(raw)?.[1] ?? "";
   const host = authority.slice(authority.lastIndexOf("@") + 1);
   const port = host.startsWith("[") ? host.indexOf("]") + 1 : host.lastIndexOf(":");
-  return (port > 0 ? host.slice(0, port) : host)
+  const bare = (port > 0 ? host.slice(0, port) : host)
     .toLowerCase()
-    .replace(/^\[|\]$/g, "")
-    .replace(/\.+$/, "");
+    .replace(/^\[|\]$/g, "");
+  return trimTrailing(bare, ".");
+}
+
+/** `text` without any trailing `char`s, in linear time (a /x+$/ regex is polynomial). */
+function trimTrailing(text: string, char: string): string {
+  let end = text.length;
+  while (end > 0 && text[end - 1] === char) end--;
+  return text.slice(0, end);
 }
 
 function resolveBaseUrl(baseUrl: string | undefined): string {
   // A blank KEENABLE_API_URL is unset, as in Python and Go.
   const env = nonEmpty(readEnv("KEENABLE_API_URL"));
-  const raw = (baseUrl ?? env ?? DEFAULT_BASE_URL).trim().replace(/\/+$/, "");
+  const raw = trimTrailing((baseUrl ?? env ?? DEFAULT_BASE_URL).trim(), "/");
   let parsed: URL;
   try {
     parsed = new URL(raw);
