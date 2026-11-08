@@ -28,6 +28,12 @@ All notable changes to the `keenable` Python package. Versions follow
   keeps the client's. An `httpx.Timeout` is accepted in both places.
 - `timeout` and `max_retries` are validated: a non-positive timeout or a
   negative retry count raises `KeenableInvalidRequestError`.
+- Fix: a retry budget over 1024 raised `OverflowError` in the backoff.
+- Fix: `fetch()` now refuses a loopback or private host spelled as a number
+  (`2130706433`, `0x7f.0.0.1`, `0177.0.0.1`, `127.1`) or in fullwidth digits,
+  as the TypeScript SDK does.
+- Fix: a whitespace-only `message` in an error body no longer becomes the
+  error's detail, and a blank `query` in a response keeps the query you sent.
 
 - Errors carry the API's agent-ready fields: `code`, `error`, `fix`,
   `docs_url`, `retryable`, `retry_after_seconds` (from the body, else the

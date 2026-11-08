@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+Fixes: `Fetch` refuses 240.0.0.0/4 (reserved) and a loopback or private host
+spelled as a number (`2130706433`, `0x7f.0.0.1`, `127.1`) or in fullwidth
+digits, as Python and TypeScript do. A 3xx the client does not follow (your
+`CheckRedirect` returned `http.ErrUseLastResponse`, or a 300/304) is now a
+`ConnectionError` and is not retried, instead of an `APIError` that said to
+retry. A 4xx the API sent no fix for no longer ends "Retry the request", since
+the SDK does not retry it.
+
 Automatic retries. Connection errors, timeouts, 408, 429 and 5xx are retried
 up to `Options.MaxRetries` times (nil means `DefaultMaxRetries`, 2), unless the
 API marks the error `Retryable` false. The wait is the API's `Retry-After` when
