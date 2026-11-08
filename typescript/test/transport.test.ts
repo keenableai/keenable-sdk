@@ -519,7 +519,7 @@ describe("redirects: the API key never leaves the configured host", () => {
         apiHits === 1
           ? `http://127.0.0.1:${otherPort}/stolen` // same IP, another port
           : `http://localhost:${otherPort}/stolen`; // another name, same machine
-      response.writeHead(307, { Location: target }).end();
+      response.writeHead(307, { Location: target, Connection: "close" }).end();
     });
     await new Promise<void>((resolve) => api.listen(0, "127.0.0.1", resolve));
     const apiPort = (api.address() as AddressInfo).port;
@@ -536,8 +536,11 @@ describe("redirects: the API key never leaves the configured host", () => {
       expect(otherHits).toBe(0);
       expect(otherKeys).toBe(0);
     } finally {
-      await new Promise((resolve) => api.close(resolve));
-      await new Promise((resolve) => other.close(resolve));
+      // Node 18's close() waits for idle keep-alive sockets; drop them first.
+      for (const server of [api, other]) {
+        server.closeAllConnections();
+        await new Promise((resolve) => server.close(resolve));
+      }
     }
   });
 });
