@@ -432,6 +432,19 @@ func (c *Client) attempt(ctx context.Context, method, rawURL string, body []byte
 	if err != nil {
 		return nil, "", c.transportError(ctx, reqCtx, err, timeout)
 	}
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		// A redirect that was not followed: a caller's CheckRedirect returned
+		// http.ErrUseLastResponse, or there was no Location. Report it as
+		// Python and TypeScript do, not as an API error that says to retry.
+		where := ""
+		if loc := headerValue(resp.Header, "Location"); loc != "" {
+			where = " to " + loc
+		}
+		return nil, "", &ConnectionError{redirect: true, msg: fmt.Sprintf(
+			"the Keenable API redirected%s (%d). The redirect was not followed. Check KEENABLE_API_URL.",
+			where, resp.StatusCode,
+		)}
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, "", toAPIError(resp.StatusCode, raw, resp.Header, c.Keyless())
 	}
@@ -660,7 +673,10 @@ func rejectPrivateFetchTarget(raw string) error {
 	}
 	addr, err := netip.ParseAddr(host)
 	if err != nil {
-		return nil // A hostname. The API's SSRF guard is the backstop.
+		var ok bool
+		if addr, ok = numericIPv4(host); !ok {
+			return nil // A hostname. The API's SSRF guard is the backstop.
+		}
 	}
 	// ::ffff:127.0.0.1 and ::ffff:7f00:1 reach the same machine as 127.0.0.1.
 	if isNonPublic(addr.Unmap()) {
@@ -669,8 +685,70 @@ func rejectPrivateFetchTarget(raw string) error {
 	return nil
 }
 
+// numericIPv4 is the IPv4 address a host spelled as numbers names, as a URL
+// parser reads it. 2130706433, 0x7f.1, 0177.0.0.1 and 127.1 all reach
+// 127.0.0.1 in a browser or Node (and the TypeScript SDK refuses them), but
+// netip only knows the dotted-decimal spelling. Each part is decimal, 0x hex
+// or 0-prefixed octal; the last one fills the remaining bytes.
+func numericIPv4(host string) (netip.Addr, bool) {
+	parts := strings.Split(host, ".")
+	if len(parts) > 4 {
+		return netip.Addr{}, false
+	}
+	nums := make([]uint64, len(parts))
+	for i, part := range parts {
+		digits, base := part, 10
+		switch {
+		case len(part) >= 2 && (part[:2] == "0x" || part[:2] == "0X"):
+			digits, base = part[2:], 16
+		case len(part) > 1 && part[0] == '0':
+			digits, base = part[1:], 8
+		}
+		if part == "" || strings.ContainsAny(digits, "+-_") {
+			return netip.Addr{}, false
+		}
+		if digits == "" {
+			continue // "0x" alone is zero.
+		}
+		n, err := strconv.ParseUint(digits, base, 32)
+		if err != nil {
+			return netip.Addr{}, false
+		}
+		nums[i] = n
+	}
+	last := len(nums) - 1
+	for _, n := range nums[:last] {
+		if n > 255 {
+			return netip.Addr{}, false
+		}
+	}
+	if nums[last] >= 1<<(8*(4-last)) {
+		return netip.Addr{}, false
+	}
+	v := nums[last]
+	for i, n := range nums[:last] {
+		v += n << (8 * (3 - i))
+	}
+	return netip.AddrFrom4([4]byte{byte(v >> 24), byte(v >> 16), byte(v >> 8), byte(v)}), true
+}
+
+// foldWidth maps fullwidth ASCII and ideographic full stops to ASCII, as URL
+// parsers do: "１２７。０。０。１" is 127.0.0.1 to a browser, Node and the
+// TypeScript SDK.
+func foldWidth(host string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 0xFF01 && r <= 0xFF5E:
+			return r - 0xFEE0
+		case r == 0x3002 || r == 0xFF61:
+			return '.'
+		}
+		return r
+	}, host)
+}
+
 func normalizeHost(host string) string {
-	host = strings.ToLower(strings.TrimSpace(host))
+	host = strings.ToLower(strings.TrimSpace(foldWidth(host)))
 	host = strings.TrimPrefix(host, "[")
 	host = strings.TrimSuffix(host, "]")
 	return strings.TrimRight(host, ".")
@@ -683,7 +761,10 @@ func isNonPublic(addr netip.Addr) bool {
 		addr.IsLinkLocalMulticast() ||
 		addr.IsMulticast() ||
 		addr.IsUnspecified() ||
-		!addr.IsGlobalUnicast()
+		!addr.IsGlobalUnicast() ||
+		// 240.0.0.0/4 is reserved, and IsGlobalUnicast counts it as public.
+		// Python and TypeScript refuse it.
+		(addr.Is4() && addr.As4()[0] >= 240)
 }
 
 var statusLabels = map[int]string{
@@ -770,6 +851,9 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 		msg += ". Set KEENABLE_API_KEY to lift the keyless hourly cap. Create a key at https://keenable.ai/console."
 	case status == 429:
 		msg += ". Wait for the rate limit window to reset, then retry."
+	case status >= 400 && status < 500 && status != 408 && (api.Retryable == nil || !*api.Retryable):
+		// The SDK does not retry these, so the advice must not say to either.
+		msg += ". Check the request: sending it again unchanged fails the same way."
 	default:
 		msg += ". Retry the request. If it keeps failing, confirm KEENABLE_API_URL."
 	}

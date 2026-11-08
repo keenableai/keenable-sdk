@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -49,17 +50,22 @@ type captured struct {
 	Body   []byte
 }
 
+var captureMu sync.Mutex
+
 func capture(next http.Handler) (*[]captured, http.Handler) {
 	seen := &[]captured{}
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		_ = r.Body.Close()
+		// Concurrent calls reach the handler from several goroutines.
+		captureMu.Lock()
 		*seen = append(*seen, captured{
 			Path:   r.URL.Path,
 			Query:  r.URL.Query(),
 			Header: r.Header.Clone(),
 			Body:   body,
 		})
+		captureMu.Unlock()
 		next.ServeHTTP(w, r)
 	})
 	return seen, h

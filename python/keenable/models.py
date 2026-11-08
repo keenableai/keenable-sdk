@@ -364,7 +364,8 @@ class SearchResponse:
             else []
         )
         return cls(
-            query=str(data.get("query") or query),
+            # A blank or non-string echo keeps the query asked, as TS and Go do.
+            query=_str_or_none(data.get("query")) or query,
             results=results,
             mode=_str_or_none(data.get("mode")),
             raw=data,

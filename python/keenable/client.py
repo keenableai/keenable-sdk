@@ -8,6 +8,7 @@ import ipaddress
 import math
 import random
 import time
+import unicodedata
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -74,6 +75,58 @@ def _resolve_base_url(base_url: str | None) -> str:
     )
 
 
+def _canonical_host(host: str) -> str:
+    """The host as a URL parser reads it: width-folded, lowercased, no final dot.
+
+    Browsers, Node and the TypeScript SDK fold fullwidth characters and
+    ideographic full stops (``１２７。０。０。１`` is 127.0.0.1), so this check
+    has to see the host the same way.
+    """
+    folded = unicodedata.normalize("NFKC", host)
+    for stop in _IDEOGRAPHIC_STOPS:
+        folded = folded.replace(stop, ".")
+    return folded.strip().lower().rstrip(".")
+
+
+_IDEOGRAPHIC_STOPS = ("\u3002", "\uff0e", "\uff61")
+
+
+def _numeric_ipv4(host: str) -> ipaddress.IPv4Address | None:
+    """The IPv4 address a host spelled as numbers names, as a URL parser reads it.
+
+    ``2130706433``, ``0x7f.1``, ``0177.0.0.1`` and ``127.1`` all reach
+    127.0.0.1 in a browser or Node (and the TypeScript SDK refuses them), but
+    ``ipaddress`` only knows the dotted-decimal spelling. Each part is decimal,
+    ``0x`` hex or ``0``-prefixed octal; the last fills the remaining bytes.
+    """
+    parts = host.split(".")
+    if not 1 <= len(parts) <= 4:
+        return None
+    numbers: list[int] = []
+    for part in parts:
+        if part[:2] in ("0x", "0X"):
+            digits, base, allowed = part[2:], 16, "0123456789abcdefABCDEF"
+        elif len(part) > 1 and part[0] == "0":
+            digits, base, allowed = part[1:], 8, "01234567"
+        else:
+            digits, base, allowed = part, 10, "0123456789"
+        if not part or not all(c in allowed for c in digits):
+            return None
+        # Over 11 significant digits is past 2**32 in any base; checking first
+        # keeps int() clear of Python's integer-string length limit.
+        digits = digits.lstrip("0")
+        if len(digits) > 11:
+            return None
+        numbers.append(int(digits, base) if digits else 0)
+    *leading, last = numbers
+    if any(n > 255 for n in leading) or last >= 256 ** (4 - len(leading)):
+        return None
+    value = last
+    for index, number in enumerate(leading):
+        value += number << (8 * (3 - index))
+    return ipaddress.IPv4Address(value)
+
+
 def _reject_private_fetch_target(url: str) -> None:
     """Refuse obviously internal fetch targets before a request leaves the host.
 
@@ -86,15 +139,18 @@ def _reject_private_fetch_target(url: str) -> None:
 
     # A trailing dot resolves to the same host but does not match it as a
     # string, which is enough to walk past the blocklist below.
-    host = (parsed.hostname or "").strip().lower().rstrip(".")
+    host = _canonical_host(parsed.hostname or "")
     if not host:
         raise KeenableInvalidRequestError(f"fetch() URL has no host: {url!r}")
     if host in _BLOCKED_HOSTS:
         raise KeenableInvalidRequestError(f"refusing to fetch internal host {host!r}")
+    ip: ipaddress.IPv4Address | ipaddress.IPv6Address | None
     try:
         ip = ipaddress.ip_address(host)
     except ValueError:
-        return  # A hostname; the backend's SSRF guard is the backstop.
+        ip = _numeric_ipv4(host)
+        if ip is None:
+            return  # A hostname; the backend's SSRF guard is the backstop.
     if (
         ip.is_loopback
         or ip.is_private
@@ -261,8 +317,18 @@ def _to_api_error(response: httpx.Response) -> KeenableAPIError:
         decoded = response.json()
         if isinstance(decoded, dict):
             body = decoded
-            detail = str(
-                body.get("message") or body.get("error") or body.get("detail") or ""
+            # The first of these that is not blank, as Go and TypeScript pick
+            # it: a whitespace-only message falls through to the next one.
+            detail = next(
+                (
+                    text
+                    for text in (
+                        str(body.get(key) or "")
+                        for key in ("message", "error", "detail")
+                    )
+                    if text.strip()
+                ),
+                "",
             )
     except ValueError:
         detail = (response.text or "").strip()
@@ -360,7 +426,9 @@ def _backoff(retry: int, jitter: float | None = None) -> float:
     0.5 s doubling up to 8 s, shortened by up to 25% of jitter so clients that
     failed together do not retry together. Kept in step with TS and Go.
     """
-    base = min(_INITIAL_RETRY_DELAY * 2.0**retry, _MAX_RETRY_DELAY)
+    # The exponent stops at 5 (16 s, past the cap): 2.0**1024 overflows a
+    # float and would raise OverflowError on a long retry budget.
+    base = min(_INITIAL_RETRY_DELAY * 2.0 ** min(retry, 5), _MAX_RETRY_DELAY)
     return base * (1 - 0.25 * (random.random() if jitter is None else jitter))
 
 
