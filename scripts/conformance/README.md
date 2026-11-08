@@ -113,7 +113,13 @@ with a caller's own `httpx` client, `http.Client` or `fetch` too.
 
 A body that is not a JSON object is an API error and is not retried. Required
 text fields (`title`, `url`, `snippet`, `content`) are the string sent or `""`;
-optional ones are a string with more than whitespace or null. A search echoes
+optional ones are a string with more than whitespace or null. A date
+(`published_at`, `acquired_at`) is such a string, kept as sent, or a number of
+Unix seconds, which fetch sends: it becomes ISO 8601 UTC to the second,
+`2024-05-01T12:00:00Z`, with any fraction dropped. A number below 1, past
+`253402300799` (the end of the year 9999, so a millisecond value too) or not
+finite is null, as is a boolean or any other type. A page's `truncated` is a
+boolean and its `total_chars` an integer from 0 to 2^53 - 1, else null. A search echoes
 the query the API sent back when it is such a string, else the query asked; a
 page's `url` likewise falls back to the URL asked for. The request id is the
 body's, else the trimmed `X-Request-Id` header.

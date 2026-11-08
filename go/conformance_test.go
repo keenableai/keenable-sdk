@@ -379,7 +379,24 @@ func optional(v any) *string {
 	return nil
 }
 
-func ptrEqual(got, want *string) bool {
+// optionalOf is v when it holds a T, else nil.
+func optionalOf[T any](v any) *T {
+	if t, ok := v.(T); ok {
+		return &t
+	}
+	return nil
+}
+
+// optionalInt is a fixture number as an int, or nil for null.
+func optionalInt(v any) *int {
+	if f, ok := v.(float64); ok {
+		n := int(f)
+		return &n
+	}
+	return nil
+}
+
+func ptrEqual[T comparable](got, want *T) bool {
 	return (got == nil && want == nil) || (got != nil && want != nil && *got == *want)
 }
 
@@ -413,7 +430,9 @@ func TestConformanceResponses(t *testing.T) {
 					!ptrEqual(page.Description, optional(want["description"])) ||
 					!ptrEqual(page.Author, optional(want["author"])) ||
 					!ptrEqual(page.PublishedAt, optional(want["published_at"])) ||
-					page.RequestID != deref(optional(want["request_id"])) {
+					page.RequestID != deref(optional(want["request_id"])) ||
+					!ptrEqual(page.Truncated, optionalOf[bool](want["truncated"])) ||
+					!ptrEqual(page.TotalChars, optionalInt(want["total_chars"])) {
 					t.Fatalf("got %+v, want %v", page, want)
 				}
 				return

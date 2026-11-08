@@ -9,6 +9,18 @@ The Python, TypeScript and Go SDKs now run one shared set of conformance cases
 (`scripts/conformance/`), and these changes make them behave the same.
 Behaviour changes are marked **Changed**.
 
+- **Fixed:** `Page.published_at` is now set for fetched pages. The API sends a
+  fetch's publish date as Unix seconds, which the SDK dropped; it is now an
+  ISO 8601 UTC string to the second, such as `"2024-05-01T12:00:00Z"`, the
+  form search results use. An ISO 8601 string is still kept as sent, so both
+  forms work. The same applies to `SearchResult.published_at` and
+  `acquired_at`. A number below 1, past the year 9999 (a millisecond value
+  too), not finite, or a boolean is `None`, as before.
+- **Added:** `Page.truncated` (`bool | None`) and `Page.total_chars`
+  (`int | None`): whether the API cut `content` at `max_chars`, and the full
+  content's length in code points. `None` when the API leaves them out or
+  sends another type. `content` and `to_context()` are unchanged.
+
 - **Changed:** errors no longer have `docs_url`, `billing_url`,
   `auto_top_up_url`, `pay_per_request` or `raw` (none was in a release), and
   `str(err)` no longer ends with `Docs: <url>`. The SDK does not expose docs

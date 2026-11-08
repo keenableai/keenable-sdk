@@ -302,6 +302,8 @@ describe("success bodies", () => {
         author: p.author ?? null,
         published_at: p.publishedAt ?? null,
         request_id: p.requestId ?? null,
+        truncated: p.truncated ?? null,
+        total_chars: p.totalChars ?? null,
       }).toEqual(want);
     }
   });

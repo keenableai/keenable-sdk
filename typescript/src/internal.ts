@@ -5,6 +5,38 @@ export function nonEmpty(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value : undefined;
 }
 
+// The last Unix second with a four-digit year, 9999-12-31T23:59:59Z. A larger
+// number is not a date the API sends (a millisecond value lands past it).
+const MAX_UNIX_SECONDS = 253_402_300_799;
+
+/**
+ * A date as the API sends it, as one ISO 8601 string, or undefined.
+ *
+ * Search sends ISO 8601 strings, kept as sent (when not blank). Fetch sends
+ * Unix seconds, which become ISO 8601 UTC to the second, such as
+ * "2024-05-01T12:00:00Z"; a fraction is dropped. A number below 1 (the API
+ * omits an unknown date rather than send 0), past the year 9999 or not finite
+ * is undefined, as is anything else.
+ */
+export function timestamp(value: unknown): string | undefined {
+  if (typeof value === "string") return nonEmpty(value);
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const seconds = Math.floor(value);
+  if (seconds < 1 || seconds > MAX_UNIX_SECONDS) return undefined;
+  return new Date(seconds * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+/** A JSON boolean, or undefined for anything else. */
+export function bool(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+/** A whole number from 0 to 2^53 - 1, or undefined for anything else. */
+export function count(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) return undefined;
+  return value + 0; // -0 is 0
+}
+
 /**
  * A URL's host in one canonical form: lowercased, without IPv6 brackets, and
  * without the trailing dot of a fully-qualified name.

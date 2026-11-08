@@ -14,9 +14,13 @@ export interface SearchResult {
    * Kept for compatibility; see https://docs.keenable.ai/versioning.
    */
   description?: string;
-  /** ISO-8601 timestamp of publication, when the page exposes one. */
+  /**
+   * ISO-8601 timestamp of publication, when the page exposes one. A date the
+   * API sends as Unix seconds is given as ISO 8601 UTC, such as
+   * "2024-05-01T12:00:00Z".
+   */
   publishedAt?: string;
-  /** ISO-8601 timestamp of when Keenable indexed the page. */
+  /** ISO-8601 timestamp of when Keenable indexed the page, in the same form as `publishedAt`. */
   acquiredAt?: string;
   /** The unmodified JSON object, so new API fields stay reachable. */
   raw: Record<string, unknown>;
