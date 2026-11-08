@@ -270,3 +270,22 @@ async def test_async_retries_and_request_id(waits: list[float]) -> None:
     assert response.request_id == "a"
     assert len(seen) == 2 and len(waits) == 1
     assert seen[0].headers["X-Trace"] == "1"
+
+
+def test_timeout_none_means_no_deadline_and_httpx_timeout_is_accepted() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return ok(request)
+
+    transport = httpx.MockTransport(handler)
+    Keenable("k", timeout=None, client=httpx.Client(transport=transport)).search("q")
+    assert seen[-1].extensions["timeout"]["read"] is None
+
+    granular = httpx.Timeout(5.0, read=40.0)
+    Keenable("k", timeout=granular, client=httpx.Client(transport=transport)).search(
+        "q"
+    )
+    assert seen[-1].extensions["timeout"]["read"] == 40.0
+    assert Keenable("k", timeout=None)._timeout is None

@@ -256,7 +256,7 @@ none := 0
 resp, err := client.Search(ctx, "wafer scale engine", &keenable.SearchOptions{
     RequestOptions: keenable.RequestOptions{MaxRetries: &none},
 })
-page, err := client.Fetch(ctx, "https://example.com", &keenable.FetchOptions{
+page, err := client.FetchWithOptions(ctx, "https://example.com", &keenable.FetchOptions{
     RequestOptions: keenable.RequestOptions{
         Timeout: time.Minute,
         Headers: map[string]string{"X-Trace": "abc"},
@@ -264,7 +264,8 @@ page, err := client.Fetch(ctx, "https://example.com", &keenable.FetchOptions{
 })
 ```
 
-`RequestOptions` (embedded in `SearchOptions` and `FetchOptions`) overrides
+`RequestOptions` (embedded in `SearchOptions` and in `FetchOptions`, which
+`FetchWithOptions` takes) overrides
 the client's `Timeout`, `MaxRetries` and `Headers` for one call. `X-API-Key`
 always comes from `APIKey`. `SearchResponse.RequestID` and `Page.RequestID`
 carry the API's request id; quote it when reporting a problem.

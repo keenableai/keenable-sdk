@@ -184,7 +184,10 @@ func New(opts *Options) (*Client, error) {
 		timeout = DefaultTimeout
 	}
 	c.sdkTimeout = timeout
-	c.http = &http.Client{Timeout: timeout, CheckRedirect: ownedCheckRedirect}
+	// No http.Client.Timeout: the per-attempt context deadline covers headers
+	// and body, and a fixed client timeout would cut off a longer
+	// RequestOptions.Timeout.
+	c.http = &http.Client{CheckRedirect: ownedCheckRedirect}
 	c.ownsClient = true
 	return c, nil
 }
@@ -253,9 +256,14 @@ func requestID(data map[string]any, header string) string {
 // Fetch returns one URL's main content as markdown.
 //
 // Use it after Search when a snippet is not enough. Internal hosts and private
-// addresses are refused here, before a request is sent. opts is optional; at
-// most one is read.
-func (c *Client) Fetch(ctx context.Context, pageURL string, opts ...*FetchOptions) (*Page, error) {
+// addresses are refused here, before a request is sent. Use
+// [Client.FetchWithOptions] to set a timeout, retries or headers for one call.
+func (c *Client) Fetch(ctx context.Context, pageURL string) (*Page, error) {
+	return c.FetchWithOptions(ctx, pageURL, nil)
+}
+
+// FetchWithOptions is [Client.Fetch] with per-call settings. opts may be nil.
+func (c *Client) FetchWithOptions(ctx context.Context, pageURL string, opts *FetchOptions) (*Page, error) {
 	if err := requireClient(c); err != nil {
 		return nil, err
 	}
@@ -266,8 +274,8 @@ func (c *Client) Fetch(ctx context.Context, pageURL string, opts ...*FetchOption
 		return nil, err
 	}
 	var req *RequestOptions
-	if len(opts) > 0 && opts[0] != nil {
-		req = &opts[0].RequestOptions
+	if opts != nil {
+		req = &opts.RequestOptions
 	}
 	data, id, err := c.do(ctx, http.MethodGet, "fetch", nil, pageURL, req)
 	if err != nil {
@@ -379,6 +387,12 @@ func (c *Client) do(ctx context.Context, method, endpoint string, body []byte, f
 		}
 		wait, ok := retryDelay(err, retry, rand.Float64())
 		if !ok {
+			return nil, "", err
+		}
+		// A wait the caller's deadline cannot outlast would only end in
+		// ctx.Err(); return the error that caused it instead, with its
+		// RetryAfter, Fix and RequestID.
+		if deadline, has := ctx.Deadline(); has && time.Until(deadline) <= wait {
 			return nil, "", err
 		}
 		if serr := sleep(ctx, wait); serr != nil {

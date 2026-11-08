@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import enum
 import ipaddress
 import math
 import random
@@ -396,6 +397,22 @@ def _check_max_retries(value: int) -> int:
     return value
 
 
+class _Unset(enum.Enum):
+    """Marks a ``timeout`` the caller did not pass, as distinct from ``None``."""
+
+    TOKEN = 0
+
+
+_UNSET = _Unset.TOKEN
+
+
+def _check_client_timeout(value: Any) -> Any:
+    """Validate a timeout: ``None`` (no deadline) and ``httpx.Timeout`` pass."""
+    if value is None or isinstance(value, httpx.Timeout):
+        return value
+    return _check_timeout(value)
+
+
 def _check_timeout(value: float) -> float:
     if (
         isinstance(value, bool)
@@ -417,7 +434,7 @@ class _BaseClient:
         api_key: str | None = None,
         *,
         base_url: str | None = None,
-        timeout: float = DEFAULT_TIMEOUT,
+        timeout: float | httpx.Timeout | None = DEFAULT_TIMEOUT,
         max_retries: int = DEFAULT_MAX_RETRIES,
         default_headers: Mapping[str, str] | None = None,
         client_source: str = "Keenable SDK",
@@ -426,7 +443,7 @@ class _BaseClient:
         self._api_key = (key or "").strip() or None
         self._base_url = _resolve_base_url(base_url)
         self._client_source = client_source
-        self._timeout = _check_timeout(timeout)
+        self._timeout: Any = _check_client_timeout(timeout)
         self._max_retries = _check_max_retries(max_retries)
         self._default_headers = dict(default_headers or {})
 
@@ -467,11 +484,11 @@ class _BaseClient:
         return f"{self._base_url}/v1/{endpoint}{suffix}"
 
     def _call_settings(
-        self, timeout: float | None, max_retries: int | None
+        self, timeout: float | httpx.Timeout | None, max_retries: int | None
     ) -> tuple[Any, int]:
         """The per-call timeout (or the client's) and retry budget."""
         call_timeout: Any = (
-            _check_timeout(timeout)
+            _check_client_timeout(timeout)
             if timeout is not None
             else self._call_default_timeout()
         )
@@ -507,7 +524,8 @@ class Keenable(_BaseClient):
     Args:
         api_key: Falls back to ``KEENABLE_API_KEY``; omit it for the free tier.
         base_url: Falls back to ``KEENABLE_API_URL``.
-        timeout: Deadline in seconds for each attempt. With your own
+        timeout: Deadline in seconds for each attempt, or an
+            ``httpx.Timeout``; ``None`` means no deadline. With your own
             ``client``, that client's timeout applies unless you pass this.
         max_retries: How many times to retry a failed request (default 2,
             ``0`` turns retries off). Connection errors, timeouts, 408, 429
@@ -528,7 +546,7 @@ class Keenable(_BaseClient):
         api_key: str | None = None,
         *,
         base_url: str | None = None,
-        timeout: float | None = None,
+        timeout: float | httpx.Timeout | None | _Unset = _UNSET,
         max_retries: int = DEFAULT_MAX_RETRIES,
         default_headers: Mapping[str, str] | None = None,
         client_source: str = "Keenable SDK",
@@ -537,13 +555,13 @@ class Keenable(_BaseClient):
         super().__init__(
             api_key,
             base_url=base_url,
-            timeout=DEFAULT_TIMEOUT if timeout is None else timeout,
+            timeout=DEFAULT_TIMEOUT if isinstance(timeout, _Unset) else timeout,
             max_retries=max_retries,
             default_headers=default_headers,
             client_source=client_source,
         )
         # A client you pass keeps its own timeout unless you set one here.
-        self._use_client_timeout = client is not None and timeout is None
+        self._use_client_timeout = client is not None and isinstance(timeout, _Unset)
         self._client = client or httpx.Client(timeout=self._timeout)
         self._owns_client = client is None
 
@@ -567,7 +585,7 @@ class Keenable(_BaseClient):
         *,
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
-        timeout: float | None = None,
+        timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
     ) -> tuple[dict[str, Any], str | None]:
@@ -614,7 +632,7 @@ class Keenable(_BaseClient):
         snippet_max_length: int | None = None,
         max_results: int | None = None,
         query_time: str | None = None,
-        timeout: float | None = None,
+        timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
     ) -> SearchResponse:
@@ -673,7 +691,7 @@ class Keenable(_BaseClient):
         self,
         url: str,
         *,
-        timeout: float | None = None,
+        timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
     ) -> Page:
@@ -714,7 +732,7 @@ class AsyncKeenable(_BaseClient):
         api_key: str | None = None,
         *,
         base_url: str | None = None,
-        timeout: float | None = None,
+        timeout: float | httpx.Timeout | None | _Unset = _UNSET,
         max_retries: int = DEFAULT_MAX_RETRIES,
         default_headers: Mapping[str, str] | None = None,
         client_source: str = "Keenable SDK",
@@ -723,12 +741,12 @@ class AsyncKeenable(_BaseClient):
         super().__init__(
             api_key,
             base_url=base_url,
-            timeout=DEFAULT_TIMEOUT if timeout is None else timeout,
+            timeout=DEFAULT_TIMEOUT if isinstance(timeout, _Unset) else timeout,
             max_retries=max_retries,
             default_headers=default_headers,
             client_source=client_source,
         )
-        self._use_client_timeout = client is not None and timeout is None
+        self._use_client_timeout = client is not None and isinstance(timeout, _Unset)
         self._client = client or httpx.AsyncClient(timeout=self._timeout)
         self._owns_client = client is None
 
@@ -752,7 +770,7 @@ class AsyncKeenable(_BaseClient):
         *,
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
-        timeout: float | None = None,
+        timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
     ) -> tuple[dict[str, Any], str | None]:
@@ -793,7 +811,7 @@ class AsyncKeenable(_BaseClient):
         snippet_max_length: int | None = None,
         max_results: int | None = None,
         query_time: str | None = None,
-        timeout: float | None = None,
+        timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
     ) -> SearchResponse:
@@ -823,7 +841,7 @@ class AsyncKeenable(_BaseClient):
         self,
         url: str,
         *,
-        timeout: float | None = None,
+        timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
     ) -> Page:

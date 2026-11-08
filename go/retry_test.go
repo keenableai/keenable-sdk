@@ -91,7 +91,7 @@ func TestPerCallMaxRetriesZero(t *testing.T) {
 	}
 	c, n, _ = scripted(t, nil, busy)
 	fo := &keenable.FetchOptions{RequestOptions: keenable.RequestOptions{MaxRetries: intPtr(0)}}
-	if _, err := c.Fetch(context.Background(), "https://example.com", fo); err == nil {
+	if _, err := c.FetchWithOptions(context.Background(), "https://example.com", fo); err == nil {
 		t.Fatal("want an error")
 	}
 	if n.Load() != 1 {
@@ -225,5 +225,42 @@ func TestRequestID(t *testing.T) {
 	page, err := c.Fetch(context.Background(), "https://e.com")
 	if err != nil || page.RequestID != "body" {
 		t.Fatalf("page=%+v err=%v", page, err)
+	}
+}
+
+// Fetch keeps its two-argument method type, so interfaces that mock it and
+// method values of that type still compile.
+var _ interface {
+	Fetch(context.Context, string) (*keenable.Page, error)
+} = (*keenable.Client)(nil)
+
+var _ func(context.Context, string) (*keenable.Page, error) = (*keenable.Client)(nil).Fetch
+
+func TestPerCallTimeoutLongerThanClientDefault(t *testing.T) {
+	slowOK := func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(150 * time.Millisecond)
+		okBody(w, r)
+	}
+	c, _, _ := scripted(t, &keenable.Options{Timeout: 50 * time.Millisecond, MaxRetries: intPtr(0)}, slowOK)
+	opts := &keenable.SearchOptions{RequestOptions: keenable.RequestOptions{Timeout: 2 * time.Second}}
+	if _, err := c.Search(context.Background(), "q", opts); err != nil {
+		t.Fatalf("a 2s per-call timeout was cut short: %v", err)
+	}
+}
+
+func TestReturnsTheErrorWhenTheWaitOutlastsTheDeadline(t *testing.T) {
+	c, n, _ := scripted(t, nil, reply(429, `{"code":"rate_limit_per_second","retryable":true,"retry_after_seconds":30}`))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err := c.Search(ctx, "q", nil)
+	var rl *keenable.RateLimitError
+	if !errors.As(err, &rl) || rl.RetryAfter != 30*time.Second {
+		t.Fatalf("want the 429, got %v", err)
+	}
+	if n.Load() != 1 {
+		t.Fatalf("attempts = %d", n.Load())
+	}
+	if waits := keenable.TakeWaits(); len(waits) != 0 {
+		t.Fatalf("waited %v past the deadline", waits)
 	}
 }
