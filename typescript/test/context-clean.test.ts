@@ -17,7 +17,7 @@ describe("cleanContextText", () => {
       "![](https://cdn-avatars.huggingface.co/v1/production/uploads/x.png) " +
       "| [fireworks-ai](/fireworks-ai) fastest |";
     expect(cleanContextText(row, "https://huggingface.co/models")).toBe(
-      "$0.44 · $1.32 · [fireworks-ai](https://huggingface.co/fireworks-ai) fastest",
+      "$0.44 · $1.32 · [fireworks-ai](https://huggingface.co/fireworks-ai) fastest;",
     );
   });
 
@@ -103,7 +103,7 @@ describe("cleanContextText", () => {
 
   it("flattens table rows and drops delimiter rows", () => {
     const text = "| ![a](x.png) | b |\n|---|:--:|\n| ![c](y.png) | |\n|  1 |  2  |\nafter";
-    expect(cleanContextText(text, BASE)).toBe("b\n1 · 2\nafter");
+    expect(cleanContextText(text, BASE)).toBe("b;\n1 · 2;\nafter");
   });
 
   it("flattens a Hugging Face leaderboard table", () => {
@@ -119,30 +119,35 @@ describe("cleanContextText", () => {
     ].join("\n");
     expect(cleanContextText(text, "https://huggingface.co/spaces/lb")).toBe(
       "Open LLM leaderboard\n\n" +
-        "Rank · Model · Provider · Score\n" +
-        "1 · [Llama-3](https://huggingface.co/meta/llama) · meta · 90.1\n" +
-        "2 · Qwen2 · qwen · 88",
+        "Rank · Model · Provider · Score;\n" +
+        "1 · [Llama-3](https://huggingface.co/meta/llama) · meta · 90.1;\n" +
+        "2 · Qwen2 · qwen · 88;",
     );
   });
 
   it("flattens a table without outer pipes", () => {
     const text = "Name | Price\n--- | ---:\nA | $1\nB | $2\n\nprose";
-    expect(cleanContextText(text, BASE)).toBe("Name · Price\nA · $1\nB · $2\n\nprose");
+    expect(cleanContextText(text, BASE)).toBe("Name · Price;\nA · $1;\nB · $2;\n\nprose");
   });
 
   it("reads an escaped pipe in a cell as a literal pipe", () => {
     const text = "| op | meaning |\n|---|---|\n| a \\| b | either |";
-    expect(cleanContextText(text, BASE)).toBe("op · meaning\na | b · either");
+    expect(cleanContextText(text, BASE)).toBe("op · meaning;\na | b · either;");
   });
 
   it("does not split cells on a pipe inside inline code", () => {
     const text = "| flag | use |\n|---|---|\n| `a|b` | union |";
-    expect(cleanContextText(text, BASE)).toBe("flag · use\n`a|b` · union");
+    expect(cleanContextText(text, BASE)).toBe("flag · use;\n`a|b` · union;");
   });
 
   it("leaves a table inside a fence alone", () => {
     const text = "```\n| a | b |\n|---|---|\n| 1 | 2 |\n```\n| c | d |";
-    expect(cleanContextText(text, BASE)).toBe("```\n| a | b |\n|---|---|\n| 1 | 2 |\n```\nc · d");
+    expect(cleanContextText(text, BASE)).toBe("```\n| a | b |\n|---|---|\n| 1 | 2 |\n```\nc · d;");
+  });
+
+  it("adds no second semicolon to a row that already ends in one", () => {
+    const text = "| a | b; |\n|---|---|\n| `x;` | y |\n| c | `d;` |";
+    expect(cleanContextText(text, BASE)).toBe("a · b;\n`x;` · y;\nc · `d;`;");
   });
 
   it("leaves prose with a single pipe alone", () => {

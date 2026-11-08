@@ -35,8 +35,9 @@ var (
 // kept as written; relative links are resolved against baseURL (the page the
 // text came from), or reduced to their text when that is not possible.
 // Markdown tables are flattened: delimiter rows (|---|:-:|) are dropped, and
-// each row becomes its non-empty cells joined with " · " (\| is a literal
-// pipe); a row left with no cells is dropped. Fenced code blocks and inline
+// each row becomes its non-empty cells joined with " · " and ended with ";"
+// (\| is a literal pipe), so rows stay apart once whitespace is collapsed;
+// a row left with no cells is dropped. Fenced code blocks and inline
 // code spans are left alone, and so is name[i](x), which is code rather than
 // a link. Other lines are tidied only if they changed: runs of spaces
 // squeezed, and the line dropped if nothing but pipes and dashes is left.
@@ -83,7 +84,11 @@ func cleanContextText(text, baseURL string) string {
 			inTable || (i+1 < len(lines) && isTableDelimiter(lines[i+1]))) {
 			inTable = true
 			if cells := tableCells(cleaned); len(cells) > 0 {
-				out = append(out, restoreCodeSpans(strings.Join(cells, " · "), spans))
+				row := restoreCodeSpans(strings.Join(cells, " · "), spans)
+				if !strings.HasSuffix(row, ";") {
+					row += ";"
+				}
+				out = append(out, row)
 			}
 			continue
 		}

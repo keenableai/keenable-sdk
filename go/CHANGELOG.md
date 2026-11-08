@@ -39,7 +39,9 @@ only pipes and dashes are dropped. Fenced code blocks, inline code and
 
 `ToContext` (on `SearchResponse` and `Page`) flattens markdown tables:
 delimiter rows (`|---|:-:|`) are dropped, and each row becomes its non-empty
-cells joined with " · " (`\|` is a literal pipe). A row left with no cells,
+cells joined with " · " and ended with ";" (one is not added when the last cell
+already ends in ";"), so rows stay apart once a search snippet's whitespace is
+collapsed. `\|` is a literal pipe. A row left with no cells,
 such as one that held only avatar images, is dropped. Tables inside fenced code
 are left alone, and a pipe inside inline code does not split a cell. No
 migration.

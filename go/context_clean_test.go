@@ -25,7 +25,7 @@ func TestCleanContextText(t *testing.T) {
 				"![](https://cdn-avatars.huggingface.co/v1/production/uploads/x.png) " +
 				"| [fireworks-ai](/fireworks-ai) fastest |",
 			base: "https://huggingface.co/models",
-			want: "$0.44 · $1.32 · [fireworks-ai](https://huggingface.co/fireworks-ai) fastest",
+			want: "$0.44 · $1.32 · [fireworks-ai](https://huggingface.co/fireworks-ai) fastest;",
 		},
 		{
 			name: "html image and image-only lines dropped",
@@ -121,7 +121,7 @@ func TestCleanContextText(t *testing.T) {
 			name: "table rows flattened, delimiter rows dropped",
 			text: "| ![a](x.png) | b |\n|---|:--:|\n| ![c](y.png) | |\n|  1 |  2  |\nafter",
 			base: cleanBase,
-			want: "b\n1 · 2\nafter",
+			want: "b;\n1 · 2;\nafter",
 		},
 		{
 			name: "Hugging Face leaderboard table flattened",
@@ -135,33 +135,39 @@ func TestCleanContextText(t *testing.T) {
 				"| 2 | Qwen2 | ![](https://cdn-avatars.huggingface.co/e.png) qwen | 88 |",
 			base: "https://huggingface.co/spaces/lb",
 			want: "Open LLM leaderboard\n\n" +
-				"Rank · Model · Provider · Score\n" +
-				"1 · [Llama-3](https://huggingface.co/meta/llama) · meta · 90.1\n" +
-				"2 · Qwen2 · qwen · 88",
+				"Rank · Model · Provider · Score;\n" +
+				"1 · [Llama-3](https://huggingface.co/meta/llama) · meta · 90.1;\n" +
+				"2 · Qwen2 · qwen · 88;",
 		},
 		{
 			name: "table without outer pipes flattened",
 			text: "Name | Price\n--- | ---:\nA | $1\nB | $2\n\nprose",
 			base: cleanBase,
-			want: "Name · Price\nA · $1\nB · $2\n\nprose",
+			want: "Name · Price;\nA · $1;\nB · $2;\n\nprose",
 		},
 		{
 			name: "escaped pipe in a cell is a literal pipe",
 			text: `| op | meaning |` + "\n|---|---|\n" + `| a \| b | either |`,
 			base: cleanBase,
-			want: "op · meaning\na | b · either",
+			want: "op · meaning;\na | b · either;",
 		},
 		{
 			name: "pipe inside inline code is not a cell separator",
 			text: "| flag | use |\n|---|---|\n| `a|b` | union |",
 			base: cleanBase,
-			want: "flag · use\n`a|b` · union",
+			want: "flag · use;\n`a|b` · union;",
 		},
 		{
 			name: "table inside a fence left alone",
 			text: "```\n| a | b |\n|---|---|\n| 1 | 2 |\n```\n| c | d |",
 			base: cleanBase,
-			want: "```\n| a | b |\n|---|---|\n| 1 | 2 |\n```\nc · d",
+			want: "```\n| a | b |\n|---|---|\n| 1 | 2 |\n```\nc · d;",
+		},
+		{
+			name: "row already ending in a semicolon gets no second one",
+			text: "| a | b; |\n|---|---|\n| `x;` | y |\n| c | `d;` |",
+			base: cleanBase,
+			want: "a · b;\n`x;` · y;\nc · `d;`;",
 		},
 		{
 			name: "prose with a single pipe left alone",

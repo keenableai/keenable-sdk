@@ -87,7 +87,7 @@ prompt := "Answer using only these sources, citing them by number.\n\n" + contex
 
 It emits `[1] Title (url)` headers followed by the page text. Each result's
 text is cleaned (images dropped, relative links resolved, markdown tables
-flattened to `cell · cell` rows) and cut at a word boundary to
+flattened to `cell · cell;` rows) and cut at a word boundary to
 `MaxSnippetChars` (2000 by default, negative for no cap), ending in "…".
 Results are then added whole until the character budget is reached (`MaxChars`
 12000 by default). The first result is kept even when it alone is over the

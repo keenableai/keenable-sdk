@@ -20,7 +20,7 @@ def test_image_inside_table_cell_is_removed() -> None:
         "| [fireworks-ai](/fireworks-ai) fastest |"
     )
     assert clean_context_text(row, "https://huggingface.co/models") == (
-        "$0.44 · $1.32 · [fireworks-ai](https://huggingface.co/fireworks-ai) fastest"
+        "$0.44 · $1.32 · [fireworks-ai](https://huggingface.co/fireworks-ai) fastest;"
     )
 
 
@@ -108,7 +108,7 @@ def test_adjacent_path_link_is_resolved() -> None:
 
 def test_table_rows_are_flattened_and_delimiter_rows_dropped() -> None:
     text = "| ![a](x.png) | b |\n|---|:--:|\n| ![c](y.png) | |\n|  1 |  2  |\nafter"
-    assert clean_context_text(text, BASE) == "b\n1 · 2\nafter"
+    assert clean_context_text(text, BASE) == "b;\n1 · 2;\nafter"
 
 
 def test_huggingface_leaderboard_table_is_flattened() -> None:
@@ -127,32 +127,37 @@ def test_huggingface_leaderboard_table_is_flattened() -> None:
     )
     assert clean_context_text(text, "https://huggingface.co/spaces/lb") == (
         "Open LLM leaderboard\n\n"
-        "Rank · Model · Provider · Score\n"
-        "1 · [Llama-3](https://huggingface.co/meta/llama) · meta · 90.1\n"
-        "2 · Qwen2 · qwen · 88"
+        "Rank · Model · Provider · Score;\n"
+        "1 · [Llama-3](https://huggingface.co/meta/llama) · meta · 90.1;\n"
+        "2 · Qwen2 · qwen · 88;"
     )
 
 
 def test_table_without_outer_pipes_is_flattened() -> None:
     text = "Name | Price\n--- | ---:\nA | $1\nB | $2\n\nprose"
-    assert clean_context_text(text, BASE) == "Name · Price\nA · $1\nB · $2\n\nprose"
+    assert clean_context_text(text, BASE) == "Name · Price;\nA · $1;\nB · $2;\n\nprose"
 
 
 def test_escaped_pipe_in_a_cell_is_a_literal_pipe() -> None:
     text = "| op | meaning |\n|---|---|\n| a \\| b | either |"
-    assert clean_context_text(text, BASE) == "op · meaning\na | b · either"
+    assert clean_context_text(text, BASE) == "op · meaning;\na | b · either;"
 
 
 def test_pipe_inside_inline_code_is_not_a_cell_separator() -> None:
     text = "| flag | use |\n|---|---|\n| `a|b` | union |"
-    assert clean_context_text(text, BASE) == "flag · use\n`a|b` · union"
+    assert clean_context_text(text, BASE) == "flag · use;\n`a|b` · union;"
 
 
 def test_table_inside_a_fence_is_left_alone() -> None:
     text = "```\n| a | b |\n|---|---|\n| 1 | 2 |\n```\n| c | d |"
     assert clean_context_text(text, BASE) == (
-        "```\n| a | b |\n|---|---|\n| 1 | 2 |\n```\nc · d"
+        "```\n| a | b |\n|---|---|\n| 1 | 2 |\n```\nc · d;"
     )
+
+
+def test_row_already_ending_in_a_semicolon_gets_no_second_one() -> None:
+    text = "| a | b; |\n|---|---|\n| `x;` | y |\n| c | `d;` |"
+    assert clean_context_text(text, BASE) == "a · b;\n`x;` · y;\nc · `d;`;"
 
 
 def test_prose_with_a_single_pipe_is_left_alone() -> None:

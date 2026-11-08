@@ -185,7 +185,8 @@ def _clean_context_text(text: str, base_url: str) -> str:
     page the text came from), or reduced to their text when that is not
     possible. Markdown tables are flattened: delimiter rows (``|---|:-:|``)
     are dropped, and each row becomes its non-empty cells joined with " · "
-    (``\\|`` is a literal pipe); a row left with no cells is dropped. Fenced
+    and ended with ";" (``\\|`` is a literal pipe), so rows stay apart once
+    whitespace is collapsed; a row left with no cells is dropped. Fenced
     code blocks and inline code spans are left alone, and so is
     ``name[i](x)``, which is code rather than a link. Other lines are tidied
     only if they changed: runs of spaces squeezed, and the line dropped if
@@ -230,7 +231,8 @@ def _clean_context_text(text: str, base_url: str) -> str:
             in_table = True
             cells = _table_cells(cleaned)
             if cells:
-                out.append(_restore_code_spans(" · ".join(cells), spans))
+                row = _restore_code_spans(" · ".join(cells), spans)
+                out.append(row if row.endswith(";") else row + ";")
             continue
         in_table = False
         if cleaned == protected:

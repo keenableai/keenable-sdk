@@ -178,8 +178,9 @@ function protectCodeSpans(line: string): { protected: string; spans: string[] } 
  * kept as written; relative links are resolved against `baseUrl` (the page the
  * text came from), or reduced to their text when that is not possible.
  * Markdown tables are flattened: delimiter rows (`|---|:-:|`) are dropped, and
- * each row becomes its non-empty cells joined with " · " (`\|` is a literal
- * pipe); a row left with no cells is dropped. Fenced code blocks and inline
+ * each row becomes its non-empty cells joined with " · " and ended with ";"
+ * (`\|` is a literal pipe), so rows stay apart once whitespace is collapsed;
+ * a row left with no cells is dropped. Fenced code blocks and inline
  * code spans are left alone, and so is `name[i](x)`, which is code rather than
  * a link. Other lines are tidied only if they changed: runs of spaces
  * squeezed, and the line dropped if nothing but pipes and dashes is left. Text
@@ -229,7 +230,10 @@ export function cleanContextText(text: string, baseUrl: string): string {
     ) {
       inTable = true;
       const cells = tableCells(cleaned);
-      if (cells.length) out.push(restoreCodeSpans(cells.join(" · "), spans));
+      if (cells.length) {
+        const row = restoreCodeSpans(cells.join(" · "), spans);
+        out.push(row.endsWith(";") ? row : `${row};`);
+      }
       return;
     }
     inTable = false;
