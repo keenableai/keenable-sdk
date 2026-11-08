@@ -16,6 +16,7 @@
 export {
   DEFAULT_BASE_URL,
   DEFAULT_CONTEXT_MAX_CHARS,
+  DEFAULT_CONTEXT_MAX_SNIPPET_CHARS,
   Keenable,
   Page,
   SearchResponse,

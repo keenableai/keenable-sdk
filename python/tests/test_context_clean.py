@@ -20,8 +20,7 @@ def test_image_inside_table_cell_is_removed() -> None:
         "| [fireworks-ai](/fireworks-ai) fastest |"
     )
     assert clean_context_text(row, "https://huggingface.co/models") == (
-        "| $0.44 | $1.32 | "
-        "| [fireworks-ai](https://huggingface.co/fireworks-ai) fastest |"
+        "$0.44 · $1.32 · [fireworks-ai](https://huggingface.co/fireworks-ai) fastest;"
     )
 
 
@@ -59,7 +58,7 @@ def test_absolute_link_is_unchanged() -> None:
 
 
 def test_text_without_markup_is_unchanged_byte_for_byte() -> None:
-    text = "Plain  text\n\n|  a | b |\n|---|---|\n  indented\r\ntrailing  \n"
+    text = "Plain  text\n\n  indented\r\ntrailing  \nCost | value, said nobody\n"
     assert clean_context_text(text, BASE) == text
 
 
@@ -107,9 +106,80 @@ def test_adjacent_path_link_is_resolved() -> None:
     )
 
 
-def test_table_header_row_of_images_is_kept() -> None:
-    text = "| ![a](x.png) | b |\n|---|---|\n| ![c](y.png) | |\n| 1 | 2 |"
-    assert clean_context_text(text, BASE) == "| | b |\n|---|---|\n| 1 | 2 |"
+def test_table_rows_are_flattened_and_delimiter_rows_dropped() -> None:
+    text = "| ![a](x.png) | b |\n|---|:--:|\n| ![c](y.png) | |\n|  1 |  2  |\nafter"
+    assert clean_context_text(text, BASE) == "b;\n1 · 2;\nafter"
+
+
+def test_huggingface_leaderboard_table_is_flattened() -> None:
+    avatar = "https://cdn-avatars.huggingface.co/v1/production/uploads/{}.png"
+    text = "\n".join(
+        [
+            "Open LLM leaderboard",
+            "",
+            "| Rank | Model | Provider | Score |",
+            "|---:|:---|---|:-:|",
+            f"| 1 | ![avatar]({avatar.format('a')}) [Llama-3](/meta/llama) "
+            f"| ![avatar]({avatar.format('b')}) meta | 90.1 |",
+            f"| ![]({avatar.format('c')}) | ![]({avatar.format('d')}) | | |",
+            "| 2 | Qwen2 | ![](https://cdn-avatars.huggingface.co/e.png) qwen | 88 |",
+        ]
+    )
+    assert clean_context_text(text, "https://huggingface.co/spaces/lb") == (
+        "Open LLM leaderboard\n\n"
+        "Rank · Model · Provider · Score;\n"
+        "1 · [Llama-3](https://huggingface.co/meta/llama) · meta · 90.1;\n"
+        "2 · Qwen2 · qwen · 88;"
+    )
+
+
+def test_table_without_outer_pipes_is_flattened() -> None:
+    text = "Name | Price\n--- | ---:\nA | $1\nB | $2\n\nprose"
+    assert clean_context_text(text, BASE) == "Name · Price;\nA · $1;\nB · $2;\n\nprose"
+
+
+def test_escaped_pipe_in_a_cell_is_a_literal_pipe() -> None:
+    text = "| op | meaning |\n|---|---|\n| a \\| b | either |"
+    assert clean_context_text(text, BASE) == "op · meaning;\na | b · either;"
+
+
+def test_pipe_inside_inline_code_is_not_a_cell_separator() -> None:
+    text = "| flag | use |\n|---|---|\n| `a|b` | union |"
+    assert clean_context_text(text, BASE) == "flag · use;\n`a|b` · union;"
+
+
+def test_table_inside_a_fence_is_left_alone() -> None:
+    text = "```\n| a | b |\n|---|---|\n| 1 | 2 |\n```\n| c | d |"
+    assert clean_context_text(text, BASE) == (
+        "```\n| a | b |\n|---|---|\n| 1 | 2 |\n```\nc · d;"
+    )
+
+
+def test_row_already_ending_in_a_semicolon_gets_no_second_one() -> None:
+    text = "| a | b; |\n|---|---|\n| `x;` | y |\n| c | `d;` |"
+    assert clean_context_text(text, BASE) == "a · b;\n`x;` · y;\nc · `d;`;"
+
+
+def test_only_an_odd_backslash_run_escapes_a_pipe() -> None:
+    text = "| x |\n|---|\n| a \\| b |\n| a \\\\| b |\n| a \\\\\\| b |"
+    assert clean_context_text(text, BASE) == "x;\na | b;\na \\\\ · b;\na \\\\| b;"
+
+
+def test_prose_that_starts_with_a_pipe_is_left_alone() -> None:
+    text = "|x| is the absolute value of x\n| Warning: a | b\n|x|\n| a \\| b |"
+    assert clean_context_text(text, BASE) == text
+
+
+def test_row_shaped_line_without_a_header_is_flattened() -> None:
+    text = "...leaderboard\n| 1 | Llama | 90 |\n| 2 | Qwen | 88 |"
+    assert clean_context_text(text, BASE) == (
+        "...leaderboard\n1 · Llama · 90;\n2 · Qwen · 88;"
+    )
+
+
+def test_prose_with_a_single_pipe_is_left_alone() -> None:
+    text = "Home | About us\nUse a | b to pipe.\n`x | y`"
+    assert clean_context_text(text, BASE) == text
 
 
 def test_brackets_in_alt_and_parentheses_in_urls() -> None:
@@ -160,3 +230,64 @@ def test_page_budget_counts_cleaned_length() -> None:
     expected = "[1] T (https://example.com/p)\nReal text. See [more](https://example.com/more)."
     assert page.to_context(max_chars=len(expected)) == expected
     assert page.content.startswith(noise)
+
+
+def _response(*snippets: str) -> SearchResponse:
+    return SearchResponse._from_json(
+        {
+            "results": [
+                {"title": f"T{i}", "url": f"https://e.com/{i}", "snippet": snippet}
+                for i, snippet in enumerate(snippets, start=1)
+            ]
+        },
+        "q",
+    )
+
+
+def test_long_snippet_is_capped_at_a_word_boundary() -> None:
+    words = " ".join(["word"] * 1_000)  # 4,999 characters
+    context = _response(words).to_context()
+    body = context.split("\n", 1)[1]
+    assert body.endswith("word…")
+    # The last space at or before 2,000 sits at 1,999; the cut drops it.
+    assert len(body) == 1_999 + 1
+    assert words in _response(words).results[0].snippet
+
+
+def test_snippet_cap_cuts_at_a_space_exactly_at_the_limit() -> None:
+    response = _response("aaaa bbbb cccc")
+    assert response.to_context(max_snippet_chars=4).endswith("\naaaa…")
+    assert response.to_context(max_snippet_chars=7).endswith("\naaaa…")
+    assert response.to_context(max_snippet_chars=9).endswith("\naaaa bbbb…")
+
+
+def test_snippet_cap_hard_cuts_text_without_spaces() -> None:
+    response = _response("x" * 50)
+    assert response.to_context(max_snippet_chars=10).endswith("\n" + "x" * 10 + "…")
+
+
+def test_snippet_at_or_under_the_cap_is_untouched() -> None:
+    response = _response("aaaa bbbb")
+    assert response.to_context(max_snippet_chars=9).endswith("\naaaa bbbb")
+
+
+def test_snippet_cap_none_disables_it() -> None:
+    long = "y " * 3_000
+    context = _response(long).to_context(max_snippet_chars=None, max_chars=100_000)
+    assert context.endswith(long.strip())
+
+
+def test_budget_counts_the_capped_snippet() -> None:
+    long = " ".join(["word"] * 1_000)
+    response = _response(long, long, long)
+    # Uncapped, the first result alone is over budget; capped, all three fit.
+    assert len(response.cited(max_chars=6_200)) == 3
+    assert len(response.cited(max_chars=6_200, max_snippet_chars=None)) == 1
+    context = response.to_context(max_chars=6_200)
+    assert context.count("…") == 3
+
+
+def test_first_result_is_kept_even_over_the_budget() -> None:
+    response = _response("a " * 100, "b")
+    cited = response.cited(max_chars=10, max_snippet_chars=None)
+    assert [r.title for r in cited] == ["T1"]

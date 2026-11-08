@@ -24,13 +24,20 @@ from .errors import (
     KeenableTimeoutError,
     RateLimitInfo,
 )
-from .models import DEFAULT_CONTEXT_MAX_CHARS, Page, SearchResponse, SearchResult
+from .models import (
+    DEFAULT_CONTEXT_MAX_CHARS,
+    DEFAULT_CONTEXT_MAX_SNIPPET_CHARS,
+    Page,
+    SearchResponse,
+    SearchResult,
+)
 from .tools import FETCH_TOOL, SEARCH_TOOL, TOOLS, arun_tool_call, run_tool_call
 
 __all__ = [
     "AsyncKeenable",
     "DEFAULT_BASE_URL",
     "DEFAULT_CONTEXT_MAX_CHARS",
+    "DEFAULT_CONTEXT_MAX_SNIPPET_CHARS",
     "DEFAULT_MAX_RETRIES",
     "FETCH_TOOL",
     "Keenable",

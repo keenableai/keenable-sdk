@@ -9,7 +9,14 @@ import {
 } from "./errors.js";
 import type { KeenableAPIErrorDetails, KeenableErrorType, RateLimitInfo } from "./errors.js";
 import { SEARCH_FILTERS } from "./filters.js";
-import { cleanContextText, collapse, nonEmpty, normalizeHost, readEnv } from "./internal.js";
+import {
+  capSnippet,
+  cleanContextText,
+  collapse,
+  nonEmpty,
+  normalizeHost,
+  readEnv,
+} from "./internal.js";
 import type {
   KeenableOptions,
   RequestOptions,
@@ -25,6 +32,12 @@ const VERSION = typeof __VERSION__ === "string" ? __VERSION__ : "0.0.0-dev";
 
 export const DEFAULT_BASE_URL = "https://api.keenable.ai";
 export const DEFAULT_CONTEXT_MAX_CHARS = 12_000;
+/**
+ * Default per-result cap for `SearchResponse.toContext()`. Search snippets are
+ * often whole pages (4,000 to 13,000 characters); without a cap the first one
+ * or two results eat the budget and crowd out every other source.
+ */
+export const DEFAULT_CONTEXT_MAX_SNIPPET_CHARS = 2_000;
 const DEFAULT_TIMEOUT_MS = 30_000;
 export const DEFAULT_MAX_RETRIES = 2;
 
@@ -153,8 +166,18 @@ function sourceHeader(index: number, title: string, url: string, date?: string):
 }
 
 /** The text rendered under a search result's header, as budgeted. */
-function resultBody(result: SearchResult): string {
-  return collapse(cleanContextText(result.snippet || result.description || "", result.url));
+function resultBody(result: SearchResult, maxSnippetChars: number | null): string {
+  return capSnippet(
+    collapse(cleanContextText(result.snippet || result.description || "", result.url)),
+    maxSnippetChars,
+  );
+}
+
+/** The per-result cap `toContext()` applies: `null` means none. */
+function snippetCap(options: ToContextOptions): number | null {
+  return options.maxSnippetChars === undefined
+    ? DEFAULT_CONTEXT_MAX_SNIPPET_CHARS
+    : options.maxSnippetChars;
 }
 
 /** One rendered source: its header line, then its text. */
@@ -199,11 +222,12 @@ export class SearchResponse {
    * Use this to print a source list that matches the citations in a model's
    * answer: index 0 here is the source the model cites as `[1]`. Without it, a
    * caller listing every result would number sources the model never saw once
-   * the budget trimmed them.
+   * the budget trimmed them. Takes the same options as `toContext()`.
    */
   cited(options: ToContextOptions = {}): SearchResult[] {
     const maxChars = options.maxChars ?? DEFAULT_CONTEXT_MAX_CHARS;
     const includeDates = options.includeDates ?? true;
+    const maxSnippetChars = snippetCap(options);
     const selected =
       options.maxResults === undefined
         ? this.results
@@ -219,7 +243,7 @@ export class SearchResponse {
         result.url,
         includeDates ? result.publishedAt : undefined,
       );
-      const body = resultBody(result);
+      const body = resultBody(result, maxSnippetChars);
       // Measure before building: past the budget the block is discarded, and
       // each discarded snippet would be kilobytes of throwaway string.
       const blockLength = header.length + (body ? body.length + 1 : 0);
@@ -236,14 +260,16 @@ export class SearchResponse {
    * Render the results as a numbered, citable block for a prompt.
    *
    * Each result becomes a `[n] title (url)` header followed by its page text,
-   * which lets the model cite sources by number. Results are added whole until
-   * the budget is reached, so a trimmed context never ends mid-sentence.
-   * Snippets are cleaned first (images dropped, relative links resolved),
-   * and the budget counts the cleaned text; `snippet` itself is left
-   * untouched.
+   * which lets the model cite sources by number. Snippets are cleaned first
+   * (images dropped, relative links resolved, tables flattened), then each is
+   * cut to `maxSnippetChars` at a word boundary and ends in "…". Results are
+   * then added whole until `maxChars` is reached, and the budget counts the
+   * cleaned, capped text; `snippet` itself is left untouched. The first result
+   * is always kept, even if it alone exceeds `maxChars`.
    */
   toContext(options: ToContextOptions = {}): string {
     const includeDates = options.includeDates ?? true;
+    const maxSnippetChars = snippetCap(options);
     return this.cited(options)
       .map((result, index) =>
         contextBlock(
@@ -253,7 +279,7 @@ export class SearchResponse {
             result.url,
             includeDates ? result.publishedAt : undefined,
           ),
-          resultBody(result),
+          resultBody(result, maxSnippetChars),
         ),
       )
       .join("\n\n");

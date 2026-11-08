@@ -26,6 +26,10 @@ const (
 	// DefaultContextMaxChars is the ToContext budget: about 3k tokens, enough
 	// for a handful of results without crowding out the rest of the prompt.
 	DefaultContextMaxChars = 12_000
+	// DefaultContextMaxSnippetChars is the per-result cap ToContext applies
+	// to page text. Snippets are often whole pages (4,000 to 13,000
+	// characters); uncapped, one or two eat the budget meant for every source.
+	DefaultContextMaxSnippetChars = 2_000
 	// DefaultTimeout is the deadline for one request, including the body.
 	DefaultTimeout = 30 * time.Second
 

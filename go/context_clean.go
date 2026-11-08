@@ -33,12 +33,17 @@ var (
 //
 // Markdown images and <img> tags are removed. Links with an absolute URL are
 // kept as written; relative links are resolved against baseURL (the page the
-// text came from), or reduced to their text when that is not possible. Fenced
-// code blocks and inline code spans are left alone, and so is name[i](x),
-// which is code rather than a link. Only lines that changed are tidied: runs
-// of spaces squeezed, and the line dropped if nothing but table pipes and
-// dashes is left (unless it is a table's header row). Text without such markup
-// is returned unchanged.
+// text came from), or reduced to their text when that is not possible.
+// Markdown tables are flattened: delimiter rows (|---|:-:|) are dropped, and
+// each row becomes its non-empty cells joined with " · " and ended with ";"
+// (\| is a literal pipe), so rows stay apart once whitespace is collapsed;
+// a row left with no cells is dropped. A line is a row when it sits under
+// another row or over a delimiter row, or has a row's shape on its own
+// (| a | b |). Fenced code blocks and inline
+// code spans are left alone, and so is name[i](x), which is code rather than
+// a link. Other lines are tidied only if they changed: runs of spaces
+// squeezed, and the line dropped if nothing but pipes and dashes is left.
+// Text without images, links or tables is returned unchanged.
 func cleanContextText(text, baseURL string) string {
 	var base *url.URL
 	if u, err := url.Parse(baseURL); err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" {
@@ -47,6 +52,7 @@ func cleanContextText(text, baseURL string) string {
 	lines := strings.Split(text, "\n")
 	out := make([]string, 0, len(lines))
 	fence := ""
+	inTable := false
 	for i, line := range lines {
 		marker := fenceLine.FindStringSubmatch(line)
 		run, info := "", ""
@@ -62,13 +68,34 @@ func cleanContextText(text, baseURL string) string {
 		}
 		if run != "" && !(run[0] == '`' && strings.Contains(info, "`")) {
 			fence = run
+			inTable = false
 			out = append(out, line)
+			continue
+		}
+		if isTableDelimiter(line) {
+			inTable = true
 			continue
 		}
 
 		protected, spans := protectCodeSpans(line)
 		cleaned := htmlImage.ReplaceAllString(mdImage.ReplaceAllString(protected, ""), "")
 		cleaned = replaceLinks(cleaned, base)
+		// A table row has a cell pipe and sits under another row or over a
+		// delimiter row, or has a row's shape on its own (a snippet can start
+		// below the header).
+		if cellPipes(cleaned) > 0 && (inTable ||
+			(i+1 < len(lines) && isTableDelimiter(lines[i+1])) || looksLikeRow(cleaned)) {
+			inTable = true
+			if cells := tableCells(cleaned); len(cells) > 0 {
+				row := restoreCodeSpans(strings.Join(cells, " · "), spans)
+				if !strings.HasSuffix(row, ";") {
+					row += ";"
+				}
+				out = append(out, row)
+			}
+			continue
+		}
+		inTable = false
 		if cleaned == protected {
 			out = append(out, line)
 			continue
@@ -76,20 +103,10 @@ func cleanContextText(text, baseURL string) string {
 		rest := strings.TrimLeft(cleaned, " \t")
 		indent := cleaned[:len(cleaned)-len(rest)]
 		cleaned = indent + strings.TrimRightFunc(spaceRun.ReplaceAllString(rest, " "), unicode.IsSpace)
-		if onlyTableRule.MatchString(cleaned) &&
-			!(strings.Contains(cleaned, "|") && i+1 < len(lines) && isTableDelimiter(lines[i+1])) {
+		if onlyTableRule.MatchString(cleaned) {
 			continue
 		}
-		if len(spans) > 0 {
-			cleaned = placeholder.ReplaceAllStringFunc(cleaned, func(p string) string {
-				n, err := strconv.Atoi(p[1 : len(p)-1])
-				if err != nil || n >= len(spans) {
-					return p
-				}
-				return spans[n]
-			})
-		}
-		out = append(out, cleaned)
+		out = append(out, restoreCodeSpans(cleaned, spans))
 	}
 	return strings.Join(out, "\n")
 }
@@ -144,6 +161,84 @@ func protectCodeSpans(line string) (string, []string) {
 		i = closer
 	}
 	return b.String(), spans
+}
+
+func restoreCodeSpans(text string, spans []string) string {
+	if len(spans) == 0 {
+		return text
+	}
+	return placeholder.ReplaceAllStringFunc(text, func(p string) string {
+		n, err := strconv.Atoi(p[1 : len(p)-1])
+		if err != nil || n >= len(spans) {
+			return p
+		}
+		return spans[n]
+	})
+}
+
+// cellPipes counts the | in line that separate cells. A pipe after an odd
+// run of backslashes (\|, \\\|) is escaped; after an even run (\\|) the
+// backslashes escape each other.
+func cellPipes(line string) int {
+	count, backslashes := 0, 0
+	for i := 0; i < len(line); i++ {
+		switch {
+		case line[i] == '\\':
+			backslashes++
+			continue
+		case line[i] == '|' && backslashes%2 == 0:
+			count++
+		}
+		backslashes = 0
+	}
+	return count
+}
+
+// looksLikeRow reports whether line has a row's shape on its own: | a | b |.
+// It must start and end with a cell pipe and hold at least two cells, so
+// prose that merely starts with a pipe (|x| is ...) is not a row.
+func looksLikeRow(line string) bool {
+	trimmed := strings.Trim(line, " \t\r")
+	if len(trimmed) < 2 || trimmed[0] != '|' || trimmed[len(trimmed)-1] != '|' {
+		return false
+	}
+	body := trimmed[:len(trimmed)-1]
+	escapes := len(body) - len(strings.TrimRight(body, `\`))
+	return escapes%2 == 0 && cellPipes(trimmed) >= 3
+}
+
+// tableCells returns the non-empty cells of a table row, trimmed, with \|
+// read as |.
+func tableCells(line string) []string {
+	var cells []string
+	cell := []byte{}
+	flush := func() {
+		c := strings.TrimSpace(spaceRun.ReplaceAllString(string(cell), " "))
+		if c != "" {
+			cells = append(cells, c)
+		}
+		cell = cell[:0]
+	}
+	backslashes := 0
+	for i := 0; i < len(line); i++ {
+		switch {
+		case line[i] == '|' && backslashes%2 == 1:
+			cell[len(cell)-1] = '|'
+		case line[i] == '|':
+			flush()
+		default:
+			cell = append(cell, line[i])
+			if line[i] == '\\' {
+				backslashes++
+			} else {
+				backslashes = 0
+			}
+			continue
+		}
+		backslashes = 0
+	}
+	flush()
+	return cells
 }
 
 func isTableDelimiter(line string) bool {
