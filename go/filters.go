@@ -150,6 +150,8 @@ func toolProperties() map[string]any {
 }
 
 // toolSearchOptions keeps only the filters the tool schema offers the model.
+// List filters come back in the map, as the model sent them, so the API
+// judges a malformed one.
 func toolSearchOptions(args map[string]any) (*SearchOptions, map[string]any) {
 	opts := &SearchOptions{}
 	lists := map[string]any{}

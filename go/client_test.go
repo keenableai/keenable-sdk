@@ -326,6 +326,17 @@ func TestToolCallSendsMalformedDomainListToAPI(t *testing.T) {
 	}
 }
 
+func TestToolCallUnencodableDomainListIsInvalidRequest(t *testing.T) {
+	c, seen := startKeyless(t, routed(), nil)
+	_, err := keenable.RunToolCall(context.Background(), c, "keenable_search", map[string]any{"query": "q", "exclude_domains": make(chan int)})
+	if !errors.As(err, new(*keenable.InvalidRequestError)) {
+		t.Fatalf("want an InvalidRequestError, got %v", err)
+	}
+	if len(*seen) != 0 {
+		t.Fatal("an unencodable argument sent a request")
+	}
+}
+
 func jsonEqual(a, b any) bool {
 	ja, errA := json.Marshal(a)
 	jb, errB := json.Marshal(b)

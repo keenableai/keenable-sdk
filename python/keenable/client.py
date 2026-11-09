@@ -20,6 +20,7 @@ from urllib.parse import unquote, urlsplit
 
 import httpx
 
+from ._filters import SEARCH_FILTERS
 from ._version import __version__
 from .errors import (
     KeenableAPIError,
@@ -251,10 +252,13 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
             if value is not None and value != ""
         }
     )
+    for f in SEARCH_FILTERS:
+        if f.json_type == "array" and f.name in payload:
+            payload[f.name] = _as_list(payload[f.name])
     return payload
 
 
-def _domain_list(value: Sequence[str] | None) -> Any:
+def _as_list(value: Any) -> Any:
     """Any other iterable as a list; anything else as given, for the API to judge."""
     if isinstance(value, Iterable) and not isinstance(value, (str, Mapping)):
         return list(value)
@@ -1030,7 +1034,7 @@ class Keenable(_BaseClient):
             query,
             mode,
             site=site,
-            exclude_domains=_domain_list(exclude_domains),
+            exclude_domains=exclude_domains,
             published_after=published_after,
             published_before=published_before,
             acquired_after=acquired_after,
@@ -1182,7 +1186,7 @@ class AsyncKeenable(_BaseClient):
             query,
             mode,
             site=site,
-            exclude_domains=_domain_list(exclude_domains),
+            exclude_domains=exclude_domains,
             published_after=published_after,
             published_before=published_before,
             acquired_after=acquired_after,

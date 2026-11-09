@@ -255,7 +255,7 @@ func (c *Client) search(ctx context.Context, query string, opts *SearchOptions, 
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return nil, &InvalidRequestError{msg: "could not encode the search request. Retry with a string query."}
+		return nil, &InvalidRequestError{msg: "could not encode the search request: " + err.Error() + ". Pass JSON-encodable arguments."}
 	}
 	var req *RequestOptions
 	if opts != nil {
