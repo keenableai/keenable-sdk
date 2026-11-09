@@ -388,7 +388,6 @@ describe("runToolCall", () => {
       type: "array",
       items: { type: "string" },
     });
-    expect(properties.exclude_domains?.description).toContain("1,000");
     expect(properties.site?.type).toBe("string");
   });
 

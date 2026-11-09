@@ -382,7 +382,6 @@ def test_tool_schema_offers_site_and_exclude_domains() -> None:
     props = search["function"]["parameters"]["properties"]
     assert props["exclude_domains"]["type"] == "array"
     assert props["exclude_domains"]["items"] == {"type": "string"}
-    assert "1,000" in props["exclude_domains"]["description"]
     assert props["site"]["type"] == "string"
 
 

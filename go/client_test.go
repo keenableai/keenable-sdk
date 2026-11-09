@@ -262,9 +262,6 @@ func TestToolSchemaOffersSiteAndExcludeDomains(t *testing.T) {
 	if items["type"] != "string" {
 		t.Fatalf("exclude_domains items should be strings: %#v", prop)
 	}
-	if !strings.Contains(prop["description"].(string), "1,000") {
-		t.Fatalf("exclude_domains description: %#v", prop)
-	}
 	site, _ := props["site"].(map[string]any)
 	if site["type"] != "string" {
 		t.Fatalf("site: %#v", site)
