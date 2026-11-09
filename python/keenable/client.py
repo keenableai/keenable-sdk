@@ -478,7 +478,8 @@ def _error_fields(
         "retryable": retryable if isinstance(retryable, bool) else None,
         "retry_after_seconds": retry_after,
         "request_id": _str_field(body, "request_id") or header_id,
-        "param": _str_field(body, "param"),
+        "param": _str_field(body, "param")
+        or (_str_field(body, "field") if invalid_filter else None),
         "limit": _limit_info(body.get("limit")),
         "value": _str_field(body, "value") if invalid_filter else None,
         "reason": _str_field(body, "reason") if invalid_filter else None,

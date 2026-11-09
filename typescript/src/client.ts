@@ -1123,7 +1123,7 @@ function errorDetails(
       retryAfterHeader(headers?.get("Retry-After")) ??
       seconds(b.retryAfter),
     requestId: nonEmpty(b.request_id) ?? nonEmpty(headers?.get("X-Request-Id")?.trim()),
-    param: nonEmpty(b.param),
+    param: nonEmpty(b.param) ?? (invalidFilter ? nonEmpty(b.field) : undefined),
     limit: rateLimitInfo(b.limit),
     value: invalidFilter ? nonEmpty(b.value) : undefined,
     reason: invalidFilter ? nonEmpty(b.reason) : undefined,

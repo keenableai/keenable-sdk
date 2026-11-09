@@ -907,6 +907,9 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 		api.Type = deriveType(status, api.APICode)
 	}
 	if status == 400 && stringField(obj, "error") == "invalid_filter" {
+		if api.Param == "" {
+			api.Param = stringField(obj, "field")
+		}
 		api.Value = stringField(obj, "value")
 		api.Reason = stringField(obj, "reason")
 	}

@@ -99,7 +99,8 @@ with a caller's own `httpx` client, `http.Client` or `fetch` too.
   leading byte order mark is ignored. A number too large for a double drops that
   field only.
 - `value` and `reason` are read only from a 400 whose `error` is
-  `invalid_filter`; `param` names the parameter they belong to.
+  `invalid_filter`; `param` names the parameter they belong to, from the
+  body's `param`, else its `field`.
 - String fields count only when they are strings with more than whitespace;
   `retryable` only when boolean; delays only when finite numbers at least 0
   (capped at a year); `limit.max` only when an integer from 0 to 2^53 - 1.
