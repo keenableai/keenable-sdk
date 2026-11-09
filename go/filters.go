@@ -234,10 +234,6 @@ func truthy(v any) bool {
 		return t != 0
 	case json.Number:
 		return t != "" && t != "0"
-	case []any:
-		return len(t) > 0
-	case []string:
-		return len(t) > 0
 	default:
 		return true
 	}

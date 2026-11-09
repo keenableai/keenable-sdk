@@ -12,7 +12,6 @@ from keenable import (
     TOOLS,
     AsyncKeenable,
     Keenable,
-    KeenableAPIError,
     KeenableAuthError,
     KeenableInvalidRequestError,
     KeenableRateLimitError,
@@ -136,35 +135,6 @@ def test_search_sends_max_results_and_query_time() -> None:
     assert payload["query_time"] == "2026-05-01"
 
 
-def test_search_sends_exclude_domains_as_an_array() -> None:
-    keenable, seen = _client(_ok(SEARCH_BODY))
-    keenable.search("q", exclude_domains=("pinterest.com", "quora.com"))
-    keenable.search("q", site="arxiv.org")
-
-    first, second = (json.loads(r.content) for r in seen)
-    assert first["exclude_domains"] == ["pinterest.com", "quora.com"]
-    assert "site" not in first
-    assert second["site"] == "arxiv.org"
-    assert "exclude_domains" not in second
-
-
-def test_search_sends_unnormalized_domain_entries_verbatim() -> None:
-    keenable, seen = _client(_ok(SEARCH_BODY))
-    raw = [" https://WWW.Spam.com/ ", "spam.com", "spam.com", "spam.com/blog", ".gov"]
-    keenable.search("q", exclude_domains=raw)
-
-    payload = json.loads(seen[0].content)
-    assert payload["exclude_domains"] == raw
-
-
-def test_search_passes_an_empty_domain_list_through() -> None:
-    keenable, seen = _client(_ok(SEARCH_BODY))
-    keenable.search("q", exclude_domains=[])
-
-    payload = json.loads(seen[0].content)
-    assert payload["exclude_domains"] == []
-
-
 @pytest.mark.parametrize(
     "make",
     [
@@ -190,15 +160,6 @@ def test_search_sends_a_lone_string_or_mapping_unchanged(value: Any) -> None:
 
     payload = json.loads(seen[0].content)
     assert payload["exclude_domains"] == value
-
-
-def test_site_still_works_next_to_the_domain_lists() -> None:
-    keenable, seen = _client(_ok(SEARCH_BODY))
-    keenable.search("q", site="arxiv.org", exclude_domains=["export.arxiv.org"])
-
-    payload = json.loads(seen[0].content)
-    assert payload["site"] == "arxiv.org"
-    assert payload["exclude_domains"] == ["export.arxiv.org"]
 
 
 def test_search_raw_keeps_the_filter_warning() -> None:
@@ -365,92 +326,6 @@ def test_rate_limit_and_auth_errors_carry_the_api_message() -> None:
         keenable.search("q")
 
 
-INVALID_FILTER_BODY = {
-    "error": "invalid_filter",
-    "message": (
-        'Invalid exclude_domains value "spam.com/blog": '
-        "paths are not supported; use the host spam.com"
-    ),
-    "field": "exclude_domains",
-    "value": "spam.com/blog",
-    "reason": "paths are not supported; use the host spam.com",
-    "type": "invalid_request_error",
-    "code": "invalid_parameter",
-    "fix": (
-        'Correct the "exclude_domains" entry "spam.com/blog" '
-        "(paths are not supported; use the host spam.com) and retry."
-    ),
-    "docs_url": "https://docs.keenable.ai/errors#invalid-parameter",
-    "retryable": False,
-    "param": "exclude_domains",
-}
-
-
-def test_invalid_filter_error_names_param_entry_and_reason() -> None:
-    keenable, _ = _client(_ok(INVALID_FILTER_BODY, status=400))
-    with pytest.raises(KeenableAPIError) as excinfo:
-        keenable.search("q", exclude_domains=["spam.com/blog"])
-
-    err = excinfo.value
-    assert err.status_code == 400
-    assert str(err) == (
-        'Keenable API error (400): Invalid exclude_domains value "spam.com/blog": '
-        "paths are not supported; use the host spam.com. "
-        'Correct the "exclude_domains" entry "spam.com/blog" '
-        "(paths are not supported; use the host spam.com) and retry. "
-        "(code: invalid_parameter)"
-    )
-    assert err.param == "exclude_domains"
-    assert err.value == "spam.com/blog"
-    assert err.reason == "paths are not supported; use the host spam.com"
-    assert err.retryable is False
-
-
-def test_invalid_filter_error_without_a_value() -> None:
-    body = {
-        "error": "invalid_filter",
-        "message": "Invalid exclude_domains value: at most 1000 hosts",
-        "field": "exclude_domains",
-        "reason": "at most 1000 hosts",
-    }
-    keenable, _ = _client(_ok(body, status=400))
-    with pytest.raises(KeenableAPIError) as excinfo:
-        keenable.search("q", exclude_domains=["a.com"])
-
-    assert excinfo.value.value is None
-    assert excinfo.value.reason == "at most 1000 hosts"
-
-
-def test_other_400s_carry_no_filter_detail() -> None:
-    body = {"error": "Bad request", "message": "query is required", "value": "x"}
-    keenable, _ = _client(_ok(body, status=400))
-    with pytest.raises(KeenableAPIError) as excinfo:
-        keenable.search("q")
-
-    assert (excinfo.value.value, excinfo.value.reason) == (None, None)
-
-
-@pytest.mark.parametrize("status", [422, 429, 500])
-def test_invalid_filter_detail_is_only_read_on_a_400(status: int) -> None:
-    keenable, _ = _client(_ok(INVALID_FILTER_BODY, status=status))
-    with pytest.raises(KeenableAPIError) as excinfo:
-        keenable.search("q")
-
-    assert excinfo.value.status_code == status
-    assert (excinfo.value.value, excinfo.value.reason) == (None, None)
-
-
-@pytest.mark.parametrize("value", [7, ["a"], {"k": 1}, True, None])
-def test_invalid_filter_non_string_value_is_none(value: Any) -> None:
-    body = {**INVALID_FILTER_BODY, "value": value}
-    keenable, _ = _client(_ok(body, status=400))
-    with pytest.raises(KeenableAPIError) as excinfo:
-        keenable.search("q", exclude_domains=["a.com"])
-
-    assert excinfo.value.value is None
-    assert excinfo.value.param == "exclude_domains"
-
-
 def test_bad_base_url_is_rejected() -> None:
     with pytest.raises(KeenableInvalidRequestError):
         Keenable(base_url="ftp://api.keenable.ai")
@@ -556,17 +431,6 @@ def test_tool_schema_keeps_max_results_and_query_time_out() -> None:
     assert "query_time" not in props
 
 
-async def test_async_search_sends_exclude_domains() -> None:
-    keenable, seen = _aclient(_routed)
-    async with keenable:
-        await keenable.search("q", exclude_domains=["pinterest.com"])
-        await keenable.search("q", exclude_domains=[])
-
-    first, second = (json.loads(r.content) for r in seen)
-    assert first["exclude_domains"] == ["pinterest.com"]
-    assert second["exclude_domains"] == []
-
-
 async def test_async_client_mirrors_the_sync_one() -> None:
     keenable, seen = _aclient(_routed)
     async with keenable:
@@ -597,19 +461,6 @@ async def test_async_search_matches_the_sync_payloads() -> None:
     assert mixed["site"] == "arxiv.org"
     assert mixed["exclude_domains"] == ["export.arxiv.org"]
     assert lone["exclude_domains"] == "x"
-
-
-async def test_async_invalid_filter_error_names_param_entry_and_reason() -> None:
-    keenable, _ = _aclient(_ok(INVALID_FILTER_BODY, status=400))
-    async with keenable:
-        with pytest.raises(KeenableAPIError) as excinfo:
-            await keenable.search("q", exclude_domains=["spam.com/blog"])
-
-    err = excinfo.value
-    assert err.status_code == 400
-    assert err.param == "exclude_domains"
-    assert err.value == "spam.com/blog"
-    assert err.reason == "paths are not supported; use the host spam.com"
 
 
 async def test_async_tool_call_forwards_domain_lists_like_the_sync_one() -> None:

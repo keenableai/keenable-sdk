@@ -123,6 +123,8 @@ const ERROR_FIELDS = [
   "retry_after_seconds",
   "request_id",
   "param",
+  "value",
+  "reason",
   "limit",
 ] as const;
 const ERROR_LISTS = ["message_contains", "message_excludes", "absent"] as const;

@@ -229,6 +229,8 @@ func (c *Client) Search(ctx context.Context, query string, opts *SearchOptions) 
 	return c.search(ctx, query, opts, nil)
 }
 
+// search sends raw's values as given, over opts, so a tool call can pass a
+// list SearchOptions cannot hold for the API to reject.
 func (c *Client) search(ctx context.Context, query string, opts *SearchOptions, raw map[string]any) (*SearchResponse, error) {
 	if err := requireClient(c); err != nil {
 		return nil, err

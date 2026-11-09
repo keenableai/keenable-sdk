@@ -151,6 +151,8 @@ function errorFields(error: KeenableAPIError): Record<string, Json> {
     retry_after_seconds: error.retryAfterSeconds ?? null,
     request_id: error.requestId ?? null,
     param: error.param ?? null,
+    value: error.value ?? null,
+    reason: error.reason ?? null,
     limit,
   };
 }

@@ -98,12 +98,8 @@ function requireString(value: unknown, message: string): string {
 
 function toolValue(filter: Filter, value: unknown): unknown {
   if (filter.jsonType === "array") {
-    if (value === undefined || value === null) return undefined;
-    if (typeof value === "string") {
-      const single = nonEmpty(value);
-      return single === undefined ? undefined : [single];
-    }
-    return value;
+    if (value === undefined || value === null || value === "") return undefined;
+    return typeof value === "string" ? [value] : value;
   }
   return nonEmpty(value);
 }

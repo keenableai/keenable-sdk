@@ -255,11 +255,10 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
 
 
 def _domain_list(value: Sequence[str] | None) -> Any:
-    if value is None or isinstance(value, (str, Mapping)):
-        return value
-    if not isinstance(value, Iterable):
-        return value
-    return list(value)
+    """Any other iterable as a list; anything else as given, for the API to judge."""
+    if isinstance(value, Iterable) and not isinstance(value, (str, Mapping)):
+        return list(value)
+    return value
 
 
 # Codes about the page being fetched rather than about Keenable or the caller,

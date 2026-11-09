@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   Keenable,
-  KeenableAPIError,
   KeenableAuthError,
   KeenableConnectionError,
   KeenableInvalidRequestError,
@@ -130,27 +129,6 @@ describe("search", () => {
     expect(payload.query_time).toBe("2026-05-01");
   });
 
-  it("sends excludeDomains as an array", async () => {
-    const { client, seen } = mockClient(() => json(SEARCH_BODY));
-    await client.search("q", { excludeDomains: ["pinterest.com", "quora.com"] });
-    await client.search("q", { site: "arxiv.org" });
-
-    const payloads = seen.map((s) => JSON.parse(String(s.init.body)));
-    expect(payloads[0].exclude_domains).toEqual(["pinterest.com", "quora.com"]);
-    expect(payloads[0]).not.toHaveProperty("site");
-    expect(payloads[1].site).toBe("arxiv.org");
-    expect(payloads[1]).not.toHaveProperty("exclude_domains");
-  });
-
-  it("sends unnormalized domain entries verbatim for the API to clean up", async () => {
-    const { client, seen } = mockClient(() => json(SEARCH_BODY));
-    const raw = [" https://WWW.Spam.com/ ", "spam.com", "spam.com", "spam.com/blog", ".gov"];
-    await client.search("q", { excludeDomains: raw });
-
-    const payload = JSON.parse(String(seen[0]?.init.body));
-    expect(payload.exclude_domains).toEqual(raw);
-  });
-
   it("keeps the API's filter warning in raw", async () => {
     const body = { ...SEARCH_BODY, warning: "3 results were removed by your domain filter" };
     const { client } = mockClient(() => json(body));
@@ -158,14 +136,6 @@ describe("search", () => {
 
     expect(response.raw.warning).toBe("3 results were removed by your domain filter");
     expect(response.raw.results).toEqual(SEARCH_BODY.results);
-  });
-
-  it("passes an empty list through", async () => {
-    const { client, seen } = mockClient(() => json(SEARCH_BODY));
-    await client.search("q", { excludeDomains: [] });
-
-    const payload = JSON.parse(String(seen[0]?.init.body));
-    expect(payload.exclude_domains).toEqual([]);
   });
 
   it("uses the public endpoint and identifies itself when keyless", async () => {
@@ -360,84 +330,6 @@ describe("errors", () => {
     );
   });
 
-  // The 400 the API sends for a rejected exclude_domains entry.
-  const invalidFilterBody = {
-    error: "invalid_filter",
-    message: 'Invalid exclude_domains value "spam.com/blog": paths are not supported; use the host spam.com',
-    field: "exclude_domains",
-    value: "spam.com/blog",
-    reason: "paths are not supported; use the host spam.com",
-    type: "invalid_request_error",
-    code: "invalid_parameter",
-    fix: 'Correct the "exclude_domains" entry "spam.com/blog" (paths are not supported; use the host spam.com) and retry.',
-    docs_url: "https://docs.keenable.ai/errors#invalid-parameter",
-    retryable: false,
-    param: "exclude_domains",
-  };
-
-  it("names the param, entry and reason of a rejected domain filter", async () => {
-    const { client } = mockClient(() => json(invalidFilterBody, 400));
-    const error = await client
-      .search("q", { excludeDomains: ["spam.com/blog"] })
-      .catch((e: unknown) => e);
-
-    expect(error).toBeInstanceOf(KeenableAPIError);
-    const apiError = error as KeenableAPIError;
-    expect(apiError.statusCode).toBe(400);
-    expect(apiError.message).toBe(
-      'Keenable API error (400): Invalid exclude_domains value "spam.com/blog": paths are not supported; use the host spam.com. ' +
-        'Correct the "exclude_domains" entry "spam.com/blog" (paths are not supported; use the host spam.com) and retry. ' +
-        "(code: invalid_parameter)",
-    );
-    expect(apiError.param).toBe("exclude_domains");
-    expect(apiError.value).toBe("spam.com/blog");
-    expect(apiError.reason).toBe("paths are not supported; use the host spam.com");
-    expect(apiError.retryable).toBe(false);
-  });
-
-  it("leaves value unset when an invalid_filter body names no entry", async () => {
-    const body = {
-      error: "invalid_filter",
-      message: "Invalid exclude_domains value: at most 1000 hosts",
-      field: "exclude_domains",
-      reason: "at most 1000 hosts",
-    };
-    const { client } = mockClient(() => json(body, 400));
-    const error = (await client
-      .search("q", { excludeDomains: ["a.com"] })
-      .catch((e: unknown) => e)) as KeenableAPIError;
-    expect(error.value).toBeUndefined();
-    expect(error.reason).toBe("at most 1000 hosts");
-  });
-
-  it.each([
-    ["a list", ["a.com", "b.com"]],
-    ["a number", 5],
-    ["an object", { host: "a.com" }],
-    ["null", null],
-  ])("ignores %s as an invalid_filter value", async (_label, raw) => {
-    const { client } = mockClient(() => json({ ...invalidFilterBody, value: raw }, 400));
-    const error = (await client.search("q").catch((e: unknown) => e)) as KeenableAPIError;
-    expect(error.value).toBeUndefined();
-    expect(error.param).toBe("exclude_domains");
-  });
-
-  it.each([401, 422, 429, 500])("ignores an invalid_filter body on a %s", async (status) => {
-    const { client } = mockClient(() => json(invalidFilterBody, status));
-    const error = (await client.search("q").catch((e: unknown) => e)) as KeenableAPIError;
-    expect(error.statusCode).toBe(status);
-    expect(error.value).toBeUndefined();
-    expect(error.reason).toBeUndefined();
-  });
-
-  it("reads no filter detail from other 400s", async () => {
-    const body = { error: "Bad request", message: "query is required", value: "x" };
-    const { client } = mockClient(() => json(body, 400));
-    const error = (await client.search("q").catch((e: unknown) => e)) as KeenableAPIError;
-    expect(error.value).toBeUndefined();
-    expect(error.reason).toBeUndefined();
-  });
-
   it("rejects a non-https base URL", () => {
     expect(() => new Keenable({ baseUrl: "ftp://api.keenable.ai" })).toThrow(
       KeenableInvalidRequestError,
@@ -522,7 +414,7 @@ describe("runToolCall", () => {
     expect(list.exclude_domains).toEqual(["pinterest.com", "quora.com"]);
     expect(single.exclude_domains).toEqual(["spam.com"]);
     expect(absent).not.toHaveProperty("exclude_domains");
-    expect(blank).not.toHaveProperty("exclude_domains");
+    expect(blank.exclude_domains).toEqual(["   "]);
     expect(padded.exclude_domains).toEqual([" a.com,b.com "]);
   });
 

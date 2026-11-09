@@ -223,6 +223,8 @@ async def test_errors(kind: str, case: dict[str, Any], waits: list[float]) -> No
         "retry_after_seconds": error.retry_after_seconds,
         "request_id": error.request_id,
         "param": error.param,
+        "value": error.value,
+        "reason": error.reason,
         "limit": dataclasses.asdict(error.limit) if error.limit else None,
     }
     assert got == {key: want[key] for key in got}

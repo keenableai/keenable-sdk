@@ -98,6 +98,8 @@ with a caller's own `httpx` client, `http.Client` or `fetch` too.
 - JSON is strict: `NaN` and `Infinity` are not JSON, nor is trailing data. A
   leading byte order mark is ignored. A number too large for a double drops that
   field only.
+- `value` and `reason` are read only from a 400 whose `error` is
+  `invalid_filter`; `param` names the parameter they belong to.
 - String fields count only when they are strings with more than whitespace;
   `retryable` only when boolean; delays only when finite numbers at least 0
   (capped at a year); `limit.max` only when an integer from 0 to 2^53 - 1.
@@ -135,4 +137,5 @@ body's, else the trimmed `X-Request-Id` header.
   the invalid-request error, not a retried connection failure. `X-API-Key` is
   ignored: the key always comes from the client.
 - The query is a string with more than whitespace, sent as given. An empty
-  string filter is unset, and an unset mode is `pro`.
+  string filter is unset, and an unset mode is `pro`. A list filter
+  (`exclude_domains`) is sent as given, an empty list as `[]`.

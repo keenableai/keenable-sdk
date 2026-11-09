@@ -68,6 +68,8 @@ type conformance struct {
 			RetryAfterSeconds *float64 `json:"retry_after_seconds"`
 			RequestID         *string  `json:"request_id"`
 			Param             *string  `json:"param"`
+			Value             *string  `json:"value"`
+			Reason            *string  `json:"reason"`
 			Limit             *struct {
 				Scope    *string `json:"scope"`
 				Window   *string `json:"window"`
@@ -331,6 +333,8 @@ func TestConformanceErrors(t *testing.T) {
 			check("fix", api.Fix, want.Fix)
 			check("request_id", api.RequestID, want.RequestID)
 			check("param", api.Param, want.Param)
+			check("value", api.Value, want.Value)
+			check("reason", api.Reason, want.Reason)
 			if !reflect.DeepEqual(api.Retryable, want.Retryable) {
 				t.Errorf("retryable %v, want %v", api.Retryable, want.Retryable)
 			}
@@ -563,6 +567,11 @@ func TestConformanceSearchBody(t *testing.T) {
 					opts.Mode = str
 				case "site":
 					opts.Site = str
+				case "exclude_domains":
+					opts.ExcludeDomains = []string{}
+					for _, host := range v.([]any) {
+						opts.ExcludeDomains = append(opts.ExcludeDomains, host.(string))
+					}
 				case "published_after":
 					opts.PublishedAfter = str
 				case "published_before":
