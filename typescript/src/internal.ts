@@ -5,6 +5,38 @@ export function nonEmpty(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value : undefined;
 }
 
+// The last Unix second with a four-digit year, 9999-12-31T23:59:59Z. A larger
+// number is not a date the API sends (a millisecond value lands past it).
+const MAX_UNIX_SECONDS = 253_402_300_799;
+
+/**
+ * A date as the API sends it, as one ISO 8601 string, or undefined.
+ *
+ * Search sends ISO 8601 strings, kept as sent (when not blank). Fetch sends
+ * Unix seconds, which become ISO 8601 UTC to the second, such as
+ * "2024-05-01T12:00:00Z"; a fraction is dropped. A number below 1 (the API
+ * omits an unknown date rather than send 0), past the year 9999 or not finite
+ * is undefined, as is anything else.
+ */
+export function timestamp(value: unknown): string | undefined {
+  if (typeof value === "string") return nonEmpty(value);
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const seconds = Math.floor(value);
+  if (seconds < 1 || seconds > MAX_UNIX_SECONDS) return undefined;
+  return new Date(seconds * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+/** A JSON boolean, or undefined for anything else. */
+export function bool(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+/** A whole number from 0 to 2^53 - 1, or undefined for anything else. */
+export function count(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) return undefined;
+  return value + 0; // -0 is 0
+}
+
 /**
  * A URL's host in one canonical form: lowercased, without IPv6 brackets, and
  * without the trailing dot of a fully-qualified name.
@@ -90,6 +122,72 @@ function isTableDelimiter(line: string): boolean {
 }
 
 /**
+ * How many `|` in `line` separate cells. A pipe after an odd run of
+ * backslashes (`\|`, `\\\|`) is escaped; after an even run (`\\|`) the
+ * backslashes escape each other.
+ */
+function cellPipes(line: string): number {
+  let count = 0;
+  let backslashes = 0;
+  for (const ch of line) {
+    if (ch === "\\") {
+      backslashes += 1;
+      continue;
+    }
+    if (ch === "|" && backslashes % 2 === 0) count += 1;
+    backslashes = 0;
+  }
+  return count;
+}
+
+/**
+ * Whether `line` has a row's shape on its own: `| a | b |`. It must start and
+ * end with a cell pipe and hold at least two cells, so prose that merely
+ * starts with a pipe (`|x| is ...`) is not a row.
+ */
+function looksLikeRow(line: string): boolean {
+  // Trimmed by hand: /[ \t\r]+$/ is quadratic on long inner runs of spaces.
+  const isBlank = (ch: string) => ch === " " || ch === "\t" || ch === "\r";
+  let start = 0;
+  let end = line.length;
+  while (start < end && isBlank(line.charAt(start))) start += 1;
+  while (end > start && isBlank(line.charAt(end - 1))) end -= 1;
+  const trimmed = line.slice(start, end);
+  if (!(trimmed.startsWith("|") && trimmed.endsWith("|"))) return false;
+  const body = trimmed.slice(0, -1);
+  let escapes = 0;
+  while (escapes < body.length && body.charAt(body.length - 1 - escapes) === "\\") escapes += 1;
+  return escapes % 2 === 0 && cellPipes(trimmed) >= 3;
+}
+
+/** The non-empty cells of a table row, trimmed, with `\|` read as `|`. */
+function tableCells(line: string): string[] {
+  const cells: string[] = [];
+  let cell = "";
+  let backslashes = 0;
+  for (const ch of line) {
+    if (ch === "|" && backslashes % 2 === 1) {
+      cell = `${cell.slice(0, -1)}|`;
+    } else if (ch === "|") {
+      cells.push(cell);
+      cell = "";
+    } else {
+      cell += ch;
+      backslashes = ch === "\\" ? backslashes + 1 : 0;
+      continue;
+    }
+    backslashes = 0;
+  }
+  cells.push(cell);
+  return cells.map((c) => c.replace(/[ \t]+/g, " ").trim()).filter(Boolean);
+}
+
+function restoreCodeSpans(text: string, spans: string[]): string {
+  if (!spans.length) return text;
+  return text.replace(PLACEHOLDER, (_m, n: string) => spans[Number(n)] ?? "");
+}
+
+/**
  * Swap inline code spans for placeholders the cleanup patterns skip.
  * Opening and closing backtick runs must be the same length, so a shorter
  * run inside a longer span (``a ` ![x](y)``) stays protected.
@@ -141,17 +239,23 @@ function protectCodeSpans(line: string): { protected: string; spans: string[] } 
  *
  * Markdown images and `<img>` tags are removed. Links with an absolute URL are
  * kept as written; relative links are resolved against `baseUrl` (the page the
- * text came from), or reduced to their text when that is not possible. Fenced
- * code blocks and inline code spans are left alone, and so is `name[i](x)`,
- * which is code rather than a link. Only lines that changed are tidied: runs of
- * spaces squeezed, and the line dropped if nothing but table pipes and dashes
- * is left (unless it is a table's header row). Text without such markup is
- * returned unchanged.
+ * text came from), or reduced to their text when that is not possible.
+ * Markdown tables are flattened: delimiter rows (`|---|:-:|`) are dropped, and
+ * each row becomes its non-empty cells joined with " · " and ended with ";"
+ * (`\|` is a literal pipe), so rows stay apart once whitespace is collapsed;
+ * a row left with no cells is dropped. A line is a row when it sits under
+ * another row or over a delimiter row, or has a row's shape on its own
+ * (`| a | b |`). Fenced code blocks and inline
+ * code spans are left alone, and so is `name[i](x)`, which is code rather than
+ * a link. Other lines are tidied only if they changed: runs of spaces
+ * squeezed, and the line dropped if nothing but pipes and dashes is left. Text
+ * without images, links or tables is returned unchanged.
  */
 export function cleanContextText(text: string, baseUrl: string): string {
   const lines = text.split("\n");
   const out: string[] = [];
   let fence: string | undefined;
+  let inTable = false;
   lines.forEach((line, i) => {
     const marker = FENCE.exec(line);
     const run = marker?.[1] ?? "";
@@ -165,7 +269,12 @@ export function cleanContextText(text: string, baseUrl: string): string {
     }
     if (run && !(run[0] === "`" && info.includes("`"))) {
       fence = run;
+      inTable = false;
       out.push(line);
+      return;
+    }
+    if (isTableDelimiter(line)) {
+      inTable = true;
       return;
     }
 
@@ -176,22 +285,53 @@ export function cleanContextText(text: string, baseUrl: string): string {
       (match: string, linkText: string, href: string, offset: number, whole: string) =>
         resolveLink(match, linkText, href, offset, whole, baseUrl),
     );
+    // A table row has a cell pipe and sits under another row or over a
+    // delimiter row, or has a row's shape on its own (a snippet can start
+    // below the header).
+    if (
+      cellPipes(cleaned) > 0 &&
+      (inTable ||
+        (i + 1 < lines.length && isTableDelimiter(lines[i + 1] ?? "")) ||
+        looksLikeRow(cleaned))
+    ) {
+      inTable = true;
+      const cells = tableCells(cleaned);
+      if (cells.length) {
+        const row = restoreCodeSpans(cells.join(" · "), spans);
+        out.push(row.endsWith(";") ? row : `${row};`);
+      }
+      return;
+    }
+    inTable = false;
     if (cleaned === protectedLine) {
       out.push(line);
       return;
     }
     const indent = /^[ \t]*/.exec(cleaned)?.[0] ?? "";
     cleaned = indent + cleaned.slice(indent.length).replace(/[ \t]+/g, " ").trimEnd();
-    if (
-      ONLY_TABLE_RULE.test(cleaned) &&
-      !(cleaned.includes("|") && i + 1 < lines.length && isTableDelimiter(lines[i + 1] ?? ""))
-    ) {
-      return;
-    }
-    if (spans.length) {
-      cleaned = cleaned.replace(PLACEHOLDER, (_m, n: string) => spans[Number(n)] ?? "");
-    }
-    out.push(cleaned);
+    if (ONLY_TABLE_RULE.test(cleaned)) return;
+    out.push(restoreCodeSpans(cleaned, spans));
   });
   return out.join("\n");
+}
+
+/**
+ * Cut `text` to `limit` characters at a word boundary, ending in "…".
+ *
+ * The cut falls at the last space at or before `limit` (a hard cut when there
+ * is none). Text at or under the limit, or a `limit` of `null`, `Infinity` or
+ * below 1, leaves the text as is.
+ */
+export function capSnippet(text: string, limit: number | null): string {
+  if (limit === null || !(limit >= 1) || text.length <= limit) return text;
+  // Count the limit in code points, as the Python and Go SDKs do, so an emoji
+  // costs one character and a hard cut never splits a surrogate pair.
+  let end = 0;
+  for (let points = 0; points < limit && end < text.length; points++) {
+    end += (text.codePointAt(end) ?? 0) > 0xffff ? 2 : 1;
+  }
+  if (end >= text.length) return text;
+  const space = text.lastIndexOf(" ", end);
+  const head = space > 0 ? text.slice(0, space) : text.slice(0, end);
+  return `${head.trimEnd()}…`;
 }

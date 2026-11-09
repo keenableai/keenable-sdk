@@ -10,6 +10,7 @@ import {
   runToolCall,
   SEARCH_TOOL,
 } from "../src/index.js";
+import type { KeenableOptions } from "../src/index.js";
 
 const SEARCH_BODY = {
   query: "wafer scale engine",
@@ -41,13 +42,12 @@ const FETCH_BODY = {
 /** A client whose transport records requests and replays canned responses. */
 function mockClient(
   handler: (url: string, init: RequestInit) => Response,
-  options: { apiKey?: string; clientSource?: string; timeoutMs?: number } = {},
+  options: KeenableOptions = {},
 ) {
   const seen: Array<{ url: string; init: RequestInit }> = [];
   const client = new Keenable({
-    apiKey: options.apiKey,
-    clientSource: options.clientSource,
-    timeoutMs: options.timeoutMs,
+    maxRetries: 0,
+    ...options,
     fetch: (async (input: RequestInfo | URL, init: RequestInit = {}) => {
       const url = String(input);
       seen.push({ url, init });
@@ -353,36 +353,30 @@ describe("errors", () => {
     expect(error).toBeInstanceOf(KeenableRateLimitError);
     expect((error as KeenableRateLimitError).statusCode).toBe(429);
     expect((error as KeenableRateLimitError).message).toContain("hourly cap reached");
-    expect((error as KeenableRateLimitError).data).toEqual({ message: "hourly cap reached" });
 
     const unauthorized = mockClient(() => json({ error: "bad key" }, 401));
-    const authError = await unauthorized.client.search("q").catch((e: unknown) => e);
-    expect(authError).toBeInstanceOf(KeenableAuthError);
-    expect((authError as KeenableAuthError).data).toEqual({ error: "bad key" });
+    await expect(unauthorized.client.search("q")).rejects.toBeInstanceOf(
+      KeenableAuthError,
+    );
   });
 
-  it.each([
-    ["a JSON array", 400, '["invalid_filter"]', undefined],
-    ["plain text", 502, "Bad Gateway", "Bad Gateway"],
-  ])("leaves data unset for %s error body", async (_label, status, text, body) => {
-    const { client } = mockClient(() => new Response(text, { status }));
-    const error = (await client.search("q").catch((e: unknown) => e)) as KeenableAPIError;
-    expect(error).toBeInstanceOf(KeenableAPIError);
-    expect(error.statusCode).toBe(status);
-    expect(error.data).toBeUndefined();
-    expect(error.body).toBe(body);
-    expect(error.field).toBeUndefined();
-  });
+  // The 400 the API sends for a rejected exclude_domains entry.
+  const invalidFilterBody = {
+    error: "invalid_filter",
+    message: 'Invalid exclude_domains value "spam.com/blog": paths are not supported; use the host spam.com',
+    field: "exclude_domains",
+    value: "spam.com/blog",
+    reason: "paths are not supported; use the host spam.com",
+    type: "invalid_request_error",
+    code: "invalid_parameter",
+    fix: 'Correct the "exclude_domains" entry "spam.com/blog" (paths are not supported; use the host spam.com) and retry.',
+    docs_url: "https://docs.keenable.ai/errors#invalid-parameter",
+    retryable: false,
+    param: "exclude_domains",
+  };
 
-  it("names the field, entry and reason of a rejected domain filter", async () => {
-    const body = {
-      error: "invalid_filter",
-      message: 'Invalid exclude_domains value "spam.com/blog": paths are not supported; use the host spam.com',
-      field: "exclude_domains",
-      value: "spam.com/blog",
-      reason: "paths are not supported; use the host spam.com",
-    };
-    const { client } = mockClient(() => json(body, 400));
+  it("names the param, entry and reason of a rejected domain filter", async () => {
+    const { client } = mockClient(() => json(invalidFilterBody, 400));
     const error = await client
       .search("q", { excludeDomains: ["spam.com/blog"] })
       .catch((e: unknown) => e);
@@ -391,13 +385,14 @@ describe("errors", () => {
     const apiError = error as KeenableAPIError;
     expect(apiError.statusCode).toBe(400);
     expect(apiError.message).toBe(
-      'Keenable API error (400): Invalid exclude_domains value "spam.com/blog": paths are not supported; use the host spam.com',
+      'Keenable API error (400): Invalid exclude_domains value "spam.com/blog": paths are not supported; use the host spam.com. ' +
+        'Correct the "exclude_domains" entry "spam.com/blog" (paths are not supported; use the host spam.com) and retry. ' +
+        "(code: invalid_parameter)",
     );
-    expect(apiError.body).toBe(body.message);
-    expect(apiError.data).toEqual(body);
-    expect(apiError.field).toBe("exclude_domains");
+    expect(apiError.param).toBe("exclude_domains");
     expect(apiError.value).toBe("spam.com/blog");
     expect(apiError.reason).toBe("paths are not supported; use the host spam.com");
+    expect(apiError.retryable).toBe(false);
   });
 
   it("leaves value unset when an invalid_filter body names no entry", async () => {
@@ -411,68 +406,34 @@ describe("errors", () => {
     const error = (await client
       .search("q", { excludeDomains: ["a.com"] })
       .catch((e: unknown) => e)) as KeenableAPIError;
-    expect(error.field).toBe("exclude_domains");
     expect(error.value).toBeUndefined();
     expect(error.reason).toBe("at most 1000 hosts");
   });
 
   it.each([
-    ["a list", ["a.com", "b.com"], '["a.com","b.com"]'],
-    ["a number", 5, "5"],
-    ["an object", { host: "a.com" }, '{"host":"a.com"}'],
-    ["null", null, undefined],
-  ])("re-encodes %s in an invalid_filter body as JSON text", async (_label, raw, expected) => {
-    const body = { error: "invalid_filter", field: raw, value: raw, reason: raw };
-    const { client } = mockClient(() => json(body, 400));
+    ["a list", ["a.com", "b.com"]],
+    ["a number", 5],
+    ["an object", { host: "a.com" }],
+    ["null", null],
+  ])("ignores %s as an invalid_filter value", async (_label, raw) => {
+    const { client } = mockClient(() => json({ ...invalidFilterBody, value: raw }, 400));
     const error = (await client.search("q").catch((e: unknown) => e)) as KeenableAPIError;
-    expect(error.field).toBe(expected);
-    expect(error.value).toBe(expected);
-    expect(error.reason).toBe(expected);
+    expect(error.value).toBeUndefined();
+    expect(error.param).toBe("exclude_domains");
   });
 
-  it.each([
-    [401, KeenableAuthError],
-    [429, KeenableRateLimitError],
-  ])("ignores an invalid_filter body on a %s subclass error", async (status, cls) => {
-    const body = {
-      error: "invalid_filter",
-      field: "exclude_domains",
-      value: "spam.com/blog",
-      reason: "paths are not supported; use the host spam.com",
-    };
-    const { client } = mockClient(() => json(body, status));
+  it.each([401, 422, 429, 500])("ignores an invalid_filter body on a %s", async (status) => {
+    const { client } = mockClient(() => json(invalidFilterBody, status));
     const error = (await client.search("q").catch((e: unknown) => e)) as KeenableAPIError;
-    expect(error).toBeInstanceOf(cls);
     expect(error.statusCode).toBe(status);
-    expect(error.data).toEqual(body);
-    expect(error.field).toBeUndefined();
     expect(error.value).toBeUndefined();
     expect(error.reason).toBeUndefined();
   });
 
-  it.each([422, 500])("ignores an invalid_filter body on a %s", async (status) => {
-    const body = {
-      error: "invalid_filter",
-      field: "exclude_domains",
-      value: "spam.com/blog",
-      reason: "paths are not supported; use the host spam.com",
-    };
-    const { client } = mockClient(() => json(body, status));
-    const error = (await client.search("q").catch((e: unknown) => e)) as KeenableAPIError;
-    expect(error.statusCode).toBe(status);
-    expect(error.data).toEqual(body);
-    expect(error.field).toBeUndefined();
-    expect(error.value).toBeUndefined();
-    expect(error.reason).toBeUndefined();
-  });
-
-  it("keeps other 400s as they were, with no filter detail", async () => {
-    const body = { error: "Bad request", message: "query is required", field: "query" };
+  it("reads no filter detail from other 400s", async () => {
+    const body = { error: "Bad request", message: "query is required", value: "x" };
     const { client } = mockClient(() => json(body, 400));
     const error = (await client.search("q").catch((e: unknown) => e)) as KeenableAPIError;
-    expect(error.body).toBe("query is required");
-    expect(error.data).toEqual(body);
-    expect(error.field).toBeUndefined();
     expect(error.value).toBeUndefined();
     expect(error.reason).toBeUndefined();
   });

@@ -48,7 +48,7 @@ func ExampleClient_Search_domainFilters() {
 	})
 	var api *keenable.APIError
 	if errors.As(err, &api) && api.StatusCode == 400 {
-		log.Fatalf("bad %s entry %q: %s", api.Field, api.Value, api.Reason)
+		log.Fatalf("bad %s entry %q: %s", api.Param, api.Value, api.Reason)
 	}
 	if err != nil {
 		log.Fatal(err)

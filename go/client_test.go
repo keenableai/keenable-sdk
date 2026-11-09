@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -49,17 +50,22 @@ type captured struct {
 	Body   []byte
 }
 
+var captureMu sync.Mutex
+
 func capture(next http.Handler) (*[]captured, http.Handler) {
 	seen := &[]captured{}
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		_ = r.Body.Close()
+		// Concurrent calls reach the handler from several goroutines.
+		captureMu.Lock()
 		*seen = append(*seen, captured{
 			Path:   r.URL.Path,
 			Query:  r.URL.Query(),
 			Header: r.Header.Clone(),
 			Body:   body,
 		})
+		captureMu.Unlock()
 		next.ServeHTTP(w, r)
 	})
 	return seen, h
@@ -102,6 +108,11 @@ func start(t *testing.T, h http.Handler, opts *keenable.Options) (*keenable.Clie
 	t.Cleanup(srv.Close)
 	if opts == nil {
 		opts = &keenable.Options{}
+	}
+	if opts.MaxRetries == nil {
+		// Most tests check one response's handling; retries have their own.
+		none := 0
+		opts.MaxRetries = &none
 	}
 	base := srv.URL
 	opts.BaseURL = &base
@@ -303,36 +314,38 @@ func TestSearchSendsEmptyExcludeDomains(t *testing.T) {
 	}
 }
 
+// invalidFilterBody is the 400 the API sends for a rejected exclude_domains entry.
 var invalidFilterBody = map[string]any{
-	"error":   "invalid_filter",
-	"message": `Invalid exclude_domains value "spam.com/blog": paths are not supported; use the host spam.com`,
-	"field":   "exclude_domains",
-	"value":   "spam.com/blog",
-	"reason":  "paths are not supported; use the host spam.com",
+	"error":     "invalid_filter",
+	"message":   `Invalid exclude_domains value "spam.com/blog": paths are not supported; use the host spam.com`,
+	"field":     "exclude_domains",
+	"value":     "spam.com/blog",
+	"reason":    "paths are not supported; use the host spam.com",
+	"type":      "invalid_request_error",
+	"code":      "invalid_parameter",
+	"fix":       `Correct the "exclude_domains" entry "spam.com/blog" (paths are not supported; use the host spam.com) and retry.`,
+	"docs_url":  "https://docs.keenable.ai/errors#invalid-parameter",
+	"retryable": false,
+	"param":     "exclude_domains",
 }
 
-func TestInvalidFilterErrorNamesFieldEntryAndReason(t *testing.T) {
+func TestInvalidFilterErrorNamesParamEntryAndReason(t *testing.T) {
 	c, _ := startKeyless(t, jsonHandler(http.StatusBadRequest, invalidFilterBody), nil)
 	_, err := c.Search(context.Background(), "q", &keenable.SearchOptions{ExcludeDomains: []string{"spam.com/blog"}})
 	var api *keenable.APIError
 	if !errors.As(err, &api) || api.StatusCode != 400 {
 		t.Fatalf("want a 400 APIError, got %v", err)
 	}
-	want := `Keenable API error (400): Invalid exclude_domains value "spam.com/blog": paths are not supported; use the host spam.com. Fix the argument named above`
-	if !strings.HasPrefix(err.Error(), want) {
-		t.Fatalf("error text:\n got %s\nwant prefix %s", err.Error(), want)
+	want := `Keenable API error (400): Invalid exclude_domains value "spam.com/blog": paths are not supported; use the host spam.com. ` +
+		`Correct the "exclude_domains" entry "spam.com/blog" (paths are not supported; use the host spam.com) and retry. (code: invalid_parameter) (api_error)`
+	if err.Error() != want {
+		t.Fatalf("error text:\n got %s\nwant %s", err.Error(), want)
 	}
-	if api.Body != invalidFilterBody["message"] {
-		t.Fatalf("Body: %q", api.Body)
+	if api.Param != "exclude_domains" || api.Value != "spam.com/blog" || api.Reason != "paths are not supported; use the host spam.com" {
+		t.Fatalf("Param/Value/Reason: %q %q %q", api.Param, api.Value, api.Reason)
 	}
-	if !jsonEqual(api.Data, invalidFilterBody) {
-		t.Fatalf("Data: %#v", api.Data)
-	}
-	if api.Field != "exclude_domains" || api.Value != "spam.com/blog" || api.Reason != "paths are not supported; use the host spam.com" {
-		t.Fatalf("Field/Value/Reason: %q %q %q", api.Field, api.Value, api.Reason)
-	}
-	if strings.Contains(err.Error(), "Retry the request") {
-		t.Fatalf("a 400 should not advise a blind retry: %s", err.Error())
+	if api.APICode != "invalid_parameter" || api.Retryable == nil || *api.Retryable {
+		t.Fatalf("APICode/Retryable: %q %v", api.APICode, api.Retryable)
 	}
 }
 
@@ -348,70 +361,36 @@ func TestInvalidFilterErrorWithoutValue(t *testing.T) {
 	if !errors.As(err, &api) {
 		t.Fatalf("want an APIError, got %v", err)
 	}
-	if api.Field != "exclude_domains" || api.Value != "" || api.Reason != "at most 1000 hosts" {
-		t.Fatalf("Field/Value/Reason: %q %q %q", api.Field, api.Value, api.Reason)
+	if api.Value != "" || api.Reason != "at most 1000 hosts" {
+		t.Fatalf("Value/Reason: %q %q", api.Value, api.Reason)
 	}
 }
 
 func TestOtherBadRequestHasNoFilterDetail(t *testing.T) {
-	body := map[string]any{"error": "Bad request", "message": "query is required", "field": "query"}
+	body := map[string]any{"error": "Bad request", "message": "query is required", "value": "x", "reason": "y"}
 	c, _ := startKeyless(t, jsonHandler(http.StatusBadRequest, body), nil)
 	_, err := c.Search(context.Background(), "q", nil)
 	var api *keenable.APIError
 	if !errors.As(err, &api) {
 		t.Fatalf("want an APIError, got %v", err)
 	}
-	if api.Body != "query is required" || !jsonEqual(api.Data, body) {
-		t.Fatalf("Body/Data: %q %#v", api.Body, api.Data)
-	}
-	if api.Field != "" || api.Value != "" || api.Reason != "" {
-		t.Fatalf("Field/Value/Reason: %q %q %q", api.Field, api.Value, api.Reason)
-	}
-	if !strings.Contains(err.Error(), "query is required. Fix the argument named above") {
-		t.Fatalf("error text: %s", err.Error())
-	}
-	if strings.Contains(err.Error(), "Retry the request") {
-		t.Fatalf("a 400 should not advise a blind retry: %s", err.Error())
+	if api.Value != "" || api.Reason != "" {
+		t.Fatalf("Value/Reason: %q %q", api.Value, api.Reason)
 	}
 }
 
-func TestInvalidFilterNonStringValues(t *testing.T) {
-	cases := []struct {
-		name  string
-		value any
-		want  string
-	}{
-		{"number", 7, "7"},
-		{"list", []any{"a"}, `["a"]`},
-		{"object", map[string]any{"a.com": true}, `{"a.com":true}`},
-		{"null", nil, ""},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			body := map[string]any{
-				"error":   "invalid_filter",
-				"message": "Invalid exclude_domains value",
-				"field":   "exclude_domains",
-				"value":   tc.value,
-				"reason":  "must be a string",
-			}
-			h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("X-Request-Id", "req_filter")
-				jsonHandler(http.StatusBadRequest, body).ServeHTTP(w, r)
-			})
-			c, _ := startKeyless(t, h, nil)
-			_, err := keenable.RunToolCall(context.Background(), c, "keenable_search", map[string]any{"query": "q", "exclude_domains": []any{"a.com", tc.value}})
-			var api *keenable.APIError
-			if !errors.As(err, &api) || api.StatusCode != 400 {
-				t.Fatalf("want a 400 APIError, got %v", err)
-			}
-			if api.Field != "exclude_domains" || api.Value != tc.want || api.Reason != "must be a string" {
-				t.Fatalf("Field/Value/Reason: %q %q %q", api.Field, api.Value, api.Reason)
-			}
-			if api.RequestID != "req_filter" {
-				t.Fatalf("RequestID: %q", api.RequestID)
-			}
-		})
+func TestInvalidFilterNonStringValueIsEmpty(t *testing.T) {
+	for _, value := range []any{7, []any{"a"}, map[string]any{"a.com": true}, nil} {
+		body := map[string]any{"error": "invalid_filter", "value": value, "reason": "must be a string"}
+		c, _ := startKeyless(t, jsonHandler(http.StatusBadRequest, body), nil)
+		_, err := keenable.RunToolCall(context.Background(), c, "keenable_search", map[string]any{"query": "q", "exclude_domains": []any{"a.com", value}})
+		var api *keenable.APIError
+		if !errors.As(err, &api) || api.StatusCode != 400 {
+			t.Fatalf("want a 400 APIError, got %v", err)
+		}
+		if api.Value != "" || api.Reason != "must be a string" {
+			t.Fatalf("%v: Value/Reason: %q %q", value, api.Value, api.Reason)
+		}
 	}
 }
 
@@ -424,60 +403,10 @@ func TestInvalidFilterBodyOnOtherStatus(t *testing.T) {
 			if !errors.As(err, &api) || api.StatusCode != status {
 				t.Fatalf("want a %d APIError, got %v", status, err)
 			}
-			if api.Field != "" || api.Value != "" || api.Reason != "" {
-				t.Fatalf("Field/Value/Reason: %q %q %q", api.Field, api.Value, api.Reason)
-			}
-			if !jsonEqual(api.Data, invalidFilterBody) {
-				t.Fatalf("Data: %#v", api.Data)
+			if api.Value != "" || api.Reason != "" {
+				t.Fatalf("Value/Reason: %q %q", api.Value, api.Reason)
 			}
 		})
-	}
-}
-
-func TestErrorDataIsNilForNonObjectBodies(t *testing.T) {
-	cases := []struct {
-		name   string
-		status int
-		body   string
-		want   string
-	}{
-		{"proxy page", http.StatusBadGateway, "  <html>Bad Gateway</html>\n", "<html>Bad Gateway</html>"},
-		{"json array", http.StatusBadRequest, `["a","b"]`, ""},
-		{"json string", http.StatusInternalServerError, `"boom"`, ""},
-		{"empty", http.StatusInternalServerError, "", ""},
-		{"empty 401", http.StatusUnauthorized, "", ""},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			c, _ := startKeyless(t, textHandler(tc.status, tc.body), nil)
-			_, err := c.Search(context.Background(), "q", nil)
-			var api *keenable.APIError
-			if !errors.As(err, &api) || api.StatusCode != tc.status {
-				t.Fatalf("want a %d APIError, got %v", tc.status, err)
-			}
-			if api.Data != nil {
-				t.Fatalf("Data should be nil: %#v", api.Data)
-			}
-			if api.Body != tc.want {
-				t.Fatalf("Body: %q, want %q", api.Body, tc.want)
-			}
-		})
-	}
-}
-
-func TestBadRequestWithoutDetailNamesNoArgument(t *testing.T) {
-	c, _ := startKeyless(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusBadRequest)
-	}), nil)
-	_, err := c.Search(context.Background(), "q", nil)
-	if err == nil {
-		t.Fatal("want an error")
-	}
-	if strings.Contains(err.Error(), "named above") {
-		t.Fatalf("an empty 400 names no argument: %s", err.Error())
-	}
-	if !strings.Contains(err.Error(), "Check the request arguments") {
-		t.Fatalf("error text: %s", err.Error())
 	}
 }
 
@@ -856,9 +785,6 @@ func TestStatusErrors(t *testing.T) {
 		if !errors.As(err, &api) {
 			t.Fatal("rate limit should unwrap to APIError")
 		}
-		if !jsonEqual(rate.Data, map[string]any{"message": "hourly cap reached"}) {
-			t.Fatalf("Data: %#v", rate.Data)
-		}
 	})
 	t.Run("401", func(t *testing.T) {
 		c, _ := startKeyless(t, jsonHandler(http.StatusUnauthorized, map[string]any{"error": "bad key"}), nil)
@@ -866,9 +792,6 @@ func TestStatusErrors(t *testing.T) {
 		var auth *keenable.AuthError
 		if !errors.As(err, &auth) || auth.StatusCode != 401 || !strings.Contains(err.Error(), "bad key") {
 			t.Fatal(err)
-		}
-		if !jsonEqual(auth.Data, map[string]any{"error": "bad key"}) {
-			t.Fatalf("Data: %#v", auth.Data)
 		}
 	})
 	t.Run("403", func(t *testing.T) {
@@ -888,7 +811,8 @@ func TestStatusErrors(t *testing.T) {
 		if errors.As(err, new(*keenable.AuthError)) || errors.As(err, new(*keenable.RateLimitError)) {
 			t.Fatal("402 should stay a plain APIError")
 		}
-		if !strings.Contains(err.Error(), "insufficient credits") || !strings.Contains(err.Error(), "no credits") {
+		// The SDK's own sentence; the API's text stays in Body.
+		if !strings.Contains(err.Error(), "insufficient credits (402)") || api.Body != "no credits" {
 			t.Fatal(err)
 		}
 	})
@@ -1240,30 +1164,37 @@ func TestCrossHostRedirectDoesNotSendTheAPIKey(t *testing.T) {
 	}
 }
 
-func TestSameHostRedirectKeepsTheAPIKey(t *testing.T) {
-	var saw string
+func TestASameHostRedirectIsNotFollowed(t *testing.T) {
+	// Python and TypeScript follow no redirect, so neither does Go: a
+	// same-host hop used to be followed with the key.
+	var hits, followed int
 	var srv *httptest.Server
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
 		if r.URL.Query().Get("ok") == "" {
 			http.Redirect(w, r, srv.URL+r.URL.Path+"?ok=1", http.StatusTemporaryRedirect)
 			return
 		}
-		saw = r.Header.Get("X-API-Key")
+		followed++
 		jsonHandler(http.StatusOK, searchBody).ServeHTTP(w, r)
 	}))
 	t.Cleanup(srv.Close)
 	key := "keen_secret"
 	base := srv.URL
-	c, err := keenable.New(&keenable.Options{APIKey: &key, BaseURL: &base})
-	if err != nil {
-		t.Fatal(err)
+	for _, hc := range []*http.Client{nil, {}} {
+		c, err := keenable.New(&keenable.Options{APIKey: &key, BaseURL: &base, HTTPClient: hc})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(c.Close)
+		_, err = c.Search(context.Background(), "q", nil)
+		var conn *keenable.ConnectionError
+		if !errors.As(err, &conn) || !strings.Contains(err.Error(), "redirect") || strings.Contains(err.Error(), key) {
+			t.Fatal(err)
+		}
 	}
-	t.Cleanup(c.Close)
-	if _, err := c.Search(context.Background(), "q", nil); err != nil {
-		t.Fatal(err)
-	}
-	if saw != key {
-		t.Fatalf("same-host redirect dropped the key: %q", saw)
+	if hits != 2 || followed != 0 {
+		t.Fatalf("hits=%d followed=%d", hits, followed)
 	}
 }
 
@@ -1335,3 +1266,5 @@ func titles(results []keenable.SearchResult) string {
 }
 
 func intPtr(n int) *int { return &n }
+
+func durPtr(d time.Duration) *time.Duration { return &d }

@@ -6,6 +6,9 @@ on:
   pull_request: {}
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
 # A follow-up push supersedes the run in flight; without this its jobs keep
 # burning runner minutes on a commit nobody is waiting for any more.
 concurrency:
@@ -13,6 +16,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The shared fixtures every SDK tests against. A case or catalog change
+  # without the regenerated copies fails here, before any SDK runs a stale copy.
+  fixtures:
+    name: Shared fixtures are up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The sync scripts are TypeScript run directly, which needs Node 22.18+.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Error contract
+        run: node scripts/error-contract/sync.ts --check
+      - name: Conformance cases
+        run: node scripts/conformance/sync.ts --check
+
   # Version-independent checks, so they run once rather than once per matrix leg.
   lint:
     name: Lint and type check
@@ -31,6 +50,9 @@ jobs:
         run: uv run --group dev ruff check . && uv run --group dev ruff format --check .
       - name: Mypy
         run: uv run --group dev mypy keenable
+      # Report only: no threshold, so coverage can never fail the build.
+      - name: Coverage report
+        run: uv run --group dev pytest -q --cov=keenable --cov-branch --cov-report=term-missing
       # Without py.typed in the wheel, type checkers treat the installed
       # package as untyped and every annotation above is invisible to users.
       - name: Wheel ships py.typed
@@ -83,6 +105,10 @@ jobs:
       - name: Type check and build
         if: matrix.node-version == '22'
         run: npm run typecheck && npm run build
+      # Report only: no threshold, so coverage can never fail the build.
+      - name: Coverage report
+        if: matrix.node-version == '22'
+        run: npm run coverage
 
   go:
     name: Go ${{ matrix.go-version }}
@@ -100,7 +126,7 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
       - name: Test
-        run: go test ./...
+        run: go test -cover ./...
       - name: Vet
         run: go vet ./...
       - name: Example builds

@@ -96,20 +96,19 @@ The API cleans up unambiguous input for you: surrounding whitespace, case, an
 query string. So `"https://WWW.Pinterest.com/"` is read as `"pinterest.com"`.
 Anything else comes back as an `*APIError` with `StatusCode` 400: a path
 (`"example.com/blog"`), a suffix or wildcard (`".com"`, `"*.example.com"`), an
-IP address, a `user@host`, or an invalid host. `Field`, `Value` and `Reason`
-name the rejected entry:
+IP address, a `user@host`, or an invalid host. `Param`, `Value` and `Reason`
+name the rejected entry, and `Fix` says what to change:
 
 ```go
 var api *keenable.APIError
 if errors.As(err, &api) && api.StatusCode == 400 {
-	fmt.Println(api.Field, api.Value, api.Reason)
+	fmt.Println(api.Param, api.Value, api.Reason)
 	// exclude_domains example.com/blog paths are not supported; use the host example.com
 }
 ```
 
-They are set only for that rejection (a 400 whose body has
+`Value` and `Reason` are set only for that rejection (a 400 whose body has
 `"error": "invalid_filter"`) and empty on every other error.
-`Data` holds the whole decoded body.
 
 If every match is excluded, the response can be empty. The SDK sends the list
 as given and leaves validation to the API; `RunToolCall` does the same with a
@@ -126,10 +125,14 @@ contextText := results.ToContext(nil)
 prompt := "Answer using only these sources, citing them by number.\n\n" + contextText
 ```
 
-It emits `[1] Title (url)` headers followed by the page text, adds results whole
-until the character budget is reached (`MaxChars` 12000 by default), and never
-truncates a source mid-sentence. The first result is kept even when it alone
-is over the budget. A later result that does not fit ends the block, so
+It emits `[1] Title (url)` headers followed by the page text. Each result's
+text is cleaned (images dropped, relative links resolved, markdown tables
+flattened to `cell · cell;` rows) and cut at a word boundary to
+`MaxSnippetChars` (0 means the default of 2000, and a negative value disables
+the cap), ending in "…".
+Results are then added whole until the character budget is reached (`MaxChars`
+12000 by default). The first result is kept even when it alone is over the
+budget. A later result that does not fit ends the block, so
 citation numbers stay contiguous.
 
 To print a source list that matches the citations in the answer, ask which
@@ -153,7 +156,11 @@ fmt.Println(page.Content)       // markdown, boilerplate stripped
 fmt.Println(page.ToContext(nil)) // same citable block shape as search results
 ```
 
-Internal hosts and private addresses are refused before a request is sent.
+Internal hosts and private addresses are refused before a request is sent:
+`localhost` and names under `.localhost`, `metadata.google.internal`, and IP
+addresses in private, loopback, link-local, carrier-grade NAT, documentation,
+benchmarking, multicast and reserved ranges, however the address is spelled.
+The rules are the same in every SDK (`scripts/conformance/README.md`).
 
 ## Tool calling
 
@@ -190,13 +197,14 @@ Pass the request's `context.Context`. Canceling it returns `ctx.Err()`
 (`context.Canceled` or `context.DeadlineExceeded`), not a connection error.
 Those two values do not implement `keenable.Error`.
 
-`Options.Timeout` (default 30s) covers response headers and the body when this
-SDK creates the HTTP client. A positive `Options.Timeout` also applies when
+`Options.Timeout` (default 30s) covers response headers and the body of each
+attempt when this SDK creates the HTTP client. A positive `Options.Timeout` also applies when
 you pass your own `http.Client`, and it does not change that client. When the
 SDK deadline fires and the caller's context is still live, the error is a
 `ConnectionError` that tells you to raise `Options.Timeout`. When the deadline
 that fires is `http.Client.Timeout`, the message tells you to raise that
-instead.
+instead. Either way `ConnectionError.Timeout()` reports true. Timed-out
+attempts are retried (see [Retries](#retries)).
 
 There is one client. Reuse it. `Close` drops idle connections on the client
 this SDK created, and does nothing when you passed your own `http.Client`.
@@ -206,7 +214,8 @@ this SDK created, and does nothing when you passed your own `http.Client`.
 SDK errors implement `keenable.Error`. `errors.As` into that interface
 catches them. `Code()` is a stable string, and the same token is the last
 parentheses of `Error()`. `errors.As` into a concrete type catches one case.
-`AuthError` and `RateLimitError` unwrap to `APIError`.
+`AuthError`, `RateLimitError` and `InsufficientCreditsError` unwrap to
+`APIError`.
 
 A caller context that ended is not one of those errors. Check it first:
 
@@ -224,11 +233,97 @@ if errors.As(err, &sdk) {
 |---|---|---|
 | `RateLimitError` | `rate_limit` | HTTP 429. The message names `X-RateLimit-Reset` when the API sent it. A keyless call is told to set `KEENABLE_API_KEY`. A keyed call is told to wait for the window |
 | `AuthError` | `auth` | HTTP 401/403, the key was rejected |
-| `APIError` | `api_error` | Any other non-2xx response; carries `StatusCode`, `Body`, `Data` (the decoded JSON error body), and `RequestID` when the API sent `X-Request-Id` |
-| `ConnectionError` | `connection` | The API could not be reached, or the client deadline elapsed |
+| `InsufficientCreditsError` (alias `CreditsError`) | `api_error` | HTTP 402, no credits left, or a pay-per-request (x402) payment this SDK cannot make; retrying will not help. The message starts "Keenable: insufficient credits (402)" or "Keenable: payment required (402)" |
+| `APIError` | `api_error` | Any other non-2xx response; carries `StatusCode`, `Body`, and `RequestID` when the API sent `X-Request-Id` |
+| `ConnectionError` | `connection` | The API could not be reached, or the client deadline elapsed (`Timeout()` reports which) |
 | `InvalidRequestError` | `invalid_request` | Bad arguments; no request was sent |
 
-HTTP 402 is an `APIError` whose message starts "Keenable: insufficient credits (402)" and tells you to add credits.
+## Handling errors
+
+The SDK already retries what can be retried (see
+[Retries](#retries)), so an error that reaches you is final for this call.
+Every `APIError` carries what the API says about the failure. Branch on
+`APICode`, not on the message. Each field is its zero value (nil for
+`Retryable` and `RateLimit`) when the API did not send it. `Code()` stays the
+SDK's coarser code above.
+
+```go
+resp, err := client.Search(ctx, "wafer scale engine", nil)
+var rl *keenable.RateLimitError
+var api *keenable.APIError
+switch {
+case errors.As(err, &rl):
+    // Only reaches you when the wait is over a minute (e.g. the keyless
+    // hourly cap) or the retries ran out.
+    log.Printf("rate limited, retry in %s: %s", rl.RetryAfter, rl.Fix)
+case errors.As(err, &api):
+    log.Println(api.APICode, api.Fix, api.RequestID)
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `APICode` | Stable reason, e.g. `rate_limit_per_second`, `insufficient_credits`, `target_blocked` |
+| `Type` | The category, one of the `Type*` constants: `invalid_request_error`, `authentication_error`, `permission_error`, `billing_error`, `rate_limit_error`, `target_error` (the page being fetched failed, not Keenable) or `api_error`; derived from the status when an older API leaves it out |
+| `Title` | The API's short error title (its `error` field) |
+| `Fix` | One sentence on what to do next |
+| `Retryable` | Whether the same request can succeed later |
+| `RetryAfter` | How long to wait (body `retry_after_seconds`, else the `Retry-After` header) |
+| `RequestID` | Quote it when reporting a problem |
+| `Param` | The parameter a 400 is about |
+| `Value`, `Reason` | The entry a 400 `invalid_filter` rejected, and why |
+| `RateLimit` | On a 429: `Scope`, `Window`, `Max`, `ResetsAt` |
+| `Body` | The API's error message (its `message`, `error` or `detail` string), or the text of a body that is not JSON |
+
+When the API sends `Fix`, the error message ends with it in place of the
+SDK's generic advice (for every status, as in the Python and TypeScript SDKs),
+so a non-retryable error never tells an agent to retry. It then ends with
+`(code: <APICode>)` and `(request_id: <RequestID>)` before the SDK code, as in
+the Python and TypeScript SDKs. The API's docs link, a 402's billing and
+top-up links and a pay-per-request (x402) offer are not exposed. A 402's
+message is the SDK's own: "Keenable: payment required (402)" when the API asks
+for a per-request payment, which this SDK cannot make (use an API key), else
+"Keenable: insufficient credits (402)". A 403 with type `target_error` (e.g. code
+`target_blocked`, the fetched site refused us) is a plain `APIError`, not an `AuthError`.
+
+## Retries
+
+Failed requests are retried twice by default. Connection errors, timeouts, 408,
+429 and 5xx are retried, unless the API marks the error `Retryable` false
+(credits, bad parameters and blocked pages never are). The SDK waits the API's
+`Retry-After` when it sent one, else backs off exponentially from 0.5s to 8s
+with jitter. A `Retry-After` over 60s, such as the keyless hourly cap, is not
+waited out: the error is returned at once so your code decides. Canceling
+`ctx` stops a pending retry.
+
+```go
+retries := 4
+client, err := keenable.New(&keenable.Options{
+    MaxRetries: &retries, // nil means 2; a pointer to 0 turns retries off
+    Headers:    map[string]string{"X-Team": "search"},
+})
+
+none := 0
+resp, err := client.Search(ctx, "wafer scale engine", &keenable.SearchOptions{
+    RequestOptions: keenable.RequestOptions{MaxRetries: &none},
+})
+minute := time.Minute
+page, err := client.FetchWithOptions(ctx, "https://example.com", &keenable.FetchOptions{
+    RequestOptions: keenable.RequestOptions{
+        Timeout: &minute, // nil keeps the client's
+        Headers: map[string]string{"X-Trace": "abc"},
+    },
+})
+```
+
+`RequestOptions` (embedded in `SearchOptions` and in `FetchOptions`, which
+`FetchWithOptions` takes) overrides
+the client's `Timeout`, `MaxRetries` and `Headers` for one call. `Timeout` is a
+pointer: nil keeps the client's, and zero or less is an `InvalidRequestError`.
+A header whose name is not an HTTP token, or whose value has a CR, LF or NUL, is
+an `InvalidRequestError` too, before anything is sent. `X-API-Key`
+always comes from `APIKey`. `SearchResponse.RequestID` and `Page.RequestID`
+carry the API's request id; quote it when reporting a problem.
 
 ## Configuration
 

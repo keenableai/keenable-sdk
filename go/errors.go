@@ -1,5 +1,7 @@
 package keenable
 
+import "time"
+
 // Stable codes an agent can switch on. They are also the last parentheses
 // of Error().
 const (
@@ -8,6 +10,20 @@ const (
 	CodeAPI            = "api_error"
 	CodeAuth           = "auth"
 	CodeRateLimit      = "rate_limit"
+)
+
+// Error types the API sends as APIError.Type, Stripe-style. Switch on Type for
+// coarse handling and on APICode for the exact reason. A newer API may send a
+// type not listed here.
+const (
+	TypeInvalidRequestError = "invalid_request_error"
+	TypeAuthenticationError = "authentication_error"
+	TypePermissionError     = "permission_error"
+	TypeBillingError        = "billing_error"
+	TypeRateLimitError      = "rate_limit_error"
+	// TypeTargetError means the page being fetched failed, not Keenable.
+	TypeTargetError = "target_error"
+	TypeAPIError    = "api_error"
 )
 
 // Error is implemented by every error this package returns.
@@ -40,8 +56,14 @@ func (e *InvalidRequestError) keenableError() {}
 // elapsed before the body arrived. A canceled caller context is returned as
 // that context's own error, not as a ConnectionError.
 type ConnectionError struct {
-	msg string
+	msg      string
+	timeout  bool
+	redirect bool
 }
+
+// Timeout reports whether the deadline (Options.Timeout, RequestOptions.Timeout
+// or the http.Client's) elapsed, as [net.Error] does.
+func (e *ConnectionError) Timeout() bool { return e != nil && e.timeout }
 
 func (e *ConnectionError) Error() string {
 	if e == nil {
@@ -55,20 +77,65 @@ func (e *ConnectionError) keenableError() {}
 // APIError is a non-2xx response.
 //
 // StatusCode is the HTTP status. Body is the API's error message when it sent
-// one, otherwise empty. AuthError and RateLimitError unwrap to APIError.
+// one, otherwise empty. AuthError, RateLimitError and InsufficientCreditsError
+// unwrap to APIError.
+//
+// The API's error body adds fields an agent can act on. Each is the zero value
+// (nil for pointers) when the API did not send it, which is the case for
+// older responses. Error() ends with "(code: <APICode>) (request_id:
+// <RequestID>)" when the API sent them, then the SDK's own "(<Code()>)".
+//
+// The API's docs link, a 402's billing and top-up links and a pay-per-request
+// (x402) offer are not exposed, in a field or in the message.
 type APIError struct {
 	StatusCode int
 	Body       string
-	// Data is the decoded JSON error body.
-	Data map[string]any
-	// Field, Value and Reason name the entry rejected by a 400 invalid_filter error.
-	Field  string
+	// RequestID is the body's request_id, or else the X-Request-Id header.
+	RequestID string
+	// APICode is the API's stable, machine-readable reason, such as
+	// "rate_limit_per_second" or "target_blocked". Branch on it, not on the
+	// message. Code() stays the SDK's own coarser code.
+	APICode string
+	// Type is the error's category, one of the Type* constants. It is
+	// derived from the status and APICode when the API did not send it, so
+	// it is set on every error response.
+	Type string
+	// Title is the API's short error title (the body's "error"), such as
+	// "Rate limit exceeded".
+	Title string
+	// Fix is one sentence on what to do next.
+	Fix string
+	// Retryable says whether sending the same request again can succeed.
+	// Nil when the API did not say.
+	Retryable *bool
+	// RetryAfter is how long to wait before retrying: the body's
+	// retry_after_seconds, or else the Retry-After header. Zero when neither
+	// was sent.
+	RetryAfter time.Duration
+	// Param is the request parameter a 400 is about.
+	Param string
+	// Value and Reason name the entry a 400 invalid_filter error rejected,
+	// such as one exclude_domains host; Param names its parameter.
 	Value  string
 	Reason string
-	// RequestID is the API's X-Request-Id, when the response sent one.
-	RequestID string
+	// RateLimit is the limit a 429 hit (the body's "limit").
+	RateLimit *RateLimitInfo
 	msg       string
 	code      string
+	// retryAfterSet tells a sent zero wait apart from none.
+	retryAfterSet bool
+}
+
+// RateLimitInfo is the limit a 429 hit. A field the API left out is zero.
+type RateLimitInfo struct {
+	// Scope is who the limit counts: "organization", "ip", "payer" or "agent".
+	Scope string
+	// Window is the window length: "second" or "hour".
+	Window string
+	// Max is the requests allowed per window.
+	Max int
+	// ResetsAt is an ISO 8601 time when the window opens again.
+	ResetsAt string
 }
 
 func (e *APIError) Error() string {
@@ -76,6 +143,11 @@ func (e *APIError) Error() string {
 		return ""
 	}
 	msg := e.msg
+	// The API's code gets its own parentheses, so the "(request_id: ...)"
+	// and the SDK code that already shipped read as before.
+	if e.APICode != "" {
+		msg += " (code: " + e.APICode + ")"
+	}
 	if e.RequestID != "" {
 		msg += " (request_id: " + e.RequestID + ")"
 	}
@@ -124,10 +196,30 @@ func (e *RateLimitError) Unwrap() error {
 	return e.APIError
 }
 
+// InsufficientCreditsError is a 402: the organization has no credits left, or
+// the API asked for a per-request (x402) payment, which this SDK cannot make.
+// Retrying returns the same error until a human with console access adds
+// credits; with x402, call the API with a key instead. Code() stays CodeAPI,
+// as it was before this type existed.
+type InsufficientCreditsError struct {
+	*APIError
+}
+
+func (e *InsufficientCreditsError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.APIError
+}
+
+// CreditsError is InsufficientCreditsError under the name the docs use.
+type CreditsError = InsufficientCreditsError
+
 var (
 	_ Error = (*InvalidRequestError)(nil)
 	_ Error = (*ConnectionError)(nil)
 	_ Error = (*APIError)(nil)
 	_ Error = (*AuthError)(nil)
 	_ Error = (*RateLimitError)(nil)
+	_ Error = (*InsufficientCreditsError)(nil)
 )

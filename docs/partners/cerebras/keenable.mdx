@@ -269,8 +269,19 @@ alive.
 |---|---|
 | `KeenableRateLimitError` | HTTP 429, your account's rate limit |
 | `KeenableAuthError` | HTTP 401/403, the key was rejected |
+| `KeenableInsufficientCreditsError` | HTTP 402, no credits left; retrying will not help |
 | `KeenableAPIError` | Any other non-2xx response; carries `status_code` |
 | `KeenableConnectionError` | The API could not be reached |
+| `KeenableTimeoutError` | A `KeenableConnectionError`: the API did not answer within `timeout` (`timeoutMs` in Node) |
+
+The SDK retries for you, so don't wrap calls in your own retry loop. It retries
+connection errors, timeouts, 408, 429 and 5xx twice by default (`max_retries`,
+`maxRetries` in Node), unless the API marks the error `retryable: false`, and
+waits the API's `Retry-After` between attempts. What reaches your code is an
+error the retries could not fix, or a 429 whose wait is over 60 seconds, such
+as the keyless hourly cap. API errors carry `code`, `fix`, `retryable` and
+`retry_after_seconds` (`retryAfterSeconds` in Node) so the agent can decide
+what to do next. Pass `max_retries=0` to handle retries yourself.
 
 ## Next steps
 

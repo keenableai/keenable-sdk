@@ -1,6 +1,6 @@
 {
   "name": "keenable",
-  "version": "0.1.5",
+  "version": "0.1.4",
   "description": "Official TypeScript SDK for the Keenable web search API, built for AI agents",
   "license": "MIT",
   "author": "Keenable <support@keenable.ai>",
@@ -41,11 +41,14 @@
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
+    "coverage": "vitest run --coverage --coverage.include=src --coverage.reporter=text",
     "typecheck": "tsc --noEmit",
+    "errors:sync": "node ../scripts/error-contract/sync.ts",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "@vitest/coverage-v8": "^4.1.11",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
     "vitest": "^4.1.11"

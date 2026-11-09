@@ -73,6 +73,7 @@ def _client(
         api_key,
         client_source=client_source,
         client=httpx.Client(transport=transport),
+        max_retries=0,
     )
     return client, seen
 
@@ -83,7 +84,9 @@ def _aclient(
     """The async sibling of :func:`_client`, sharing its request log shape."""
     seen: Seen = []
     transport = httpx.MockTransport(_recording(handler, seen))
-    return AsyncKeenable(api_key, client=httpx.AsyncClient(transport=transport)), seen
+    return AsyncKeenable(
+        api_key, client=httpx.AsyncClient(transport=transport), max_retries=0
+    ), seen
 
 
 def _ok(body: dict[str, Any], status: int = 200) -> Handler:
@@ -357,12 +360,9 @@ def test_rate_limit_and_auth_errors_carry_the_api_message() -> None:
     assert excinfo.value.status_code == 429
     assert "hourly cap reached" in str(excinfo.value)
 
-    assert excinfo.value.data == {"message": "hourly cap reached"}
-
     keenable, _ = _client(_ok({"error": "bad key"}, status=401))
-    with pytest.raises(KeenableAuthError) as auth:
+    with pytest.raises(KeenableAuthError):
         keenable.search("q")
-    assert auth.value.data == {"error": "bad key"}
 
 
 INVALID_FILTER_BODY = {
@@ -374,10 +374,19 @@ INVALID_FILTER_BODY = {
     "field": "exclude_domains",
     "value": "spam.com/blog",
     "reason": "paths are not supported; use the host spam.com",
+    "type": "invalid_request_error",
+    "code": "invalid_parameter",
+    "fix": (
+        'Correct the "exclude_domains" entry "spam.com/blog" '
+        "(paths are not supported; use the host spam.com) and retry."
+    ),
+    "docs_url": "https://docs.keenable.ai/errors#invalid-parameter",
+    "retryable": False,
+    "param": "exclude_domains",
 }
 
 
-def test_invalid_filter_error_names_field_entry_and_reason() -> None:
+def test_invalid_filter_error_names_param_entry_and_reason() -> None:
     keenable, _ = _client(_ok(INVALID_FILTER_BODY, status=400))
     with pytest.raises(KeenableAPIError) as excinfo:
         keenable.search("q", exclude_domains=["spam.com/blog"])
@@ -386,13 +395,15 @@ def test_invalid_filter_error_names_field_entry_and_reason() -> None:
     assert err.status_code == 400
     assert str(err) == (
         'Keenable API error (400): Invalid exclude_domains value "spam.com/blog": '
-        "paths are not supported; use the host spam.com"
+        "paths are not supported; use the host spam.com. "
+        'Correct the "exclude_domains" entry "spam.com/blog" '
+        "(paths are not supported; use the host spam.com) and retry. "
+        "(code: invalid_parameter)"
     )
-    assert err.body == INVALID_FILTER_BODY["message"]
-    assert err.data == INVALID_FILTER_BODY
-    assert err.field == "exclude_domains"
+    assert err.param == "exclude_domains"
     assert err.value == "spam.com/blog"
     assert err.reason == "paths are not supported; use the host spam.com"
+    assert err.retryable is False
 
 
 def test_invalid_filter_error_without_a_value() -> None:
@@ -406,21 +417,17 @@ def test_invalid_filter_error_without_a_value() -> None:
     with pytest.raises(KeenableAPIError) as excinfo:
         keenable.search("q", exclude_domains=["a.com"])
 
-    assert excinfo.value.field == "exclude_domains"
     assert excinfo.value.value is None
     assert excinfo.value.reason == "at most 1000 hosts"
 
 
 def test_other_400s_carry_no_filter_detail() -> None:
-    body = {"error": "Bad request", "message": "query is required", "field": "query"}
+    body = {"error": "Bad request", "message": "query is required", "value": "x"}
     keenable, _ = _client(_ok(body, status=400))
     with pytest.raises(KeenableAPIError) as excinfo:
         keenable.search("q")
 
-    err = excinfo.value
-    assert err.body == "query is required"
-    assert err.data == body
-    assert (err.field, err.value, err.reason) == (None, None, None)
+    assert (excinfo.value.value, excinfo.value.reason) == (None, None)
 
 
 @pytest.mark.parametrize("status", [422, 429, 500])
@@ -429,49 +436,19 @@ def test_invalid_filter_detail_is_only_read_on_a_400(status: int) -> None:
     with pytest.raises(KeenableAPIError) as excinfo:
         keenable.search("q")
 
-    err = excinfo.value
-    assert err.status_code == status
-    assert err.data == INVALID_FILTER_BODY
-    assert (err.field, err.value, err.reason) == (None, None, None)
+    assert excinfo.value.status_code == status
+    assert (excinfo.value.value, excinfo.value.reason) == (None, None)
 
 
-@pytest.mark.parametrize(
-    "value, text",
-    [(7, "7"), (["a"], '["a"]'), ({"k": 1}, '{"k": 1}'), (True, "true")],
-)
-def test_invalid_filter_non_string_entries_are_json_encoded(
-    value: Any, text: str
-) -> None:
+@pytest.mark.parametrize("value", [7, ["a"], {"k": 1}, True, None])
+def test_invalid_filter_non_string_value_is_none(value: Any) -> None:
     body = {**INVALID_FILTER_BODY, "value": value}
     keenable, _ = _client(_ok(body, status=400))
     with pytest.raises(KeenableAPIError) as excinfo:
-        keenable.search("q", exclude_domains=["a.com", value])
+        keenable.search("q", exclude_domains=["a.com"])
 
-    assert excinfo.value.value == text
-    assert excinfo.value.field == "exclude_domains"
-
-
-@pytest.mark.parametrize(
-    "response, body",
-    [
-        (httpx.Response(400, json=["invalid_filter"]), None),
-        (httpx.Response(400, json="invalid_filter"), None),
-        (httpx.Response(400, text="upstream says no"), "upstream says no"),
-    ],
-    ids=["json-list", "json-string", "plain-text"],
-)
-def test_error_bodies_that_are_not_objects_carry_no_data(
-    response: httpx.Response, body: str | None
-) -> None:
-    keenable, _ = _client(lambda request: response)
-    with pytest.raises(KeenableAPIError) as excinfo:
-        keenable.search("q")
-
-    err = excinfo.value
-    assert err.status_code == 400
-    assert err.body == body
-    assert err.data is None
-    assert (err.field, err.value, err.reason) == (None, None, None)
+    assert excinfo.value.value is None
+    assert excinfo.value.param == "exclude_domains"
 
 
 def test_bad_base_url_is_rejected() -> None:
@@ -622,7 +599,7 @@ async def test_async_search_matches_the_sync_payloads() -> None:
     assert lone["exclude_domains"] == "x"
 
 
-async def test_async_invalid_filter_error_names_field_entry_and_reason() -> None:
+async def test_async_invalid_filter_error_names_param_entry_and_reason() -> None:
     keenable, _ = _aclient(_ok(INVALID_FILTER_BODY, status=400))
     async with keenable:
         with pytest.raises(KeenableAPIError) as excinfo:
@@ -630,8 +607,7 @@ async def test_async_invalid_filter_error_names_field_entry_and_reason() -> None
 
     err = excinfo.value
     assert err.status_code == 400
-    assert err.data == INVALID_FILTER_BODY
-    assert err.field == "exclude_domains"
+    assert err.param == "exclude_domains"
     assert err.value == "spam.com/blog"
     assert err.reason == "paths are not supported; use the host spam.com"
 

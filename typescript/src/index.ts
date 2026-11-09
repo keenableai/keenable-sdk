@@ -16,6 +16,7 @@
 export {
   DEFAULT_BASE_URL,
   DEFAULT_CONTEXT_MAX_CHARS,
+  DEFAULT_CONTEXT_MAX_SNIPPET_CHARS,
   Keenable,
   Page,
   SearchResponse,
@@ -24,14 +25,19 @@ export {
   KeenableAPIError,
   KeenableAuthError,
   KeenableConnectionError,
+  KeenableCreditsError,
   KeenableError,
+  KeenableInsufficientCreditsError,
   KeenableInvalidRequestError,
   KeenableRateLimitError,
+  KeenableTimeoutError,
 } from "./errors.js";
+export type { KeenableAPIErrorDetails, KeenableErrorType, RateLimitInfo } from "./errors.js";
 export { FETCH_TOOL, SEARCH_TOOL, TOOLS, runToolCall } from "./tools.js";
 export type { ToolDefinition } from "./tools.js";
 export type {
   KeenableOptions,
+  RequestOptions,
   SearchOptions,
   SearchResult,
   ToContextOptions,
