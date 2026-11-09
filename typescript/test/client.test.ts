@@ -138,6 +138,30 @@ describe("search", () => {
     expect(response.raw.results).toEqual(SEARCH_BODY.results);
   });
 
+  it("sends any iterable excludeDomains as an array", async () => {
+    const { client, seen } = mockClient(() => json(SEARCH_BODY));
+    await client.search("q", { excludeDomains: new Set(["un.org", "who.int"]) });
+    await client.search("q", { excludeDomains: new Map([["un.org", 1]]).keys() });
+    await client.search("q", { excludeDomains: "un.org" });
+
+    const [fromSet, fromKeys, lone] = seen.map((s) => JSON.parse(String(s.init.body)));
+    expect(fromSet.exclude_domains).toEqual(["un.org", "who.int"]);
+    expect(fromKeys.exclude_domains).toEqual(["un.org"]);
+    expect(lone.exclude_domains).toEqual(["un.org"]);
+  });
+
+  it("refuses an argument JSON cannot encode, sending nothing", async () => {
+    const { client, seen } = mockClient(() => json(SEARCH_BODY));
+    const list = [1n] as unknown as string[];
+    await expect(client.search("q", { excludeDomains: list })).rejects.toBeInstanceOf(
+      KeenableInvalidRequestError,
+    );
+    await expect(
+      runToolCall(client, "keenable_search", { query: "q", exclude_domains: [1n] }),
+    ).rejects.toBeInstanceOf(KeenableInvalidRequestError);
+    expect(seen).toHaveLength(0);
+  });
+
   it("uses the public endpoint and identifies itself when keyless", async () => {
     const { client, seen } = mockClient(() => json(SEARCH_BODY));
     await client.search("hello");
@@ -389,47 +413,6 @@ describe("runToolCall", () => {
       items: { type: "string" },
     });
     expect(properties.site?.type).toBe("string");
-  });
-
-  it("forwards exclude_domains from a tool call, keeping an empty list", async () => {
-    const { client, seen } = mockClient(routed);
-    await runToolCall(client, "keenable_search", { query: "q", exclude_domains: [] });
-    await runToolCall(client, "keenable_search", {
-      query: "q",
-      exclude_domains: ["pinterest.com", "quora.com"],
-    });
-    await runToolCall(client, "keenable_search", { query: "q", exclude_domains: "spam.com" });
-    await runToolCall(client, "keenable_search", { query: "q" });
-    await runToolCall(client, "keenable_search", { query: "q", exclude_domains: "   " });
-    await runToolCall(client, "keenable_search", {
-      query: "q",
-      exclude_domains: " a.com,b.com ",
-    });
-
-    const [empty, list, single, absent, blank, padded] = seen.map((s) =>
-      JSON.parse(String(s.init.body)),
-    );
-    expect(empty.exclude_domains).toEqual([]);
-    expect(list.exclude_domains).toEqual(["pinterest.com", "quora.com"]);
-    expect(single.exclude_domains).toEqual(["spam.com"]);
-    expect(absent).not.toHaveProperty("exclude_domains");
-    expect(blank.exclude_domains).toEqual(["   "]);
-    expect(padded.exclude_domains).toEqual([" a.com,b.com "]);
-  });
-
-  it("sends a malformed domain-list argument to the API instead of dropping it", async () => {
-    const { client, seen } = mockClient(routed);
-    await runToolCall(client, "keenable_search", { query: "q", exclude_domains: 5 });
-    await runToolCall(client, "keenable_search", {
-      query: "q",
-      exclude_domains: ["a.com", 7],
-    });
-    await runToolCall(client, "keenable_search", { query: "q", exclude_domains: null });
-
-    const [first, second, third] = seen.map((s) => JSON.parse(String(s.init.body)));
-    expect(first.exclude_domains).toBe(5);
-    expect(second.exclude_domains).toEqual(["a.com", 7]);
-    expect(third).not.toHaveProperty("exclude_domains");
   });
 
   it("forwards only the filters the schema offers the model", async () => {

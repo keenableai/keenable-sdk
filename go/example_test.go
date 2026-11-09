@@ -47,8 +47,11 @@ func ExampleClient_Search_domainFilters() {
 		ExcludeDomains: []string{"pinterest.com", "quora.com"},
 	})
 	var api *keenable.APIError
-	if errors.As(err, &api) && api.StatusCode == 400 {
+	if errors.As(err, &api) && api.Title == "invalid_filter" {
 		log.Fatalf("bad %s entry %q: %s", api.Param, api.Value, api.Reason)
+	}
+	if errors.As(err, &api) {
+		log.Fatal(api.Body)
 	}
 	if err != nil {
 		log.Fatal(err)

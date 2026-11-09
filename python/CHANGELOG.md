@@ -8,7 +8,8 @@ All notable changes to the `keenable` Python package. Versions follow
 - `search()` (sync and async) accepts `exclude_domains`: a list of hosts to
   keep out of the results. A host also excludes its subdomains; up to 1,000
   distinct hosts.
-  The list is sent as given, including `[]`. The API cleans up unambiguous
+  Any iterable of strings is sent as a list of its entries as given,
+  including `[]`; a lone string is one host. The API cleans up unambiguous
   entries (scheme, `www.`, case, port, trailing `/`, query, whitespace) and
   rejects anything else (paths, suffixes such as `.com`, wildcards, IP
   addresses, `user@host`, invalid hosts) with HTTP 400. If every result is
@@ -20,6 +21,11 @@ All notable changes to the `keenable` Python package. Versions follow
 - A rejected entry is a 400 whose `param`, `value` and `reason`
   name it, and whose message ends with the API's `fix`. `value` and `reason`
   are set only when the body's `error` is `invalid_filter`, `None` otherwise.
+  `value` is usually the entry as sent; a size cap reports the list's size
+  (`"2500 entries"`) or an over-long entry's first 64 characters and `"..."`.
+- A search argument JSON cannot encode (`NaN`, bytes, an arbitrary object)
+  raises `KeenableInvalidRequestError` and sends nothing, in `search()` and
+  `run_tool_call` alike.
 
 The Python, TypeScript and Go SDKs now run one shared set of conformance cases
 (`scripts/conformance/`), and these changes make them behave the same.

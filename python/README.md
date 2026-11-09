@@ -78,12 +78,18 @@ says what to change:
 try:
     keenable.search("q", exclude_domains=["example.com/blog"])
 except KeenableAPIError as err:
-    print(err.param, err.value, err.reason)
-    # exclude_domains example.com/blog paths are not supported; use the host example.com
+    if err.error == "invalid_filter":
+        print(err.param, err.value, err.reason)
+        # exclude_domains example.com/blog paths are not supported; use the host example.com
+    else:
+        print(err.body)
 ```
 
 `value` and `reason` are set only for that rejection (a 400 whose body has
-`"error": "invalid_filter"`) and `None` on every other error.
+`"error": "invalid_filter"`) and `None` on every other error. `value` is
+usually the entry as sent; a size cap reports the list's size
+(`"2500 entries"`) or an over-long entry's first 64 characters followed by
+`"..."`.
 
 If every match is excluded, the response can be empty. The SDK sends the list
 as given and leaves validation to the API; `run_tool_call` does the same with a
@@ -220,7 +226,7 @@ except KeenableAPIError as err:
 | `retry_after_seconds` | Seconds to wait (body, else the `Retry-After` header) |
 | `request_id` | Quote it when reporting a problem |
 | `param` | The parameter a 400 is about |
-| `value`, `reason` | The entry a 400 `invalid_filter` rejected, and why |
+| `value`, `reason` | What a 400 `invalid_filter` rejected (usually the entry; for a size cap the count or a truncated entry), and why |
 | `limit` | On a 429: `RateLimitInfo(scope, window, max, resets_at)` |
 
 When the API sends `fix`, the error message ends with it, then with

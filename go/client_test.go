@@ -268,61 +268,32 @@ func TestToolSchemaOffersSiteAndExcludeDomains(t *testing.T) {
 	}
 }
 
-func TestToolCallDomainLists(t *testing.T) {
+// The JSON forms are shared conformance cases (tool_call); these are the
+// Go values a caller can put in an arguments map.
+func TestToolCallGoDomainLists(t *testing.T) {
 	cases := []struct {
-		name  string
-		args  any
-		field string
-		sent  bool
-		want  any
+		name string
+		list any
+		sent bool
+		want any
 	}{
-		{"json list", `{"query":"q","exclude_domains":["pinterest.com","quora.com"]}`, "exclude_domains", true, []any{"pinterest.com", "quora.com"}},
-		{"json empty exclude", `{"query":"q","exclude_domains":[]}`, "exclude_domains", true, []any{}},
-		{"json string exclude", `{"query":"q","exclude_domains":"x.com"}`, "exclude_domains", true, []any{"x.com"}},
-		{"json blank exclude", `{"query":"q","exclude_domains":""}`, "exclude_domains", false, nil},
-		{"json null exclude", `{"query":"q","exclude_domains":null}`, "exclude_domains", false, nil},
-		{"go slice", map[string]any{"query": "q", "exclude_domains": []string{"a.com"}}, "exclude_domains", true, []any{"a.com"}},
-		{"go empty slice", map[string]any{"query": "q", "exclude_domains": []string{}}, "exclude_domains", true, []any{}},
-		{"go nil slice", map[string]any{"query": "q", "exclude_domains": []string(nil)}, "exclude_domains", false, nil},
-		{"go nil any slice", map[string]any{"query": "q", "exclude_domains": []any(nil)}, "exclude_domains", false, nil},
+		{"slice", []string{"a.com"}, true, []any{"a.com"}},
+		{"empty slice", []string{}, true, []any{}},
+		{"nil slice", []string(nil), false, nil},
+		{"nil any slice", []any(nil), false, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			c, seen := startKeyless(t, routed(), nil)
-			if _, err := keenable.RunToolCall(context.Background(), c, "keenable_search", tc.args); err != nil {
+			args := map[string]any{"query": "q", "exclude_domains": tc.list}
+			if _, err := keenable.RunToolCall(context.Background(), c, "keenable_search", args); err != nil {
 				t.Fatal(err)
 			}
-			payload := payloadOf(t, one(t, seen))
-			got, ok := payload[tc.field]
-			if ok != tc.sent {
-				t.Fatalf("%s sent=%v, want %v: %#v", tc.field, ok, tc.sent, payload)
-			}
-			if tc.sent && !jsonEqual(got, tc.want) {
-				t.Fatalf("%s: %#v, want %#v", tc.field, got, tc.want)
+			got, ok := payloadOf(t, one(t, seen))["exclude_domains"]
+			if ok != tc.sent || (tc.sent && !jsonEqual(got, tc.want)) {
+				t.Fatalf("exclude_domains sent=%v %#v, want %v %#v", ok, got, tc.sent, tc.want)
 			}
 		})
-	}
-}
-
-func TestToolCallSendsMalformedDomainListToAPI(t *testing.T) {
-	c, seen := startKeyless(t, routed(), nil)
-	ctx := context.Background()
-	calls := []string{
-		`{"query":"q","exclude_domains":["a.com",7]}`,
-		`{"query":"q","exclude_domains":5}`,
-		`{"query":"q","exclude_domains":{"a.com":true}}`,
-	}
-	for _, call := range calls {
-		if _, err := keenable.RunToolCall(ctx, c, "keenable_search", call); err != nil {
-			t.Fatalf("%s: a malformed list goes to the API, got local error %v", call, err)
-		}
-	}
-	want := []any{[]any{"a.com", 7}, 5, map[string]any{"a.com": true}}
-	for i, w := range want {
-		got := payloadOf(t, (*seen)[i])["exclude_domains"]
-		if !jsonEqual(got, w) {
-			t.Fatalf("call %d: exclude_domains %#v, want %#v", i, got, w)
-		}
 	}
 }
 

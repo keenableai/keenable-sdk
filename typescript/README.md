@@ -83,15 +83,22 @@ says what to change:
 try {
   await keenable.search("q", { excludeDomains: ["example.com/blog"] });
 } catch (err) {
-  if (err instanceof KeenableAPIError) {
+  if (err instanceof KeenableAPIError && err.error === "invalid_filter") {
     console.log(err.param, err.value, err.reason);
     // exclude_domains example.com/blog paths are not supported; use the host example.com
+  } else if (err instanceof KeenableAPIError) {
+    console.log(err.body);
+  } else {
+    throw err;
   }
 }
 ```
 
 `value` and `reason` are set only for that rejection (a 400 whose body has
-`"error": "invalid_filter"`) and `undefined` on every other error.
+`"error": "invalid_filter"`) and `undefined` on every other error. `value` is
+usually the entry as sent; a size cap reports the list's size
+(`"2500 entries"`) or an over-long entry's first 64 characters followed by
+`"..."`.
 
 If every match is excluded, the response can be empty. The SDK sends the list
 as given and leaves validation to the API; `runToolCall` does the same with a
@@ -216,7 +223,7 @@ try {
 | `retryAfterSeconds` | Seconds to wait (body, else the `Retry-After` header) |
 | `requestId` | Quote it when reporting a problem |
 | `param` | The parameter a 400 is about |
-| `value`, `reason` | The entry a 400 `invalid_filter` rejected, and why |
+| `value`, `reason` | What a 400 `invalid_filter` rejected (usually the entry; for a size cap the count or a truncated entry), and why |
 | `limit` | On a 429: `{ scope, window, max, resetsAt }` |
 
 When the API sends `fix`, the error message ends with it, then with

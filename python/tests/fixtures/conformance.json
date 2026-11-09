@@ -5164,6 +5164,37 @@
       "skip": {}
     },
     {
+      "name": "a lone exclude_domains string is wrapped",
+      "query": "q",
+      "options": {
+        "exclude_domains": "spam.com"
+      },
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "exclude_domains": [
+          "spam.com"
+        ]
+      },
+      "skip": {
+        "go": "SearchOptions.ExcludeDomains is a []string"
+      }
+    },
+    {
+      "name": "an empty exclude_domains string is unset",
+      "query": "q",
+      "options": {
+        "exclude_domains": ""
+      },
+      "sent": {
+        "query": "q",
+        "mode": "pro"
+      },
+      "skip": {
+        "go": "SearchOptions.ExcludeDomains is a []string"
+      }
+    },
+    {
       "name": "site and exclude_domains together",
       "query": "q",
       "options": {
@@ -5181,6 +5212,167 @@
         ]
       },
       "skip": {}
+    }
+  ],
+  "tool_call": [
+    {
+      "name": "a list is sent as given",
+      "arguments": "{\"query\":\"q\",\"exclude_domains\":[\"pinterest.com\",\"quora.com\"]}",
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "exclude_domains": [
+          "pinterest.com",
+          "quora.com"
+        ]
+      },
+      "invalid": false
+    },
+    {
+      "name": "an empty list is sent",
+      "arguments": "{\"query\":\"q\",\"exclude_domains\":[]}",
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "exclude_domains": []
+      },
+      "invalid": false
+    },
+    {
+      "name": "a lone string is wrapped",
+      "arguments": "{\"query\":\"q\",\"exclude_domains\":\"spam.com\"}",
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "exclude_domains": [
+          "spam.com"
+        ]
+      },
+      "invalid": false
+    },
+    {
+      "name": "a comma-separated string is wrapped, not split",
+      "arguments": "{\"query\":\"q\",\"exclude_domains\":\" a.com,b.com \"}",
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "exclude_domains": [
+          " a.com,b.com "
+        ]
+      },
+      "invalid": false
+    },
+    {
+      "name": "a blank string is wrapped",
+      "arguments": "{\"query\":\"q\",\"exclude_domains\":\"   \"}",
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "exclude_domains": [
+          "   "
+        ]
+      },
+      "invalid": false
+    },
+    {
+      "name": "an empty string is unset",
+      "arguments": "{\"query\":\"q\",\"exclude_domains\":\"\"}",
+      "sent": {
+        "query": "q",
+        "mode": "pro"
+      },
+      "invalid": false
+    },
+    {
+      "name": "null is unset",
+      "arguments": "{\"query\":\"q\",\"exclude_domains\":null}",
+      "sent": {
+        "query": "q",
+        "mode": "pro"
+      },
+      "invalid": false
+    },
+    {
+      "name": "an absent list is unset",
+      "arguments": "{\"query\":\"q\"}",
+      "sent": {
+        "query": "q",
+        "mode": "pro"
+      },
+      "invalid": false
+    },
+    {
+      "name": "blank entries are sent",
+      "arguments": "{\"query\":\"q\",\"exclude_domains\":[\"\",\" \"]}",
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "exclude_domains": [
+          "",
+          " "
+        ]
+      },
+      "invalid": false
+    },
+    {
+      "name": "a list with a non-string entry is sent",
+      "arguments": "{\"query\":\"q\",\"exclude_domains\":[\"a.com\",7]}",
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "exclude_domains": [
+          "a.com",
+          7
+        ]
+      },
+      "invalid": false
+    },
+    {
+      "name": "a number is sent",
+      "arguments": "{\"query\":\"q\",\"exclude_domains\":5}",
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "exclude_domains": 5
+      },
+      "invalid": false
+    },
+    {
+      "name": "an object is sent",
+      "arguments": "{\"query\":\"q\",\"exclude_domains\":{\"a.com\":true}}",
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "exclude_domains": {
+          "a.com": true
+        }
+      },
+      "invalid": false
+    },
+    {
+      "name": "site and exclude_domains together",
+      "arguments": "{\"query\":\"q\",\"site\":\"arxiv.org\",\"exclude_domains\":[\"export.arxiv.org\"]}",
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "site": "arxiv.org",
+        "exclude_domains": [
+          "export.arxiv.org"
+        ]
+      },
+      "invalid": false
+    },
+    {
+      "name": "NaN in the list is invalid",
+      "arguments": "{\"query\": \"q\", \"exclude_domains\": [NaN]}",
+      "sent": null,
+      "invalid": true
+    },
+    {
+      "name": "Infinity in the list is invalid",
+      "arguments": "{\"query\": \"q\", \"exclude_domains\": [Infinity]}",
+      "sent": null,
+      "invalid": true
     }
   ]
 }

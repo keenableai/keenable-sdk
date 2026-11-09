@@ -18,8 +18,7 @@ export interface Filter {
   readonly jsonType?: "string" | "integer" | "array";
   /**
    * Whether a model may set this filter through the search tool. The subset is
-   * deliberately small: a model choosing between six date and length knobs
-   * picks worse than one choosing between two.
+   * kept small: a model picks better from fewer knobs.
    */
   readonly toolExposed?: boolean;
 }

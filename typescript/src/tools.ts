@@ -71,7 +71,7 @@ function parseArguments(args: string | Record<string, unknown>): Record<string, 
   if (typeof args === "object" && args !== null && !Array.isArray(args)) return args;
   if (typeof args !== "string") {
     throw new KeenableInvalidRequestError(
-      `tool call arguments must be a JSON string or an object, got ${JSON.stringify(args)}`,
+      `tool call arguments must be a JSON string or an object, got ${typeof args}`,
     );
   }
   let parsed: unknown;
@@ -96,12 +96,9 @@ function requireString(value: unknown, message: string): string {
   return text;
 }
 
+// search() treats a list filter's null and "" as unset and wraps a string.
 function toolValue(filter: Filter, value: unknown): unknown {
-  if (filter.jsonType === "array") {
-    if (value === undefined || value === null || value === "") return undefined;
-    return typeof value === "string" ? [value] : value;
-  }
-  return nonEmpty(value);
+  return filter.jsonType === "array" ? value : nonEmpty(value);
 }
 
 /** Keep only the filters the tool schema actually offers the model. */

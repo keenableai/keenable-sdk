@@ -226,12 +226,6 @@ func (c *Client) Keyless() bool { return c != nil && c.apiKey == "" }
 // Vue performance") rather than keywords. The index is semantic.
 // opts may be nil.
 func (c *Client) Search(ctx context.Context, query string, opts *SearchOptions) (*SearchResponse, error) {
-	return c.search(ctx, query, opts, nil)
-}
-
-// search sends raw's values as given, over opts, so a tool call can pass a
-// list SearchOptions cannot hold for the API to reject.
-func (c *Client) search(ctx context.Context, query string, opts *SearchOptions, raw map[string]any) (*SearchResponse, error) {
 	if err := requireClient(c); err != nil {
 		return nil, err
 	}
@@ -250,9 +244,6 @@ func (c *Client) search(ctx context.Context, query string, opts *SearchOptions, 
 		"mode":  mode,
 	}
 	applyFilters(payload, opts)
-	for wire, v := range raw {
-		payload[wire] = v
-	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, &InvalidRequestError{msg: "could not encode the search request: " + err.Error() + ". Pass JSON-encodable arguments."}

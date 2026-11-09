@@ -101,14 +101,21 @@ name the rejected entry, and `Fix` says what to change:
 
 ```go
 var api *keenable.APIError
-if errors.As(err, &api) && api.StatusCode == 400 {
-	fmt.Println(api.Param, api.Value, api.Reason)
-	// exclude_domains example.com/blog paths are not supported; use the host example.com
+if errors.As(err, &api) {
+	if api.Title == "invalid_filter" {
+		fmt.Println(api.Param, api.Value, api.Reason)
+		// exclude_domains example.com/blog paths are not supported; use the host example.com
+	} else {
+		fmt.Println(api.Body)
+	}
 }
 ```
 
 `Value` and `Reason` are set only for that rejection (a 400 whose body has
-`"error": "invalid_filter"`) and empty on every other error.
+`"error": "invalid_filter"`, so `Title` is `"invalid_filter"`) and empty on
+every other error. `Value` is usually the entry as sent; a size cap reports
+the list's size (`"2500 entries"`) or an over-long entry's first 64
+characters followed by `"..."`.
 
 If every match is excluded, the response can be empty. The SDK sends the list
 as given and leaves validation to the API; `RunToolCall` does the same with a
@@ -271,7 +278,7 @@ case errors.As(err, &api):
 | `RetryAfter` | How long to wait (body `retry_after_seconds`, else the `Retry-After` header) |
 | `RequestID` | Quote it when reporting a problem |
 | `Param` | The parameter a 400 is about |
-| `Value`, `Reason` | The entry a 400 `invalid_filter` rejected, and why |
+| `Value`, `Reason` | What a 400 `invalid_filter` rejected (usually the entry; for a size cap the count or a truncated entry), and why |
 | `RateLimit` | On a 429: `Scope`, `Window`, `Max`, `ResetsAt` |
 | `Body` | The API's error message (its `message`, `error` or `detail` string), or the text of a body that is not JSON |
 

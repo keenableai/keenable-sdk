@@ -83,7 +83,7 @@ reference.
 - [`examples/cerebras/`](./examples/cerebras) - grounding a Cerebras model in
   live web results, and letting it call Keenable as a tool. Python and Node.
 - [`examples/domain-filters/`](./examples/domain-filters) - keeping sites out
-  of the results with `exclude_domains`. Python and Node.
+  of the results with `exclude_domains`. Python and TypeScript.
 
 ## Documentation for partners
 

@@ -63,9 +63,10 @@ class KeenableAPIError(KeenableError):
     - ``request_id``: quote it when reporting a problem.
     - ``param``: the request parameter a 400 is about.
     - ``limit``: a :class:`RateLimitInfo` on 429s.
-    - ``value`` and ``reason``: the entry a 400 ``invalid_filter`` error
-      rejected, such as one ``exclude_domains`` host; ``param`` names its
-      parameter.
+    - ``value`` and ``reason``: what a 400 ``invalid_filter`` error rejected
+      and why; ``param`` names the parameter. ``value`` is usually the entry
+      as sent, but a size cap reports the list's size (``"2500 entries"``) or
+      the first 64 characters of an over-long entry followed by ``"..."``.
 
     ``str(err)`` ends with ``(code: <code>)`` and ``(request_id: <id>)`` when
     the API sent them.

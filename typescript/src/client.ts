@@ -699,15 +699,20 @@ export class Keenable {
       mode: options.mode || "pro",
     };
     for (const filter of SEARCH_FILTERS) {
-      const value = (options as Record<string, unknown>)[filter.option];
-      if (value !== undefined && value !== "") payload[filter.wire] = value;
+      const value: unknown = (options as Record<string, unknown>)[filter.option];
+      if (value === undefined || value === null || value === "") continue;
+      payload[filter.wire] = filter.jsonType === "array" ? asList(value) : value;
+    }
+    let body: string;
+    try {
+      body = JSON.stringify(payload);
+    } catch (error) {
+      throw new KeenableInvalidRequestError(
+        `could not encode the search request: ${(error as Error).message}. Pass JSON-encodable arguments.`,
+      );
     }
 
-    const { data, requestId } = await this.request(
-      "search",
-      { method: "POST", body: JSON.stringify(payload) },
-      options,
-    );
+    const { data, requestId } = await this.request("search", { method: "POST", body }, options);
 
     const rawResults = Array.isArray(data.results) ? data.results : [];
     return new SearchResponse({
@@ -1104,6 +1109,16 @@ function rateLimitInfo(value: unknown): RateLimitInfo | undefined {
  * the `X-Request-Id` header; `type` is derived from the status and code when
  * the API did not send it.
  */
+/** A lone string wrapped, any other iterable as an array, else as given for the API to judge. */
+function asList(value: unknown): unknown {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value;
+  if (typeof value === "object" && value !== null && Symbol.iterator in value) {
+    return Array.from(value as Iterable<unknown>);
+  }
+  return value;
+}
+
 function errorDetails(
   status: number,
   body: Record<string, unknown> | undefined,

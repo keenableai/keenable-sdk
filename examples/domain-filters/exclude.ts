@@ -1,9 +1,9 @@
 // Search the open web but keep some sites out of the results.
-// Run: npm install keenable && node exclude.mjs
+// Run (Node 22.18+): npm install keenable && node exclude.ts
 
 import { Keenable } from "keenable";
 
-const BLOCKED = ["pinterest.com", "quora.com", "reddit.com"];
+const BLOCKED: string[] = ["pinterest.com", "quora.com", "reddit.com"];
 
 const keenable = new Keenable();
 

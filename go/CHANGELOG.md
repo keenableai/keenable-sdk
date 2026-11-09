@@ -13,11 +13,15 @@ response can be empty. `Site` is unchanged. The `keenable_search` tool offers
 
 A rejected entry is a 400 whose `APIError.Param`, `Value` and `Reason` name
 it, and whose message ends with the API's `Fix`. `Value` and `Reason` are set
-only when the body's `error` is `invalid_filter`.
+only when the body's `error` is `invalid_filter`. `Value` is usually the
+entry as sent; a size cap reports the list's size (`"2500 entries"`) or an
+over-long entry's first 64 characters and `"..."`.
 
 `RunToolCall` sends an `exclude_domains` argument to the API as given: `[]` is
 sent as `[]`, `null` and `""` are unset, a lone string is wrapped, and a
-malformed value goes to the API, which returns the 400. No migration.
+malformed value goes to the API, which returns the 400. A value in an
+arguments map that cannot be encoded as JSON is an `InvalidRequestError`. No
+migration.
 
 The Python, TypeScript and Go SDKs now behave the same, and a shared suite of
 cases (`scripts/conformance`, run by `conformance_test.go`) keeps them so.

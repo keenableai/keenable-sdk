@@ -1,6 +1,7 @@
 package keenable
 
 import (
+	"encoding/json"
 	"math"
 	"strconv"
 	"strings"
@@ -21,6 +22,7 @@ type SearchOptions struct {
 	// Site restricts results to one domain, for example "arxiv.org".
 	Site string
 	// ExcludeDomains drops results from these hosts and their subdomains.
+	// Nil is unset; a non-nil empty slice is sent as [].
 	ExcludeDomains []string
 	// PublishedAfter keeps pages published on or after YYYY-MM-DD.
 	PublishedAfter string
@@ -41,6 +43,10 @@ type SearchOptions struct {
 	// filter: use PublishedAfter for that. Accepts an ISO 8601 datetime,
 	// YYYY-MM-DD, or an offset back from now such as "7d" (as of 7 days ago).
 	QueryTime string
+
+	// excludeDomainsJSON is a tool call's exclude_domains as the model sent
+	// it, which []string cannot always hold; the API judges it.
+	excludeDomainsJSON json.RawMessage
 }
 
 // ContextOptions controls [SearchResponse.ToContext] and [SearchResponse.Cited].

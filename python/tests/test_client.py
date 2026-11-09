@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from typing import Any
 
 import httpx
@@ -153,13 +154,68 @@ def test_search_sends_any_iterable_as_an_array(make: Any) -> None:
     assert payload["exclude_domains"] == expected
 
 
-@pytest.mark.parametrize("value", ["un.org", {"un.org": True}], ids=["str", "mapping"])
-def test_search_sends_a_lone_string_or_mapping_unchanged(value: Any) -> None:
+def test_search_sends_a_mapping_unchanged() -> None:
     keenable, seen = _client(_ok(SEARCH_BODY))
-    keenable.search("q", exclude_domains=value)
+    keenable.search("q", exclude_domains={"un.org": True})
 
     payload = json.loads(seen[0].content)
-    assert payload["exclude_domains"] == value
+    assert payload["exclude_domains"] == {"un.org": True}
+
+
+class _ArrayLike:
+    """Iterable, but ambiguous as a truth value or in ``==``, like numpy."""
+
+    def __init__(self, items: list[str]) -> None:
+        self._items = items
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._items)
+
+    def __eq__(self, other: object) -> bool:
+        raise ValueError("ambiguous")
+
+    def __bool__(self) -> bool:
+        raise ValueError("ambiguous")
+
+
+def test_search_and_tool_call_accept_an_array_like() -> None:
+    keenable, seen = _client(_routed)
+    keenable.search("q", exclude_domains=_ArrayLike(["un.org"]))
+    run_tool_call(
+        keenable,
+        "keenable_search",
+        {"query": "q", "exclude_domains": _ArrayLike(["who.int"])},
+    )
+
+    direct, tool = (json.loads(r.content) for r in seen)
+    assert direct["exclude_domains"] == ["un.org"]
+    assert tool["exclude_domains"] == ["who.int"]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [[float("nan")], [object()], [b"x.com"], b"x.com", bytearray(b"x.com")],
+    ids=["nan", "object", "bytes-entry", "bytes", "bytearray"],
+)
+def test_an_unencodable_domain_list_is_an_invalid_request(value: Any) -> None:
+    keenable, seen = _client(_routed)
+    with pytest.raises(KeenableInvalidRequestError, match="could not encode"):
+        keenable.search("q", exclude_domains=value)
+    with pytest.raises(KeenableInvalidRequestError, match="could not encode"):
+        run_tool_call(
+            keenable, "keenable_search", {"query": "q", "exclude_domains": value}
+        )
+    assert seen == []
+
+
+async def test_async_an_unencodable_domain_list_is_an_invalid_request() -> None:
+    keenable, seen = _aclient(_routed)
+    async with keenable:
+        with pytest.raises(KeenableInvalidRequestError):
+            await arun_tool_call(
+                keenable, "keenable_search", {"query": "q", "exclude_domains": [b"x"]}
+            )
+    assert seen == []
 
 
 def test_search_raw_keeps_the_filter_warning() -> None:
@@ -385,42 +441,6 @@ def test_tool_schema_offers_site_and_exclude_domains() -> None:
     assert props["site"]["type"] == "string"
 
 
-def test_tool_call_forwards_exclude_domains_and_keeps_an_empty_list() -> None:
-    keenable, seen = _client(_routed)
-    run_tool_call(keenable, "keenable_search", {"query": "q", "exclude_domains": []})
-    run_tool_call(
-        keenable, "keenable_search", '{"query": "q", "exclude_domains": "spam.com"}'
-    )
-    run_tool_call(keenable, "keenable_search", {"query": "q", "exclude_domains": ""})
-    run_tool_call(keenable, "keenable_search", {"query": "q"})
-
-    empty, single, blank, absent = (json.loads(r.content) for r in seen)
-    assert empty["exclude_domains"] == []
-    assert single["exclude_domains"] == ["spam.com"]
-    assert "exclude_domains" not in blank
-    assert "exclude_domains" not in absent
-
-
-def test_tool_call_sends_a_malformed_domain_list_to_the_api() -> None:
-    keenable, seen = _client(_routed)
-    run_tool_call(keenable, "keenable_search", {"query": "q", "exclude_domains": 5})
-    run_tool_call(
-        keenable,
-        "keenable_search",
-        {"query": "q", "exclude_domains": {"a.com": True}},
-    )
-    run_tool_call(
-        keenable, "keenable_search", {"query": "q", "exclude_domains": ["a.com", 7]}
-    )
-    run_tool_call(keenable, "keenable_search", {"query": "q", "exclude_domains": None})
-
-    first, second, third, fourth = (json.loads(r.content) for r in seen)
-    assert first["exclude_domains"] == 5
-    assert second["exclude_domains"] == {"a.com": True}
-    assert third["exclude_domains"] == ["a.com", 7]
-    assert "exclude_domains" not in fourth
-
-
 def test_tool_schema_keeps_max_results_and_query_time_out() -> None:
     from keenable import TOOLS
 
@@ -453,28 +473,14 @@ async def test_async_search_matches_the_sync_payloads() -> None:
         await keenable.search("q", exclude_domains=[])
         await keenable.search("q", site="arxiv.org", exclude_domains=a_set)
         await keenable.search("q", exclude_domains="x")
+        await keenable.search("q", exclude_domains="")
 
-    from_generator, empty_exclude, mixed, lone = (json.loads(r.content) for r in seen)
+    from_generator, empty_exclude, mixed, lone, blank = (
+        json.loads(r.content) for r in seen
+    )
     assert from_generator["exclude_domains"] == ["spam.com"]
     assert empty_exclude["exclude_domains"] == []
     assert mixed["site"] == "arxiv.org"
     assert mixed["exclude_domains"] == ["export.arxiv.org"]
-    assert lone["exclude_domains"] == "x"
-
-
-async def test_async_tool_call_forwards_domain_lists_like_the_sync_one() -> None:
-    keenable, seen = _aclient(_routed)
-    async with keenable:
-        for arguments in (
-            '{"query": "q", "exclude_domains": "spam.com"}',
-            {"query": "q", "exclude_domains": ""},
-            {"query": "q", "exclude_domains": []},
-            {"query": "q", "exclude_domains": ["a.com", 7]},
-        ):
-            await arun_tool_call(keenable, "keenable_search", arguments)
-
-    wrapped, blank, empty, malformed = (json.loads(r.content) for r in seen)
-    assert wrapped["exclude_domains"] == ["spam.com"]
+    assert lone["exclude_domains"] == ["x"]
     assert "exclude_domains" not in blank
-    assert empty["exclude_domains"] == []
-    assert malformed["exclude_domains"] == ["a.com", 7]

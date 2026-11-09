@@ -76,7 +76,12 @@ export interface KeenableAPIErrorDetails {
   param?: string;
   /** The limit a 429 hit. */
   limit?: RateLimitInfo;
-  /** The entry a 400 `invalid_filter` error rejected, such as one `excludeDomains` host; `param` names its parameter. */
+  /**
+   * What a 400 `invalid_filter` error rejected; `param` names the parameter.
+   * Usually the entry as sent, but a size cap reports the list's size
+   * (`"2500 entries"`) or the first 64 characters of an over-long entry
+   * followed by `"..."`.
+   */
   value?: string;
   /** Why the API rejected `value`. */
   reason?: string;

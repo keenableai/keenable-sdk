@@ -27,8 +27,7 @@ class Filter:
 
     tool_exposed: bool = False
     """Whether a model may set this filter through the search tool. The subset
-    is deliberately small: a model choosing between six date and length knobs
-    picks worse than one choosing between two."""
+    is kept small: a model picks better from fewer knobs."""
 
 
 SEARCH_FILTERS: tuple[Filter, ...] = (
@@ -103,12 +102,7 @@ def tool_filter_kwargs(args: dict[str, Any]) -> dict[str, Any]:
     kwargs: dict[str, Any] = {}
     for f in TOOL_FILTERS:
         value = args.get(f.name)
-        if f.json_type == "array":
-            if value is None or value == "":
-                continue
-            if isinstance(value, str):
-                value = [value]
-        elif not value:
-            continue
-        kwargs[f.name] = value
+        # search() treats a list filter's None and "" as unset and wraps a string.
+        if f.json_type == "array" or value:
+            kwargs[f.name] = value
     return kwargs

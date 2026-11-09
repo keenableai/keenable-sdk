@@ -52,8 +52,8 @@ export interface SearchOptions extends RequestOptions {
   mode?: "pro";
   /** Restrict results to one domain, e.g. `"arxiv.org"`. */
   site?: string;
-  /** Never return results from these hosts and their subdomains. */
-  excludeDomains?: readonly string[];
+  /** Never return results from these hosts and their subdomains. Any iterable; a lone string is one host. */
+  excludeDomains?: Iterable<string>;
   /** Only pages published on or after this date (`YYYY-MM-DD`). */
   publishedAfter?: string;
   /** Only pages published on or before this date (`YYYY-MM-DD`). */

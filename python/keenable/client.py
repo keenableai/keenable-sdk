@@ -11,7 +11,7 @@ import random
 import re
 import time
 import unicodedata
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from os import environ
@@ -249,18 +249,32 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
         {
             name: value
             for name, value in filters.items()
-            if value is not None and value != ""
+            if value is not None and not (isinstance(value, str) and value == "")
         }
     )
     for f in SEARCH_FILTERS:
         if f.json_type == "array" and f.name in payload:
             payload[f.name] = _as_list(payload[f.name])
+    try:
+        jsonlib.dumps(payload, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise KeenableInvalidRequestError(
+            f"could not encode the search request: {exc}. "
+            "Pass JSON-encodable arguments."
+        ) from exc
     return payload
 
 
 def _as_list(value: Any) -> Any:
-    """Any other iterable as a list; anything else as given, for the API to judge."""
-    if isinstance(value, Iterable) and not isinstance(value, (str, Mapping)):
+    """A lone string wrapped, any other iterable as a list, else as given.
+
+    The API judges the entries. Bytes stay as they are, so encoding refuses them.
+    """
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, Iterable) and not isinstance(
+        value, (bytes, bytearray, memoryview, Mapping)
+    ):
         return list(value)
     return value
 
@@ -986,7 +1000,7 @@ class Keenable(_BaseClient):
         *,
         mode: Literal["pro"] | None = None,
         site: str | None = None,
-        exclude_domains: Sequence[str] | None = None,
+        exclude_domains: Iterable[str] | None = None,
         published_after: str | None = None,
         published_before: str | None = None,
         acquired_after: str | None = None,
@@ -1007,7 +1021,7 @@ class Keenable(_BaseClient):
             mode: Search mode. ``"pro"`` (the default) does deeper retrieval.
             site: Restrict results to one domain, e.g. ``"arxiv.org"``.
             exclude_domains: Never return results from these hosts and their
-                subdomains.
+                subdomains. Any iterable of strings; a lone string is one host.
             published_after: Keep pages published on or after ``YYYY-MM-DD``.
             published_before: Keep pages published on or before ``YYYY-MM-DD``.
             acquired_after: Keep pages Keenable indexed on or after
@@ -1170,7 +1184,7 @@ class AsyncKeenable(_BaseClient):
         *,
         mode: Literal["pro"] | None = None,
         site: str | None = None,
-        exclude_domains: Sequence[str] | None = None,
+        exclude_domains: Iterable[str] | None = None,
         published_after: str | None = None,
         published_before: str | None = None,
         acquired_after: str | None = None,

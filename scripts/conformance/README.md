@@ -139,4 +139,16 @@ body's, else the trimmed `X-Request-Id` header.
   ignored: the key always comes from the client.
 - The query is a string with more than whitespace, sent as given. An empty
   string filter is unset, and an unset mode is `pro`. A list filter
-  (`exclude_domains`) is sent as given, an empty list as `[]`.
+  (`exclude_domains`) takes any iterable and is sent as a list of the entries
+  as given, an empty one as `[]`; a lone string is one entry. A value the
+  language cannot encode as JSON (`NaN`, bytes, an arbitrary object) is the
+  invalid-request error and sends nothing.
+
+## Tool calls (`tool_call`)
+
+A `keenable_search` call's arguments, as JSON text, give the body sent or the
+invalid-request error. A list filter (`exclude_domains`) is sent as the model
+gave it for the API to judge: a lone string is wrapped, not split; `""` and
+null are unset; anything else, an empty list or a blank entry included, is
+sent unchanged. Arguments JSON cannot encode (`NaN`, `Infinity`) are the
+invalid-request error and send nothing.
