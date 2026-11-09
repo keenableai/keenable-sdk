@@ -703,6 +703,7 @@ export class Keenable {
       if (value === undefined || value === null || value === "") continue;
       payload[filter.wire] = filter.jsonType === "array" ? asList(value) : value;
     }
+    for (const [name, value] of Object.entries(payload)) rejectLossyJson(value, name);
     let body: string;
     try {
       body = JSON.stringify(payload);
@@ -1117,6 +1118,41 @@ function asList(value: unknown): unknown {
     return Array.from(value as Iterable<unknown>);
   }
   return value;
+}
+
+/**
+ * Throws on values JSON.stringify would silently change rather than refuse:
+ * non-finite numbers and undefined, function or symbol array entries become
+ * null. Anything else encodable goes to the API as is.
+ */
+function rejectLossyJson(value: unknown, path: string, seen = new WeakSet<object>()): void {
+  const refuse = (at: string, what: string): never => {
+    throw new KeenableInvalidRequestError(
+      `could not encode the search request: ${at} is ${what}, which JSON would send as null. Pass JSON-encodable arguments.`,
+    );
+  };
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) refuse(path, String(value));
+    return;
+  }
+  if (typeof value !== "object" || value === null) return;
+  // Cycles are left for JSON.stringify to refuse.
+  if (seen.has(value) || typeof (value as { toJSON?: unknown }).toJSON === "function") return;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      const item: unknown = value[i];
+      const at = `${path}[${i}]`;
+      if (item === undefined || typeof item === "function" || typeof item === "symbol") {
+        refuse(at, item === undefined ? "undefined" : `a ${typeof item}`);
+      }
+      rejectLossyJson(item, at, seen);
+    }
+    return;
+  }
+  for (const [key, item] of Object.entries(value)) {
+    rejectLossyJson(item, `${path}.${key}`, seen);
+  }
 }
 
 function errorDetails(
