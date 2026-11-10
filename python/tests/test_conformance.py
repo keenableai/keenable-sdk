@@ -333,6 +333,38 @@ async def test_search_body(kind: str, case: dict[str, Any], waits: list[float]) 
     assert json.loads(outcome.requests[0].content) == case["sent"]
 
 
+@pytest.mark.parametrize("kind", CLIENTS)
+@pytest.mark.parametrize("case", cases("fetch_params"))
+async def test_fetch_params(
+    kind: str, case: dict[str, Any], waits: list[float]
+) -> None:
+    # The SDK's argument names are the wire names.
+    outcome = await run(
+        kind, [PAGE_OK], waits, method="fetch", arg=case["url"], call=case["options"]
+    )
+    assert outcome.error is None
+    assert len(outcome.requests) == 1
+    assert outcome.requests[0].url.path == "/v1/fetch"
+    assert dict(outcome.requests[0].url.params.multi_items()) == case["sent"]
+    assert len(outcome.requests[0].url.params.multi_items()) == len(case["sent"])
+
+
+@pytest.mark.parametrize("kind", CLIENTS)
+async def test_a_refused_url_sends_nothing_whatever_the_options(
+    kind: str, waits: list[float]
+) -> None:
+    outcome = await run(
+        kind,
+        [PAGE_OK],
+        waits,
+        method="fetch",
+        arg="http://127.0.0.1/",
+        call={"max_chars": 10, "live": True, "prompt": "p"},
+    )
+    assert isinstance(outcome.error, KeenableInvalidRequestError)
+    assert outcome.requests == []
+
+
 def test_the_fixture_has_every_section() -> None:
     sections = set(FIXTURE) - {"_comment"}
     assert sections == {
@@ -344,6 +376,7 @@ def test_the_fixture_has_every_section() -> None:
         "responses",
         "options",
         "search_body",
+        "fetch_params",
     }
 
 

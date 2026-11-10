@@ -47,7 +47,7 @@ results = keenable.search(
 | `snippet_max_length` | Cap the page text returned per result |
 | `max_results` | How many results to return, 1 to 50 (default 10) |
 | `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `mode` | Search mode; `"pro"` (default) does deeper retrieval |
+| `mode` | Search mode: `"pro"` (default) does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops |
 
 ## Ground a model in one line
 
@@ -86,6 +86,19 @@ print(page.title)
 print(page.content)  # markdown, boilerplate stripped
 print(page.to_context())  # same citable block shape as search results
 ```
+
+`fetch()` takes three optional arguments:
+
+```python
+page = keenable.fetch("https://cerebras.ai/chip", max_chars=5000, live=True)
+answer = keenable.fetch("https://cerebras.ai/chip", prompt="List the chip's specs")
+```
+
+| Option | What it does |
+|---|---|
+| `max_chars` | Cap the characters of content returned, a positive integer. The API default is 50000; `page.truncated` and `page.total_chars` say whether the page was cut |
+| `live` | `True` fetches the page from its source now instead of reading Keenable's indexed copy. Default `False` |
+| `prompt` | An extraction instruction, up to 2000 characters. `page.content` is then only the model's output for it, not the page |
 
 ## Tool calling
 

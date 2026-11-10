@@ -103,6 +103,13 @@ type conformance struct {
 		Sent    map[string]any    `json:"sent"`
 		Skip    map[string]string `json:"skip"`
 	} `json:"search_body"`
+	FetchParams []struct {
+		Name    string            `json:"name"`
+		URL     string            `json:"url"`
+		Options map[string]any    `json:"options"`
+		Sent    map[string]string `json:"sent"`
+		Skip    map[string]string `json:"skip"`
+	} `json:"fetch_params"`
 }
 
 func loadConformance(t *testing.T) *conformance {
@@ -595,5 +602,58 @@ func TestConformanceSearchBody(t *testing.T) {
 				t.Fatalf("sent %v, want %v", sent, tc.Sent)
 			}
 		})
+	}
+}
+
+func TestConformanceFetchParams(t *testing.T) {
+	for _, tc := range loadConformance(t).FetchParams {
+		t.Run(tc.Name, func(t *testing.T) {
+			skipKnown(t, tc.Name)
+			if why, ok := tc.Skip["go"]; ok {
+				t.Skip(why)
+			}
+			opts := &keenable.FetchOptions{}
+			for wire, v := range tc.Options {
+				switch wire {
+				case "max_chars":
+					opts.MaxChars = int(v.(float64))
+				case "live":
+					opts.Live = v.(bool)
+				case "prompt":
+					opts.Prompt = v.(string)
+				default:
+					t.Fatalf("no Go mapping for %q", wire)
+				}
+			}
+			key := "k"
+			c, seen := start(t, okBoth, &keenable.Options{APIKey: &key})
+			if _, err := c.FetchWithOptions(context.Background(), tc.URL, opts); err != nil {
+				t.Fatal(err)
+			}
+			req := one(t, seen)
+			if req.Path != "/v1/fetch" {
+				t.Fatalf("path %q, want /v1/fetch", req.Path)
+			}
+			sent := map[string]string{}
+			for name, values := range req.Query {
+				if len(values) != 1 {
+					t.Fatalf("%s sent %d times", name, len(values))
+				}
+				sent[name] = values[0]
+			}
+			if !reflect.DeepEqual(sent, tc.Sent) {
+				t.Fatalf("sent %v, want %v", sent, tc.Sent)
+			}
+		})
+	}
+}
+
+func TestFetchOptionsDoNotBypassTheURLRefusal(t *testing.T) {
+	c, n := counted(t, nil, okBoth)
+	_, err := c.FetchWithOptions(context.Background(), "http://127.0.0.1/", &keenable.FetchOptions{
+		MaxChars: 10, Live: true, Prompt: "p",
+	})
+	if !isInvalid(err) || n.Load() != 0 {
+		t.Fatalf("err=%v requests=%d", err, n.Load())
 	}
 }

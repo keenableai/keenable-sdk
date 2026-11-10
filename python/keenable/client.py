@@ -254,6 +254,22 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
     return payload
 
 
+def _fetch_params(
+    url: str, max_chars: int | None, live: bool | None, prompt: str | None
+) -> dict[str, str]:
+    """Build fetch's query parameters, dropping options the caller left unset."""
+    params = {"url": url}
+    if max_chars is not None:
+        params["max_chars"] = str(max_chars)
+    # The API reads only "true" and "false", and an absent live is false.
+    if live is True:
+        params["live"] = "true"
+    # An empty string is unset, as in Go, which cannot tell the two apart.
+    if prompt is not None and prompt != "":
+        params["prompt"] = prompt
+    return params
+
+
 # Codes about the page being fetched rather than about Keenable or the caller,
 # besides every ``target_*`` code. Servers before error format v1 send no
 # ``type``, so it is derived from these and the status.
@@ -967,7 +983,7 @@ class Keenable(_BaseClient):
         self,
         query: str,
         *,
-        mode: Literal["pro"] | None = None,
+        mode: Literal["pro", "realtime"] | None = None,
         site: str | None = None,
         published_after: str | None = None,
         published_before: str | None = None,
@@ -987,6 +1003,8 @@ class Keenable(_BaseClient):
                 language ("blog post comparing React and Vue performance")
                 rather than typing keywords; the index is semantic.
             mode: Search mode. ``"pro"`` (the default) does deeper retrieval.
+                ``"realtime"`` gives the fastest response, for
+                latency-sensitive agent loops.
             site: Restrict results to one domain, e.g. ``"arxiv.org"``.
             published_after: Keep pages published on or after ``YYYY-MM-DD``.
             published_before: Keep pages published on or before ``YYYY-MM-DD``.
@@ -1036,6 +1054,9 @@ class Keenable(_BaseClient):
         self,
         url: str,
         *,
+        max_chars: int | None = None,
+        live: bool | None = None,
+        prompt: str | None = None,
         timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
@@ -1043,13 +1064,30 @@ class Keenable(_BaseClient):
         """Fetch one URL and return its main content as markdown.
 
         Use this after :meth:`search` when a snippet is not enough and the
-        model needs the full page. ``timeout``, ``max_retries`` and
-        ``extra_headers`` apply to this call only, as in :meth:`search`.
+        model needs the full page.
+
+        Args:
+            url: The page to fetch, an ``http`` or ``https`` URL. Internal
+                hosts and private addresses are refused before a request is
+                sent.
+            max_chars: Cap the characters of content returned, a positive
+                integer. The API default is 50000. ``Page.truncated`` and
+                ``Page.total_chars`` say whether the page was cut and how
+                long it was.
+            live: ``True`` fetches the page from its source now instead of
+                reading Keenable's indexed copy. Default ``False``.
+            prompt: An extraction instruction, up to 2000 characters, such
+                as ``"list the pricing tiers"``. ``Page.content`` is then
+                only the model's output for it, not the page.
+            timeout: Deadline for each attempt of this call, as in
+                :meth:`search`.
+            max_retries: Retry budget for this call, as in :meth:`search`.
+            extra_headers: Headers for this call, over ``default_headers``.
         """
         _reject_private_fetch_target(url)
         body, request_id = self._request(
             _FETCH,
-            params={"url": url},
+            params=_fetch_params(url, max_chars, live, prompt),
             timeout=timeout,
             max_retries=max_retries,
             extra_headers=extra_headers,
@@ -1147,7 +1185,7 @@ class AsyncKeenable(_BaseClient):
         self,
         query: str,
         *,
-        mode: Literal["pro"] | None = None,
+        mode: Literal["pro", "realtime"] | None = None,
         site: str | None = None,
         published_after: str | None = None,
         published_before: str | None = None,
@@ -1186,15 +1224,18 @@ class AsyncKeenable(_BaseClient):
         self,
         url: str,
         *,
+        max_chars: int | None = None,
+        live: bool | None = None,
+        prompt: str | None = None,
         timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
     ) -> Page:
-        """Fetch one URL as markdown. See :meth:`Keenable.fetch`."""
+        """Fetch one URL as markdown. See :meth:`Keenable.fetch` for the arguments."""
         _reject_private_fetch_target(url)
         body, request_id = await self._request(
             _FETCH,
-            params={"url": url},
+            params=_fetch_params(url, max_chars, live, prompt),
             timeout=timeout,
             max_retries=max_retries,
             extra_headers=extra_headers,

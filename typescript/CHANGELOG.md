@@ -20,6 +20,16 @@ what an existing call does.
   (`number | undefined`): whether the API cut `content` at `max_chars`, and
   the full content's length in code points. `undefined` when the API leaves
   them out or sends another type. `content` and `toContext()` are unchanged.
+- **Added:** `search()` accepts `mode: "realtime"`, the fastest response, for
+  latency-sensitive agent loops. `"pro"`, deeper retrieval, stays the default.
+  The API already took it; the type was `"pro"` alone.
+- **Added:** `fetch()` takes `maxChars` (cap the content returned; the API
+  default is 50000), `live` (`true` fetches the page from its source instead
+  of the indexed copy) and `prompt` (an extraction instruction of up to 2000
+  characters; `content` is then only the model's output for it). Its second
+  argument is now the exported `FetchOptions`, which extends `RequestOptions`,
+  so existing calls compile unchanged. An option left unset is not sent,
+  `live: false` is not sent, and an empty `prompt` is unset.
 
 - **Behaviour change:** errors no longer expose `docsUrl`, `billingUrl`,
   `autoTopUpUrl`, `payPerRequest` or `raw`, and the message no longer ends with

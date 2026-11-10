@@ -20,6 +20,15 @@ Behaviour changes are marked **Changed**.
   (`int | None`): whether the API cut `content` at `max_chars`, and the full
   content's length in code points. `None` when the API leaves them out or
   sends another type. `content` and `to_context()` are unchanged.
+- **Added:** `search()` accepts `mode="realtime"`, the fastest response, for
+  latency-sensitive agent loops. `"pro"`, deeper retrieval, stays the default.
+  The API already took it; the type was `Literal["pro"]`.
+- **Added:** `fetch()` takes `max_chars` (cap the content returned; the API
+  default is 50000), `live` (`True` fetches the page from its source instead
+  of the indexed copy) and `prompt` (an extraction instruction of up to 2000
+  characters; `content` is then only the model's output for it), on `Keenable`
+  and `AsyncKeenable`. An option left unset is not sent, `live=False` is not
+  sent, and an empty `prompt` is unset.
 
 - **Changed:** errors no longer have `docs_url`, `billing_url`,
   `auto_top_up_url`, `pay_per_request` or `raw` (none was in a release), and

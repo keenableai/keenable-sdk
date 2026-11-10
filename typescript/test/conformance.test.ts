@@ -15,7 +15,7 @@ import {
   KeenableInvalidRequestError,
   KeenableRateLimitError,
 } from "../src/index.js";
-import type { KeenableOptions, Page, SearchOptions, SearchResponse } from "../src/index.js";
+import type { FetchOptions, KeenableOptions, Page, SearchOptions, SearchResponse } from "../src/index.js";
 import { backoffMs, retryAfterHeader } from "../src/client.js";
 import { SEARCH_FILTERS } from "../src/filters.js";
 
@@ -58,6 +58,13 @@ interface Fixture {
     query: string;
     options: Record<string, Json>;
     sent: Json;
+    skip: Record<string, string>;
+  }[];
+  fetch_params: {
+    name: string;
+    url: string;
+    options: { max_chars?: number; live?: boolean; prompt?: string };
+    sent: Record<string, string>;
     skip: Record<string, string>;
   }[];
 }
@@ -356,5 +363,29 @@ describe("the search body", () => {
     );
     expect(outcome.error).toBeUndefined();
     expect(JSON.parse(String(outcome.requests[0]?.init.body))).toEqual(c.sent);
+  });
+});
+
+describe("the fetch parameters", () => {
+  const cases = FIXTURE.fetch_params.filter((c) => !("typescript" in c.skip));
+  it.each(cases.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
+    const options: FetchOptions = {};
+    if ("max_chars" in c.options) options.maxChars = c.options.max_chars;
+    if ("live" in c.options) options.live = c.options.live;
+    if ("prompt" in c.options) options.prompt = c.options.prompt;
+    const outcome = await call([PAGE_OK], {}, (client) => client.fetch(c.url, options));
+    expect(outcome.error).toBeUndefined();
+    expect(outcome.requests).toHaveLength(1);
+    const sent = new URL(outcome.requests[0]!.url);
+    expect(sent.pathname).toBe("/v1/fetch");
+    expect([...sent.searchParams.entries()].sort()).toEqual(Object.entries(c.sent).sort());
+  });
+
+  it("a refused URL sends nothing, whatever the options", async () => {
+    const outcome = await call([PAGE_OK], {}, (client) =>
+      client.fetch("http://127.0.0.1/", { maxChars: 10, live: true, prompt: "p" }),
+    );
+    expect(outcome.error).toBeInstanceOf(KeenableInvalidRequestError);
+    expect(outcome.requests).toHaveLength(0);
   });
 });

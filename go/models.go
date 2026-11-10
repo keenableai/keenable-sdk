@@ -16,7 +16,9 @@ import (
 type SearchOptions struct {
 	// RequestOptions holds this call's timeout, retry budget and headers.
 	RequestOptions
-	// Mode is the search mode. Empty means "pro".
+	// Mode is the search mode: "pro" (the default) does deeper retrieval,
+	// and "realtime" gives the fastest response, for latency-sensitive
+	// agent loops. Empty means "pro".
 	Mode string
 	// Site restricts results to one domain, for example "arxiv.org".
 	Site string
