@@ -8,13 +8,13 @@ plus a fetch endpoint that returns any URL as clean markdown.
 `KEENABLE_API_KEY` only lifts the hourly rate limit.
 
 ```bash
-go get github.com/keenableai/keenable-sdk/go@v0.1.1
+go get github.com/keenableai/keenable-sdk/go@v0.1.0
 ```
 
 Go 1.22 or newer. The module uses only the standard library.
 
-That version is the git tag `go/v0.1.1` on `github.com/keenableai/keenable-sdk`
-(the `go/` prefix is the directory, and it is not part of the `@v0.1.1` you
+That version is the git tag `go/v0.1.0` on `github.com/keenableai/keenable-sdk`
+(the `go/` prefix is the directory, and it is not part of the `@v0.1.0` you
 pass to `go get`). Until that tag exists, `go get` cannot resolve the module.
 From a checkout of this repo, the same program is `example/hello`:
 
@@ -116,7 +116,7 @@ fmt.Println(page.Content)       // markdown, boilerplate stripped
 fmt.Println(page.ToContext(nil)) // same citable block shape as search results
 ```
 
-`FetchWithOptions` takes three optional fields on `FetchOptions`. They ship in the next release after `v0.1.1`, so the pinned install above doesn't have them yet:
+`FetchWithOptions` takes three optional fields on `FetchOptions`. They ship in the next release after `v0.1.1`, so a released version doesn't have them yet:
 
 ```go
 page, err := client.FetchWithOptions(context.Background(), "https://cerebras.ai/chip", &keenable.FetchOptions{
