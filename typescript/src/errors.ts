@@ -76,6 +76,15 @@ export interface KeenableAPIErrorDetails {
   param?: string;
   /** The limit a 429 hit. */
   limit?: RateLimitInfo;
+  /**
+   * What a 400 `invalid_filter` error rejected; `param` names the parameter.
+   * Usually the entry as sent, but a size cap reports the list's size
+   * (`"2500 entries"` or `"more than 1000 distinct hosts"`) or the first 64
+   * characters of an over-long entry followed by `"..."`.
+   */
+  value?: string;
+  /** Why the API rejected `value`. */
+  reason?: string;
 }
 
 /**
@@ -94,6 +103,8 @@ export class KeenableAPIError extends KeenableError implements KeenableAPIErrorD
   readonly requestId?: string;
   readonly param?: string;
   readonly limit?: RateLimitInfo;
+  readonly value?: string;
+  readonly reason?: string;
 
   constructor(
     message: string,
@@ -113,6 +124,8 @@ export class KeenableAPIError extends KeenableError implements KeenableAPIErrorD
     this.requestId = details.requestId;
     this.param = details.param;
     this.limit = details.limit;
+    this.value = details.value;
+    this.reason = details.reason;
   }
 }
 

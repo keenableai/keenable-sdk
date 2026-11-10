@@ -1,0 +1,20 @@
+{
+  "_comment": "A keenable_search tool call: the JSON body it sends, or the invalid-request error it raises before sending. `args` is the model's arguments object, passed as its JSON text; `text` is raw argument text for what JSON cannot hold. Give exactly one. A list filter (exclude_domains) is sent as the model gave it, for the API to judge: a lone string is wrapped, not split; \"\" and null are unset; any other value, an empty list included, is sent unchanged. `sent` is the whole body, compared as JSON; `invalid` means the invalid-request error and no request.",
+  "cases": [
+    {"name": "a list is sent as given", "args": {"query": "q", "exclude_domains": ["pinterest.com", "quora.com"]}, "sent": {"query": "q", "mode": "pro", "exclude_domains": ["pinterest.com", "quora.com"]}},
+    {"name": "an empty list is sent", "args": {"query": "q", "exclude_domains": []}, "sent": {"query": "q", "mode": "pro", "exclude_domains": []}},
+    {"name": "a lone string is wrapped", "args": {"query": "q", "exclude_domains": "spam.com"}, "sent": {"query": "q", "mode": "pro", "exclude_domains": ["spam.com"]}},
+    {"name": "a comma-separated string is wrapped, not split", "args": {"query": "q", "exclude_domains": " a.com,b.com "}, "sent": {"query": "q", "mode": "pro", "exclude_domains": [" a.com,b.com "]}},
+    {"name": "a blank string is wrapped", "args": {"query": "q", "exclude_domains": "   "}, "sent": {"query": "q", "mode": "pro", "exclude_domains": ["   "]}},
+    {"name": "an empty string is unset", "args": {"query": "q", "exclude_domains": ""}, "sent": {"query": "q", "mode": "pro"}},
+    {"name": "null is unset", "args": {"query": "q", "exclude_domains": null}, "sent": {"query": "q", "mode": "pro"}},
+    {"name": "an absent list is unset", "args": {"query": "q"}, "sent": {"query": "q", "mode": "pro"}},
+    {"name": "blank entries are sent", "args": {"query": "q", "exclude_domains": ["", " "]}, "sent": {"query": "q", "mode": "pro", "exclude_domains": ["", " "]}},
+    {"name": "a list with a non-string entry is sent", "args": {"query": "q", "exclude_domains": ["a.com", 7]}, "sent": {"query": "q", "mode": "pro", "exclude_domains": ["a.com", 7]}},
+    {"name": "a number is sent", "args": {"query": "q", "exclude_domains": 5}, "sent": {"query": "q", "mode": "pro", "exclude_domains": 5}},
+    {"name": "an object is sent", "args": {"query": "q", "exclude_domains": {"a.com": true}}, "sent": {"query": "q", "mode": "pro", "exclude_domains": {"a.com": true}}},
+    {"name": "site and exclude_domains together", "args": {"query": "q", "site": "arxiv.org", "exclude_domains": ["export.arxiv.org"]}, "sent": {"query": "q", "mode": "pro", "site": "arxiv.org", "exclude_domains": ["export.arxiv.org"]}},
+    {"name": "NaN in the list is invalid", "text": "{\"query\": \"q\", \"exclude_domains\": [NaN]}", "invalid": true},
+    {"name": "Infinity in the list is invalid", "text": "{\"query\": \"q\", \"exclude_domains\": [Infinity]}", "invalid": true}
+  ]
+}

@@ -98,6 +98,9 @@ with a caller's own `httpx` client, `http.Client` or `fetch` too.
 - JSON is strict: `NaN` and `Infinity` are not JSON, nor is trailing data. A
   leading byte order mark is ignored. A number too large for a double drops that
   field only.
+- `value` and `reason` are read only from a 400 whose `error` is
+  `invalid_filter`; `param` names the parameter they belong to, from the
+  body's `param`, else its `field`.
 - String fields count only when they are strings with more than whitespace;
   `retryable` only when boolean; delays only when finite numbers at least 0
   (capped at a year); `limit.max` only when an integer from 0 to 2^53 - 1.
@@ -135,4 +138,18 @@ body's, else the trimmed `X-Request-Id` header.
   the invalid-request error, not a retried connection failure. `X-API-Key` is
   ignored: the key always comes from the client.
 - The query is a string with more than whitespace, sent as given. An empty
-  string filter is unset, and an unset mode is `pro`.
+  string filter is unset, and an unset mode is `pro`. A list filter
+  (`exclude_domains`) takes any iterable and is sent as a list of the entries
+  as given, an empty one as `[]`; a lone string is one entry, and `""` is
+  sent as `[""]` so the API rejects it rather than searching unfiltered. A value the
+  language cannot encode as JSON (`NaN`, bytes, an arbitrary object) is the
+  invalid-request error and sends nothing.
+
+## Tool calls (`tool_call`)
+
+A `keenable_search` call's arguments, as JSON text, give the body sent or the
+invalid-request error. A list filter (`exclude_domains`) is sent as the model
+gave it for the API to judge: a lone string is wrapped, not split; `""` and
+null are unset; anything else, an empty list or a blank entry included, is
+sent unchanged. Arguments JSON cannot encode (`NaN`, `Infinity`) are the
+invalid-request error and send nothing.

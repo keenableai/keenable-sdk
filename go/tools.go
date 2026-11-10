@@ -94,7 +94,11 @@ func RunToolCall(ctx context.Context, client *Client, name string, arguments any
 		if err != nil {
 			return "", err
 		}
-		resp, err := client.Search(ctx, query, toolSearchOptions(args))
+		opts, err := toolSearchOptions(args)
+		if err != nil {
+			return "", err
+		}
+		resp, err := client.Search(ctx, query, opts)
 		if err != nil {
 			return "", err
 		}

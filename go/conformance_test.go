@@ -68,6 +68,8 @@ type conformance struct {
 			RetryAfterSeconds *float64 `json:"retry_after_seconds"`
 			RequestID         *string  `json:"request_id"`
 			Param             *string  `json:"param"`
+			Value             *string  `json:"value"`
+			Reason            *string  `json:"reason"`
 			Limit             *struct {
 				Scope    *string `json:"scope"`
 				Window   *string `json:"window"`
@@ -103,6 +105,12 @@ type conformance struct {
 		Sent    map[string]any    `json:"sent"`
 		Skip    map[string]string `json:"skip"`
 	} `json:"search_body"`
+	ToolCall []struct {
+		Name      string         `json:"name"`
+		Arguments string         `json:"arguments"`
+		Sent      map[string]any `json:"sent"`
+		Invalid   bool           `json:"invalid"`
+	} `json:"tool_call"`
 }
 
 func loadConformance(t *testing.T) *conformance {
@@ -331,6 +339,8 @@ func TestConformanceErrors(t *testing.T) {
 			check("fix", api.Fix, want.Fix)
 			check("request_id", api.RequestID, want.RequestID)
 			check("param", api.Param, want.Param)
+			check("value", api.Value, want.Value)
+			check("reason", api.Reason, want.Reason)
 			if !reflect.DeepEqual(api.Retryable, want.Retryable) {
 				t.Errorf("retryable %v, want %v", api.Retryable, want.Retryable)
 			}
@@ -563,6 +573,11 @@ func TestConformanceSearchBody(t *testing.T) {
 					opts.Mode = str
 				case "site":
 					opts.Site = str
+				case "exclude_domains":
+					opts.ExcludeDomains = []string{}
+					for _, host := range v.([]any) {
+						opts.ExcludeDomains = append(opts.ExcludeDomains, host.(string))
+					}
 				case "published_after":
 					opts.PublishedAfter = str
 				case "published_before":
@@ -585,6 +600,33 @@ func TestConformanceSearchBody(t *testing.T) {
 			key := "k"
 			c, seen := start(t, okBoth, &keenable.Options{APIKey: &key})
 			if _, err := c.Search(context.Background(), tc.Query, opts); err != nil {
+				t.Fatal(err)
+			}
+			var sent map[string]any
+			if err := json.Unmarshal(one(t, seen).Body, &sent); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(sent, tc.Sent) {
+				t.Fatalf("sent %v, want %v", sent, tc.Sent)
+			}
+		})
+	}
+}
+
+func TestConformanceToolCall(t *testing.T) {
+	for _, tc := range loadConformance(t).ToolCall {
+		t.Run(tc.Name, func(t *testing.T) {
+			skipKnown(t, tc.Name)
+			key := "k"
+			c, seen := start(t, okBoth, &keenable.Options{APIKey: &key})
+			_, err := keenable.RunToolCall(context.Background(), c, "keenable_search", tc.Arguments)
+			if tc.Invalid {
+				if !isInvalid(err) || len(*seen) != 0 {
+					t.Fatalf("err=%v requests=%d", err, len(*seen))
+				}
+				return
+			}
+			if err != nil {
 				t.Fatal(err)
 			}
 			var sent map[string]any

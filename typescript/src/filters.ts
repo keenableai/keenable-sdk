@@ -15,11 +15,10 @@ export interface Filter {
   readonly option: string;
   /** Shown to the model when the filter is exposed as a tool parameter. */
   readonly description: string;
-  readonly jsonType?: "string" | "integer";
+  readonly jsonType?: "string" | "integer" | "array";
   /**
    * Whether a model may set this filter through the search tool. The subset is
-   * deliberately small: a model choosing between six date and length knobs
-   * picks worse than one choosing between two.
+   * kept small: a model picks better from fewer knobs.
    */
   readonly toolExposed?: boolean;
 }
@@ -29,6 +28,15 @@ export const SEARCH_FILTERS: readonly Filter[] = [
     wire: "site",
     option: "site",
     description: "Optional. Restrict results to one domain, e.g. 'arxiv.org'.",
+    toolExposed: true,
+  },
+  {
+    wire: "exclude_domains",
+    option: "excludeDomains",
+    description:
+      "Optional. Never return results from these hosts or their subdomains, " +
+      "e.g. 'pinterest.com'. Hosts only, no paths or wildcards. Up to 1,000.",
+    jsonType: "array",
     toolExposed: true,
   },
   {
@@ -85,7 +93,9 @@ export function toolProperties(): Record<string, unknown> {
   return Object.fromEntries(
     TOOL_FILTERS.map((f) => [
       f.wire,
-      { type: f.jsonType ?? "string", description: f.description },
+      f.jsonType === "array"
+        ? { type: "array", items: { type: "string" }, description: f.description }
+        : { type: f.jsonType ?? "string", description: f.description },
     ]),
   );
 }

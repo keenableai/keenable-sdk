@@ -693,21 +693,29 @@ export class Keenable {
       throw new KeenableInvalidRequestError("search() needs a non-empty query");
     }
 
-    // An empty string is unset, as Go cannot tell the two apart.
+    // An empty string is unset, as Go cannot tell the two apart. A list
+    // filter's "" is sent as [""] so the API rejects it (fail closed).
     const payload: Record<string, unknown> = {
       query,
       mode: options.mode || "pro",
     };
     for (const filter of SEARCH_FILTERS) {
-      const value = (options as Record<string, unknown>)[filter.option];
-      if (value !== undefined && value !== "") payload[filter.wire] = value;
+      const value: unknown = (options as Record<string, unknown>)[filter.option];
+      if (value === undefined || value === null) continue;
+      if (value === "" && filter.jsonType !== "array") continue;
+      payload[filter.wire] = filter.jsonType === "array" ? asList(value) : value;
+    }
+    for (const [name, value] of Object.entries(payload)) rejectLossyJson(value, name);
+    let body: string;
+    try {
+      body = JSON.stringify(payload);
+    } catch (error) {
+      throw new KeenableInvalidRequestError(
+        `could not encode the search request: ${(error as Error).message}. Pass JSON-encodable arguments.`,
+      );
     }
 
-    const { data, requestId } = await this.request(
-      "search",
-      { method: "POST", body: JSON.stringify(payload) },
-      options,
-    );
+    const { data, requestId } = await this.request("search", { method: "POST", body }, options);
 
     const rawResults = Array.isArray(data.results) ? data.results : [];
     return new SearchResponse({
@@ -1104,6 +1112,51 @@ function rateLimitInfo(value: unknown): RateLimitInfo | undefined {
  * the `X-Request-Id` header; `type` is derived from the status and code when
  * the API did not send it.
  */
+/** A lone string wrapped, any other iterable as an array, else as given for the API to judge. */
+function asList(value: unknown): unknown {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value;
+  if (typeof value === "object" && value !== null && Symbol.iterator in value) {
+    return Array.from(value as Iterable<unknown>);
+  }
+  return value;
+}
+
+/**
+ * Throws on values JSON.stringify would silently change rather than refuse:
+ * non-finite numbers and undefined, function or symbol array entries become
+ * null. Anything else encodable goes to the API as is.
+ */
+function rejectLossyJson(value: unknown, path: string, seen = new WeakSet<object>()): void {
+  const refuse = (at: string, what: string): never => {
+    throw new KeenableInvalidRequestError(
+      `could not encode the search request: ${at} is ${what}, which JSON would send as null. Pass JSON-encodable arguments.`,
+    );
+  };
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) refuse(path, String(value));
+    return;
+  }
+  if (typeof value !== "object" || value === null) return;
+  // Cycles are left for JSON.stringify to refuse.
+  if (seen.has(value) || typeof (value as { toJSON?: unknown }).toJSON === "function") return;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      const item: unknown = value[i];
+      const at = `${path}[${i}]`;
+      if (item === undefined || typeof item === "function" || typeof item === "symbol") {
+        refuse(at, item === undefined ? "undefined" : `a ${typeof item}`);
+      }
+      rejectLossyJson(item, at, seen);
+    }
+    return;
+  }
+  for (const [key, item] of Object.entries(value)) {
+    rejectLossyJson(item, `${path}.${key}`, seen);
+  }
+}
+
 function errorDetails(
   status: number,
   body: Record<string, unknown> | undefined,
@@ -1111,6 +1164,7 @@ function errorDetails(
 ): KeenableAPIErrorDetails {
   const b = body ?? {};
   const code = nonEmpty(b.code);
+  const invalidFilter = status === 400 && b.error === "invalid_filter";
   return {
     code,
     type: nonEmpty(b.type) ?? deriveType(status, code),
@@ -1122,7 +1176,9 @@ function errorDetails(
       retryAfterHeader(headers?.get("Retry-After")) ??
       seconds(b.retryAfter),
     requestId: nonEmpty(b.request_id) ?? nonEmpty(headers?.get("X-Request-Id")?.trim()),
-    param: nonEmpty(b.param),
+    param: nonEmpty(b.param) ?? (invalidFilter ? nonEmpty(b.field) : undefined),
     limit: rateLimitInfo(b.limit),
+    value: invalidFilter ? nonEmpty(b.value) : undefined,
+    reason: invalidFilter ? nonEmpty(b.reason) : undefined,
   };
 }

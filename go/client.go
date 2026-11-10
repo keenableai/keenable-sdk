@@ -246,7 +246,7 @@ func (c *Client) Search(ctx context.Context, query string, opts *SearchOptions) 
 	applyFilters(payload, opts)
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return nil, &InvalidRequestError{msg: "could not encode the search request. Retry with a string query."}
+		return nil, &InvalidRequestError{msg: "could not encode the search request: " + err.Error() + ". Pass JSON-encodable arguments."}
 	}
 	var req *RequestOptions
 	if opts != nil {
@@ -896,6 +896,13 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 	api.Body = detail
 	if api.Type == "" {
 		api.Type = deriveType(status, api.APICode)
+	}
+	if status == 400 && stringField(obj, "error") == "invalid_filter" {
+		if api.Param == "" {
+			api.Param = stringField(obj, "field")
+		}
+		api.Value = stringField(obj, "value")
+		api.Reason = stringField(obj, "reason")
 	}
 
 	// A 401/403 about the page being fetched is not an authentication failure.

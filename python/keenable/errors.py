@@ -63,6 +63,11 @@ class KeenableAPIError(KeenableError):
     - ``request_id``: quote it when reporting a problem.
     - ``param``: the request parameter a 400 is about.
     - ``limit``: a :class:`RateLimitInfo` on 429s.
+    - ``value`` and ``reason``: what a 400 ``invalid_filter`` error rejected
+      and why; ``param`` names the parameter. ``value`` is usually the entry as
+      sent, but a size cap reports the list's size (``"2500 entries"`` or
+      ``"more than 1000 distinct hosts"``) or the first 64 characters of an
+      over-long entry followed by ``"..."``.
 
     ``str(err)`` ends with ``(code: <code>)`` and ``(request_id: <id>)`` when
     the API sent them.
@@ -83,6 +88,8 @@ class KeenableAPIError(KeenableError):
         request_id: str | None = None,
         param: str | None = None,
         limit: RateLimitInfo | None = None,
+        value: str | None = None,
+        reason: str | None = None,
     ):
         super().__init__(message)
         self.status_code = status_code
@@ -96,6 +103,8 @@ class KeenableAPIError(KeenableError):
         self.request_id = request_id
         self.param = param
         self.limit = limit
+        self.value = value
+        self.reason = reason
 
 
 class KeenableAuthError(KeenableAPIError):

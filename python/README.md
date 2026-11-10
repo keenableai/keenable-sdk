@@ -42,12 +42,59 @@ results = keenable.search(
 | Argument | What it does |
 |---|---|
 | `site` | Restrict to one domain, e.g. `"arxiv.org"` |
+| `exclude_domains` | Never return results from these hosts or their subdomains; see below |
 | `published_after` / `published_before` | Filter by publication date (`YYYY-MM-DD`) |
 | `acquired_after` / `acquired_before` | Filter by when Keenable indexed the page |
 | `snippet_max_length` | Cap the page text returned per result |
 | `max_results` | How many results to return, 1 to 50 (default 10) |
 | `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `mode` | Search mode; `"pro"` (default) does deeper retrieval |
+
+### Excluding domains
+
+`exclude_domains` drops results from the listed sites.
+
+```python
+results = keenable.search(
+    "how to repot a monstera without damaging the roots",
+    exclude_domains=["pinterest.com", "quora.com"],
+)
+```
+
+Each entry is a host, such as `"pinterest.com"`. A host excludes itself and
+every subdomain, so `"yahoo.com"` also drops `finance.yahoo.com`. Up to 1,000
+distinct hosts. Hosts such as `github.io` and `blogspot.com` are accepted.
+
+The API cleans up unambiguous input for you: surrounding whitespace, case, an
+`http://` or `https://` scheme, a leading `www.`, a port, a trailing `/` or
+dot, a query string or `#fragment`; international names become punycode. So
+`"https://WWW.Pinterest.com/"` is read as `"pinterest.com"`. Anything else is
+rejected with HTTP 400, raised as `KeenableAPIError`: a path
+(`"example.com/blog"`), a suffix or wildcard (`".com"`, `"*.example.com"`), an
+IP address, a `user@host`, or an invalid host. The `param`, `value` and
+`reason` attributes name the rejected entry, and `fix` says what to change:
+
+```python
+try:
+    keenable.search("q", exclude_domains=["example.com/blog"])
+except KeenableAPIError as err:
+    if err.error == "invalid_filter":
+        print(err.param, err.value, err.reason)
+        # exclude_domains example.com/blog paths are not supported; give only the host, such as example.com
+    else:
+        print(err.body)
+```
+
+`value` and `reason` are set only for that rejection (a 400 whose body has
+`"error": "invalid_filter"`) and `None` on every other error. `value` is
+usually the entry as sent; a size cap reports the list's size (`"2500 entries"`
+or `"more than 1000 distinct hosts"`) or an over-long entry's first 64
+characters followed by `"..."`.
+
+If every match is excluded, the response can be empty. The SDK sends the list
+as given and leaves validation to the API; `run_tool_call` does the same with a
+model's `exclude_domains` argument. `site` still works for a single domain,
+and the `keenable_search` tool offers the model `site` and `exclude_domains`.
 
 ## Ground a model in one line
 
@@ -179,6 +226,7 @@ except KeenableAPIError as err:
 | `retry_after_seconds` | Seconds to wait (body, else the `Retry-After` header) |
 | `request_id` | Quote it when reporting a problem |
 | `param` | The parameter a 400 is about |
+| `value`, `reason` | What a 400 `invalid_filter` rejected (usually the entry; for a size cap the count or a truncated entry), and why |
 | `limit` | On a 429: `RateLimitInfo(scope, window, max, resets_at)` |
 
 When the API sends `fix`, the error message ends with it, then with

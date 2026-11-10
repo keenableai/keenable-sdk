@@ -1,6 +1,9 @@
 package keenable
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"reflect"
+)
 
 // The search filter set, declared once.
 //
@@ -20,6 +23,13 @@ var searchFilters = []filter{
 	{
 		wire:        "site",
 		description: "Optional. Restrict results to one domain, e.g. 'arxiv.org'.",
+		toolExposed: true,
+	},
+	{
+		wire: "exclude_domains",
+		description: "Optional. Never return results from these hosts or their subdomains, " +
+			"e.g. 'pinterest.com'. Hosts only, no paths or wildcards. Up to 1,000.",
+		jsonType:    "array",
 		toolExposed: true,
 	},
 	{
@@ -75,6 +85,14 @@ func (f filter) value(opts *SearchOptions) (any, bool) {
 			return nil, false
 		}
 		return opts.Site, true
+	case "exclude_domains":
+		if opts.excludeDomainsJSON != nil {
+			return opts.excludeDomainsJSON, true
+		}
+		if opts.ExcludeDomains == nil {
+			return nil, false
+		}
+		return opts.ExcludeDomains, true
 	case "published_after":
 		if opts.PublishedAfter == "" {
 			return nil, false
@@ -125,31 +143,64 @@ func toolProperties() map[string]any {
 		if kind == "" {
 			kind = "string"
 		}
-		props[f.wire] = map[string]any{
+		prop := map[string]any{
 			"type":        kind,
 			"description": f.description,
 		}
+		if kind == "array" {
+			prop["items"] = map[string]any{"type": "string"}
+		}
+		props[f.wire] = prop
 	}
 	return props
 }
 
 // toolSearchOptions keeps only the filters the tool schema offers the model.
-func toolSearchOptions(args map[string]any) *SearchOptions {
+// A list filter is sent as the model gave it, a lone string wrapped, so the
+// API judges a malformed one; nil and "" are unset.
+func toolSearchOptions(args map[string]any) (*SearchOptions, error) {
 	opts := &SearchOptions{}
-	if args == nil {
-		return opts
-	}
 	for _, f := range searchFilters {
 		if !f.toolExposed {
 			continue
 		}
 		v, ok := args[f.wire]
-		if !ok || !truthy(v) {
+		if !ok {
 			continue
 		}
-		assignFilter(opts, f.wire, v)
+		if f.jsonType == "array" {
+			if s, isStr := v.(string); isStr {
+				if s == "" {
+					continue
+				}
+				v = []string{s}
+			}
+			if v == nil || isNilSlice(v) {
+				continue
+			}
+			raw, err := json.Marshal(v)
+			if err != nil {
+				return nil, &InvalidRequestError{msg: "could not encode " + f.wire + ": " + err.Error() + ". Pass JSON-encodable arguments."}
+			}
+			assignList(opts, f.wire, raw)
+			continue
+		}
+		if truthy(v) {
+			assignFilter(opts, f.wire, v)
+		}
 	}
-	return opts
+	return opts, nil
+}
+
+func isNilSlice(v any) bool {
+	r := reflect.ValueOf(v)
+	return r.Kind() == reflect.Slice && r.IsNil()
+}
+
+func assignList(opts *SearchOptions, wire string, raw json.RawMessage) {
+	if wire == "exclude_domains" {
+		opts.excludeDomainsJSON = raw
+	}
 }
 
 func assignFilter(opts *SearchOptions, wire string, v any) {
