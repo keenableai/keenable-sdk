@@ -1,61 +1,45 @@
 # Publishing
 
-Three SDKs ship from this repo, on independent version numbers.
+The Python, TypeScript and Go SDKs release together, on one version.
 
-## Python (`keenable` on PyPI)
+## Release
 
-Trusted Publishing (OIDC), no tokens stored.
+1. On a branch, run `node scripts/release/version.ts prepare <x.y.z>` (Node 22.18+).
+   It writes the version into `python/pyproject.toml`, `python/keenable/_version.py`,
+   `typescript/package.json` and `go/version.go`, and moves each changelog's
+   `## Unreleased` under `## <x.y.z>`. It refuses a version that is not above every
+   current one, and a release where no SDK has unreleased changes.
+2. Update any README line that says a feature ships "in the next release after"
+   an older version. Open the PR and merge it once CI is green.
+3. `release.yml` runs on the merge. It tags `v<x.y.z>` and `go/v<x.y.z>`, creates
+   the GitHub Release from the three changelog sections, and starts:
+   - `publish-python.yml`: builds with `uv` and publishes to PyPI.
+   - `publish-typescript.yml`: type checks, tests, builds and publishes to npm.
+   - the Go smoke test. Go needs no registry; the `go/v<x.y.z>` tag is the release.
+4. Each of the three ends with a smoke test. It installs the new version from
+   PyPI, npm or the Go module proxy in a clean environment and runs one keyless
+   search with `exclude_domains` against production. A red smoke job means the
+   published package does not work.
 
-One-time setup on PyPI: register a Trusted Publisher for project `keenable`
-pointing at repo `keenableai/keenable-sdk`, workflow `publish-python.yml`,
-environment `pypi`.
+`node scripts/release/version.ts show` prints every file's version, and
+`check` fails unless they agree. CI runs `check` from the first `v*` tag on.
 
-To release:
+A failed publish can be re-run from its workflow page with "Run workflow" on
+the `v<x.y.z>` tag. Re-running `release.yml` on a version that is already
+tagged does nothing.
 
-1. Bump `version` in `python/pyproject.toml` and `__version__` in
-   `python/keenable/_version.py` (the only two places it appears; `__init__`
-   and the User-Agent both read the latter).
-2. Create a GitHub Release tagged `python-v<version>` (e.g. `python-v0.1.1`).
-3. `publish-python.yml` builds with `uv` and publishes. The workflow ignores
-   releases whose tag does not start with `python-v`.
+## One-time setup
 
-## TypeScript (`keenable` on npm)
+Both registries use Trusted Publishing (OIDC). No tokens are stored.
 
-Manual publish with OTP, matching how our other npm packages ship.
+- PyPI: project `keenable`, Trusted Publisher for repo `keenableai/keenable-sdk`,
+  workflow `publish-python.yml`, environment `pypi`.
+- npm: package `keenable`, Settings, Trusted publisher, GitHub Actions, repo
+  `keenableai/keenable-sdk`, workflow `publish-typescript.yml`, environment `npm`.
 
-1. Bump `version` in `typescript/package.json`. Nothing else: the build injects
-   it into the User-Agent, so there is no second copy to forget.
-2. Build and verify:
-   ```bash
-   cd typescript
-   npm install --legacy-peer-deps   # npm 10 crashes on vitest 4's peer set without it
-   npm run typecheck && npm test && npm run build
-   npm pack --dry-run    # check the file list
-   ```
-3. Publish:
-   ```bash
-   npm publish --access public --otp=<code>
-   ```
-4. Tag the release `ts-v<version>` on GitHub.
+## Before the joint releases
 
-## Go (`github.com/keenableai/keenable-sdk/go`)
-
-The module lives in `go/`. There is no registry workflow: `go get` and
-pkg.go.dev follow a git tag.
-
-1. Bump `Version` in `go/version.go`. That constant is the only copy. The
-   User-Agent reads it.
-2. Tag `go/v<version>` (for example `go/v0.1.0`) on the commit that contains
-   that constant. The tag prefix is the module directory. Users install with
-   `go get github.com/keenableai/keenable-sdk/go@v0.1.0`. The `@` version does
-   not repeat the `go/` prefix.
-3. The module proxy indexes the tag the first time someone fetches it.
-
-A root `v0.1.0` tag does not version this module. `python-v*` and `ts-v*` do
-not publish it either.
-
-## Version sync
-
-The three SDKs keep the same feature surface but version independently. When a
-change touches more than one, release each and note it in the same GitHub
-Release description.
+Until 0.1.4 (TypeScript), 0.1.3 (Python) and 0.1.1 (Go) the SDKs had their
+own versions and tags (`ts-v*`, `python-v*`, `go/v*`). The first joint release
+takes all three to one version above those. A GitHub Release tagged
+`python-v<version>` still starts `publish-python.yml`.

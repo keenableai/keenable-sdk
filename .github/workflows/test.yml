@@ -31,6 +31,13 @@ jobs:
         run: node scripts/error-contract/sync.ts --check
       - name: Conformance cases
         run: node scripts/conformance/sync.ts --check
+      - name: Release script
+        run: node --test scripts/release/version.test.ts
+      # The SDKs share one version from their first joint release (tag v*) on.
+      - name: One version across the SDKs
+        run: |
+          git fetch --quiet --tags origin
+          if git tag -l 'v*' | grep -q .; then node scripts/release/version.ts check; fi
 
   # Version-independent checks, so they run once rather than once per matrix leg.
   lint:

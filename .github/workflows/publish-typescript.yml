@@ -1,0 +1,102 @@
+name: Publish TypeScript to npm
+
+# Publishes the `keenable` npm package via Trusted Publishing (OIDC): no npm
+# tokens or OTPs, with provenance. release.yml starts it on a `v<version>`
+# tag; the tag must match typescript/package.json. After publishing, a smoke
+# test installs the version from npm and runs one keyless search.
+#
+# One-time setup on npmjs.com: package keenable -> Settings -> Trusted
+# publisher -> GitHub Actions, repo keenableai/keenable-sdk, workflow
+# `publish-typescript.yml`, environment `npm`.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Verify and pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Tag matches package.json
+        env:
+          TAG: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          if [ "$REF_TYPE" != "tag" ]; then
+            echo "::error::Run this from a v<version> tag, not a branch."
+            exit 1
+          fi
+          version=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::Tag $TAG does not match typescript/package.json version $version."
+            exit 1
+          fi
+      # See test.yml for why npm needs --legacy-peer-deps here.
+      - run: npm install --legacy-peer-deps --no-audit --no-fund
+      - run: npm run typecheck && npm test && npm run build
+      - name: Pack
+        run: mkdir ../dist && npm pack --pack-destination ../dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: dist/
+
+  publish:
+    name: Publish to npm
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/keenable
+    permissions:
+      id-token: write # required for Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: https://registry.npmjs.org
+      # Trusted Publishing needs npm 11.5.1 or later; Node 22 ships npm 10.
+      - run: npm install -g npm@11
+      - uses: actions/download-artifact@v4
+        with:
+          name: package
+          path: dist/
+      # The ./ prefix is required: npm reads `dist/x.tgz` as a GitHub repo.
+      - name: Publish (Trusted Publishing, with provenance)
+        run: npm publish "$(ls ./dist/*.tgz)" --access public
+
+  smoke:
+    name: npm package installs and searches
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Smoke test the published version
+        run: |
+          version=$(node -p "require('./typescript/package.json').version")
+          dir=$(mktemp -d)
+          cp scripts/release/smoke/smoke.ts "$dir/"
+          cd "$dir"
+          echo '{"type":"module"}' > package.json
+          # The registry can lag a publish by a minute.
+          for _ in 1 2 3 4 5 6; do
+            npm install --no-audit --no-fund "keenable@$version" && break
+            sleep 30
+          done
+          node smoke.ts "$version"

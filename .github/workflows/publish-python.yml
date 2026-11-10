@@ -1,9 +1,10 @@
 name: Publish Python to PyPI
 
-# Publishes the `keenable` Python SDK to PyPI via Trusted Publishing (OIDC) —
-# no API tokens or passwords. Runs when a GitHub Release whose tag starts with
-# `python-v` is published; the tag must match the version in
-# python/pyproject.toml (e.g. python-v0.1.0 -> version 0.1.0).
+# Publishes the `keenable` Python SDK to PyPI via Trusted Publishing (OIDC),
+# no API tokens or passwords. release.yml starts it on a `v<version>` tag; a
+# published GitHub Release tagged `python-v<version>` also starts it. The tag
+# must match python/pyproject.toml. After publishing, a smoke test installs the
+# version from PyPI and runs one keyless search.
 #
 # One-time setup on PyPI: register a Trusted Publisher for project `keenable`
 # pointing at this repo, workflow `publish-python.yml`, environment `pypi`.
@@ -22,6 +23,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Tag matches pyproject.toml
+        env:
+          TAG: ${{ github.event.release.tag_name || github.ref_name }}
+          REF_TYPE: ${{ github.event_name == 'release' && 'tag' || github.ref_type }}
+        run: |
+          if [ "$REF_TYPE" != "tag" ]; then
+            echo "::error::Run this from a v<version> tag, not a branch."
+            exit 1
+          fi
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' python/pyproject.toml)
+          if [ "$TAG" != "v$version" ] && [ "$TAG" != "python-v$version" ]; then
+            echo "::error::Tag $TAG does not match python/pyproject.toml version $version."
+            exit 1
+          fi
       - name: Install uv
         uses: astral-sh/setup-uv@v5
       - name: Build sdist + wheel
@@ -53,3 +68,22 @@ jobs:
           path: dist/
       - name: Publish to PyPI (Trusted Publishing)
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  smoke:
+    name: PyPI package installs and searches
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Smoke test the published version
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' python/pyproject.toml)
+          # PyPI's index can lag an upload by a minute.
+          for _ in 1 2 3 4 5 6; do
+            uv run --isolated --no-project --refresh --with "keenable==$version" \
+              python scripts/release/smoke/smoke.py "$version" && exit 0
+            sleep 30
+          done
+          exit 1

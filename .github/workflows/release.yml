@@ -1,0 +1,109 @@
+name: Release
+
+# Releases the Python, TypeScript and Go SDKs together, on one version.
+# Prepare the release in a PR with `node scripts/release/version.ts prepare
+# <x.y.z>` (see PUBLISH.md). When that PR lands on main, this workflow tags
+# v<x.y.z> and go/v<x.y.z>, creates the GitHub Release from the changelogs,
+# starts publish-python.yml and publish-typescript.yml on the tag, and smoke
+# tests the Go module. A commit whose version already has a tag is skipped, so
+# a re-run or an unrelated push to these files does nothing.
+#
+# Release events made with GITHUB_TOKEN start no workflows, so the publish
+# workflows are started with workflow_dispatch, which is exempt.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - python/pyproject.toml
+      - python/keenable/_version.py
+      - typescript/package.json
+      - go/version.go
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Tag and start publishing
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # tags and the GitHub Release
+      actions: write # workflow_dispatch of the publish workflows
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      created: ${{ steps.version.outputs.created }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: One version across the SDKs
+        id: version
+        run: |
+          version=$(node scripts/release/version.ts check)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "v$version is already tagged; nothing to release."
+            echo "created=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "created=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Tag v${{ steps.version.outputs.version }} and go/v${{ steps.version.outputs.version }}
+        if: steps.version.outputs.created == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git tag "v$VERSION"
+          git tag "go/v$VERSION"
+          git push origin "v$VERSION" "go/v$VERSION"
+      - name: GitHub Release
+        if: steps.version.outputs.created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node scripts/release/version.ts notes "$VERSION" > notes.md
+          gh release create "v$VERSION" --title "SDKs $VERSION" --notes-file notes.md --verify-tag
+      - name: Start publish-python.yml and publish-typescript.yml
+        if: steps.version.outputs.created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh workflow run publish-python.yml --ref "v$VERSION"
+          gh workflow run publish-typescript.yml --ref "v$VERSION"
+
+  go-smoke:
+    name: Go module installs and searches
+    needs: tag
+    if: needs.tag.outputs.created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Smoke test go/v${{ needs.tag.outputs.version }} from the module proxy
+        env:
+          VERSION: ${{ needs.tag.outputs.version }}
+        run: |
+          dir=$(mktemp -d)
+          cp scripts/release/smoke/smoke.go "$dir/"
+          cd "$dir"
+          go mod init smoke
+          # The proxy can lag a fresh tag by a minute or two.
+          for _ in 1 2 3 4 5 6; do
+            go get "github.com/keenableai/keenable-sdk/go@v$VERSION" && break
+            sleep 30
+          done
+          go run smoke.go "$VERSION"
