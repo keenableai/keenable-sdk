@@ -97,7 +97,7 @@ console.log(page.content); // markdown, boilerplate stripped
 console.log(page.toContext()); // same citable block shape as search results
 ```
 
-`fetch()` takes three options (`FetchOptions`), next to the per-request ones:
+`fetch()` takes three options (`FetchOptions`), next to the per-request ones. They ship in the next release after 0.1.4, so the version on npm doesn't have them yet:
 
 ```ts
 const capped = await keenable.fetch("https://cerebras.ai/chip", { maxChars: 5000, live: true });

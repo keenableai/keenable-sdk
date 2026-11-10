@@ -116,7 +116,7 @@ fmt.Println(page.Content)       // markdown, boilerplate stripped
 fmt.Println(page.ToContext(nil)) // same citable block shape as search results
 ```
 
-`FetchWithOptions` takes three optional fields on `FetchOptions`:
+`FetchWithOptions` takes three optional fields on `FetchOptions`. They ship in the next release after `v0.1.1`, so the pinned install above doesn't have them yet:
 
 ```go
 page, err := client.FetchWithOptions(context.Background(), "https://cerebras.ai/chip", &keenable.FetchOptions{

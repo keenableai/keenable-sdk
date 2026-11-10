@@ -87,7 +87,7 @@ print(page.content)  # markdown, boilerplate stripped
 print(page.to_context())  # same citable block shape as search results
 ```
 
-`fetch()` takes three optional arguments:
+`fetch()` takes three optional arguments. They ship in the next release after 0.1.3, so the version on PyPI doesn't have them yet:
 
 ```python
 page = keenable.fetch("https://cerebras.ai/chip", max_chars=5000, live=True)
