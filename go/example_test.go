@@ -1,6 +1,7 @@
 package keenable_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -33,4 +34,29 @@ func ExampleInvalidRequestError() {
 	// Output:
 	// baseURL must be an https:// URL with a host, got "" (invalid_request)
 	// invalid_request
+}
+
+func ExampleClient_Search_domainFilters() {
+	client, err := keenable.New(nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer client.Close()
+
+	results, err := client.Search(context.Background(), "security council resolution on sudan", &keenable.SearchOptions{
+		ExcludeDomains: []string{"pinterest.com", "quora.com"},
+	})
+	var api *keenable.APIError
+	if errors.As(err, &api) && api.Title == "invalid_filter" {
+		log.Fatalf("bad %s entry %q: %s", api.Param, api.Value, api.Reason)
+	}
+	if errors.As(err, &api) {
+		log.Fatal(api.Body)
+	}
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, result := range results.Results {
+		fmt.Println(result.URL)
+	}
 }

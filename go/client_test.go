@@ -236,6 +236,84 @@ func TestSearchSendsEveryFilter(t *testing.T) {
 	}
 }
 
+func TestSearchRawKeepsWarning(t *testing.T) {
+	body := map[string]any{
+		"query":   "q",
+		"results": []any{},
+		"warning": "3 results were removed by your domain filter",
+	}
+	c, _ := startKeyless(t, jsonHandler(http.StatusOK, body), nil)
+	resp, err := c.Search(context.Background(), "q", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Raw["warning"] != "3 results were removed by your domain filter" {
+		t.Fatalf("Raw: %#v", resp.Raw)
+	}
+}
+
+func TestToolSchemaOffersSiteAndExcludeDomains(t *testing.T) {
+	props := searchToolProperties(t)
+	prop, _ := props["exclude_domains"].(map[string]any)
+	if prop["type"] != "array" {
+		t.Fatalf("exclude_domains should be an array: %#v", prop)
+	}
+	items, _ := prop["items"].(map[string]any)
+	if items["type"] != "string" {
+		t.Fatalf("exclude_domains items should be strings: %#v", prop)
+	}
+	site, _ := props["site"].(map[string]any)
+	if site["type"] != "string" {
+		t.Fatalf("site: %#v", site)
+	}
+}
+
+// The JSON forms are shared conformance cases (tool_call); these are the
+// Go values a caller can put in an arguments map.
+func TestToolCallGoDomainLists(t *testing.T) {
+	cases := []struct {
+		name string
+		list any
+		sent bool
+		want any
+	}{
+		{"slice", []string{"a.com"}, true, []any{"a.com"}},
+		{"empty slice", []string{}, true, []any{}},
+		{"nil slice", []string(nil), false, nil},
+		{"nil any slice", []any(nil), false, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, seen := startKeyless(t, routed(), nil)
+			args := map[string]any{"query": "q", "exclude_domains": tc.list}
+			if _, err := keenable.RunToolCall(context.Background(), c, "keenable_search", args); err != nil {
+				t.Fatal(err)
+			}
+			got, ok := payloadOf(t, one(t, seen))["exclude_domains"]
+			if ok != tc.sent || (tc.sent && !jsonEqual(got, tc.want)) {
+				t.Fatalf("exclude_domains sent=%v %#v, want %v %#v", ok, got, tc.sent, tc.want)
+			}
+		})
+	}
+}
+
+func TestToolCallUnencodableDomainListIsInvalidRequest(t *testing.T) {
+	c, seen := startKeyless(t, routed(), nil)
+	_, err := keenable.RunToolCall(context.Background(), c, "keenable_search", map[string]any{"query": "q", "exclude_domains": make(chan int)})
+	if !errors.As(err, new(*keenable.InvalidRequestError)) {
+		t.Fatalf("want an InvalidRequestError, got %v", err)
+	}
+	if len(*seen) != 0 {
+		t.Fatal("an unencodable argument sent a request")
+	}
+}
+
+func jsonEqual(a, b any) bool {
+	ja, errA := json.Marshal(a)
+	jb, errB := json.Marshal(b)
+	return errA == nil && errB == nil && string(ja) == string(jb)
+}
+
 func TestKeylessUsesPublicEndpoint(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, searchBody), nil)
 	if _, err := c.Search(context.Background(), "hello", nil); err != nil {
@@ -660,6 +738,8 @@ func TestToolCallForwardsOnlySchemaFilters(t *testing.T) {
 		prop, _ := raw.(map[string]any)
 		if prop["type"] == "integer" {
 			args[name] = 10
+		} else if prop["type"] == "array" {
+			args[name] = []any{"value.example"}
 		} else {
 			args[name] = "value"
 		}

@@ -1,12 +1,20 @@
 {
-  "_comment": "The JSON body search(\"q\", options) sends. Options are named as on the wire (site, published_after, published_before, acquired_after, acquired_before, snippet_max_length, max_results, query_time, mode); each SDK maps them to its own names. An empty string means the option is unset (Go cannot tell the two apart), and an unset mode is \"pro\". `sent` is the whole body, compared as JSON. `skip` names an SDK whose released types cannot express the case, with why.",
+  "_comment": "The JSON body search(\"q\", options) sends. Options are named as on the wire (site, exclude_domains, published_after, published_before, acquired_after, acquired_before, snippet_max_length, max_results, query_time, mode); each SDK maps them to its own names. A list is sent as given, an empty one as [], a lone string wrapped, \"\" included so the API rejects it. An empty string for any other option means it is unset (Go cannot tell the two apart), and an unset mode is \"pro\". `sent` is the whole body, compared as JSON. `skip` names an SDK whose released types cannot express the case, with why.",
   "cases": [
     {"name": "no options", "options": {}, "sent": {"query": "q", "mode": "pro"}},
     {"name": "every option", "options": {"mode": "pro", "site": "arxiv.org", "published_after": "2024-01-01", "published_before": "2024-12-31", "acquired_after": "2025-01-01", "acquired_before": "2025-12-31", "snippet_max_length": 500, "max_results": 5, "query_time": "7d"}, "sent": {"query": "q", "mode": "pro", "site": "arxiv.org", "published_after": "2024-01-01", "published_before": "2024-12-31", "acquired_after": "2025-01-01", "acquired_before": "2025-12-31", "snippet_max_length": 500, "max_results": 5, "query_time": "7d"}},
+    {"name": "realtime mode is sent", "options": {"mode": "realtime"}, "sent": {"query": "q", "mode": "realtime"}},
     {"name": "an empty mode is pro", "options": {"mode": ""}, "sent": {"query": "q", "mode": "pro"}},
     {"name": "empty strings are unset", "options": {"site": "", "published_after": "", "published_before": "", "acquired_after": "", "acquired_before": "", "query_time": ""}, "sent": {"query": "q", "mode": "pro"}},
     {"name": "a zero snippet_max_length is sent", "options": {"snippet_max_length": 0}, "sent": {"query": "q", "mode": "pro", "snippet_max_length": 0}},
     {"name": "a zero max_results is sent", "options": {"max_results": 0}, "sent": {"query": "q", "mode": "pro", "max_results": 0}, "skip": {"go": "SearchOptions.MaxResults is an int whose zero means unset, as released in go/v0.1.1"}},
-    {"name": "the query is sent as given", "query": "  spaced query  ", "options": {}, "sent": {"query": "  spaced query  ", "mode": "pro"}}
+    {"name": "the query is sent as given", "query": "  spaced query  ", "options": {}, "sent": {"query": "  spaced query  ", "mode": "pro"}},
+    {"name": "exclude_domains is sent as a list", "options": {"exclude_domains": ["pinterest.com", "quora.com"]}, "sent": {"query": "q", "mode": "pro", "exclude_domains": ["pinterest.com", "quora.com"]}},
+    {"name": "an empty exclude_domains is sent", "options": {"exclude_domains": []}, "sent": {"query": "q", "mode": "pro", "exclude_domains": []}},
+    {"name": "exclude_domains entries are sent as given", "options": {"exclude_domains": [" https://WWW.Spam.com/ ", "spam.com", "spam.com", "spam.com/blog", ".gov"]}, "sent": {"query": "q", "mode": "pro", "exclude_domains": [" https://WWW.Spam.com/ ", "spam.com", "spam.com", "spam.com/blog", ".gov"]}},
+    {"name": "a lone exclude_domains string is wrapped", "options": {"exclude_domains": "spam.com"}, "sent": {"query": "q", "mode": "pro", "exclude_domains": ["spam.com"]}, "skip": {"go": "SearchOptions.ExcludeDomains is a []string"}},
+    {"name": "an empty exclude_domains string is one entry, for the API to reject", "options": {"exclude_domains": ""}, "sent": {"query": "q", "mode": "pro", "exclude_domains": [""]}, "skip": {"go": "SearchOptions.ExcludeDomains is a []string"}},
+    {"name": "an empty exclude_domains entry is sent", "options": {"exclude_domains": [""]}, "sent": {"query": "q", "mode": "pro", "exclude_domains": [""]}},
+    {"name": "site and exclude_domains together", "options": {"site": "arxiv.org", "exclude_domains": ["export.arxiv.org"]}, "sent": {"query": "q", "mode": "pro", "site": "arxiv.org", "exclude_domains": ["export.arxiv.org"]}}
   ]
 }

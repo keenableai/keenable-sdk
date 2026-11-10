@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+`SearchOptions` gains `ExcludeDomains`: a list of hosts to keep out of the
+results. A host also excludes its subdomains; up to 1,000 distinct hosts. The
+API cleans up unambiguous entries (scheme, `www.`, case, port, trailing `/` or
+dot, query, `#fragment`, whitespace; international names become punycode) and
+rejects anything else (paths, suffixes such as `.com`, wildcards, IP addresses,
+`user@host`, invalid hosts) with 400. A nil slice is unset; a non-nil empty
+slice is sent as `[]`. If every result is excluded, the response can be empty.
+`Site` is unchanged. The `keenable_search` tool offers `exclude_domains`
+alongside `site`.
+
+A rejected entry is a 400 whose `APIError.Param`, `Value` and `Reason` name it,
+and whose message ends with the API's `Fix`. `Value` and `Reason` are set only
+when the body's `error` is `invalid_filter`. `Value` is usually the entry as
+sent; a size cap reports the list's size (`"2500 entries"` or
+`"more than 1000 distinct hosts"`) or an over-long entry's first 64 characters
+and `"..."`.
+
+`RunToolCall` sends an `exclude_domains` argument to the API as given: `[]` is
+sent as `[]`, `null` and `""` are unset, a lone string is wrapped, and a
+malformed value goes to the API, which returns the 400. A value in an
+arguments map that cannot be encoded as JSON is an `InvalidRequestError`. No
+migration.
+
 The Python, TypeScript and Go SDKs now behave the same, and a shared suite of
 cases (`scripts/conformance`, run by `conformance_test.go`) keeps them so.
 Behaviour changes:
@@ -17,6 +40,14 @@ Behaviour changes:
   the API cut `Content` at `max_chars`, and the full content's length in code
   points. Nil when the API leaves them out or sends another type. `Content`
   and `ToContext` are unchanged.
+- **New `FetchOptions.MaxChars`, `Live` and `Prompt`,** for
+  `FetchWithOptions`: cap the content returned (the API default is 50000),
+  fetch the page from its source instead of the indexed copy, and pass an
+  extraction instruction of up to 2000 characters (`Content` is then only the
+  model's output for it). The zero value of each means unset and is not sent.
+- **`SearchOptions.Mode` documents `"realtime"`,** the fastest response, for
+  latency-sensitive agent loops. `Mode` already took any string; `"pro"`
+  stays the default.
 
 - **Redirects are never followed, the same host included.** Every 3xx is a
   `ConnectionError` that is not retried, with the owned client and with your

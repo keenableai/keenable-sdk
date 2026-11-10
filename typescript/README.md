@@ -47,13 +47,64 @@ const results = await keenable.search("post-training quantization results", {
 | Option | What it does |
 |---|---|
 | `site` | Restrict to one domain, e.g. `"arxiv.org"` |
+| `excludeDomains` | Never return results from these hosts or their subdomains; see below |
 | `publishedAfter` / `publishedBefore` | Filter by publication date (`YYYY-MM-DD`) |
 | `acquiredAfter` / `acquiredBefore` | Filter by when Keenable indexed the page |
 | `snippetMaxLength` | Cap the page text returned per result |
 | `maxResults` | How many results to return, 1 to 50 (default 10) |
 | `queryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `mode` | Search mode; `"pro"` (default) does deeper retrieval |
+| `mode` | Search mode: `"pro"` (default) does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops |
 | `signal` | An `AbortSignal` to cancel the request |
+
+### Excluding domains
+
+`excludeDomains` drops results from the listed sites.
+
+```ts
+const results = await keenable.search(
+  "how to repot a monstera without damaging the roots",
+  { excludeDomains: ["pinterest.com", "quora.com"] },
+);
+```
+
+Each entry is a host, such as `"pinterest.com"`. A host excludes itself and
+every subdomain, so `"yahoo.com"` also drops `finance.yahoo.com`. Up to 1,000
+distinct hosts. Hosts such as `github.io` and `blogspot.com` are accepted.
+
+The API cleans up unambiguous input for you: surrounding whitespace, case, an
+`http://` or `https://` scheme, a leading `www.`, a port, a trailing `/` or
+dot, a query string or `#fragment`; international names become punycode. So
+`"https://WWW.Pinterest.com/"` is read as `"pinterest.com"`. Anything else is
+rejected with HTTP 400, thrown as `KeenableAPIError`: a path
+(`"example.com/blog"`), a suffix or wildcard (`".com"`, `"*.example.com"`), an
+IP address, a `user@host`, or an invalid host. The `param`, `value` and
+`reason` properties name the rejected entry, and `fix` says what to change:
+
+```ts
+try {
+  await keenable.search("q", { excludeDomains: ["example.com/blog"] });
+} catch (err) {
+  if (err instanceof KeenableAPIError && err.error === "invalid_filter") {
+    console.log(err.param, err.value, err.reason);
+    // exclude_domains example.com/blog paths are not supported; give only the host, such as example.com
+  } else if (err instanceof KeenableAPIError) {
+    console.log(err.body);
+  } else {
+    throw err;
+  }
+}
+```
+
+`value` and `reason` are set only for that rejection (a 400 whose body has
+`"error": "invalid_filter"`) and `undefined` on every other error. `value` is
+usually the entry as sent; a size cap reports the list's size (`"2500 entries"`
+or `"more than 1000 distinct hosts"`) or an over-long entry's first 64
+characters followed by `"..."`.
+
+If every match is excluded, the response can be empty. The SDK sends the list
+as given and leaves validation to the API; `runToolCall` does the same with a
+model's `exclude_domains` argument. `site` still works for a single domain,
+and the `keenable_search` tool offers the model `site` and `exclude_domains`.
 
 ## Ground a model in one line
 
@@ -97,6 +148,19 @@ console.log(page.title);
 console.log(page.content); // markdown, boilerplate stripped
 console.log(page.toContext()); // same citable block shape as search results
 ```
+
+`fetch()` takes three options (`FetchOptions`), next to the per-request ones. They ship in the next release after 0.1.4, so the version on npm doesn't have them yet:
+
+```ts
+const capped = await keenable.fetch("https://cerebras.ai/chip", { maxChars: 5000, live: true });
+const answer = await keenable.fetch("https://cerebras.ai/chip", { prompt: "List the chip's specs" });
+```
+
+| Option | What it does |
+|---|---|
+| `maxChars` | Cap the characters of content returned, a positive integer. The API default is 50000; `page.truncated` and `page.totalChars` say whether the page was cut |
+| `live` | `true` fetches the page from its source now instead of reading Keenable's indexed copy. Default `false` |
+| `prompt` | An extraction instruction, up to 2000 characters. `page.content` is then only the model's output for it, not the page |
 
 ## Tool calling
 
@@ -173,6 +237,7 @@ try {
 | `retryAfterSeconds` | Seconds to wait (body, else the `Retry-After` header) |
 | `requestId` | Quote it when reporting a problem |
 | `param` | The parameter a 400 is about |
+| `value`, `reason` | What a 400 `invalid_filter` rejected (usually the entry; for a size cap the count or a truncated entry), and why |
 | `limit` | On a 429: `{ scope, window, max, resetsAt }` |
 
 When the API sends `fix`, the error message ends with it, then with

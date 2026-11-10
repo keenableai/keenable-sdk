@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from typing import Any
 
 import httpx
 import pytest
 
 from keenable import (
+    TOOLS,
     AsyncKeenable,
     Keenable,
     KeenableAuthError,
@@ -132,6 +134,106 @@ def test_search_sends_max_results_and_query_time() -> None:
     payload = json.loads(seen[0].content)
     assert payload["max_results"] == 25
     assert payload["query_time"] == "2026-05-01"
+
+
+@pytest.mark.parametrize(
+    "make",
+    [
+        lambda: (d for d in ["un.org", "who.int"]),
+        lambda: {"un.org"},
+        lambda: {"un.org": 1, "who.int": 2}.keys(),
+    ],
+    ids=["generator", "set", "dict_keys"],
+)
+def test_search_sends_any_iterable_as_an_array(make: Any) -> None:
+    keenable, seen = _client(_ok(SEARCH_BODY))
+    expected = list(make())
+    keenable.search("q", exclude_domains=make())
+
+    payload = json.loads(seen[0].content)
+    assert payload["exclude_domains"] == expected
+
+
+def test_search_sends_a_mapping_unchanged() -> None:
+    keenable, seen = _client(_ok(SEARCH_BODY))
+    keenable.search("q", exclude_domains={"un.org": True})
+
+    payload = json.loads(seen[0].content)
+    assert payload["exclude_domains"] == {"un.org": True}
+
+
+class _ArrayLike:
+    """Iterable, but ambiguous as a truth value or in ``==``, like numpy."""
+
+    def __init__(self, items: list[str]) -> None:
+        self._items = items
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._items)
+
+    def __eq__(self, other: object) -> bool:
+        raise ValueError("ambiguous")
+
+    def __bool__(self) -> bool:
+        raise ValueError("ambiguous")
+
+
+def test_search_and_tool_call_accept_an_array_like() -> None:
+    keenable, seen = _client(_routed)
+    keenable.search("q", exclude_domains=_ArrayLike(["un.org"]))
+    run_tool_call(
+        keenable,
+        "keenable_search",
+        {"query": "q", "exclude_domains": _ArrayLike(["who.int"])},
+    )
+
+    direct, tool = (json.loads(r.content) for r in seen)
+    assert direct["exclude_domains"] == ["un.org"]
+    assert tool["exclude_domains"] == ["who.int"]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [[float("nan")], [object()], [b"x.com"], b"x.com", bytearray(b"x.com")],
+    ids=["nan", "object", "bytes-entry", "bytes", "bytearray"],
+)
+def test_an_unencodable_domain_list_is_an_invalid_request(value: Any) -> None:
+    keenable, seen = _client(_routed)
+    with pytest.raises(KeenableInvalidRequestError, match="could not encode"):
+        keenable.search("q", exclude_domains=value)
+    with pytest.raises(KeenableInvalidRequestError, match="could not encode"):
+        run_tool_call(
+            keenable, "keenable_search", {"query": "q", "exclude_domains": value}
+        )
+    assert seen == []
+
+
+async def test_async_an_unencodable_domain_list_is_an_invalid_request() -> None:
+    keenable, seen = _aclient(_routed)
+    async with keenable:
+        with pytest.raises(KeenableInvalidRequestError):
+            await arun_tool_call(
+                keenable, "keenable_search", {"query": "q", "exclude_domains": [b"x"]}
+            )
+    assert seen == []
+
+
+def test_search_raw_keeps_the_filter_warning() -> None:
+    body = {**SEARCH_BODY, "warning": "3 results were removed by your domain filter"}
+    keenable, _ = _client(_ok(body))
+    response = keenable.search("q", exclude_domains=["spam.com"])
+
+    assert response.raw["warning"] == "3 results were removed by your domain filter"
+    assert response.raw["results"] == SEARCH_BODY["results"]
+
+
+async def test_async_search_raw_keeps_the_filter_warning() -> None:
+    body = {**SEARCH_BODY, "warning": "3 results were removed by your domain filter"}
+    keenable, _ = _aclient(_ok(body))
+    async with keenable:
+        response = await keenable.search("q", exclude_domains=["spam.com"])
+
+    assert response.raw["warning"] == "3 results were removed by your domain filter"
 
 
 def test_keyless_client_uses_public_endpoint_and_identifies_itself() -> None:
@@ -331,6 +433,14 @@ def test_tool_call_forwards_only_the_filters_the_schema_offers() -> None:
     assert "acquired_after" not in payload
 
 
+def test_tool_schema_offers_site_and_exclude_domains() -> None:
+    search = next(t for t in TOOLS if t["function"]["name"] == "keenable_search")
+    props = search["function"]["parameters"]["properties"]
+    assert props["exclude_domains"]["type"] == "array"
+    assert props["exclude_domains"]["items"] == {"type": "string"}
+    assert props["site"]["type"] == "string"
+
+
 def test_tool_schema_keeps_max_results_and_query_time_out() -> None:
     from keenable import TOOLS
 
@@ -352,3 +462,25 @@ async def test_async_client_mirrors_the_sync_one() -> None:
     assert rendered.startswith("[1] Example Domain")
     assert seen[0].url.path == "/v1/search/public"
     assert seen[0].headers["X-Keenable-Title"] == "Keenable SDK"
+
+
+async def test_async_search_matches_the_sync_payloads() -> None:
+    generator: Any = (d for d in ["spam.com"])
+    a_set: Any = {"export.arxiv.org"}
+    keenable, seen = _aclient(_routed)
+    async with keenable:
+        await keenable.search("q", exclude_domains=generator)
+        await keenable.search("q", exclude_domains=[])
+        await keenable.search("q", site="arxiv.org", exclude_domains=a_set)
+        await keenable.search("q", exclude_domains="x")
+        await keenable.search("q", exclude_domains="")
+
+    from_generator, empty_exclude, mixed, lone, blank = (
+        json.loads(r.content) for r in seen
+    )
+    assert from_generator["exclude_domains"] == ["spam.com"]
+    assert empty_exclude["exclude_domains"] == []
+    assert mixed["site"] == "arxiv.org"
+    assert mixed["exclude_domains"] == ["export.arxiv.org"]
+    assert lone["exclude_domains"] == ["x"]
+    assert blank["exclude_domains"] == [""]

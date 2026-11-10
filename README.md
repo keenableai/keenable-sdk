@@ -62,6 +62,17 @@ func main() {
 }
 ```
 
+Keep sites out of a search with `exclude_domains` (`excludeDomains` in
+TypeScript, `ExcludeDomains` in Go). Each entry is a host and also covers its
+subdomains, up to 1,000 hosts:
+
+```python
+results = keenable.search(
+    "how to repot a monstera without damaging the roots",
+    exclude_domains=["pinterest.com", "quora.com"],
+)
+```
+
 Each SDK exposes the same surface: search, fetch, a `to_context()` /
 `toContext()` / `ToContext()` renderer for prompts, and OpenAI-compatible tool
 definitions for tool calling. See the per-language READMEs for the full
@@ -71,6 +82,8 @@ reference.
 
 - [`examples/cerebras/`](./examples/cerebras) - grounding a Cerebras model in
   live web results, and letting it call Keenable as a tool. Python and Node.
+- [`examples/domain-filters/`](./examples/domain-filters) - keeping sites out
+  of the results with `exclude_domains`. Python and TypeScript.
 
 ## Documentation for partners
 
