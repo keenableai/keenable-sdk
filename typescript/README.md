@@ -30,8 +30,9 @@ for (const result of results) {
 }
 ```
 
-Results carry the page text in `snippet`. (`description` is the page's meta
-description and is absent for most pages, so build prompts from `snippet`.)
+Results carry the page text in `snippet`. (`description` is deprecated: the
+API no longer fills it, so it is always `undefined`. Build prompts from
+`snippet`.)
 
 Filters are optional and combine freely:
 
