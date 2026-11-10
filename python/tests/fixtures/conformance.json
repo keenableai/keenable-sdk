@@ -5040,6 +5040,18 @@
       "skip": {}
     },
     {
+      "name": "realtime mode is sent",
+      "query": "q",
+      "options": {
+        "mode": "realtime"
+      },
+      "sent": {
+        "query": "q",
+        "mode": "realtime"
+      },
+      "skip": {}
+    },
+    {
       "name": "an empty mode is pro",
       "query": "q",
       "options": {
@@ -5230,6 +5242,117 @@
         "exclude_domains": [
           "export.arxiv.org"
         ]
+      },
+      "skip": {}
+    }
+  ],
+  "fetch_params": [
+    {
+      "name": "no options sends only url",
+      "url": "https://example.com/",
+      "options": {},
+      "sent": {
+        "url": "https://example.com/"
+      },
+      "skip": {}
+    },
+    {
+      "name": "every option",
+      "url": "https://example.com/",
+      "options": {
+        "max_chars": 5000,
+        "live": true,
+        "prompt": "List the prices"
+      },
+      "sent": {
+        "url": "https://example.com/",
+        "max_chars": "5000",
+        "live": "true",
+        "prompt": "List the prices"
+      },
+      "skip": {}
+    },
+    {
+      "name": "max_chars alone",
+      "url": "https://example.com/",
+      "options": {
+        "max_chars": 200
+      },
+      "sent": {
+        "url": "https://example.com/",
+        "max_chars": "200"
+      },
+      "skip": {}
+    },
+    {
+      "name": "live true is sent as true",
+      "url": "https://example.com/",
+      "options": {
+        "live": true
+      },
+      "sent": {
+        "url": "https://example.com/",
+        "live": "true"
+      },
+      "skip": {}
+    },
+    {
+      "name": "live false is not sent",
+      "url": "https://example.com/",
+      "options": {
+        "live": false
+      },
+      "sent": {
+        "url": "https://example.com/"
+      },
+      "skip": {}
+    },
+    {
+      "name": "empty prompt is unset",
+      "url": "https://example.com/",
+      "options": {
+        "prompt": ""
+      },
+      "sent": {
+        "url": "https://example.com/"
+      },
+      "skip": {}
+    },
+    {
+      "name": "the prompt is sent as given",
+      "url": "https://example.com/",
+      "options": {
+        "prompt": "  What's the price? 100% & more = é  "
+      },
+      "sent": {
+        "url": "https://example.com/",
+        "prompt": "  What's the price? 100% & more = é  "
+      },
+      "skip": {}
+    },
+    {
+      "name": "a zero max_chars is sent",
+      "url": "https://example.com/",
+      "options": {
+        "max_chars": 0
+      },
+      "sent": {
+        "url": "https://example.com/",
+        "max_chars": "0"
+      },
+      "skip": {
+        "go": "FetchOptions.MaxChars is an int whose zero means unset, like SearchOptions.MaxResults"
+      }
+    },
+    {
+      "name": "the page's own query stays inside url",
+      "url": "https://example.com/a?live=false&prompt=x#frag",
+      "options": {
+        "max_chars": 10
+      },
+      "sent": {
+        "url": "https://example.com/a?live=false&prompt=x#frag",
+        "max_chars": "10"
       },
       "skip": {}
     }

@@ -53,7 +53,7 @@ const results = await keenable.search("post-training quantization results", {
 | `snippetMaxLength` | Cap the page text returned per result |
 | `maxResults` | How many results to return, 1 to 50 (default 10) |
 | `queryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `mode` | Search mode; `"pro"` (default) does deeper retrieval |
+| `mode` | Search mode: `"pro"` (default) does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops |
 | `signal` | An `AbortSignal` to cancel the request |
 
 ### Excluding domains
@@ -148,6 +148,19 @@ console.log(page.title);
 console.log(page.content); // markdown, boilerplate stripped
 console.log(page.toContext()); // same citable block shape as search results
 ```
+
+`fetch()` takes three options (`FetchOptions`), next to the per-request ones. They ship in the next release after 0.1.4, so the version on npm doesn't have them yet:
+
+```ts
+const capped = await keenable.fetch("https://cerebras.ai/chip", { maxChars: 5000, live: true });
+const answer = await keenable.fetch("https://cerebras.ai/chip", { prompt: "List the chip's specs" });
+```
+
+| Option | What it does |
+|---|---|
+| `maxChars` | Cap the characters of content returned, a positive integer. The API default is 50000; `page.truncated` and `page.totalChars` say whether the page was cut |
+| `live` | `true` fetches the page from its source now instead of reading Keenable's indexed copy. Default `false` |
+| `prompt` | An extraction instruction, up to 2000 characters. `page.content` is then only the model's output for it, not the page |
 
 ## Tool calling
 

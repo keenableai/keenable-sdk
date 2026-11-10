@@ -206,6 +206,27 @@ function searchBodies(): Obj[] {
   }));
 }
 
+const FETCH_PARAMS = new Set(["max_chars", "live", "prompt"]);
+
+function fetchParams(): Obj[] {
+  return (load("fetch-params.json").cases as Obj[]).map((item) => {
+    const name = item.name as string;
+    for (const key of Object.keys(item.options as Obj)) {
+      if (!FETCH_PARAMS.has(key)) fail(`fetch-params ${name}: unknown option ${key}`);
+    }
+    for (const sent of Object.values(item.sent as Obj)) {
+      if (typeof sent !== "string") fail(`fetch-params ${name}: "sent" values must be strings`);
+    }
+    return {
+      name,
+      url: (item.url as string | undefined) ?? "https://example.com/",
+      options: item.options as Obj,
+      sent: item.sent as Obj,
+      skip: (item.skip as Obj | undefined) ?? {},
+    };
+  });
+}
+
 function toolCalls(): Obj[] {
   return (load("tool-call.json").cases as Obj[]).map((item) => {
     const name = item.name as string;
@@ -233,6 +254,7 @@ export function buildConformance(): string {
     responses: responses(),
     options: options(),
     search_body: searchBodies(),
+    fetch_params: fetchParams(),
     tool_call: toolCalls(),
   };
   for (const [section, cases] of Object.entries(fixture)) {

@@ -1,0 +1,14 @@
+{
+  "_comment": "The query parameters fetch(url, options) sends. Options are named as on the wire (max_chars, live, prompt); each SDK maps them to its own names. `sent` is every query parameter of the request, decoded, compared exactly: each value is the text sent. An unset option is not sent, live is sent only as \"true\", and an empty prompt is unset (Go cannot tell the two apart). `url` is the page asked for, \"https://example.com/\" when a case gives none. `skip` names an SDK whose types cannot express the case, with why.",
+  "cases": [
+    {"name": "no options sends only url", "options": {}, "sent": {"url": "https://example.com/"}},
+    {"name": "every option", "options": {"max_chars": 5000, "live": true, "prompt": "List the prices"}, "sent": {"url": "https://example.com/", "max_chars": "5000", "live": "true", "prompt": "List the prices"}},
+    {"name": "max_chars alone", "options": {"max_chars": 200}, "sent": {"url": "https://example.com/", "max_chars": "200"}},
+    {"name": "live true is sent as true", "options": {"live": true}, "sent": {"url": "https://example.com/", "live": "true"}},
+    {"name": "live false is not sent", "options": {"live": false}, "sent": {"url": "https://example.com/"}},
+    {"name": "empty prompt is unset", "options": {"prompt": ""}, "sent": {"url": "https://example.com/"}},
+    {"name": "the prompt is sent as given", "options": {"prompt": "  What's the price? 100% & more = é  "}, "sent": {"url": "https://example.com/", "prompt": "  What's the price? 100% & more = é  "}},
+    {"name": "a zero max_chars is sent", "options": {"max_chars": 0}, "sent": {"url": "https://example.com/", "max_chars": "0"}, "skip": {"go": "FetchOptions.MaxChars is an int whose zero means unset, like SearchOptions.MaxResults"}},
+    {"name": "the page's own query stays inside url", "url": "https://example.com/a?live=false&prompt=x#frag", "options": {"max_chars": 10}, "sent": {"url": "https://example.com/a?live=false&prompt=x#frag", "max_chars": "10"}}
+  ]
+}

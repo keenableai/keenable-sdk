@@ -40,6 +40,14 @@ Behaviour changes:
   the API cut `Content` at `max_chars`, and the full content's length in code
   points. Nil when the API leaves them out or sends another type. `Content`
   and `ToContext` are unchanged.
+- **New `FetchOptions.MaxChars`, `Live` and `Prompt`,** for
+  `FetchWithOptions`: cap the content returned (the API default is 50000),
+  fetch the page from its source instead of the indexed copy, and pass an
+  extraction instruction of up to 2000 characters (`Content` is then only the
+  model's output for it). The zero value of each means unset and is not sent.
+- **`SearchOptions.Mode` documents `"realtime"`,** the fastest response, for
+  latency-sensitive agent loops. `Mode` already took any string; `"pro"`
+  stays the default.
 
 - **Redirects are never followed, the same host included.** Every 3xx is a
   `ConnectionError` that is not retried, with the owned client and with your

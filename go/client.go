@@ -145,9 +145,43 @@ type RequestOptions struct {
 	Headers map[string]string
 }
 
-// FetchOptions are the optional arguments to [Client.Fetch].
+// FetchOptions are the optional arguments to [Client.FetchWithOptions].
+//
+// The zero value of each field means unset, and an unset option is not sent.
 type FetchOptions struct {
+	// RequestOptions holds this call's timeout, retry budget and headers.
 	RequestOptions
+	// MaxChars caps the characters of content returned, a positive integer.
+	// Zero means unset, and the API applies its default of 50000.
+	// Page.Truncated and Page.TotalChars say whether the page was cut and
+	// how long it was.
+	MaxChars int
+	// Live fetches the page from its source now instead of reading
+	// Keenable's indexed copy. False is the API's default and is not sent.
+	Live bool
+	// Prompt is an extraction instruction, up to 2000 characters, such as
+	// "list the pricing tiers". Page.Content is then only the model's
+	// output for it, not the page. Empty means unset.
+	Prompt string
+}
+
+// params is the query string fetch sends after url, unset options left out.
+func (o *FetchOptions) params() url.Values {
+	q := url.Values{}
+	if o == nil {
+		return q
+	}
+	if o.MaxChars != 0 {
+		q.Set("max_chars", strconv.Itoa(o.MaxChars))
+	}
+	// The API reads only "true" and "false", and an absent live is false.
+	if o.Live {
+		q.Set("live", "true")
+	}
+	if o.Prompt != "" {
+		q.Set("prompt", o.Prompt)
+	}
+	return q
 }
 
 // New builds a client. A nil opts reads the environment and uses the defaults.
@@ -252,7 +286,7 @@ func (c *Client) Search(ctx context.Context, query string, opts *SearchOptions) 
 	if opts != nil {
 		req = &opts.RequestOptions
 	}
-	data, id, err := c.do(ctx, http.MethodPost, "search", body, "", req)
+	data, id, err := c.do(ctx, http.MethodPost, "search", body, nil, req)
 	if err != nil {
 		return nil, err
 	}
@@ -273,12 +307,14 @@ func requestID(data map[string]any, header string) string {
 //
 // Use it after Search when a snippet is not enough. Internal hosts and private
 // addresses are refused here, before a request is sent. Use
-// [Client.FetchWithOptions] to set a timeout, retries or headers for one call.
+// [Client.FetchWithOptions] to cap the content, fetch the page live, pass an
+// extraction prompt, or set a timeout, retries or headers for one call.
 func (c *Client) Fetch(ctx context.Context, pageURL string) (*Page, error) {
 	return c.FetchWithOptions(ctx, pageURL, nil)
 }
 
-// FetchWithOptions is [Client.Fetch] with per-call settings. opts may be nil.
+// FetchWithOptions is [Client.Fetch] with the options in [FetchOptions] and
+// per-call settings. opts may be nil.
 func (c *Client) FetchWithOptions(ctx context.Context, pageURL string, opts *FetchOptions) (*Page, error) {
 	if err := requireClient(c); err != nil {
 		return nil, err
@@ -293,7 +329,9 @@ func (c *Client) FetchWithOptions(ctx context.Context, pageURL string, opts *Fet
 	if opts != nil {
 		req = &opts.RequestOptions
 	}
-	data, id, err := c.do(ctx, http.MethodGet, "fetch", nil, pageURL, req)
+	query := opts.params()
+	query.Set("url", pageURL)
+	data, id, err := c.do(ctx, http.MethodGet, "fetch", nil, query, req)
 	if err != nil {
 		return nil, err
 	}
@@ -369,8 +407,8 @@ func retryDelay(err error, retry int, jitter float64) (time.Duration, bool) {
 	return 0, false
 }
 
-func (c *Client) do(ctx context.Context, method, endpoint string, body []byte, fetchURL string, opts *RequestOptions) (map[string]any, string, error) {
-	rawURL, err := c.endpointURL(endpoint, fetchURL)
+func (c *Client) do(ctx context.Context, method, endpoint string, body []byte, query url.Values, opts *RequestOptions) (map[string]any, string, error) {
+	rawURL, err := c.endpointURL(endpoint, query)
 	if err != nil {
 		return nil, "", err
 	}
@@ -571,7 +609,7 @@ func (c *Client) headers(jsonBody bool, extra map[string]string) http.Header {
 	return h
 }
 
-func (c *Client) endpointURL(endpoint, fetchURL string) (string, error) {
+func (c *Client) endpointURL(endpoint string, query url.Values) (string, error) {
 	u, err := url.Parse(c.baseURL)
 	if err != nil || u.Host == "" {
 		return "", &InvalidRequestError{msg: fmt.Sprintf("baseURL %q is not a valid URL. Pass an https URL with a host.", c.baseURL)}
@@ -582,11 +620,7 @@ func (c *Client) endpointURL(endpoint, fetchURL string) (string, error) {
 	}
 	u.RawQuery = ""
 	u.Fragment = ""
-	if fetchURL != "" {
-		q := url.Values{}
-		q.Set("url", fetchURL)
-		u.RawQuery = q.Encode()
-	}
+	u.RawQuery = query.Encode()
 	return u.String(), nil
 }
 

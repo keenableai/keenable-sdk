@@ -48,8 +48,11 @@ export interface RequestOptions {
  * in both places and every consumer picks it up.
  */
 export interface SearchOptions extends RequestOptions {
-  /** Search mode. `"pro"` (the default) does deeper retrieval. */
-  mode?: "pro";
+  /**
+   * Search mode. `"pro"` (the default) does deeper retrieval. `"realtime"`
+   * gives the fastest response, for latency-sensitive agent loops.
+   */
+  mode?: "pro" | "realtime";
   /** Restrict results to one domain, e.g. `"arxiv.org"`. */
   site?: string;
   /** Never return results from these hosts and their subdomains. Any iterable; a lone string is one host. */
@@ -73,6 +76,27 @@ export interface SearchOptions extends RequestOptions {
    * an offset back from now such as `"7d"` (as of 7 days ago).
    */
   queryTime?: string;
+}
+
+/** Optional arguments for `fetch()`. */
+export interface FetchOptions extends RequestOptions {
+  /**
+   * Cap the characters of content returned, a positive integer. The API
+   * default is 50000. `Page.truncated` and `Page.totalChars` say whether the
+   * page was cut and how long it was.
+   */
+  maxChars?: number;
+  /**
+   * `true` fetches the page from its source now instead of reading Keenable's
+   * indexed copy. Default `false`.
+   */
+  live?: boolean;
+  /**
+   * An extraction instruction, up to 2000 characters, such as
+   * `"list the pricing tiers"`. `Page.content` is then only the model's output
+   * for it, not the page.
+   */
+  prompt?: string;
 }
 
 /** Options for rendering results into a prompt block. */

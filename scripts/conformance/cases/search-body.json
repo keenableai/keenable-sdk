@@ -3,6 +3,7 @@
   "cases": [
     {"name": "no options", "options": {}, "sent": {"query": "q", "mode": "pro"}},
     {"name": "every option", "options": {"mode": "pro", "site": "arxiv.org", "published_after": "2024-01-01", "published_before": "2024-12-31", "acquired_after": "2025-01-01", "acquired_before": "2025-12-31", "snippet_max_length": 500, "max_results": 5, "query_time": "7d"}, "sent": {"query": "q", "mode": "pro", "site": "arxiv.org", "published_after": "2024-01-01", "published_before": "2024-12-31", "acquired_after": "2025-01-01", "acquired_before": "2025-12-31", "snippet_max_length": 500, "max_results": 5, "query_time": "7d"}},
+    {"name": "realtime mode is sent", "options": {"mode": "realtime"}, "sent": {"query": "q", "mode": "realtime"}},
     {"name": "an empty mode is pro", "options": {"mode": ""}, "sent": {"query": "q", "mode": "pro"}},
     {"name": "empty strings are unset", "options": {"site": "", "published_after": "", "published_before": "", "acquired_after": "", "acquired_before": "", "query_time": ""}, "sent": {"query": "q", "mode": "pro"}},
     {"name": "a zero snippet_max_length is sent", "options": {"snippet_max_length": 0}, "sent": {"query": "q", "mode": "pro", "snippet_max_length": 0}},

@@ -22,6 +22,7 @@ import {
 } from "./internal.js";
 import type {
   KeenableOptions,
+  FetchOptions,
   RequestOptions,
   SearchOptions,
   SearchResult,
@@ -733,13 +734,24 @@ export class Keenable {
    * Fetch one URL and return its main content as markdown.
    *
    * Use this after `search()` when a snippet is not enough and the model needs
-   * the full page.
+   * the full page. `maxChars` caps the content, `live` reads the page from its
+   * source instead of the indexed copy, and `prompt` returns only what the
+   * instruction asks for.
    */
-  async fetch(url: string, options: RequestOptions = {}): Promise<Page> {
+  async fetch(url: string, options: FetchOptions = {}): Promise<Page> {
     rejectPrivateFetchTarget(url);
 
     const target = new URL(this.url("fetch"));
     target.searchParams.set("url", url);
+    if (options.maxChars !== undefined) {
+      target.searchParams.set("max_chars", String(options.maxChars));
+    }
+    // The API reads only "true" and "false", and an absent live is false.
+    if (options.live === true) target.searchParams.set("live", "true");
+    // An empty string is unset, as Go cannot tell the two apart.
+    if (options.prompt !== undefined && options.prompt !== "") {
+      target.searchParams.set("prompt", options.prompt);
+    }
 
     const { data, requestId } = await this.request(
       "fetch",

@@ -74,7 +74,7 @@ results, err := client.Search(context.Background(), "post-training quantization 
 | `SnippetMaxLength` | Cap the page text returned per result. Nil means unset; a pointer to zero is sent |
 | `MaxResults` | How many results to return, 1 to 50. Zero means the API default of 10 |
 | `QueryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `Mode` | Search mode; empty means `"pro"` |
+| `Mode` | Search mode: `"pro"` does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops. Empty means `"pro"` |
 
 ### Excluding domains
 
@@ -163,6 +163,24 @@ fmt.Println(page.Title)
 fmt.Println(page.Content)       // markdown, boilerplate stripped
 fmt.Println(page.ToContext(nil)) // same citable block shape as search results
 ```
+
+`FetchWithOptions` takes three optional fields on `FetchOptions`. They ship in the next release after `v0.1.1`, so a released version doesn't have them yet:
+
+```go
+page, err := client.FetchWithOptions(context.Background(), "https://cerebras.ai/chip", &keenable.FetchOptions{
+	MaxChars: 5000,
+	Live:     true,
+})
+answer, err := client.FetchWithOptions(context.Background(), "https://cerebras.ai/chip", &keenable.FetchOptions{
+	Prompt: "List the chip's specs",
+})
+```
+
+| Field | What it does |
+|---|---|
+| `MaxChars` | Cap the characters of content returned, a positive integer. Zero means the API default of 50000; `page.Truncated` and `page.TotalChars` say whether the page was cut |
+| `Live` | `true` fetches the page from its source now instead of reading Keenable's indexed copy. `false` is the default and is not sent |
+| `Prompt` | An extraction instruction, up to 2000 characters. `page.Content` is then only the model's output for it, not the page. Empty means unset |
 
 Internal hosts and private addresses are refused before a request is sent:
 `localhost` and names under `.localhost`, `metadata.google.internal`, and IP
