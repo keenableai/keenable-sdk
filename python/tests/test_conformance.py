@@ -298,6 +298,7 @@ _OPTION_NAMES = {
     ("timeout", "call"): "timeout",
     ("headers", "client"): "default_headers",
     ("headers", "call"): "extra_headers",
+    ("disable_cards", "call"): "disable_cards",
 }
 
 

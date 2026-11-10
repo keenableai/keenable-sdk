@@ -65,6 +65,14 @@ var searchFilters = []filter{
 			"excluded. Not a recency filter (use published_after for that). An ISO 8601 " +
 			"datetime, YYYY-MM-DD, or an offset back from now such as '7d'.",
 	},
+	{
+		wire: "disable_cards",
+		description: "Optional. true returns ordinary web pages in place of Keenable's cards " +
+			"(results Keenable writes for prices, exchange rates or company facts, " +
+			"whose URLs expire after one day). Default false.",
+		jsonType:    "boolean",
+		toolExposed: true,
+	},
 }
 
 func applyFilters(payload map[string]any, opts *SearchOptions) {
@@ -128,6 +136,11 @@ func (f filter) value(opts *SearchOptions) (any, bool) {
 			return nil, false
 		}
 		return opts.QueryTime, true
+	case "disable_cards":
+		if !opts.DisableCards {
+			return nil, false
+		}
+		return true, true
 	default:
 		return nil, false
 	}
@@ -185,11 +198,43 @@ func toolSearchOptions(args map[string]any) (*SearchOptions, error) {
 			assignList(opts, f.wire, raw)
 			continue
 		}
+		if f.jsonType == "boolean" {
+			on, err := toolBool(f.wire, v)
+			if err != nil {
+				return nil, err
+			}
+			if on {
+				assignBool(opts, f.wire)
+			}
+			continue
+		}
 		if truthy(v) {
 			assignFilter(opts, f.wire, v)
 		}
 	}
 	return opts, nil
+}
+
+// toolBool reads a boolean tool argument. false, nil and "" are unset;
+// anything but a bool is an InvalidRequestError, as in Search.
+func toolBool(wire string, v any) (bool, error) {
+	switch t := v.(type) {
+	case nil:
+		return false, nil
+	case bool:
+		return t, nil
+	case string:
+		if t == "" {
+			return false, nil
+		}
+	}
+	return false, &InvalidRequestError{msg: wire + " must be true or false. Pass a JSON boolean."}
+}
+
+func assignBool(opts *SearchOptions, wire string) {
+	if wire == "disable_cards" {
+		opts.DisableCards = true
+	}
 }
 
 func isNilSlice(v any) bool {

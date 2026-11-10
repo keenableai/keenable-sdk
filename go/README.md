@@ -75,6 +75,7 @@ results, err := client.Search(context.Background(), "post-training quantization 
 | `MaxResults` | How many results to return, 1 to 50. Zero means the API default of 10 |
 | `QueryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `Mode` | Search mode: `"pro"` does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops. Empty means `"pro"` |
+| `DisableCards` | `true` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). False, the default, is not sent. In the next release after `v0.1.1` |
 
 ### Excluding domains
 
@@ -214,8 +215,9 @@ tools render the same numbered, citable block, so the model can cite a fetched
 page the way it cites a search result. Arguments may be a JSON string,
 `[]byte`, `json.RawMessage`, or `map[string]any`.
 
-The model may set `site` and `published_after` on search. The other filters
-stay on `Search` for you to set yourself.
+The model may set `site`, `exclude_domains`, `published_after` and
+`disable_cards` on search. The other filters stay on `Search` for you to set
+yourself.
 
 ## Context and timeouts
 

@@ -4998,6 +4998,62 @@
       "skip": {
         "go": "a string"
       }
+    },
+    {
+      "name": "disable_cards true",
+      "option": "disable_cards",
+      "scope": "call",
+      "value": true,
+      "valid": true,
+      "skip": {}
+    },
+    {
+      "name": "disable_cards false",
+      "option": "disable_cards",
+      "scope": "call",
+      "value": false,
+      "valid": true,
+      "skip": {}
+    },
+    {
+      "name": "disable_cards unset",
+      "option": "disable_cards",
+      "scope": "call",
+      "value": null,
+      "valid": true,
+      "skip": {}
+    },
+    {
+      "name": "disable_cards a string",
+      "option": "disable_cards",
+      "scope": "call",
+      "value": "true",
+      "valid": false,
+      "skip": {
+        "go": "a bool"
+      }
+    },
+    {
+      "name": "disable_cards a number",
+      "option": "disable_cards",
+      "scope": "call",
+      "value": 1,
+      "valid": false,
+      "skip": {
+        "go": "a bool"
+      }
+    },
+    {
+      "name": "disable_cards an object",
+      "option": "disable_cards",
+      "scope": "call",
+      "value": {
+        "on": true
+      },
+      "valid": false,
+      "skip": {
+        "go": "a bool"
+      }
     }
   ],
   "search_body": [
@@ -5242,6 +5298,45 @@
         "exclude_domains": [
           "export.arxiv.org"
         ]
+      },
+      "skip": {}
+    },
+    {
+      "name": "disable_cards true is sent",
+      "query": "q",
+      "options": {
+        "disable_cards": true
+      },
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "disable_cards": true
+      },
+      "skip": {}
+    },
+    {
+      "name": "disable_cards false is not sent",
+      "query": "q",
+      "options": {
+        "disable_cards": false
+      },
+      "sent": {
+        "query": "q",
+        "mode": "pro"
+      },
+      "skip": {}
+    },
+    {
+      "name": "disable_cards with realtime mode",
+      "query": "q",
+      "options": {
+        "mode": "realtime",
+        "disable_cards": true
+      },
+      "sent": {
+        "query": "q",
+        "mode": "realtime",
+        "disable_cards": true
       },
       "skip": {}
     }
@@ -5516,6 +5611,66 @@
       "arguments": "{\"query\": \"q\", \"exclude_domains\": [Infinity]}",
       "sent": null,
       "invalid": true
+    },
+    {
+      "name": "disable_cards true is sent",
+      "arguments": "{\"query\":\"q\",\"disable_cards\":true}",
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "disable_cards": true
+      },
+      "invalid": false
+    },
+    {
+      "name": "disable_cards false is unset",
+      "arguments": "{\"query\":\"q\",\"disable_cards\":false}",
+      "sent": {
+        "query": "q",
+        "mode": "pro"
+      },
+      "invalid": false
+    },
+    {
+      "name": "disable_cards null is unset",
+      "arguments": "{\"query\":\"q\",\"disable_cards\":null}",
+      "sent": {
+        "query": "q",
+        "mode": "pro"
+      },
+      "invalid": false
+    },
+    {
+      "name": "disable_cards an empty string is unset",
+      "arguments": "{\"query\":\"q\",\"disable_cards\":\"\"}",
+      "sent": {
+        "query": "q",
+        "mode": "pro"
+      },
+      "invalid": false
+    },
+    {
+      "name": "disable_cards a string is invalid",
+      "arguments": "{\"query\":\"q\",\"disable_cards\":\"true\"}",
+      "sent": null,
+      "invalid": true
+    },
+    {
+      "name": "disable_cards a number is invalid",
+      "arguments": "{\"query\":\"q\",\"disable_cards\":1}",
+      "sent": null,
+      "invalid": true
+    },
+    {
+      "name": "disable_cards with other filters",
+      "arguments": "{\"query\":\"q\",\"site\":\"arxiv.org\",\"disable_cards\":true}",
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "site": "arxiv.org",
+        "disable_cards": true
+      },
+      "invalid": false
     }
   ]
 }

@@ -49,6 +49,7 @@ results = keenable.search(
 | `max_results` | How many results to return, 1 to 50 (default 10) |
 | `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `mode` | Search mode: `"pro"` (default) does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops |
+| `disable_cards` | `True` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). Default `False`, which is not sent; any other value raises `KeenableInvalidRequestError`. In the next release after 0.1.3 |
 
 ### Excluding domains
 
@@ -175,6 +176,10 @@ whichever the model picked and returns text ready for the `tool` message. Both
 tools render the same numbered, citable block, so the model can cite a fetched
 page the way it cites a search result. `arun_tool_call` is the async
 counterpart, for use with `AsyncKeenable`.
+
+The model may set `site`, `exclude_domains`, `published_after` and
+`disable_cards` on search. The other filters stay on `search()` for you to set
+yourself.
 
 ## Async
 

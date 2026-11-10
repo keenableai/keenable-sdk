@@ -485,9 +485,10 @@ func TestConformanceOptions(t *testing.T) {
 			}
 			isNull := string(tc.Value) == "null"
 			var (
-				clientOpts = &keenable.Options{}
-				req        keenable.RequestOptions
-				query      = "q"
+				clientOpts   = &keenable.Options{}
+				req          keenable.RequestOptions
+				query        = "q"
+				disableCards bool
 			)
 			switch tc.Option {
 			case "max_retries":
@@ -529,6 +530,12 @@ func TestConformanceOptions(t *testing.T) {
 				if err := json.Unmarshal(tc.Value, &query); err != nil {
 					t.Fatal(err)
 				}
+			case "disable_cards":
+				if !isNull {
+					if err := json.Unmarshal(tc.Value, &disableCards); err != nil {
+						t.Fatal(err)
+					}
+				}
 			default:
 				t.Fatalf("no Go mapping for option %q", tc.Option)
 			}
@@ -545,7 +552,7 @@ func TestConformanceOptions(t *testing.T) {
 				clientOpts.BaseURL = nil
 			}
 			c, n := counted(t, clientOpts, okBoth)
-			_, err := c.Search(context.Background(), query, &keenable.SearchOptions{RequestOptions: req})
+			_, err := c.Search(context.Background(), query, &keenable.SearchOptions{RequestOptions: req, DisableCards: disableCards})
 			if tc.Valid {
 				// A real socket can outlast a 1 ms deadline; the value was
 				// still accepted, which is what this checks.
@@ -600,6 +607,8 @@ func TestConformanceSearchBody(t *testing.T) {
 					opts.SnippetMaxLength = &n
 				case "max_results":
 					opts.MaxResults = int(v.(float64))
+				case "disable_cards":
+					opts.DisableCards = v.(bool)
 				default:
 					t.Fatalf("no Go mapping for %q", wire)
 				}

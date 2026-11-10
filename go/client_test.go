@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -265,6 +266,44 @@ func TestToolSchemaOffersSiteAndExcludeDomains(t *testing.T) {
 	site, _ := props["site"].(map[string]any)
 	if site["type"] != "string" {
 		t.Fatalf("site: %#v", site)
+	}
+}
+
+func TestToolSchemaOffersDisableCardsAsABoolean(t *testing.T) {
+	prop, _ := searchToolProperties(t)["disable_cards"].(map[string]any)
+	if prop["type"] != "boolean" {
+		t.Fatalf("disable_cards should be a boolean: %#v", prop)
+	}
+	if desc, _ := prop["description"].(string); !strings.Contains(desc, "cards") {
+		t.Fatalf("disable_cards description: %#v", prop)
+	}
+}
+
+func TestSearchSendsDisableCardsOnlyWhenTrue(t *testing.T) {
+	c, seen := startKeyless(t, routed(), nil)
+	ctx := context.Background()
+	for _, opts := range []*keenable.SearchOptions{
+		{DisableCards: true},
+		{DisableCards: false},
+		{Mode: "realtime", DisableCards: true},
+	} {
+		if _, err := c.Search(ctx, "q", opts); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reqs := *seen
+	if len(reqs) != 3 {
+		t.Fatalf("requests: %d", len(reqs))
+	}
+	want := []map[string]any{
+		{"query": "q", "mode": "pro", "disable_cards": true},
+		{"query": "q", "mode": "pro"},
+		{"query": "q", "mode": "realtime", "disable_cards": true},
+	}
+	for i, r := range reqs {
+		if got := payloadOf(t, r); !reflect.DeepEqual(got, want[i]) {
+			t.Fatalf("request %d sent %#v, want %#v", i, got, want[i])
+		}
 	}
 }
 
@@ -738,6 +777,8 @@ func TestToolCallForwardsOnlySchemaFilters(t *testing.T) {
 		prop, _ := raw.(map[string]any)
 		if prop["type"] == "integer" {
 			args[name] = 10
+		} else if prop["type"] == "boolean" {
+			args[name] = true
 		} else if prop["type"] == "array" {
 			args[name] = []any{"value.example"}
 		} else {

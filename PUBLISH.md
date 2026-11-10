@@ -45,10 +45,11 @@ pkg.go.dev follow a git tag.
 
 1. Bump `Version` in `go/version.go`. That constant is the only copy. The
    User-Agent reads it.
-2. Tag `go/v<version>` (for example `go/v0.1.0`) on the commit that contains
-   that constant. The tag prefix is the module directory. Users install with
-   `go get github.com/keenableai/keenable-sdk/go@v0.1.0`. The `@` version does
-   not repeat the `go/` prefix.
+2. Tag `go/v<version>` on the commit that contains that constant. The tag
+   prefix is the module directory. Users install with
+   `go get github.com/keenableai/keenable-sdk/go@latest`, which resolves to
+   the newest `go/v*` tag. A pinned version (`@v<version>`) does not repeat
+   the `go/` prefix.
 3. The module proxy indexes the tag the first time someone fetches it.
 
 A root `v0.1.0` tag does not version this module. `python-v*` and `ts-v*` do

@@ -98,6 +98,10 @@ function requireString(value: unknown, message: string): string {
 
 // A model's null and "" are unset; search() would send a list filter's "" as [""].
 function toolValue(filter: Filter, value: unknown): unknown {
+  // false is the default. search() rejects anything but a boolean.
+  if (filter.jsonType === "boolean") {
+    return value === false || value === "" || value === null ? undefined : value;
+  }
   if (filter.jsonType !== "array") return nonEmpty(value);
   return value === "" || value === null ? undefined : value;
 }

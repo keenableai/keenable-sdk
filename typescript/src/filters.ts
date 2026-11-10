@@ -15,7 +15,7 @@ export interface Filter {
   readonly option: string;
   /** Shown to the model when the filter is exposed as a tool parameter. */
   readonly description: string;
-  readonly jsonType?: "string" | "integer" | "array";
+  readonly jsonType?: "string" | "integer" | "array" | "boolean";
   /**
    * Whether a model may set this filter through the search tool. The subset is
    * kept small: a model picks better from fewer knobs.
@@ -81,6 +81,16 @@ export const SEARCH_FILTERS: readonly Filter[] = [
       "Optional. Search the index as it stood at this moment: pages newer than it are " +
       "excluded. Not a recency filter (use published_after for that). An ISO 8601 " +
       "datetime, YYYY-MM-DD, or an offset back from now such as '7d'.",
+  },
+  {
+    wire: "disable_cards",
+    option: "disableCards",
+    description:
+      "Optional. true returns ordinary web pages in place of Keenable's cards " +
+      "(results Keenable writes for prices, exchange rates or company facts, " +
+      "whose URLs expire after one day). Default false.",
+    jsonType: "boolean",
+    toolExposed: true,
   },
 ];
 

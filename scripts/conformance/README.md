@@ -145,6 +145,10 @@ body's, else the trimmed `X-Request-Id` header.
   sent as `[""]` so the API rejects it rather than searching unfiltered. A value the
   language cannot encode as JSON (`NaN`, bytes, an arbitrary object) is the
   invalid-request error and sends nothing.
+- `disable_cards` is a boolean. `true` is sent as `true`; `false` is the API
+  default, so it is not sent, and unset (or `""`) is not sent either. Any other
+  value, such as the string `"true"` or `1`, is the invalid-request error and
+  sends nothing (Go's `bool` cannot hold one).
 - fetch() sends its options as query parameters next to `url`, and only the
   ones that are set: `max_chars` as the number's digits, `live` as `true` and
   only when it is true (the API reads `true` and `false` and nothing else, and
@@ -158,5 +162,7 @@ A `keenable_search` call's arguments, as JSON text, give the body sent or the
 invalid-request error. A list filter (`exclude_domains`) is sent as the model
 gave it for the API to judge: a lone string is wrapped, not split; `""` and
 null are unset; anything else, an empty list or a blank entry included, is
-sent unchanged. Arguments JSON cannot encode (`NaN`, `Infinity`) are the
-invalid-request error and send nothing.
+sent unchanged. `disable_cards` is sent only as `true`; `false`, `""` and null
+are unset, and any other value is the invalid-request error. Arguments JSON
+cannot encode (`NaN`, `Infinity`) are the invalid-request error and send
+nothing.

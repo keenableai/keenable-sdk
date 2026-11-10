@@ -76,6 +76,13 @@ export interface SearchOptions extends RequestOptions {
    * an offset back from now such as `"7d"` (as of 7 days ago).
    */
   queryTime?: string;
+  /**
+   * `true` returns ordinary web pages in place of Keenable's cards, results
+   * Keenable writes for queries such as prices, exchange rates or company facts
+   * (their URLs expire after one day). Default `false`. Works in `"pro"` and
+   * `"realtime"` modes.
+   */
+  disableCards?: boolean;
 }
 
 /** Optional arguments for `fetch()`. */

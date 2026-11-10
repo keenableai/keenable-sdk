@@ -441,6 +441,43 @@ def test_tool_schema_offers_site_and_exclude_domains() -> None:
     assert props["site"]["type"] == "string"
 
 
+def test_tool_schema_offers_disable_cards_as_a_boolean() -> None:
+    search = next(t for t in TOOLS if t["function"]["name"] == "keenable_search")
+    props = search["function"]["parameters"]["properties"]
+    assert props["disable_cards"]["type"] == "boolean"
+    assert "cards" in props["disable_cards"]["description"]
+
+
+def test_disable_cards_is_sent_only_as_true() -> None:
+    keenable, seen = _client(_routed)
+    keenable.search("q", disable_cards=True)
+    keenable.search("q", disable_cards=False)
+    keenable.search("q")
+    sent = [json.loads(request.content) for request in seen]
+    assert sent[0] == {"query": "q", "mode": "pro", "disable_cards": True}
+    assert "disable_cards" not in sent[1]
+    assert "disable_cards" not in sent[2]
+
+
+@pytest.mark.parametrize("value", ["true", 1, 0, "false", [True]])
+def test_disable_cards_rejects_a_non_boolean_before_sending(value: Any) -> None:
+    keenable, seen = _client(_routed)
+    with pytest.raises(KeenableInvalidRequestError, match="disable_cards"):
+        keenable.search("q", disable_cards=value)
+    assert seen == []
+
+
+async def test_async_search_sends_disable_cards() -> None:
+    keenable, seen = _aclient(_routed)
+    async with keenable:
+        await keenable.search("q", mode="realtime", disable_cards=True)
+    assert json.loads(seen[0].content) == {
+        "query": "q",
+        "mode": "realtime",
+        "disable_cards": True,
+    }
+
+
 def test_tool_schema_keeps_max_results_and_query_time_out() -> None:
     from keenable import TOOLS
 

@@ -48,7 +48,7 @@ interface Fixture {
   })[];
   options: {
     name: string;
-    option: "max_retries" | "timeout" | "headers" | "query" | "url";
+    option: "max_retries" | "timeout" | "headers" | "query" | "url" | "disable_cards";
     scope: "client" | "call";
     value: Json;
     valid: boolean;
@@ -343,6 +343,9 @@ describe("arguments", () => {
         break;
       case "url":
         invoke = (k) => k.fetch(v as string);
+        break;
+      case "disable_cards":
+        target.disableCards = v;
         break;
     }
     const outcome = await call([SEARCH_OK], client as KeenableOptions, invoke);

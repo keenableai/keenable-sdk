@@ -178,7 +178,7 @@ function responses(): Obj[] {
 
 const PAGE_DEFAULTS: Obj = { truncated: null, total_chars: null };
 
-const OPTIONS = new Set(["max_retries", "timeout", "headers", "query", "url"]);
+const OPTIONS = new Set(["max_retries", "timeout", "headers", "query", "url", "disable_cards"]);
 
 function options(): Obj[] {
   return (load("options.json").cases as Obj[]).map((item) => {

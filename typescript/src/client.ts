@@ -704,6 +704,15 @@ export class Keenable {
       const value: unknown = (options as Record<string, unknown>)[filter.option];
       if (value === undefined || value === null) continue;
       if (value === "" && filter.jsonType !== "array") continue;
+      if (filter.jsonType === "boolean") {
+        if (typeof value !== "boolean") {
+          throw new KeenableInvalidRequestError(
+            `${filter.option} must be true or false, got a ${typeof value}`,
+          );
+        }
+        // Sent only as true: false is the API default.
+        if (!value) continue;
+      }
       payload[filter.wire] = filter.jsonType === "array" ? asList(value) : value;
     }
     for (const [name, value] of Object.entries(payload)) rejectLossyJson(value, name);
