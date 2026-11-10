@@ -92,9 +92,10 @@ distinct hosts. Hosts such as `github.io` and `blogspot.com` are accepted. A
 nil slice is unset and not sent; a non-nil empty slice is sent as `[]`.
 
 The API cleans up unambiguous input for you: surrounding whitespace, case, an
-`http://` or `https://` scheme, a leading `www.`, a port, a trailing `/` and a
-query string. So `"https://WWW.Pinterest.com/"` is read as `"pinterest.com"`.
-Anything else comes back as an `*APIError` with `StatusCode` 400: a path
+`http://` or `https://` scheme, a leading `www.`, a port, a trailing `/` or
+dot, a query string or `#fragment`; international names become punycode. So
+`"https://WWW.Pinterest.com/"` is read as `"pinterest.com"`. Anything else
+comes back as an `*APIError` with `StatusCode` 400: a path
 (`"example.com/blog"`), a suffix or wildcard (`".com"`, `"*.example.com"`), an
 IP address, a `user@host`, or an invalid host. `Param`, `Value` and `Reason`
 name the rejected entry, and `Fix` says what to change:
@@ -104,7 +105,7 @@ var api *keenable.APIError
 if errors.As(err, &api) {
 	if api.Title == "invalid_filter" {
 		fmt.Println(api.Param, api.Value, api.Reason)
-		// exclude_domains example.com/blog paths are not supported; use the host example.com
+		// exclude_domains example.com/blog paths are not supported; give only the host, such as example.com
 	} else {
 		fmt.Println(api.Body)
 	}
@@ -113,9 +114,9 @@ if errors.As(err, &api) {
 
 `Value` and `Reason` are set only for that rejection (a 400 whose body has
 `"error": "invalid_filter"`, so `Title` is `"invalid_filter"`) and empty on
-every other error. `Value` is usually the entry as sent; a size cap reports
-the list's size (`"2500 entries"`) or an over-long entry's first 64
-characters followed by `"..."`.
+every other error. `Value` is usually the entry as sent; a size cap reports the
+list's size (`"2500 entries"` or `"more than 1000 distinct hosts"`) or an
+over-long entry's first 64 characters followed by `"..."`.
 
 If every match is excluded, the response can be empty. The SDK sends the list
 as given and leaves validation to the API; `RunToolCall` does the same with a

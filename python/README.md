@@ -66,13 +66,13 @@ every subdomain, so `"yahoo.com"` also drops `finance.yahoo.com`. Up to 1,000
 distinct hosts. Hosts such as `github.io` and `blogspot.com` are accepted.
 
 The API cleans up unambiguous input for you: surrounding whitespace, case, an
-`http://` or `https://` scheme, a leading `www.`, a port, a trailing `/` and a
-query string. So `"https://WWW.Pinterest.com/"` is read as `"pinterest.com"`.
-Anything else is rejected with HTTP 400, raised as `KeenableAPIError`:
-a path (`"example.com/blog"`), a suffix or wildcard (`".com"`,
-`"*.example.com"`), an IP address, a `user@host`, or an invalid host. The
-`param`, `value` and `reason` attributes name the rejected entry, and `fix`
-says what to change:
+`http://` or `https://` scheme, a leading `www.`, a port, a trailing `/` or
+dot, a query string or `#fragment`; international names become punycode. So
+`"https://WWW.Pinterest.com/"` is read as `"pinterest.com"`. Anything else is
+rejected with HTTP 400, raised as `KeenableAPIError`: a path
+(`"example.com/blog"`), a suffix or wildcard (`".com"`, `"*.example.com"`), an
+IP address, a `user@host`, or an invalid host. The `param`, `value` and
+`reason` attributes name the rejected entry, and `fix` says what to change:
 
 ```python
 try:
@@ -80,16 +80,16 @@ try:
 except KeenableAPIError as err:
     if err.error == "invalid_filter":
         print(err.param, err.value, err.reason)
-        # exclude_domains example.com/blog paths are not supported; use the host example.com
+        # exclude_domains example.com/blog paths are not supported; give only the host, such as example.com
     else:
         print(err.body)
 ```
 
 `value` and `reason` are set only for that rejection (a 400 whose body has
 `"error": "invalid_filter"`) and `None` on every other error. `value` is
-usually the entry as sent; a size cap reports the list's size
-(`"2500 entries"`) or an over-long entry's first 64 characters followed by
-`"..."`.
+usually the entry as sent; a size cap reports the list's size (`"2500 entries"`
+or `"more than 1000 distinct hosts"`) or an over-long entry's first 64
+characters followed by `"..."`.
 
 If every match is excluded, the response can be empty. The SDK sends the list
 as given and leaves validation to the API; `run_tool_call` does the same with a

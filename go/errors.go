@@ -116,8 +116,9 @@ type APIError struct {
 	Param string
 	// Value and Reason say what a 400 invalid_filter error rejected and why;
 	// Param names the parameter. Value is usually the entry as sent, but a
-	// size cap reports the list's size ("2500 entries") or the first 64
-	// characters of an over-long entry followed by "...".
+	// size cap reports the list's size ("2500 entries" or "more than 1000
+	// distinct hosts") or the first 64 characters of an over-long entry
+	// followed by "...".
 	Value  string
 	Reason string
 	// RateLimit is the limit a 429 hit (the body's "limit").

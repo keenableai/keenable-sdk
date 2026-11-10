@@ -4,18 +4,20 @@
 
 `SearchOptions` gains `ExcludeDomains`: a list of hosts to keep out of the
 results. A host also excludes its subdomains; up to 1,000 distinct hosts. The
-API cleans up unambiguous entries (scheme, `www.`, case, port, trailing `/`,
-query, whitespace) and rejects anything else (paths, suffixes such as `.com`,
-wildcards, IP addresses, `user@host`, invalid hosts) with 400. A nil slice is
-unset; a non-nil empty slice is sent as `[]`. If every result is excluded, the
-response can be empty. `Site` is unchanged. The `keenable_search` tool offers
-`exclude_domains` alongside `site`.
+API cleans up unambiguous entries (scheme, `www.`, case, port, trailing `/` or
+dot, query, `#fragment`, whitespace; international names become punycode) and
+rejects anything else (paths, suffixes such as `.com`, wildcards, IP addresses,
+`user@host`, invalid hosts) with 400. A nil slice is unset; a non-nil empty
+slice is sent as `[]`. If every result is excluded, the response can be empty.
+`Site` is unchanged. The `keenable_search` tool offers `exclude_domains`
+alongside `site`.
 
-A rejected entry is a 400 whose `APIError.Param`, `Value` and `Reason` name
-it, and whose message ends with the API's `Fix`. `Value` and `Reason` are set
-only when the body's `error` is `invalid_filter`. `Value` is usually the
-entry as sent; a size cap reports the list's size (`"2500 entries"`) or an
-over-long entry's first 64 characters and `"..."`.
+A rejected entry is a 400 whose `APIError.Param`, `Value` and `Reason` name it,
+and whose message ends with the API's `Fix`. `Value` and `Reason` are set only
+when the body's `error` is `invalid_filter`. `Value` is usually the entry as
+sent; a size cap reports the list's size (`"2500 entries"` or
+`"more than 1000 distinct hosts"`) or an over-long entry's first 64 characters
+and `"..."`.
 
 `RunToolCall` sends an `exclude_domains` argument to the API as given: `[]` is
 sent as `[]`, `null` and `""` are unset, a lone string is wrapped, and a

@@ -64,9 +64,10 @@ class KeenableAPIError(KeenableError):
     - ``param``: the request parameter a 400 is about.
     - ``limit``: a :class:`RateLimitInfo` on 429s.
     - ``value`` and ``reason``: what a 400 ``invalid_filter`` error rejected
-      and why; ``param`` names the parameter. ``value`` is usually the entry
-      as sent, but a size cap reports the list's size (``"2500 entries"``) or
-      the first 64 characters of an over-long entry followed by ``"..."``.
+      and why; ``param`` names the parameter. ``value`` is usually the entry as
+      sent, but a size cap reports the list's size (``"2500 entries"`` or
+      ``"more than 1000 distinct hosts"``) or the first 64 characters of an
+      over-long entry followed by ``"..."``.
 
     ``str(err)`` ends with ``(code: <code>)`` and ``(request_id: <id>)`` when
     the API sent them.

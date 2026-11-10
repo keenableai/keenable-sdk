@@ -3074,23 +3074,23 @@
       "name": "an invalid_filter 400 names the rejected value and reason",
       "status": 400,
       "headers": {},
-      "body": "{\"error\":\"invalid_filter\",\"message\":\"Invalid exclude_domains value \\\"spam.com/blog\\\": paths are not supported; use the host spam.com\",\"field\":\"exclude_domains\",\"value\":\"spam.com/blog\",\"reason\":\"paths are not supported; use the host spam.com\",\"type\":\"invalid_request_error\",\"code\":\"invalid_parameter\",\"fix\":\"Correct the \\\"exclude_domains\\\" entry \\\"spam.com/blog\\\" (paths are not supported; use the host spam.com) and retry.\",\"docs_url\":\"https://docs.keenable.ai/errors#invalid-parameter\",\"retryable\":false,\"param\":\"exclude_domains\"}",
+      "body": "{\"error\":\"invalid_filter\",\"message\":\"Invalid exclude_domains value \\\"spam.com/blog\\\": paths are not supported; give only the host, such as example.com\",\"field\":\"exclude_domains\",\"value\":\"spam.com/blog\",\"reason\":\"paths are not supported; give only the host, such as example.com\",\"type\":\"invalid_request_error\",\"code\":\"invalid_parameter\",\"fix\":\"Correct the \\\"exclude_domains\\\" entry \\\"spam.com/blog\\\" (paths are not supported; give only the host, such as example.com) and retry.\",\"docs_url\":\"https://docs.keenable.ai/errors#invalid-parameter\",\"retryable\":false,\"param\":\"exclude_domains\"}",
       "expect": {
         "kind": "api",
-        "detail": "Invalid exclude_domains value \"spam.com/blog\": paths are not supported; use the host spam.com",
+        "detail": "Invalid exclude_domains value \"spam.com/blog\": paths are not supported; give only the host, such as example.com",
         "code": "invalid_parameter",
         "type": "invalid_request_error",
         "error": "invalid_filter",
-        "fix": "Correct the \"exclude_domains\" entry \"spam.com/blog\" (paths are not supported; use the host spam.com) and retry.",
+        "fix": "Correct the \"exclude_domains\" entry \"spam.com/blog\" (paths are not supported; give only the host, such as example.com) and retry.",
         "retryable": false,
         "retry_after_seconds": null,
         "request_id": null,
         "param": "exclude_domains",
         "value": "spam.com/blog",
-        "reason": "paths are not supported; use the host spam.com",
+        "reason": "paths are not supported; give only the host, such as example.com",
         "limit": null,
         "message_contains": [
-          "Correct the \"exclude_domains\" entry \"spam.com/blog\" (paths are not supported; use the host spam.com) and retry."
+          "Correct the \"exclude_domains\" entry \"spam.com/blog\" (paths are not supported; give only the host, such as example.com) and retry."
         ],
         "message_excludes": [],
         "absent": [
