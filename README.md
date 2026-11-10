@@ -17,7 +17,7 @@ markdown.
 ```bash
 pip install keenable
 npm install keenable
-go get github.com/keenableai/keenable-sdk/go@v0.1.1
+go get github.com/keenableai/keenable-sdk/go@latest
 ```
 
 ```python
