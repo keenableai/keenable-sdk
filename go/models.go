@@ -66,8 +66,8 @@ type SearchResult struct {
 	Title   string `json:"title"`
 	URL     string `json:"url"`
 	Snippet string `json:"snippet"`
-	// Description is the page's meta description. Often absent. Prefer Snippet
-	// in prompts. Nil when the API omitted it or sent an empty string.
+	// Description is deprecated: the API always sends it empty, so it is
+	// always nil. Read Snippet.
 	Description *string `json:"description,omitempty"`
 	// PublishedAt is the ISO-8601 publication time, when the page exposes one.
 	// A date the API sends as Unix seconds is given as ISO 8601 UTC, such as

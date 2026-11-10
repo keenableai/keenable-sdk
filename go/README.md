@@ -8,15 +8,15 @@ plus a fetch endpoint that returns any URL as clean markdown.
 `KEENABLE_API_KEY` only lifts the hourly rate limit.
 
 ```bash
-go get github.com/keenableai/keenable-sdk/go@v0.1.0
+go get github.com/keenableai/keenable-sdk/go@latest
 ```
 
 Go 1.22 or newer. The module uses only the standard library.
 
-That version is the git tag `go/v0.1.0` on `github.com/keenableai/keenable-sdk`
-(the `go/` prefix is the directory, and it is not part of the `@v0.1.0` you
-pass to `go get`). Until that tag exists, `go get` cannot resolve the module.
-From a checkout of this repo, the same program is `example/hello`:
+`@latest` resolves to the newest `go/v*` git tag on
+`github.com/keenableai/keenable-sdk` (the `go/` prefix is the directory, and it
+is not part of the version you pass to `go get`). From a checkout of this repo, the same program is
+`example/hello`:
 
 ```bash
 cd go && go run ./example/hello
@@ -50,8 +50,8 @@ func main() {
 }
 ```
 
-Results carry the page text in `Snippet`. (`Description` is the page's meta
-description and is nil for most pages, so build prompts from `Snippet`.)
+Results carry the page text in `Snippet`. (`Description` is deprecated: the
+API no longer fills it, so it is always nil. Build prompts from `Snippet`.)
 
 Filters are optional and combine freely. Empty strings are left unset. A
 pointer is used where zero or false is a real value:

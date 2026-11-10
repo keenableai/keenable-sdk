@@ -8,7 +8,7 @@ A new option, method, model field or error type goes into all three languages in
 
 - Go: `cd go && go test ./... && go vet ./...`
 - Python: `cd python && python -m pytest -q`
-- TypeScript: `cd typescript && npm install && npx vitest run && npx tsc --noEmit`
+- TypeScript: `cd typescript && npm install --legacy-peer-deps && npx vitest run && npx tsc --noEmit`
 
 ## Shared conformance cases keep the SDKs alike
 
@@ -28,7 +28,7 @@ The public docs live in [keenable-external-docs](https://github.com/keenableai/k
 
 - the code samples under `samples/`, then regenerate them with `node scripts/samples-generate.mjs`
 - `sdks.mdx`, the product pages under `products/`, and `errors.mdx` for error types
-- the install pins in `index.mdx`, `sdks.mdx`, `skill.md` and `llms.txt`
+- the install commands in `index.mdx`, `sdks.mdx`, `skill.md` and `llms.txt`. They take the latest release (`pip install keenable`, `npm install keenable`, `go get ...@latest`), so a version bump needs no edit there; don't add a version pin
 - any note that says the SDK can't do something it now can
 
 Also update this repo's `examples/` and `docs/partners/` when the change affects them.
