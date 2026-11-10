@@ -8,7 +8,7 @@ A new option, method, model field or error type goes into all three languages in
 
 - Go: `cd go && go test ./... && go vet ./...`
 - Python: `cd python && python -m pytest -q`
-- TypeScript: `cd typescript && npm install && npx vitest run && npx tsc --noEmit`
+- TypeScript: `cd typescript && npm install --legacy-peer-deps && npx vitest run && npx tsc --noEmit`
 
 ## Shared conformance cases keep the SDKs alike
 
