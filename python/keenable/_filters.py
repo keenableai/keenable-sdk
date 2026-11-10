@@ -77,6 +77,14 @@ SEARCH_FILTERS: tuple[Filter, ...] = (
         "that). An ISO 8601 datetime, YYYY-MM-DD, or an offset back from now "
         "such as '7d'.",
     ),
+    Filter(
+        "disable_cards",
+        "Optional. true returns ordinary web pages in place of Keenable's cards "
+        "(results Keenable writes for prices, exchange rates or company facts, "
+        "whose URLs expire after one day). Default false.",
+        json_type="boolean",
+        tool_exposed=True,
+    ),
 )
 
 TOOL_FILTERS: tuple[Filter, ...] = tuple(f for f in SEARCH_FILTERS if f.tool_exposed)
@@ -105,6 +113,9 @@ def tool_filter_kwargs(args: dict[str, Any]) -> dict[str, Any]:
         # A model's None and "" are unset; search() would send a list's "" as [""].
         if f.json_type == "array":
             keep = value is not None and not (isinstance(value, str) and value == "")
+        elif f.json_type == "boolean":
+            # false is the default. search() rejects anything but a bool.
+            keep = value is not None and value is not False and value != ""
         else:
             keep = bool(value)
         if keep:

@@ -54,6 +54,14 @@ what an existing call does.
   argument is now the exported `FetchOptions`, which extends `RequestOptions`,
   so existing calls compile unchanged. An option left unset is not sent,
   `live: false` is not sent, and an empty `prompt` is unset.
+- **Added:** `search()` takes `disableCards`: `true` returns ordinary web pages
+  in place of Keenable's cards (results Keenable writes for prices, exchange
+  rates or company facts, whose URLs expire after one day). It works in the
+  `"pro"` and `"realtime"` modes. Only `true` is sent: `false`, the API
+  default, is left out. A value that is not a boolean throws
+  `KeenableInvalidRequestError` and sends nothing. The `keenable_search` tool
+  offers `disable_cards` as a boolean; `runToolCall` sends it only as `true`,
+  treats `false`, `null` and `""` as unset, and rejects any other value.
 
 - **Behaviour change:** errors no longer expose `docsUrl`, `billingUrl`,
   `autoTopUpUrl`, `payPerRequest` or `raw`, and the message no longer ends with

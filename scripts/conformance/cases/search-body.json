@@ -1,5 +1,5 @@
 {
-  "_comment": "The JSON body search(\"q\", options) sends. Options are named as on the wire (site, exclude_domains, published_after, published_before, acquired_after, acquired_before, snippet_max_length, max_results, query_time, mode); each SDK maps them to its own names. A list is sent as given, an empty one as [], a lone string wrapped, \"\" included so the API rejects it. An empty string for any other option means it is unset (Go cannot tell the two apart), and an unset mode is \"pro\". `sent` is the whole body, compared as JSON. `skip` names an SDK whose released types cannot express the case, with why.",
+  "_comment": "The JSON body search(\"q\", options) sends. Options are named as on the wire (site, exclude_domains, published_after, published_before, acquired_after, acquired_before, snippet_max_length, max_results, query_time, mode, disable_cards); each SDK maps them to its own names. A list is sent as given, an empty one as [], a lone string wrapped, \"\" included so the API rejects it. An empty string for any other option means it is unset (Go cannot tell the two apart), and an unset mode is \"pro\". disable_cards is sent only as true: false is the API default, so it is left out. `sent` is the whole body, compared as JSON. `skip` names an SDK whose released types cannot express the case, with why.",
   "cases": [
     {"name": "no options", "options": {}, "sent": {"query": "q", "mode": "pro"}},
     {"name": "every option", "options": {"mode": "pro", "site": "arxiv.org", "published_after": "2024-01-01", "published_before": "2024-12-31", "acquired_after": "2025-01-01", "acquired_before": "2025-12-31", "snippet_max_length": 500, "max_results": 5, "query_time": "7d"}, "sent": {"query": "q", "mode": "pro", "site": "arxiv.org", "published_after": "2024-01-01", "published_before": "2024-12-31", "acquired_after": "2025-01-01", "acquired_before": "2025-12-31", "snippet_max_length": 500, "max_results": 5, "query_time": "7d"}},
@@ -15,6 +15,9 @@
     {"name": "a lone exclude_domains string is wrapped", "options": {"exclude_domains": "spam.com"}, "sent": {"query": "q", "mode": "pro", "exclude_domains": ["spam.com"]}, "skip": {"go": "SearchOptions.ExcludeDomains is a []string"}},
     {"name": "an empty exclude_domains string is one entry, for the API to reject", "options": {"exclude_domains": ""}, "sent": {"query": "q", "mode": "pro", "exclude_domains": [""]}, "skip": {"go": "SearchOptions.ExcludeDomains is a []string"}},
     {"name": "an empty exclude_domains entry is sent", "options": {"exclude_domains": [""]}, "sent": {"query": "q", "mode": "pro", "exclude_domains": [""]}},
-    {"name": "site and exclude_domains together", "options": {"site": "arxiv.org", "exclude_domains": ["export.arxiv.org"]}, "sent": {"query": "q", "mode": "pro", "site": "arxiv.org", "exclude_domains": ["export.arxiv.org"]}}
+    {"name": "site and exclude_domains together", "options": {"site": "arxiv.org", "exclude_domains": ["export.arxiv.org"]}, "sent": {"query": "q", "mode": "pro", "site": "arxiv.org", "exclude_domains": ["export.arxiv.org"]}},
+    {"name": "disable_cards true is sent", "options": {"disable_cards": true}, "sent": {"query": "q", "mode": "pro", "disable_cards": true}},
+    {"name": "disable_cards false is not sent", "options": {"disable_cards": false}, "sent": {"query": "q", "mode": "pro"}},
+    {"name": "disable_cards with realtime mode", "options": {"mode": "realtime", "disable_cards": true}, "sent": {"query": "q", "mode": "realtime", "disable_cards": true}}
   ]
 }

@@ -256,6 +256,14 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
     for f in SEARCH_FILTERS:
         if f.json_type == "array" and filters.get(f.name) is not None:
             payload[f.name] = _as_list(filters[f.name])
+        elif f.json_type == "boolean" and f.name in payload:
+            # Sent only as true: false is the API default.
+            if not isinstance(payload[f.name], bool):
+                raise KeenableInvalidRequestError(
+                    f"{f.name} must be True or False, got {payload[f.name]!r}"
+                )
+            if payload[f.name] is False:
+                del payload[f.name]
     try:
         jsonlib.dumps(payload, allow_nan=False)
     except (TypeError, ValueError) as exc:
@@ -1025,6 +1033,7 @@ class Keenable(_BaseClient):
         snippet_max_length: int | None = None,
         max_results: int | None = None,
         query_time: str | None = None,
+        disable_cards: bool | None = None,
         timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
@@ -1055,6 +1064,11 @@ class Keenable(_BaseClient):
                 not a recency filter: use ``published_after`` for that.
                 Accepts an ISO 8601 datetime, ``YYYY-MM-DD``, or an offset
                 back from now such as ``"7d"`` (as of 7 days ago).
+            disable_cards: ``True`` returns ordinary web pages in place of
+                Keenable's cards, results Keenable writes for queries such as
+                prices, exchange rates or company facts (their URLs expire
+                after one day). Default ``False``. Works in ``"pro"`` and
+                ``"realtime"`` modes.
             timeout: Deadline in seconds (or an ``httpx.Timeout``) for each
                 attempt of this call. ``None`` keeps the client's timeout.
             max_retries: Retry budget for this call; ``0`` turns retries off.
@@ -1076,6 +1090,7 @@ class Keenable(_BaseClient):
             snippet_max_length=snippet_max_length,
             max_results=max_results,
             query_time=query_time,
+            disable_cards=disable_cards,
         )
         body, request_id = self._request(
             _SEARCH,
@@ -1231,6 +1246,7 @@ class AsyncKeenable(_BaseClient):
         snippet_max_length: int | None = None,
         max_results: int | None = None,
         query_time: str | None = None,
+        disable_cards: bool | None = None,
         timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
@@ -1248,6 +1264,7 @@ class AsyncKeenable(_BaseClient):
             snippet_max_length=snippet_max_length,
             max_results=max_results,
             query_time=query_time,
+            disable_cards=disable_cards,
         )
         body, request_id = await self._request(
             _SEARCH,

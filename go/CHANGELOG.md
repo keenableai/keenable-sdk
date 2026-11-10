@@ -48,6 +48,13 @@ Behaviour changes:
 - **`SearchOptions.Mode` documents `"realtime"`,** the fastest response, for
   latency-sensitive agent loops. `Mode` already took any string; `"pro"`
   stays the default.
+- **New `SearchOptions.DisableCards`:** `true` returns ordinary web pages in
+  place of Keenable's cards (results Keenable writes for prices, exchange
+  rates or company facts, whose URLs expire after one day). It works in the
+  `"pro"` and `"realtime"` modes. False, the API default, is not sent. The
+  `keenable_search` tool offers `disable_cards` as a boolean; `RunToolCall`
+  sends it only as `true`, treats `false`, `null` and `""` as unset, and
+  returns an `InvalidRequestError` for any other value.
 
 - **Redirects are never followed, the same host included.** Every 3xx is a
   `ConnectionError` that is not retried, with the owned client and with your

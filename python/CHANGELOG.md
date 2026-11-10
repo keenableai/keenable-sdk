@@ -53,6 +53,14 @@ Behaviour changes are marked **Changed**.
   characters; `content` is then only the model's output for it), on `Keenable`
   and `AsyncKeenable`. An option left unset is not sent, `live=False` is not
   sent, and an empty `prompt` is unset.
+- **Added:** `search()` (sync and async) takes `disable_cards`: `True` returns
+  ordinary web pages in place of Keenable's cards (results Keenable writes for
+  prices, exchange rates or company facts, whose URLs expire after one day).
+  It works in the `"pro"` and `"realtime"` modes. Only `True` is sent:
+  `False`, the API default, is left out. Any value that is not a `bool` raises
+  `KeenableInvalidRequestError` and sends nothing. The `keenable_search` tool
+  offers `disable_cards` as a boolean; `run_tool_call` sends it only as
+  `true`, treats `false`, `null` and `""` as unset, and rejects any other value.
 
 - **Changed:** errors no longer have `docs_url`, `billing_url`,
   `auto_top_up_url`, `pay_per_request` or `raw` (none was in a release), and

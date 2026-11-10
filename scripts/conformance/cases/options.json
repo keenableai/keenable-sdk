@@ -54,6 +54,12 @@
     {"name": "query: a number", "option": "query", "scope": "call", "value": 5, "valid": false, "skip": {"go": "a string"}},
     {"name": "query: null", "option": "query", "scope": "call", "value": null, "valid": false, "skip": {"go": "a string"}},
     {"name": "fetch url: a number", "option": "url", "scope": "call", "value": 5, "valid": false, "skip": {"go": "a string"}},
-    {"name": "fetch url: null", "option": "url", "scope": "call", "value": null, "valid": false, "skip": {"go": "a string"}}
+    {"name": "fetch url: null", "option": "url", "scope": "call", "value": null, "valid": false, "skip": {"go": "a string"}},
+    {"name": "disable_cards true", "option": "disable_cards", "scope": "call", "value": true, "valid": true},
+    {"name": "disable_cards false", "option": "disable_cards", "scope": "call", "value": false, "valid": true},
+    {"name": "disable_cards unset", "option": "disable_cards", "scope": "call", "value": null, "valid": true},
+    {"name": "disable_cards a string", "option": "disable_cards", "scope": "call", "value": "true", "valid": false, "skip": {"go": "a bool"}},
+    {"name": "disable_cards a number", "option": "disable_cards", "scope": "call", "value": 1, "valid": false, "skip": {"go": "a bool"}},
+    {"name": "disable_cards an object", "option": "disable_cards", "scope": "call", "value": {"on": true}, "valid": false, "skip": {"go": "a bool"}}
   ]
 }

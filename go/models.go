@@ -45,6 +45,11 @@ type SearchOptions struct {
 	// filter: use PublishedAfter for that. Accepts an ISO 8601 datetime,
 	// YYYY-MM-DD, or an offset back from now such as "7d" (as of 7 days ago).
 	QueryTime string
+	// DisableCards returns ordinary web pages in place of Keenable's cards,
+	// results Keenable writes for queries such as prices, exchange rates or
+	// company facts (their URLs expire after one day). It works in the "pro"
+	// and "realtime" modes. False, the API default, is not sent.
+	DisableCards bool
 
 	// excludeDomainsJSON is a tool call's exclude_domains as the model sent
 	// it, which []string cannot always hold; the API judges it.

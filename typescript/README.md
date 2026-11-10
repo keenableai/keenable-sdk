@@ -54,6 +54,7 @@ const results = await keenable.search("post-training quantization results", {
 | `maxResults` | How many results to return, 1 to 50 (default 10) |
 | `queryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `mode` | Search mode: `"pro"` (default) does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops |
+| `disableCards` | `true` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). Default `false`, which is not sent; a non-boolean throws `KeenableInvalidRequestError`. In the next release after 0.1.4 |
 | `signal` | An `AbortSignal` to cancel the request |
 
 ### Excluding domains
@@ -186,6 +187,10 @@ for (const call of completion.choices[0].message.tool_calls ?? []) {
 whichever the model picked and returns text ready for the `tool` message. Both
 tools render the same numbered, citable block, so the model can cite a fetched
 page the way it cites a search result.
+
+The model may set `site`, `exclude_domains`, `published_after` and
+`disable_cards` on search. The other filters stay on `search()` for you to set
+yourself.
 
 ## Errors
 

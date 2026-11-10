@@ -446,6 +446,37 @@ describe("runToolCall", () => {
     expect(properties.site?.type).toBe("string");
   });
 
+  it("offers disable_cards in the search tool schema as a boolean", () => {
+    const properties = SEARCH_TOOL.function.parameters.properties as Record<
+      string,
+      { type: string; description: string }
+    >;
+    expect(properties.disable_cards?.type).toBe("boolean");
+    expect(properties.disable_cards?.description).toContain("cards");
+  });
+
+  it("sends disableCards only as true", async () => {
+    const { client, seen } = mockClient(routed);
+    await client.search("q", { disableCards: true });
+    await client.search("q", { disableCards: false });
+    await client.search("q", { mode: "realtime", disableCards: true });
+    const [on, off, realtime] = seen.map((r) => JSON.parse(String(r.init.body)));
+    expect(on).toEqual({ query: "q", mode: "pro", disable_cards: true });
+    expect(off).toEqual({ query: "q", mode: "pro" });
+    expect(realtime).toEqual({ query: "q", mode: "realtime", disable_cards: true });
+  });
+
+  it.each([["true"], [1], [0], ["false"], [[true]], [1n]])(
+    "rejects disableCards %s before sending",
+    async (value) => {
+      const { client, seen } = mockClient(routed);
+      await expect(
+        client.search("q", { disableCards: value as unknown as boolean }),
+      ).rejects.toThrow(/disableCards/);
+      expect(seen).toHaveLength(0);
+    },
+  );
+
   it("forwards only the filters the schema offers the model", async () => {
     const { client, seen } = mockClient(routed);
     await runToolCall(client, "keenable_search", {
