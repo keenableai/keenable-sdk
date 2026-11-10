@@ -140,7 +140,8 @@ body's, else the trimmed `X-Request-Id` header.
 - The query is a string with more than whitespace, sent as given. An empty
   string filter is unset, and an unset mode is `pro`. A list filter
   (`exclude_domains`) takes any iterable and is sent as a list of the entries
-  as given, an empty one as `[]`; a lone string is one entry. A value the
+  as given, an empty one as `[]`; a lone string is one entry, and `""` is
+  sent as `[""]` so the API rejects it rather than searching unfiltered. A value the
   language cannot encode as JSON (`NaN`, bytes, an arbitrary object) is the
   invalid-request error and sends nothing.
 

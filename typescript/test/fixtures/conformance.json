@@ -5181,18 +5181,38 @@
       }
     },
     {
-      "name": "an empty exclude_domains string is unset",
+      "name": "an empty exclude_domains string is one entry, for the API to reject",
       "query": "q",
       "options": {
         "exclude_domains": ""
       },
       "sent": {
         "query": "q",
-        "mode": "pro"
+        "mode": "pro",
+        "exclude_domains": [
+          ""
+        ]
       },
       "skip": {
         "go": "SearchOptions.ExcludeDomains is a []string"
       }
+    },
+    {
+      "name": "an empty exclude_domains entry is sent",
+      "query": "q",
+      "options": {
+        "exclude_domains": [
+          ""
+        ]
+      },
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "exclude_domains": [
+          ""
+        ]
+      },
+      "skip": {}
     },
     {
       "name": "site and exclude_domains together",

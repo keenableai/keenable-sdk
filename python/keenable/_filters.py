@@ -102,7 +102,11 @@ def tool_filter_kwargs(args: dict[str, Any]) -> dict[str, Any]:
     kwargs: dict[str, Any] = {}
     for f in TOOL_FILTERS:
         value = args.get(f.name)
-        # search() treats a list filter's None and "" as unset and wraps a string.
-        if f.json_type == "array" or value:
+        # A model's None and "" are unset; search() would send a list's "" as [""].
+        if f.json_type == "array":
+            keep = value is not None and not (isinstance(value, str) and value == "")
+        else:
+            keep = bool(value)
+        if keep:
             kwargs[f.name] = value
     return kwargs

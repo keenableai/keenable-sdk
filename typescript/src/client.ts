@@ -693,14 +693,16 @@ export class Keenable {
       throw new KeenableInvalidRequestError("search() needs a non-empty query");
     }
 
-    // An empty string is unset, as Go cannot tell the two apart.
+    // An empty string is unset, as Go cannot tell the two apart. A list
+    // filter's "" is sent as [""] so the API rejects it (fail closed).
     const payload: Record<string, unknown> = {
       query,
       mode: options.mode || "pro",
     };
     for (const filter of SEARCH_FILTERS) {
       const value: unknown = (options as Record<string, unknown>)[filter.option];
-      if (value === undefined || value === null || value === "") continue;
+      if (value === undefined || value === null) continue;
+      if (value === "" && filter.jsonType !== "array") continue;
       payload[filter.wire] = filter.jsonType === "array" ? asList(value) : value;
     }
     for (const [name, value] of Object.entries(payload)) rejectLossyJson(value, name);

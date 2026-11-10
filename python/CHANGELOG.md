@@ -9,7 +9,8 @@ All notable changes to the `keenable` Python package. Versions follow
   keep out of the results. A host also excludes its subdomains; up to 1,000
   distinct hosts.
   Any iterable of strings is sent as a list of its entries as given,
-  including `[]`; a lone string is one host. The API cleans up unambiguous
+  including `[]`; a lone string is one host, and `""` is sent as `[""]`
+  so the API rejects it rather than searching unfiltered. The API cleans up unambiguous
   entries (scheme, `www.`, case, port, trailing `/`, query, whitespace) and
   rejects anything else (paths, suffixes such as `.com`, wildcards, IP
   addresses, `user@host`, invalid hosts) with HTTP 400. If every result is

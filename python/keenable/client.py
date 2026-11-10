@@ -245,6 +245,7 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
 
     payload: dict[str, Any] = {"query": query, "mode": mode or "pro"}
     # An empty string is unset, as in Go, which cannot tell the two apart.
+    # A list filter's "" is sent as [""] so the API rejects it (fail closed).
     payload.update(
         {
             name: value
@@ -253,8 +254,8 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
         }
     )
     for f in SEARCH_FILTERS:
-        if f.json_type == "array" and f.name in payload:
-            payload[f.name] = _as_list(payload[f.name])
+        if f.json_type == "array" and filters.get(f.name) is not None:
+            payload[f.name] = _as_list(filters[f.name])
     try:
         jsonlib.dumps(payload, allow_nan=False)
     except (TypeError, ValueError) as exc:

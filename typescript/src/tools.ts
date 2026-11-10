@@ -96,9 +96,10 @@ function requireString(value: unknown, message: string): string {
   return text;
 }
 
-// search() treats a list filter's null and "" as unset and wraps a string.
+// A model's null and "" are unset; search() would send a list filter's "" as [""].
 function toolValue(filter: Filter, value: unknown): unknown {
-  return filter.jsonType === "array" ? value : nonEmpty(value);
+  if (filter.jsonType !== "array") return nonEmpty(value);
+  return value === "" || value === null ? undefined : value;
 }
 
 /** Keep only the filters the tool schema actually offers the model. */

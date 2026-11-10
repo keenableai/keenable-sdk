@@ -483,4 +483,4 @@ async def test_async_search_matches_the_sync_payloads() -> None:
     assert mixed["site"] == "arxiv.org"
     assert mixed["exclude_domains"] == ["export.arxiv.org"]
     assert lone["exclude_domains"] == ["x"]
-    assert "exclude_domains" not in blank
+    assert blank["exclude_domains"] == [""]
