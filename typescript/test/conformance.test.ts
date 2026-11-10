@@ -14,6 +14,7 @@ import {
   KeenableInsufficientCreditsError,
   KeenableInvalidRequestError,
   KeenableRateLimitError,
+  runToolCall,
 } from "../src/index.js";
 import type { FetchOptions, KeenableOptions, Page, SearchOptions, SearchResponse } from "../src/index.js";
 import { backoffMs, retryAfterHeader } from "../src/client.js";
@@ -67,6 +68,7 @@ interface Fixture {
     sent: Record<string, string>;
     skip: Record<string, string>;
   }[];
+  tool_call: { name: string; arguments: string; sent: Json; invalid: boolean }[];
 }
 
 const FIXTURE: Fixture = JSON.parse(
@@ -158,6 +160,8 @@ function errorFields(error: KeenableAPIError): Record<string, Json> {
     retry_after_seconds: error.retryAfterSeconds ?? null,
     request_id: error.requestId ?? null,
     param: error.param ?? null,
+    value: error.value ?? null,
+    reason: error.reason ?? null,
     limit,
   };
 }
@@ -387,5 +391,20 @@ describe("the fetch parameters", () => {
     );
     expect(outcome.error).toBeInstanceOf(KeenableInvalidRequestError);
     expect(outcome.requests).toHaveLength(0);
+  });
+});
+
+describe("tool calls", () => {
+  it.each(FIXTURE.tool_call.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
+    const outcome = await call([SEARCH_OK], {}, (client) =>
+      runToolCall(client, "keenable_search", c.arguments),
+    );
+    if (c.invalid) {
+      expect(outcome.error).toBeInstanceOf(KeenableInvalidRequestError);
+      expect(outcome.requests).toHaveLength(0);
+    } else {
+      expect(outcome.error).toBeUndefined();
+      expect(JSON.parse(String(outcome.requests[0]?.init.body))).toEqual(c.sent);
+    }
   });
 });

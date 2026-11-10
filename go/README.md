@@ -8,15 +8,15 @@ plus a fetch endpoint that returns any URL as clean markdown.
 `KEENABLE_API_KEY` only lifts the hourly rate limit.
 
 ```bash
-go get github.com/keenableai/keenable-sdk/go@v0.1.0
+go get github.com/keenableai/keenable-sdk/go@latest
 ```
 
 Go 1.22 or newer. The module uses only the standard library.
 
-That version is the git tag `go/v0.1.0` on `github.com/keenableai/keenable-sdk`
-(the `go/` prefix is the directory, and it is not part of the `@v0.1.0` you
-pass to `go get`). Until that tag exists, `go get` cannot resolve the module.
-From a checkout of this repo, the same program is `example/hello`:
+`@latest` resolves to the newest `go/v*` git tag on
+`github.com/keenableai/keenable-sdk` (the `go/` prefix is the directory, and it
+is not part of the version you pass to `go get`). From a checkout of this repo, the same program is
+`example/hello`:
 
 ```bash
 cd go && go run ./example/hello
@@ -50,8 +50,8 @@ func main() {
 }
 ```
 
-Results carry the page text in `Snippet`. (`Description` is the page's meta
-description and is nil for most pages, so build prompts from `Snippet`.)
+Results carry the page text in `Snippet`. (`Description` is deprecated: the
+API no longer fills it, so it is always nil. Build prompts from `Snippet`.)
 
 Filters are optional and combine freely. Empty strings are left unset. A
 pointer is used where zero or false is a real value:
@@ -68,12 +68,60 @@ results, err := client.Search(context.Background(), "post-training quantization 
 | Field | What it does |
 |---|---|
 | `Site` | Restrict to one domain, e.g. `"arxiv.org"` |
+| `ExcludeDomains` | Never return results from these hosts or their subdomains; see below |
 | `PublishedAfter` / `PublishedBefore` | Filter by publication date (`YYYY-MM-DD`) |
 | `AcquiredAfter` / `AcquiredBefore` | Filter by when Keenable indexed the page |
 | `SnippetMaxLength` | Cap the page text returned per result. Nil means unset; a pointer to zero is sent |
 | `MaxResults` | How many results to return, 1 to 50. Zero means the API default of 10 |
 | `QueryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `Mode` | Search mode: `"pro"` does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops. Empty means `"pro"` |
+
+### Excluding domains
+
+`ExcludeDomains` drops results from the listed sites.
+
+```go
+results, err := client.Search(ctx, "how to repot a monstera without damaging the roots", &keenable.SearchOptions{
+	ExcludeDomains: []string{"pinterest.com", "quora.com"},
+})
+```
+
+Each entry is a host, such as `"pinterest.com"`. A host excludes itself and
+every subdomain, so `"yahoo.com"` also drops `finance.yahoo.com`. Up to 1,000
+distinct hosts. Hosts such as `github.io` and `blogspot.com` are accepted. A
+nil slice is unset and not sent; a non-nil empty slice is sent as `[]`.
+
+The API cleans up unambiguous input for you: surrounding whitespace, case, an
+`http://` or `https://` scheme, a leading `www.`, a port, a trailing `/` or
+dot, a query string or `#fragment`; international names become punycode. So
+`"https://WWW.Pinterest.com/"` is read as `"pinterest.com"`. Anything else
+comes back as an `*APIError` with `StatusCode` 400: a path
+(`"example.com/blog"`), a suffix or wildcard (`".com"`, `"*.example.com"`), an
+IP address, a `user@host`, or an invalid host. `Param`, `Value` and `Reason`
+name the rejected entry, and `Fix` says what to change:
+
+```go
+var api *keenable.APIError
+if errors.As(err, &api) {
+	if api.Title == "invalid_filter" {
+		fmt.Println(api.Param, api.Value, api.Reason)
+		// exclude_domains example.com/blog paths are not supported; give only the host, such as example.com
+	} else {
+		fmt.Println(api.Body)
+	}
+}
+```
+
+`Value` and `Reason` are set only for that rejection (a 400 whose body has
+`"error": "invalid_filter"`, so `Title` is `"invalid_filter"`) and empty on
+every other error. `Value` is usually the entry as sent; a size cap reports the
+list's size (`"2500 entries"` or `"more than 1000 distinct hosts"`) or an
+over-long entry's first 64 characters followed by `"..."`.
+
+If every match is excluded, the response can be empty. The SDK sends the list
+as given and leaves validation to the API; `RunToolCall` does the same with a
+model's `exclude_domains` argument. `Site` still works for a single domain,
+and the `keenable_search` tool offers the model `site` and `exclude_domains`.
 
 ## Ground a model in one line
 
@@ -249,6 +297,7 @@ case errors.As(err, &api):
 | `RetryAfter` | How long to wait (body `retry_after_seconds`, else the `Retry-After` header) |
 | `RequestID` | Quote it when reporting a problem |
 | `Param` | The parameter a 400 is about |
+| `Value`, `Reason` | What a 400 `invalid_filter` rejected (usually the entry; for a size cap the count or a truncated entry), and why |
 | `RateLimit` | On a 429: `Scope`, `Window`, `Max`, `ResetsAt` |
 | `Body` | The API's error message (its `message`, `error` or `detail` string), or the text of a body that is not JSON |
 

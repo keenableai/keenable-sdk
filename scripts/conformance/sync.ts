@@ -123,6 +123,8 @@ const ERROR_FIELDS = [
   "retry_after_seconds",
   "request_id",
   "param",
+  "value",
+  "reason",
   "limit",
 ] as const;
 const ERROR_LISTS = ["message_contains", "message_excludes", "absent"] as const;
@@ -225,6 +227,20 @@ function fetchParams(): Obj[] {
   });
 }
 
+function toolCalls(): Obj[] {
+  return (load("tool-call.json").cases as Obj[]).map((item) => {
+    const name = item.name as string;
+    if (("args" in item) === ("text" in item)) fail(`tool_call ${name}: give exactly one of "args" and "text"`);
+    if (("sent" in item) === (item.invalid === true)) fail(`tool_call ${name}: give exactly one of "sent" and "invalid"`);
+    return {
+      name,
+      arguments: "text" in item ? (item.text as string) : JSON.stringify(item.args),
+      sent: (item.sent as Json | undefined) ?? null,
+      invalid: item.invalid === true,
+    };
+  });
+}
+
 /** The fixture's exact text for the case files on disk. */
 export function buildConformance(): string {
   const fixture = {
@@ -239,6 +255,7 @@ export function buildConformance(): string {
     options: options(),
     search_body: searchBodies(),
     fetch_params: fetchParams(),
+    tool_call: toolCalls(),
   };
   for (const [section, cases] of Object.entries(fixture)) {
     if (Array.isArray(cases)) uniqueNames(section, cases as { name: string }[]);

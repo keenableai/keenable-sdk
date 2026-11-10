@@ -28,6 +28,8 @@ from keenable import (
     KeenableInvalidRequestError,
     KeenableRateLimitError,
     KeenableTimeoutError,
+    arun_tool_call,
+    run_tool_call,
 )
 from keenable import client as client_module
 
@@ -223,6 +225,8 @@ async def test_errors(kind: str, case: dict[str, Any], waits: list[float]) -> No
         "retry_after_seconds": error.retry_after_seconds,
         "request_id": error.request_id,
         "param": error.param,
+        "value": error.value,
+        "reason": error.reason,
         "limit": dataclasses.asdict(error.limit) if error.limit else None,
     }
     assert got == {key: want[key] for key in got}
@@ -365,6 +369,36 @@ async def test_a_refused_url_sends_nothing_whatever_the_options(
     assert outcome.requests == []
 
 
+@pytest.mark.parametrize("kind", CLIENTS)
+@pytest.mark.parametrize("case", cases("tool_call"))
+async def test_tool_call(kind: str, case: dict[str, Any], waits: list[float]) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, content=SEARCH_OK[2])
+
+    transport = httpx.MockTransport(handler)
+    error: KeenableError | None = None
+    try:
+        if kind == "sync":
+            with Keenable(api_key="k", client=httpx.Client(transport=transport)) as c:
+                run_tool_call(c, "keenable_search", case["arguments"])
+        else:
+            async with AsyncKeenable(
+                api_key="k", client=httpx.AsyncClient(transport=transport)
+            ) as ac:
+                await arun_tool_call(ac, "keenable_search", case["arguments"])
+    except KeenableError as exc:
+        error = exc
+    if case["invalid"]:
+        assert isinstance(error, KeenableInvalidRequestError)
+        assert seen == []
+    else:
+        assert error is None
+        assert json.loads(seen[0].content) == case["sent"]
+
+
 def test_the_fixture_has_every_section() -> None:
     sections = set(FIXTURE) - {"_comment"}
     assert sections == {
@@ -377,6 +411,7 @@ def test_the_fixture_has_every_section() -> None:
         "options",
         "search_body",
         "fetch_params",
+        "tool_call",
     }
 
 
