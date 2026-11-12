@@ -181,7 +181,7 @@ answer, err := client.FetchWithOptions(context.Background(), "https://cerebras.a
 |---|---|
 | `MaxChars` | Cap the characters of content returned, a positive integer. Zero means the API default of 50000; `page.Truncated` and `page.TotalChars` say whether the page was cut |
 | `Live` | `true` fetches the page from its source now instead of reading Keenable's indexed copy. `false` is the default and is not sent |
-| `Prompt` | An extraction instruction, up to 2000 characters. `page.Content` is then only the model's output for it, not the page. Empty means unset. A page too long for a prompt fails with code `prompt_input_too_long`: fetch it without `Prompt` |
+| `Prompt` | An extraction instruction, up to 2000 characters. `page.Content` is then only the model's output for it, not the page. Empty means unset. A page too long for a prompt fails with an `*APIError` whose `APICode` is `prompt_input_too_long`: fetch it without `Prompt` |
 
 Internal hosts and private addresses are refused before a request is sent:
 `localhost` and names under `.localhost`, `metadata.google.internal`, and IP

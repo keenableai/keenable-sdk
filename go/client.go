@@ -162,8 +162,8 @@ type FetchOptions struct {
 	// Prompt is an extraction instruction, up to 2000 characters, such as
 	// "list the pricing tiers". Page.Content is then only the model's
 	// output for it, not the page. Empty means unset. A page too long for a
-	// prompt fails with a 422 whose Code is "prompt_input_too_long": fetch it
-	// again without Prompt.
+	// prompt fails with a 422 *APIError whose APICode is
+	// "prompt_input_too_long": fetch it again without Prompt.
 	Prompt string
 }
 
