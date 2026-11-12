@@ -49,7 +49,7 @@ results = keenable.search(
 | `max_results` | How many results to return, 1 to 50 (default 10) |
 | `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `mode` | Search mode: `"pro"` (default) does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops |
-| `disable_cards` | `True` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). Default `False`, which is not sent; any other value raises `KeenableInvalidRequestError`. In the next release after 0.1.3 |
+| `disable_cards` | `True` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). Default `False`, which is not sent; any other value raises `KeenableInvalidRequestError`. Since 0.1.4 |
 
 ### Excluding domains
 
@@ -135,7 +135,7 @@ print(page.content)  # markdown, boilerplate stripped
 print(page.to_context())  # same citable block shape as search results
 ```
 
-`fetch()` takes three optional arguments. They ship in the next release after 0.1.3, so the version on PyPI doesn't have them yet:
+`fetch()` takes three optional arguments, since 0.1.4:
 
 ```python
 page = keenable.fetch("https://cerebras.ai/chip", max_chars=5000, live=True)
@@ -146,7 +146,7 @@ answer = keenable.fetch("https://cerebras.ai/chip", prompt="List the chip's spec
 |---|---|
 | `max_chars` | Cap the characters of content returned, a positive integer. The API default is 50000; `page.truncated` and `page.total_chars` say whether the page was cut |
 | `live` | `True` fetches the page from its source now instead of reading Keenable's indexed copy. Default `False` |
-| `prompt` | An extraction instruction, up to 2000 characters. `page.content` is then only the model's output for it, not the page |
+| `prompt` | An extraction instruction, up to 2000 characters. `page.content` is then only the model's output for it, not the page. A page too long for a prompt fails with code `prompt_input_too_long`: fetch it without `prompt` |
 
 ## Tool calling
 

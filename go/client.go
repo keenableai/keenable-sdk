@@ -161,7 +161,9 @@ type FetchOptions struct {
 	Live bool
 	// Prompt is an extraction instruction, up to 2000 characters, such as
 	// "list the pricing tiers". Page.Content is then only the model's
-	// output for it, not the page. Empty means unset.
+	// output for it, not the page. Empty means unset. A page too long for a
+	// prompt fails with a 422 whose Code is "prompt_input_too_long": fetch it
+	// again without Prompt.
 	Prompt string
 }
 
@@ -884,12 +886,22 @@ var statusLabels = map[int]string{
 // format v1 send no "type", so it is derived from these and the status.
 var targetCodes = map[string]bool{"page_not_found": true, "content_not_extracted": true}
 
+// codeTypes are codes whose catalog type the status does not imply.
+var codeTypes = map[string]string{
+	"device_code_denied":     TypePermissionError,
+	"slow_down":              TypeRateLimitError,
+	"dns_lookup_failed":      TypeAPIError,
+	"search_failed_upstream": TypeAPIError,
+}
+
 // deriveType is the error type for a response that did not send one. It
 // matches the API's catalog for every code it had when "type" was added.
 func deriveType(status int, code string) string {
 	switch {
 	case strings.HasPrefix(code, "target_") || targetCodes[code]:
 		return TypeTargetError
+	case codeTypes[code] != "":
+		return codeTypes[code]
 	case status == 401:
 		return TypeAuthenticationError
 	case status == 403:

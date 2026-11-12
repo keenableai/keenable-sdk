@@ -5,6 +5,16 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+## 0.1.5
+
+- The error contract follows the API's current catalog, including two fetch
+  codes: `prompt_input_too_long` (422, not retryable: the page is too long for
+  a `prompt`, so fetch it without one) and `prompt_extraction_failed` (502,
+  retryable: running the prompt failed on Keenable's side). An error body
+  without `type` now gets the catalog type for `device_code_denied`,
+  `slow_down`, `dns_lookup_failed` and `search_failed_upstream`, which the
+  status alone did not give.
+
 - `search()` accepts `excludeDomains`: a list of hosts to keep out of the
   results. A host also excludes its subdomains; up to 1,000 distinct hosts. Any
   iterable of strings (an array, a `Set`) is sent as an array of its entries as

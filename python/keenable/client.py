@@ -309,6 +309,14 @@ def _as_list(value: Any) -> Any:
 # ``type``, so it is derived from these and the status.
 _TARGET_CODES = frozenset({"page_not_found", "content_not_extracted"})
 
+# Codes whose catalog type the status does not imply.
+_CODE_TYPES = {
+    "device_code_denied": "permission_error",
+    "slow_down": "rate_limit_error",
+    "dns_lookup_failed": "api_error",
+    "search_failed_upstream": "api_error",
+}
+
 
 def _derive_type(status: int, code: str | None) -> str:
     """The error ``type`` for a response that did not send one.
@@ -317,6 +325,8 @@ def _derive_type(status: int, code: str | None) -> str:
     """
     if code and (code.startswith("target_") or code in _TARGET_CODES):
         return "target_error"
+    if code and code in _CODE_TYPES:
+        return _CODE_TYPES[code]
     if status == 401:
         return "authentication_error"
     if status == 403:
@@ -1129,7 +1139,9 @@ class Keenable(_BaseClient):
                 reading Keenable's indexed copy. Default ``False``.
             prompt: An extraction instruction, up to 2000 characters, such
                 as ``"list the pricing tiers"``. ``Page.content`` is then
-                only the model's output for it, not the page.
+                only the model's output for it, not the page. A page too
+                long for a prompt raises a 422 with code
+                ``prompt_input_too_long``: fetch it again without prompt.
             timeout: Deadline for each attempt of this call, as in
                 :meth:`search`.
             max_retries: Retry budget for this call, as in :meth:`search`.

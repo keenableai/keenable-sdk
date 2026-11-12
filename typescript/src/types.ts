@@ -101,7 +101,8 @@ export interface FetchOptions extends RequestOptions {
   /**
    * An extraction instruction, up to 2000 characters, such as
    * `"list the pricing tiers"`. `Page.content` is then only the model's output
-   * for it, not the page.
+   * for it, not the page. A page too long for a prompt fails with a 422 whose
+   * `code` is `"prompt_input_too_long"`: fetch it again without `prompt`.
    */
   prompt?: string;
 }

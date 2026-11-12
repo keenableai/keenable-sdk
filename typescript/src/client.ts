@@ -895,12 +895,22 @@ export class Keenable {
 // so it is derived from these and the status.
 const TARGET_CODES = new Set(["page_not_found", "content_not_extracted"]);
 
+// Codes whose catalog type the status does not imply.
+const CODE_TYPES = new Map<string, KeenableErrorType>([
+  ["device_code_denied", "permission_error"],
+  ["slow_down", "rate_limit_error"],
+  ["dns_lookup_failed", "api_error"],
+  ["search_failed_upstream", "api_error"],
+]);
+
 /**
  * The error `type` for a response that did not send one. Matches the API's
  * catalog for every code it had when `type` was added.
  */
 function deriveType(status: number, code: string | undefined): KeenableErrorType {
   if (code && (code.startsWith("target_") || TARGET_CODES.has(code))) return "target_error";
+  const codeType = code === undefined ? undefined : CODE_TYPES.get(code);
+  if (codeType) return codeType;
   if (status === 401) return "authentication_error";
   if (status === 403) return "permission_error";
   if (status === 402 || status === 451) return "billing_error";

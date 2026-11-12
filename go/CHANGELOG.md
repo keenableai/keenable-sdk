@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.1.2
+
+The error contract follows the API's current catalog, including two fetch
+codes: `prompt_input_too_long` (422, not retryable: the page is too long for a
+`Prompt`, so fetch it without one) and `prompt_extraction_failed` (502,
+retryable: running the prompt failed on Keenable's side). An error body without
+`type` now gets the catalog type for `device_code_denied`, `slow_down`,
+`dns_lookup_failed` and `search_failed_upstream`, which the status alone did
+not give.
+
 `SearchOptions` gains `ExcludeDomains`: a list of hosts to keep out of the
 results. A host also excludes its subdomains; up to 1,000 distinct hosts. The
 API cleans up unambiguous entries (scheme, `www.`, case, port, trailing `/` or
