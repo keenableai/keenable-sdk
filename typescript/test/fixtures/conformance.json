@@ -3193,6 +3193,102 @@
         "message_excludes": [],
         "absent": []
       }
+    },
+    {
+      "name": "device_code_denied without a type is a permission_error",
+      "status": 400,
+      "headers": {},
+      "body": "{\"code\":\"device_code_denied\"}",
+      "expect": {
+        "kind": "api",
+        "detail": null,
+        "code": "device_code_denied",
+        "type": "permission_error",
+        "error": null,
+        "fix": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": null,
+        "value": null,
+        "reason": null,
+        "limit": null,
+        "message_contains": [],
+        "message_excludes": [],
+        "absent": []
+      }
+    },
+    {
+      "name": "slow_down without a type is a rate_limit_error",
+      "status": 400,
+      "headers": {},
+      "body": "{\"code\":\"slow_down\"}",
+      "expect": {
+        "kind": "api",
+        "detail": null,
+        "code": "slow_down",
+        "type": "rate_limit_error",
+        "error": null,
+        "fix": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": null,
+        "value": null,
+        "reason": null,
+        "limit": null,
+        "message_contains": [],
+        "message_excludes": [],
+        "absent": []
+      }
+    },
+    {
+      "name": "dns_lookup_failed without a type is an api_error",
+      "status": 422,
+      "headers": {},
+      "body": "{\"code\":\"dns_lookup_failed\"}",
+      "expect": {
+        "kind": "api",
+        "detail": null,
+        "code": "dns_lookup_failed",
+        "type": "api_error",
+        "error": null,
+        "fix": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": null,
+        "value": null,
+        "reason": null,
+        "limit": null,
+        "message_contains": [],
+        "message_excludes": [],
+        "absent": []
+      }
+    },
+    {
+      "name": "search_failed_upstream without a type is an api_error",
+      "status": 422,
+      "headers": {},
+      "body": "{\"code\":\"search_failed_upstream\"}",
+      "expect": {
+        "kind": "api",
+        "detail": null,
+        "code": "search_failed_upstream",
+        "type": "api_error",
+        "error": null,
+        "fix": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": null,
+        "value": null,
+        "reason": null,
+        "limit": null,
+        "message_contains": [],
+        "message_excludes": [],
+        "absent": []
+      }
     }
   ],
   "responses": [

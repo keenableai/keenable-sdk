@@ -2139,7 +2139,7 @@
         "type": "api_error",
         "code": "prompt_extraction_failed",
         "message": "The page was fetched, but running the prompt over it failed on the Keenable side.",
-        "fix": "The page was fetched, but running your prompt over it failed on our side; the URL is not the cause and nothing was charged. Retry once. If it fails again, fetch the page without prompt and read the content yourself.",
+        "fix": "The page was fetched, but running your prompt over it failed on our side; the URL is not the cause. Retry once. If it fails again, fetch the page without prompt and read the content yourself.",
         "docs_url": "https://docs.keenable.ai/errors#prompt-extraction-failed",
         "request_id": "req-prompt_extraction_failed",
         "retryable": true,
@@ -2153,7 +2153,7 @@
         "retry_after_seconds": 1,
         "request_id": "req-prompt_extraction_failed",
         "param": null,
-        "fix": "The page was fetched, but running your prompt over it failed on our side; the URL is not the cause and nothing was charged. Retry once. If it fails again, fetch the page without prompt and read the content yourself.",
+        "fix": "The page was fetched, but running your prompt over it failed on our side; the URL is not the cause. Retry once. If it fails again, fetch the page without prompt and read the content yourself.",
         "limit": null,
         "message_contains": "The page was fetched, but running the prompt over it failed on the Keenable side.",
         "absent": [
@@ -2173,7 +2173,7 @@
         "type": "invalid_request_error",
         "code": "prompt_input_too_long",
         "message": "The page is longer than a fetch prompt can cover.",
-        "fix": "The page is longer than a fetch prompt can cover, so the same URL with a prompt fails the same way. Fetch it without prompt (max_chars caps the size), or fetch a more specific page. Nothing was charged.",
+        "fix": "The page is longer than a fetch prompt can cover, so the same URL with a prompt fails the same way. Fetch it without prompt (max_chars caps the size), or fetch a more specific page.",
         "docs_url": "https://docs.keenable.ai/errors#prompt-input-too-long",
         "request_id": "req-prompt_input_too_long",
         "retryable": false
@@ -2186,7 +2186,7 @@
         "retry_after_seconds": null,
         "request_id": "req-prompt_input_too_long",
         "param": null,
-        "fix": "The page is longer than a fetch prompt can cover, so the same URL with a prompt fails the same way. Fetch it without prompt (max_chars caps the size), or fetch a more specific page. Nothing was charged.",
+        "fix": "The page is longer than a fetch prompt can cover, so the same URL with a prompt fails the same way. Fetch it without prompt (max_chars caps the size), or fetch a more specific page.",
         "limit": null,
         "message_contains": "The page is longer than a fetch prompt can cover.",
         "absent": [

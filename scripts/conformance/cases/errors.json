@@ -65,6 +65,10 @@
     {"name": "an invalid_filter 400 without a value or param", "status": 400, "json": {"error": "invalid_filter", "message": "too many", "field": "exclude_domains", "reason": "at most 1000 hosts"}, "expect": {"kind": "api", "type": "invalid_request_error", "detail": "too many", "error": "invalid_filter", "param": "exclude_domains", "reason": "at most 1000 hosts"}},
     {"name": "a non-string invalid_filter value is skipped", "status": 400, "json": {"error": "invalid_filter", "value": ["a.com"], "reason": 7}, "expect": {"kind": "api", "type": "invalid_request_error", "detail": "invalid_filter", "error": "invalid_filter"}},
     {"name": "value and reason are read only from an invalid_filter body", "status": 400, "json": {"error": "Bad request", "field": "f", "value": "x", "reason": "y"}, "expect": {"kind": "api", "type": "invalid_request_error", "detail": "Bad request", "error": "Bad request"}},
-    {"name": "value and reason are read only from a 400", "status": 422, "json": {"error": "invalid_filter", "field": "f", "value": "x", "reason": "y"}, "expect": {"kind": "api", "type": "invalid_request_error", "detail": "invalid_filter", "error": "invalid_filter"}}
+    {"name": "value and reason are read only from a 400", "status": 422, "json": {"error": "invalid_filter", "field": "f", "value": "x", "reason": "y"}, "expect": {"kind": "api", "type": "invalid_request_error", "detail": "invalid_filter", "error": "invalid_filter"}},
+    {"name": "device_code_denied without a type is a permission_error", "status": 400, "json": {"code": "device_code_denied"}, "expect": {"kind": "api", "type": "permission_error", "code": "device_code_denied"}},
+    {"name": "slow_down without a type is a rate_limit_error", "status": 400, "json": {"code": "slow_down"}, "expect": {"kind": "api", "type": "rate_limit_error", "code": "slow_down"}},
+    {"name": "dns_lookup_failed without a type is an api_error", "status": 422, "json": {"code": "dns_lookup_failed"}, "expect": {"kind": "api", "type": "api_error", "code": "dns_lookup_failed"}},
+    {"name": "search_failed_upstream without a type is an api_error", "status": 422, "json": {"code": "search_failed_upstream"}, "expect": {"kind": "api", "type": "api_error", "code": "search_failed_upstream"}}
   ]
 }
