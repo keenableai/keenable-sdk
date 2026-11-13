@@ -1,10 +1,19 @@
 name: Publish TypeScript to npm
 
-# Publishes the `keenable` TypeScript SDK to npm via Trusted Publishing (OIDC):
-# no npm token or OTP stored anywhere, and the package gets a provenance
-# attestation. Runs when a GitHub Release whose tag starts with `ts-v` is
-# published, or when cut-sdk-release.yml dispatches it on the `ts-v<version>`
-# tag. The tag must match the version in typescript/package.json.
+# Builds the `keenable` TypeScript SDK once, then ships the same tarball two ways:
+#   - GitHub Release assets: the `keenable-<version>.tgz` is attached to the
+#     `ts-v<version>` release, so it can be installed straight from GitHub
+#     (npm install https://github.com/keenableai/keenable-sdk/releases/download/ts-v<version>/keenable-<version>.tgz)
+#     with no npm account involved;
+#   - npm, via Trusted Publishing (OIDC): no npm token or OTP stored anywhere,
+#     and the package gets a provenance attestation.
+# The two ship jobs are independent: npm failing (for example before the
+# Trusted Publisher is registered) does not stop the GitHub assets, and
+# re-running the failed job finishes npm later.
+#
+# Runs when a GitHub Release whose tag starts with `ts-v` is published, or when
+# cut-sdk-release.yml dispatches it on the `ts-v<version>` tag. The tag must
+# match the version in typescript/package.json.
 #
 # One-time setup on npmjs.com: package `keenable` -> Settings -> Trusted
 # Publisher -> GitHub Actions, repo `keenableai/keenable-sdk`, workflow
@@ -15,7 +24,7 @@ name: Publish TypeScript to npm
 # A manual dispatch must be on a `ts-v*` tag whose commit is on main, so a
 # branch named like a release cannot reach the OIDC publish. Adding a required
 # reviewer to the `npm` environment (Settings -> Environments) puts a human
-# approval in front of every publish.
+# approval in front of every npm publish.
 
 on:
   release:
@@ -23,8 +32,8 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  publish:
-    name: Publish to npm
+  build:
+    name: Build package
     # Release-triggered runs are gated on the tag so a Python release does not
     # try to publish the npm package.
     if: >-
@@ -32,12 +41,8 @@ jobs:
       startsWith(github.event.release.tag_name, 'ts-v')
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment:
-      name: npm
-      url: https://www.npmjs.com/package/keenable
     permissions:
       contents: read
-      id-token: write # required for Trusted Publishing (OIDC)
     defaults:
       run:
         working-directory: typescript
@@ -66,17 +71,73 @@ jobs:
             exit 1
           fi
 
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - run: npm install --legacy-peer-deps
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm pack
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package
+          path: typescript/keenable-*.tgz
+          if-no-files-found: error
+
+  github-assets:
+    name: Attach to the GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # upload release assets
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: package
+          path: pkg/
+
+      - name: Upload the tarball to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Fail, don't skip: a run that "succeeds" without the asset would be
+          # taken for done, and a re-run once the release exists attaches it.
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::no GitHub Release for $TAG to attach the tarball to; create it, then re-run this job"
+            exit 1
+          fi
+          gh release upload "$TAG" pkg/keenable-*.tgz --repo "$GITHUB_REPOSITORY" --clobber
+
+  npm:
+    name: Publish to npm
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/keenable
+    permissions:
+      contents: read
+      id-token: write # required for Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: package
+          path: pkg/
+
       # Trusted Publishing needs npm >= 11.5.1, which ships with Node 24.
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
           registry-url: https://registry.npmjs.org
 
-      - run: npm install --legacy-peer-deps
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
-      - run: npm pack --dry-run
-
+      # Publishes the tarball the build produced, so npm gets the same bytes
+      # as the GitHub Release.
       - name: Publish
-        run: npm publish --access public
+        run: npm publish pkg/keenable-*.tgz --access public

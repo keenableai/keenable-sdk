@@ -2,8 +2,14 @@ name: Publish Python to PyPI
 
 # Publishes the `keenable` Python SDK to PyPI via Trusted Publishing (OIDC) —
 # no API tokens or passwords. Runs when a GitHub Release whose tag starts with
-# `python-v` is published; the tag must match the version in
-# python/pyproject.toml (e.g. python-v0.1.0 -> version 0.1.0).
+# `python-v` is published, or when cut-sdk-release.yml dispatches it on the
+# tag; the tag must match the version in python/pyproject.toml (e.g.
+# python-v0.1.0 -> version 0.1.0).
+#
+# The built wheel and sdist are also attached to the GitHub Release, so the
+# SDK can be installed straight from GitHub with no PyPI involved:
+#   pip install https://github.com/keenableai/keenable-sdk/releases/download/python-v<version>/keenable-<version>-py3-none-any.whl
+# The two ship jobs are independent: one failing doesn't stop the other.
 #
 # One-time setup on PyPI: register a Trusted Publisher for project `keenable`
 # pointing at this repo, workflow `publish-python.yml`, environment `pypi`.
@@ -35,6 +41,16 @@ jobs:
             echo "::error::$(git rev-parse --short HEAD) is not on main; only merged release commits are published"
             exit 1
           fi
+      - name: Tag matches pyproject.toml
+        env:
+          TAG: ${{ github.event.release.tag_name || github.ref_name }}
+        run: |
+          set -euo pipefail
+          ver=$(sed -n 's/^version = "\(.*\)"$/\1/p' python/pyproject.toml | head -1)
+          if [ "$TAG" != "python-v$ver" ]; then
+            echo "::error::tag $TAG does not match pyproject.toml version $ver (expected python-v$ver)"
+            exit 1
+          fi
       - name: Install uv
         uses: astral-sh/setup-uv@v10.3.3
       - name: Build sdist + wheel
@@ -48,6 +64,33 @@ jobs:
         with:
           name: dist
           path: python/dist/
+
+  github-assets:
+    name: Attach to the GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # upload release assets
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - name: Upload the wheel and sdist to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Fail, don't skip: a run that "succeeds" without the assets would be
+          # taken for done, and a re-run once the release exists attaches them.
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::no GitHub Release for $TAG to attach the files to; create it, then re-run this job"
+            exit 1
+          fi
+          gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
 
   publish:
     name: Publish to PyPI
