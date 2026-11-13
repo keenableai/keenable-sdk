@@ -18,10 +18,23 @@ jobs:
     name: Build distribution
     # Release-triggered runs are gated on the tag so a TypeScript release does
     # not try to publish the Python package.
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'python-v')
+    # A manual dispatch must be on a `python-v*` tag whose commit is on main, so
+    # a branch named like a release cannot reach the OIDC publish.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref_type == 'tag' && startsWith(github.ref_name, 'python-v')) ||
+      startsWith(github.event.release.tag_name, 'python-v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # history to check the tag is on main
+      - name: Release commit is on main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::$(git rev-parse --short HEAD) is not on main; only merged release commits are published"
+            exit 1
+          fi
       - name: Install uv
         uses: astral-sh/setup-uv@v10
       - name: Build sdist + wheel

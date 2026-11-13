@@ -8,7 +8,14 @@ name: Publish TypeScript to npm
 #
 # One-time setup on npmjs.com: package `keenable` -> Settings -> Trusted
 # Publisher -> GitHub Actions, repo `keenableai/keenable-sdk`, workflow
-# `publish-typescript.yml`, environment `npm`.
+# `publish-typescript.yml`, environment `npm`, and under Allowed actions tick
+# `npm publish`. New configurations default to `npm stage publish` only, which
+# this workflow's direct `npm publish` cannot use.
+#
+# A manual dispatch must be on a `ts-v*` tag whose commit is on main, so a
+# branch named like a release cannot reach the OIDC publish. Adding a required
+# reviewer to the `npm` environment (Settings -> Environments) puts a human
+# approval in front of every publish.
 
 on:
   release:
@@ -20,7 +27,9 @@ jobs:
     name: Publish to npm
     # Release-triggered runs are gated on the tag so a Python release does not
     # try to publish the npm package.
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'ts-v')
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref_type == 'tag' && startsWith(github.ref_name, 'ts-v')) ||
+      startsWith(github.event.release.tag_name, 'ts-v')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
@@ -36,6 +45,15 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.release.tag_name || github.ref }}
+          fetch-depth: 0 # history to check the tag is on main
+
+      - name: Release commit is on main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::$(git rev-parse --short HEAD) is not on main; only merged release commits are published"
+            exit 1
+          fi
 
       - name: Tag matches package.json
         env:

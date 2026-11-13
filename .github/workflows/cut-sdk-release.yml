@@ -2,12 +2,12 @@ name: Cut SDK release
 
 # Automates PUBLISH.md, with the default GITHUB_TOKEN only (no PAT). The three
 # SDKs version independently.
-#   1. Run this workflow (Actions -> Cut SDK release) with an SDK and a bump.
-#      It opens a "Release <sdk> vX.Y.Z" PR that bumps that SDK's version
+#   1. Run this workflow (Actions -> Cut SDK release, on main) with an SDK and a
+#      bump. It opens a "Release <sdk> vX.Y.Z" PR that bumps that SDK's version
 #      file(s), moves its changelog's "Unreleased" entries under X.Y.Z, and
 #      dispatches the tests on the PR branch.
-#   2. Merge the PR. The push to main tags every SDK whose version has no tag
-#      yet, and publishes it:
+#   2. Merge the PR. The push to main tags every SDK whose version changed in
+#      it, and publishes it:
 #        python      -> GitHub Release python-v<version> + publish-python.yml
 #                       (PyPI, Trusted Publishing)
 #        typescript  -> GitHub Release ts-v<version> + publish-typescript.yml
@@ -17,6 +17,11 @@ name: Cut SDK release
 # Why dispatch: events made with GITHUB_TOKEN (PRs, tags, releases) trigger no
 # other workflow, except workflow_dispatch. So the tests on the PR and the
 # publish workflows are started explicitly with `gh workflow run`, on the tag.
+#
+# Both jobs are safe to re-run after a partial failure: the PR job resumes an
+# existing release branch, and the tag job creates only the missing release and
+# dispatches a publish workflow only when none succeeded or is running for the
+# tag.
 #
 # Repo setting needed: Settings -> Actions -> General -> Workflow permissions ->
 # "Allow GitHub Actions to create and approve pull requests".
@@ -57,6 +62,15 @@ jobs:
       pull-requests: write
       actions: write
     steps:
+      # The release branch is cut from this checkout, so any other ref would
+      # carry its unmerged changes into the release PR.
+      - name: Require main
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::run this workflow on main (got $GITHUB_REF)"
+            exit 1
+          fi
+
       - uses: actions/checkout@v7
 
       - name: Compute next version
@@ -129,12 +143,20 @@ jobs:
           branch="release/$SDK-v$NEXT"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$branch"
-          git add -A
-          git commit -m "Release $SDK v$NEXT"
-          git push origin "$branch"
-          body="Bumps the $SDK SDK $CUR -> $NEXT and moves its changelog's Unreleased entries under $NEXT. Merging tags and publishes it; see the header of cut-sdk-release.yml."
-          gh pr create --base main --head "$branch" --title "Release $SDK v$NEXT" --body "$body"
+          # A re-run after a failure further down finds the branch already
+          # pushed; resume from it instead of pushing a second, divergent commit.
+          if git ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null; then
+            echo "$branch already exists, resuming"
+          else
+            git checkout -b "$branch"
+            git add -A
+            git commit -m "Release $SDK v$NEXT"
+            git push origin "$branch"
+          fi
+          if [ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[0].number')" ]; then
+            body="Bumps the $SDK SDK $CUR -> $NEXT and moves its changelog's Unreleased entries under $NEXT. Merging tags and publishes it; see the header of cut-sdk-release.yml."
+            gh pr create --base main --head "$branch" --title "Release $SDK v$NEXT" --body "$body"
+          fi
           # A PR opened with GITHUB_TOKEN triggers no tests; run them on the
           # branch so the checks show up on the PR head commit.
           gh workflow run test.yml --ref "$branch"
@@ -144,47 +166,86 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # Two quick merges must not race on the same tag or dispatch.
+    concurrency:
+      group: cut-sdk-release-tag
+      cancel-in-progress: false
     permissions:
       contents: write
       actions: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # history to read the pre-push versions, and all tags
 
-      - name: Tag every SDK whose version has no tag, then publish it
+      - name: Tag each SDK whose version changed, then publish it
         env:
           GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          untagged() { ! git ls-remote --exit-code --tags origin "refs/tags/$1" >/dev/null; }
+          at_before() { git show "$BEFORE:$1" 2>/dev/null || true; }
+          py_ver() { sed -n 's/^version = "\(.*\)"$/\1/p' | head -1; }
+          go_ver() { sed -n 's/^const Version = "\(.*\)"$/\1/p' | head -1; }
 
-          # GitHub Release (creates the tag at this commit), notes taken from the
-          # changelog, then start the publish workflow on that tag.
-          release() { # <tag> <title> <changelog> <version> <publish workflow>
-            awk -v v="$4" '$0 == "## " v {on=1; next} /^## /{on=0} on' "$3" > notes.md
-            [ -s notes.md ] || echo "No changelog entries." > notes.md
-            gh release create "$1" --target "$GITHUB_SHA" --title "$2" --notes-file notes.md
-            gh workflow run "$5" --ref "$1"
+          # An existing tag must be the one for this commit.
+          check_tag() { # <tag>
+            if git ls-remote --exit-code --tags origin "refs/tags/$1" >/dev/null &&
+              [ "$(git rev-parse "$1^{commit}")" != "$GITHUB_SHA" ]; then
+              echo "::error::tag $1 already exists at another commit"
+              exit 1
+            fi
           }
 
-          py=$(sed -n 's/^version = "\(.*\)"$/\1/p' python/pyproject.toml | head -1)
+          # Create the GitHub Release if missing (this creates the tag at this
+          # commit; notes come from the changelog), then start the publish
+          # workflow unless one already succeeded or is running for the tag.
+          # Each step checks its own state, so a re-run finishes what a failed
+          # run left undone.
+          publish() { # <tag> <title> <changelog> <version> <publish workflow>
+            check_tag "$1"
+            if ! gh release view "$1" >/dev/null 2>&1; then
+              awk -v v="$4" '$0 == "## " v {on=1; next} /^## /{on=0} on' "$3" > notes.md
+              [ -s notes.md ] || echo "No changelog entries." > notes.md
+              gh release create "$1" --target "$GITHUB_SHA" --title "$2" --notes-file notes.md
+            fi
+            started=$(gh run list --workflow "$5" --branch "$1" --json status,conclusion \
+              --jq '[.[] | select(.status != "completed" or .conclusion == "success")] | length')
+            if [ "$started" != "0" ]; then
+              echo "$5 already running or succeeded for $1"
+            else
+              gh workflow run "$5" --ref "$1"
+            fi
+          }
+
+          py=$(py_ver < python/pyproject.toml)
           py_file=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' python/keenable/_version.py | head -1)
           if [ "$py" != "$py_file" ]; then
             echo "::error::python version mismatch: pyproject.toml $py vs _version.py $py_file"
             exit 1
           fi
           ts=$(jq -r .version typescript/package.json)
-          go=$(sed -n 's/^const Version = "\(.*\)"$/\1/p' go/version.go)
+          go=$(go_ver < go/version.go)
 
-          if untagged "python-v$py"; then
-            release "python-v$py" "keenable (Python) $py" python/CHANGELOG.md "$py" publish-python.yml
+          py_prev=$(at_before python/pyproject.toml | py_ver || true)
+          ts_prev=$(at_before typescript/package.json | jq -r .version 2>/dev/null || true)
+          go_prev=$(at_before go/version.go | go_ver || true)
+
+          # These files also change for dependency and metadata edits; only a
+          # version change is a release.
+          if [ "$py" != "$py_prev" ]; then
+            publish "python-v$py" "keenable (Python) $py" python/CHANGELOG.md "$py" publish-python.yml
           fi
-          if untagged "ts-v$ts"; then
-            release "ts-v$ts" "keenable (TypeScript) $ts" typescript/CHANGELOG.md "$ts" publish-typescript.yml
+          if [ "$ts" != "$ts_prev" ]; then
+            publish "ts-v$ts" "keenable (TypeScript) $ts" typescript/CHANGELOG.md "$ts" publish-typescript.yml
           fi
-          if untagged "go/v$go"; then
-            git tag "go/v$go"
-            git push origin "go/v$go"
+          if [ "$go" != "$go_prev" ]; then
+            check_tag "go/v$go"
+            if ! git ls-remote --exit-code --tags origin "refs/tags/go/v$go" >/dev/null; then
+              git tag "go/v$go"
+              git push origin "go/v$go"
+            fi
           fi
