@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.2
+
 `SearchOptions` gains `ExcludeDomains`: a list of hosts to keep out of the
 results. A host also excludes its subdomains; up to 1,000 distinct hosts. The
 API cleans up unambiguous entries (scheme, `www.`, case, port, trailing `/` or
