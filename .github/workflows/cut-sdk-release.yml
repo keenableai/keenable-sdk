@@ -1,0 +1,190 @@
+name: Cut SDK release
+
+# Automates PUBLISH.md, with the default GITHUB_TOKEN only (no PAT). The three
+# SDKs version independently.
+#   1. Run this workflow (Actions -> Cut SDK release) with an SDK and a bump.
+#      It opens a "Release <sdk> vX.Y.Z" PR that bumps that SDK's version
+#      file(s), moves its changelog's "Unreleased" entries under X.Y.Z, and
+#      dispatches the tests on the PR branch.
+#   2. Merge the PR. The push to main tags every SDK whose version has no tag
+#      yet, and publishes it:
+#        python      -> GitHub Release python-v<version> + publish-python.yml
+#                       (PyPI, Trusted Publishing)
+#        typescript  -> GitHub Release ts-v<version> + publish-typescript.yml
+#                       (npm, Trusted Publishing)
+#        go          -> tag go/v<version>; the module proxy picks it up.
+#
+# Why dispatch: events made with GITHUB_TOKEN (PRs, tags, releases) trigger no
+# other workflow, except workflow_dispatch. So the tests on the PR and the
+# publish workflows are started explicitly with `gh workflow run`, on the tag.
+#
+# Repo setting needed: Settings -> Actions -> General -> Workflow permissions ->
+# "Allow GitHub Actions to create and approve pull requests".
+# One-time registry setup: Trusted Publishers on PyPI (see publish-python.yml)
+# and on npm (see publish-typescript.yml).
+
+on:
+  workflow_dispatch:
+    inputs:
+      sdk:
+        description: SDK to release
+        type: choice
+        required: true
+        options: [python, typescript, go]
+      bump:
+        description: "patch, minor, major, or an exact version like 0.2.0"
+        required: true
+        default: patch
+  push:
+    branches: [main]
+    paths:
+      - python/pyproject.toml
+      - python/keenable/_version.py
+      - typescript/package.json
+      - go/version.go
+
+permissions:
+  contents: read
+
+jobs:
+  open-pr:
+    name: Open release PR
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Compute next version
+        id: ver
+        env:
+          SDK: ${{ inputs.sdk }}
+          BUMP: ${{ inputs.bump }}
+        run: |
+          set -euo pipefail
+          case "$SDK" in
+            python)     cur=$(sed -n 's/^version = "\(.*\)"$/\1/p' python/pyproject.toml | head -1); prefix=python-v ;;
+            typescript) cur=$(jq -r .version typescript/package.json); prefix=ts-v ;;
+            go)         cur=$(sed -n 's/^const Version = "\(.*\)"$/\1/p' go/version.go); prefix=go/v ;;
+          esac
+          IFS=. read -r maj min pat <<<"$cur"
+          case "$BUMP" in
+            patch) next="$maj.$min.$((pat + 1))" ;;
+            minor) next="$maj.$((min + 1)).0" ;;
+            major) next="$((maj + 1)).0.0" ;;
+            *)
+              if ! [[ "$BUMP" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                echo "::error::bump must be patch, minor, major or X.Y.Z (no prerelease suffix: PyPI and npm spell them differently)"
+                exit 1
+              fi
+              next="$BUMP"
+              ;;
+          esac
+          if [ "$next" = "$cur" ]; then
+            echo "::error::$SDK is already at $cur"
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$prefix$next" >/dev/null; then
+            echo "::error::tag $prefix$next already exists"
+            exit 1
+          fi
+          echo "current=$cur" >> "$GITHUB_OUTPUT"
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+
+      - name: Bump version files and changelog
+        env:
+          SDK: ${{ inputs.sdk }}
+          NEXT: ${{ steps.ver.outputs.next }}
+        run: |
+          set -euo pipefail
+          case "$SDK" in
+            python)
+              perl -0pi -e 's/^version = ".*"$/version = "$ENV{NEXT}"/m' python/pyproject.toml
+              perl -0pi -e 's/^__version__ = ".*"$/__version__ = "$ENV{NEXT}"/m' python/keenable/_version.py
+              ;;
+            typescript)
+              # Updates package.json and package-lock.json together, no install, no git tag.
+              (cd typescript && npm version "$NEXT" --no-git-tag-version --allow-same-version)
+              ;;
+            go)
+              perl -0pi -e 's/^const Version = ".*"$/const Version = "$ENV{NEXT}"/m' go/version.go
+              ;;
+          esac
+          # Unreleased stays (empty) above; its entries now sit under the new version.
+          perl -0pi -e 's/^## Unreleased\n/## Unreleased\n\n## $ENV{NEXT}\n/m' "$SDK/CHANGELOG.md"
+          git diff --stat
+
+      - name: Open PR and run tests on it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SDK: ${{ inputs.sdk }}
+          CUR: ${{ steps.ver.outputs.current }}
+          NEXT: ${{ steps.ver.outputs.next }}
+        run: |
+          set -euo pipefail
+          branch="release/$SDK-v$NEXT"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add -A
+          git commit -m "Release $SDK v$NEXT"
+          git push origin "$branch"
+          body="Bumps the $SDK SDK $CUR -> $NEXT and moves its changelog's Unreleased entries under $NEXT. Merging tags and publishes it; see the header of cut-sdk-release.yml."
+          gh pr create --base main --head "$branch" --title "Release $SDK v$NEXT" --body "$body"
+          # A PR opened with GITHUB_TOKEN triggers no tests; run them on the
+          # branch so the checks show up on the PR head commit.
+          gh workflow run test.yml --ref "$branch"
+
+  tag:
+    name: Tag and publish released SDKs
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Tag every SDK whose version has no tag, then publish it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          untagged() { ! git ls-remote --exit-code --tags origin "refs/tags/$1" >/dev/null; }
+
+          # GitHub Release (creates the tag at this commit), notes taken from the
+          # changelog, then start the publish workflow on that tag.
+          release() { # <tag> <title> <changelog> <version> <publish workflow>
+            awk -v v="$4" '$0 == "## " v {on=1; next} /^## /{on=0} on' "$3" > notes.md
+            [ -s notes.md ] || echo "No changelog entries." > notes.md
+            gh release create "$1" --target "$GITHUB_SHA" --title "$2" --notes-file notes.md
+            gh workflow run "$5" --ref "$1"
+          }
+
+          py=$(sed -n 's/^version = "\(.*\)"$/\1/p' python/pyproject.toml | head -1)
+          py_file=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' python/keenable/_version.py | head -1)
+          if [ "$py" != "$py_file" ]; then
+            echo "::error::python version mismatch: pyproject.toml $py vs _version.py $py_file"
+            exit 1
+          fi
+          ts=$(jq -r .version typescript/package.json)
+          go=$(sed -n 's/^const Version = "\(.*\)"$/\1/p' go/version.go)
+
+          if untagged "python-v$py"; then
+            release "python-v$py" "keenable (Python) $py" python/CHANGELOG.md "$py" publish-python.yml
+          fi
+          if untagged "ts-v$ts"; then
+            release "ts-v$ts" "keenable (TypeScript) $ts" typescript/CHANGELOG.md "$ts" publish-typescript.yml
+          fi
+          if untagged "go/v$go"; then
+            git tag "go/v$go"
+            git push origin "go/v$go"
+          fi

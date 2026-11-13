@@ -1,0 +1,64 @@
+name: Publish TypeScript to npm
+
+# Publishes the `keenable` TypeScript SDK to npm via Trusted Publishing (OIDC):
+# no npm token or OTP stored anywhere, and the package gets a provenance
+# attestation. Runs when a GitHub Release whose tag starts with `ts-v` is
+# published, or when cut-sdk-release.yml dispatches it on the `ts-v<version>`
+# tag. The tag must match the version in typescript/package.json.
+#
+# One-time setup on npmjs.com: package `keenable` -> Settings -> Trusted
+# Publisher -> GitHub Actions, repo `keenableai/keenable-sdk`, workflow
+# `publish-typescript.yml`, environment `npm`.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch: {}
+
+jobs:
+  publish:
+    name: Publish to npm
+    # Release-triggered runs are gated on the tag so a Python release does not
+    # try to publish the npm package.
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'ts-v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/keenable
+    permissions:
+      contents: read
+      id-token: write # required for Trusted Publishing (OIDC)
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      - name: Tag matches package.json
+        env:
+          TAG: ${{ github.event.release.tag_name || github.ref_name }}
+        run: |
+          set -euo pipefail
+          ver=$(jq -r .version package.json)
+          if [ "$TAG" != "ts-v$ver" ]; then
+            echo "::error::tag $TAG does not match package.json version $ver (expected ts-v$ver)"
+            exit 1
+          fi
+
+      # Trusted Publishing needs npm >= 11.5.1, which ships with Node 24.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+
+      - run: npm install --legacy-peer-deps
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm pack --dry-run
+
+      - name: Publish
+        run: npm publish --access public
