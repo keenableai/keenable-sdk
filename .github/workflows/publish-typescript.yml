@@ -138,6 +138,8 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       # Publishes the tarball the build produced, so npm gets the same bytes
-      # as the GitHub Release.
+      # as the GitHub Release. The leading ./ matters: without it npm reads
+      # `pkg/keenable-x.tgz` as a GitHub `user/repo` shorthand and tries to
+      # `git ls-remote` it over ssh.
       - name: Publish
-        run: npm publish pkg/keenable-*.tgz --access public
+        run: npm publish ./pkg/keenable-*.tgz --access public
