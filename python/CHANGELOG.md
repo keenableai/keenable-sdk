@@ -5,6 +5,8 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
+## 0.1.4
+
 - `search()` (sync and async) accepts `exclude_domains`: a list of hosts to
   keep out of the results. A host also excludes its subdomains; up to 1,000
   distinct hosts. Any iterable of strings is sent as a list of its entries as
