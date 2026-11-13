@@ -44,7 +44,7 @@ on:
         description: SDK to release
         type: choice
         required: true
-        options: [python, typescript, go]
+        options: [python, typescript, go, all]
       bump:
         description: "patch, minor, major, or an exact version like 0.2.0. Only pushes a release branch: prefer scripts/release.ts, which also opens and merges the PR"
         required: true
@@ -88,11 +88,30 @@ jobs:
           BUMP: ${{ inputs.bump }}
         run: |
           set -euo pipefail
+          # `all` releases every SDK at one shared version, taken from the
+          # highest current one.
           case "$SDK" in
-            python)     cur=$(sed -n 's/^version = "\(.*\)"$/\1/p' python/pyproject.toml | head -1); prefix=python-v ;;
-            typescript) cur=$(jq -r .version typescript/package.json); prefix=ts-v ;;
-            go)         cur=$(sed -n 's/^const Version = "\(.*\)"$/\1/p' go/version.go); prefix=go/v ;;
+            all) sdks="python typescript go" ;;
+            *) sdks="$SDK" ;;
           esac
+          version_of() {
+            case "$1" in
+              python)     sed -n 's/^version = "\(.*\)"$/\1/p' python/pyproject.toml | head -1 ;;
+              typescript) jq -r .version typescript/package.json ;;
+              go)         sed -n 's/^const Version = "\(.*\)"$/\1/p' go/version.go ;;
+            esac
+          }
+          prefix_of() {
+            case "$1" in
+              python) echo python-v ;;
+              typescript) echo ts-v ;;
+              go) echo go/v ;;
+            esac
+          }
+          cur=""
+          for s in $sdks; do
+            cur=$(printf '%s\n%s\n' "$cur" "$(version_of "$s")" | grep -v '^$' | sort -V | tail -1)
+          done
           IFS=. read -r maj min pat <<<"$cur"
           case "$BUMP" in
             patch) next="$maj.$min.$((pat + 1))" ;;
@@ -106,44 +125,54 @@ jobs:
               next="$BUMP"
               ;;
           esac
-          if [ "$next" = "$cur" ]; then
-            echo "::error::$SDK is already at $cur"
-            exit 1
-          fi
-          if git ls-remote --exit-code --tags origin "refs/tags/$prefix$next" >/dev/null; then
-            echo "::error::tag $prefix$next already exists"
-            exit 1
-          fi
-          echo "current=$cur" >> "$GITHUB_OUTPUT"
-          echo "next=$next" >> "$GITHUB_OUTPUT"
+          for s in $sdks; do
+            v=$(version_of "$s")
+            # next must be strictly above this SDK's current version
+            if [ "$next" = "$v" ] || [ "$(printf '%s\n%s\n' "$next" "$v" | sort -V | tail -1)" != "$next" ]; then
+              echo "::error::$s is at $v, which is not below $next"
+              exit 1
+            fi
+            if git ls-remote --exit-code --tags origin "refs/tags/$(prefix_of "$s")$next" >/dev/null; then
+              echo "::error::tag $(prefix_of "$s")$next already exists"
+              exit 1
+            fi
+          done
+          {
+            echo "current=$cur"
+            echo "next=$next"
+            echo "sdks=$sdks"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Bump version files and changelog
         env:
-          SDK: ${{ inputs.sdk }}
+          SDKS: ${{ steps.ver.outputs.sdks }}
           NEXT: ${{ steps.ver.outputs.next }}
         run: |
           set -euo pipefail
-          case "$SDK" in
-            python)
-              perl -0pi -e 's/^version = ".*"$/version = "$ENV{NEXT}"/m' python/pyproject.toml
-              perl -0pi -e 's/^__version__ = ".*"$/__version__ = "$ENV{NEXT}"/m' python/keenable/_version.py
-              ;;
-            typescript)
-              # Updates package.json and package-lock.json together, no install, no git tag.
-              (cd typescript && npm version "$NEXT" --no-git-tag-version --allow-same-version)
-              ;;
-            go)
-              perl -0pi -e 's/^const Version = ".*"$/const Version = "$ENV{NEXT}"/m' go/version.go
-              ;;
-          esac
-          # Unreleased stays (empty) above; its entries now sit under the new version.
-          perl -0pi -e 's/^## Unreleased\n/## Unreleased\n\n## $ENV{NEXT}\n/m' "$SDK/CHANGELOG.md"
+          for s in $SDKS; do
+            case "$s" in
+              python)
+                perl -0pi -e 's/^version = ".*"$/version = "$ENV{NEXT}"/m' python/pyproject.toml
+                perl -0pi -e 's/^__version__ = ".*"$/__version__ = "$ENV{NEXT}"/m' python/keenable/_version.py
+                ;;
+              typescript)
+                # Updates package.json and package-lock.json together, no install, no git tag.
+                (cd typescript && npm version "$NEXT" --no-git-tag-version --allow-same-version)
+                ;;
+              go)
+                perl -0pi -e 's/^const Version = ".*"$/const Version = "$ENV{NEXT}"/m' go/version.go
+                ;;
+            esac
+            # Unreleased stays (empty) above; its entries now sit under the new version.
+            perl -0pi -e 's/^## Unreleased\n/## Unreleased\n\n## $ENV{NEXT}\n/m' "$s/CHANGELOG.md"
+          done
           git diff --stat
 
       - name: Push the release branch and run tests on it
         env:
           GH_TOKEN: ${{ github.token }}
           SDK: ${{ inputs.sdk }}
+          SDKS: ${{ steps.ver.outputs.sdks }}
           NEXT: ${{ steps.ver.outputs.next }}
         run: |
           set -euo pipefail
@@ -155,11 +184,16 @@ jobs:
           # commit. Only our own untouched branch is resumed: one bot commit
           # on top of this main that changes just this SDK's release files.
           # Anything else (main moved on, someone pushed to it) is not ours.
-          case "$SDK" in
-            python)     allowed='^python/(pyproject\.toml|keenable/_version\.py|CHANGELOG\.md)$' ;;
-            typescript) allowed='^typescript/(package\.json|package-lock\.json|CHANGELOG\.md)$' ;;
-            go)         allowed='^go/(version\.go|CHANGELOG\.md)$' ;;
-          esac
+          parts=""
+          for s in $SDKS; do
+            case "$s" in
+              python)     p='python/(pyproject\.toml|keenable/_version\.py|CHANGELOG\.md)' ;;
+              typescript) p='typescript/(package\.json|package-lock\.json|CHANGELOG\.md)' ;;
+              go)         p='go/(version\.go|CHANGELOG\.md)' ;;
+            esac
+            parts="${parts:+$parts|}$p"
+          done
+          allowed="^($parts)\$"
           if git ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null; then
             git fetch --quiet --depth=2 origin "$branch"
             extra=$(git diff --name-only HEAD FETCH_HEAD | grep -v -E "$allowed" || true)

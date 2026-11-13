@@ -8,9 +8,12 @@ One command, from any machine with `gh` logged in and Node 22.18+:
 
 ```bash
 node scripts/release.ts python patch       # or typescript, go; patch, minor, major or X.Y.Z
+node scripts/release.ts all 0.1.5          # all three SDKs at one shared version, in one PR
 ```
 
-It runs the **Cut SDK release** workflow (bumps that SDK's version files below and moves its changelog `Unreleased` entries under the new version, on a `release/<sdk>-vX.Y.Z` branch, and runs the tests), opens the PR as you, waits for checks and the Qodo approval, squash-merges it, and waits for the publish. Merging tags and publishes the SDK: a GitHub Release plus `publish-python.yml` (PyPI) for Python, a GitHub Release plus `publish-typescript.yml` (npm, Trusted Publishing, no OTP) for TypeScript, a `go/v<version>` tag for Go. Pass `--yes` to skip the confirmation, `--dry-run` to see the version only.
+It runs the **Cut SDK release** workflow (bumps that SDK's version files below and moves its changelog `Unreleased` entries under the new version, on a `release/<sdk>-vX.Y.Z` branch, and runs the tests), opens the PR as you, waits for the tests and the Qodo approval, squash-merges the commit the tests ran on, and waits for the publish. Merging tags and publishes the SDK: a GitHub Release plus `publish-python.yml` (PyPI) for Python, a GitHub Release plus `publish-typescript.yml` (npm, Trusted Publishing, no OTP) for TypeScript, a `go/v<version>` tag for Go. `all` takes the highest current version as the base for `patch`/`minor`/`major`, and every SDK must end up above its current version. Pass `--yes` to skip the confirmation, `--dry-run` to see the version only.
+
+**Installable from GitHub, without any registry.** Both publish workflows also attach the built package to the GitHub Release (the Python wheel and sdist, the TypeScript `keenable-<version>.tgz`), and Go installs from its tag. The attach job is separate from the PyPI / npm job, so a registry problem (for example the npm Trusted Publisher not being registered yet) never blocks the GitHub side; re-run the failed job to finish the registry later. Install commands are in the README.
 
 Without the script: Actions -> **Cut SDK release** -> Run workflow, then open the PR from the release branch yourself and merge it. The workflow doesn't open the PR itself: a PR authored by `github-actions[bot]` can't be approved by the approval bridge, which also runs as that bot.
 

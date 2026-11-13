@@ -20,6 +20,14 @@ npm install keenable
 go get github.com/keenableai/keenable-sdk/go@latest
 ```
 
+Straight from GitHub, no registry needed (each release carries the built packages; replace `<version>` with a release such as `0.1.5`):
+
+```bash
+pip install https://github.com/keenableai/keenable-sdk/releases/download/python-v<version>/keenable-<version>-py3-none-any.whl
+npm install https://github.com/keenableai/keenable-sdk/releases/download/ts-v<version>/keenable-<version>.tgz
+go get github.com/keenableai/keenable-sdk/go@v<version>
+```
+
 ```python
 from keenable import Keenable
 
