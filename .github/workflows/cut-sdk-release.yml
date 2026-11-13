@@ -279,6 +279,18 @@ jobs:
             if ! gh release view "$1" >/dev/null 2>&1; then
               awk -v v="$4" '$0 == "## " v {on=1; next} /^## /{on=0} on' "$3" > notes.md
               [ -s notes.md ] || echo "No changelog entries." > notes.md
+              # The pinned install command lives here, in this release's notes,
+              # not in the README (whose install commands stay unpinned).
+              base="https://github.com/$GITHUB_REPOSITORY/releases/download/$1"
+              case "$1" in
+                python-v*) cmd="pip install $base/keenable-$4-py3-none-any.whl" ;;
+                ts-v*)     cmd="npm install $base/keenable-$4.tgz" ;;
+                *)         cmd="" ;;
+              esac
+              if [ -n "$cmd" ]; then
+                # shellcheck disable=SC2016 # the backticks are literal markdown
+                printf '\n### Install from GitHub\n\n```bash\n%s\n```\n' "$cmd" >> notes.md
+              fi
               gh release create "$1" --target "$GITHUB_SHA" --title "$2" --notes-file notes.md
             fi
             started=$(gh run list --workflow "$5" --branch "$1" --json status,conclusion \

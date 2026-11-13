@@ -106,9 +106,11 @@ jobs:
           TAG: ${{ github.event.release.tag_name || github.ref_name }}
         run: |
           set -euo pipefail
+          # Fail, don't skip: a run that "succeeds" without the asset would be
+          # taken for done, and a re-run once the release exists attaches it.
           if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "::warning::no GitHub Release for $TAG, nothing to attach the tarball to"
-            exit 0
+            echo "::error::no GitHub Release for $TAG to attach the tarball to; create it, then re-run this job"
+            exit 1
           fi
           gh release upload "$TAG" pkg/keenable-*.tgz --repo "$GITHUB_REPOSITORY" --clobber
 

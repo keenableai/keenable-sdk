@@ -82,12 +82,19 @@ function die(m: string): never {
 
 /** -1, 0 or 1 comparing two X.Y.Z versions numerically. */
 export function compareVersions(a: string, b: string): number {
-  const x = a.split(".").map(Number);
-  const y = b.split(".").map(Number);
+  const x = parts(a);
+  const y = parts(b);
   for (let i = 0; i < 3; i++) {
-    if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1;
+    const p = x[i] ?? 0;
+    const q = y[i] ?? 0;
+    if (p !== q) return p < q ? -1 : 1;
   }
   return 0;
+}
+
+/** [major, minor, patch] of an X.Y.Z version. */
+function parts(v: string): number[] {
+  return v.split(".").map(Number);
 }
 
 /** The highest of some X.Y.Z versions. */
@@ -97,7 +104,7 @@ export function highestVersion(versions: string[]): string {
 
 /** The next version for a bump keyword or an explicit X.Y.Z. */
 export function nextVersion(cur: string, bump: string): string {
-  const [maj, min, pat] = cur.split(".").map(Number);
+  const [maj = 0, min = 0, pat = 0] = parts(cur);
   if (bump === "patch") return `${maj}.${min}.${pat + 1}`;
   if (bump === "minor") return `${maj}.${min + 1}.0`;
   if (bump === "major") return `${maj + 1}.0.0`;
@@ -119,10 +126,35 @@ interface Check {
   status?: string;
   conclusion?: string;
   state?: string;
+  name?: string;
+  workflowName?: string;
+  context?: string;
+  startedAt?: string;
+}
+
+/** A run that hasn't started has no (or a zero) startedAt: rank it newest, so a re-queued run counts as pending. */
+function startedRank(c: Check): string {
+  return !c.startedAt || c.startedAt.startsWith("0001") ? "9999" : c.startedAt;
+}
+
+/**
+ * The newest entry per check. The rollup lists every run on the head commit,
+ * including ones a newer run replaced (a retried release re-dispatches the
+ * tests on the same commit), and an old failure must not outvote the new pass.
+ */
+export function newestPerCheck(checks: Check[]): Check[] {
+  const newest = new Map<string, Check>();
+  for (const c of checks) {
+    const key = c.__typename === "StatusContext" ? `ctx:${c.context}` : `run:${c.workflowName ?? ""}/${c.name ?? ""}`;
+    const seen = newest.get(key);
+    if (!seen || startedRank(c) > startedRank(seen)) newest.set(key, c);
+  }
+  return [...newest.values()];
 }
 
 /** Counts of a PR's checks: all, still running, and failed (cancelled and timed out count). */
-export function summarizeChecks(checks: Check[]): { total: number; pending: number; failed: number } {
+export function summarizeChecks(all: Check[]): { total: number; pending: number; failed: number } {
+  const checks = newestPerCheck(all);
   const isContext = (c: Check) => c.__typename === "StatusContext";
   const pending = checks.filter((c) => (isContext(c) ? c.state === "PENDING" : c.status !== "COMPLETED")).length;
   const bad = ["FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE"];
@@ -150,9 +182,17 @@ function publishOutcome(sdk: Sdk, next: string, mergedAt: number): Outcome {
     return timedOut ? { state: "failed", detail: `no ${cfg.publish} run for ${tag} after 15 min; the tag job may have failed: https://github.com/${REPO}/actions/workflows/cut-sdk-release.yml` } : { state: "pending" };
   }
   if (!list.every((r) => r.status === "completed")) return { state: "pending" };
-  // Every run finished and none succeeded: say which jobs did.
-  const jobs = ghTry(["run", "view", String(list[0].databaseId), "--repo", REPO, "--json", "jobs", "--jq", '.jobs[] | "\\(.name): \\(.conclusion)"']) ?? "";
-  return { state: "failed", detail: `${cfg.publish} did not succeed for ${tag} (${jobs.split("\n").join("; ")}): https://github.com/${REPO}/actions/runs/${list[0].databaseId}` };
+  // Every run finished and none succeeded as a whole. The registry and the
+  // GitHub assets are separate jobs, so say how each channel went rather than
+  // inferring one from the run's overall conclusion.
+  const id = list[0]?.databaseId;
+  const raw2 = ghTry(["run", "view", String(id), "--repo", REPO, "--json", "jobs"]);
+  const jobs = raw2 ? (JSON.parse(raw2) as { jobs: { name: string; conclusion: string }[] }).jobs : [];
+  const channel = (prefix: string) => jobs.find((j) => j.name.startsWith(prefix))?.conclusion ?? "not run";
+  const registry = channel("Publish to");
+  const assets = channel("Attach to");
+  const where = `https://github.com/${REPO}/actions/runs/${id}`;
+  return { state: "failed", detail: `${tag}: registry ${registry}, GitHub assets ${assets} (${cfg.publish}; re-run the failed job: ${where})` };
 }
 
 async function main(): Promise<void> {
@@ -169,17 +209,19 @@ async function main(): Promise<void> {
   const sdks: Sdk[] = target === "all" ? ALL : [target];
   if (ghTry(["auth", "status"]) === undefined) die("run: gh auth login");
 
-  const cur: Record<string, string> = {};
+  const cur = new Map<Sdk, string>();
   for (const s of sdks) {
-    cur[s] = SDKS[s].read(gh(["api", "-H", "Accept: application/vnd.github.raw", `repos/${REPO}/contents/${SDKS[s].file}?ref=main`]));
-    if (!cur[s]) die(`could not read the ${s} version from ${SDKS[s].file}`);
+    const v = SDKS[s].read(gh(["api", "-H", "Accept: application/vnd.github.raw", `repos/${REPO}/contents/${SDKS[s].file}?ref=main`]));
+    if (!v) die(`could not read the ${s} version from ${SDKS[s].file}`);
+    cur.set(s, v);
   }
-  const next = nextVersion(highestVersion(sdks.map((s) => cur[s])), bumpArg);
+  const curOf = (s: Sdk): string => cur.get(s) ?? "";
+  const next = nextVersion(highestVersion(sdks.map(curOf)), bumpArg);
   for (const s of sdks) {
-    if (compareVersions(next, cur[s]) <= 0) die(`${s} is at ${cur[s]}, which is not below ${next}`);
+    if (compareVersions(next, curOf(s)) <= 0) die(`${s} is at ${curOf(s)}, which is not below ${next}`);
   }
   const branch = `release/${target}-v${next}`;
-  log(`keenable ${sdks.map((s) => `${s} ${cur[s]}`).join(", ")} -> ${next} (branch ${branch})`);
+  log(`keenable ${sdks.map((s) => `${s} ${curOf(s)}`).join(", ")} -> ${next} (branch ${branch})`);
   if (flags.has("--dry-run")) return;
 
   if (!flags.has("--yes") && !flags.has("-y")) {
@@ -245,7 +287,7 @@ async function main(): Promise<void> {
       })
       .join("\n\n");
     const tags = sdks.map((s) => `\`${SDKS[s].tag}${next}\``).join(", ");
-    const body = `Bumps ${sdks.map((s) => `the ${s} SDK ${cur[s]}`).join(", ")} -> ${next}. Merging tags ${tags} and publishes.\n\n${notes}`;
+    const body = `Bumps ${sdks.map((s) => `the ${s} SDK ${curOf(s)}`).join(", ")} -> ${next}. Merging tags ${tags} and publishes.\n\n${notes}`;
     pr = gh(["pr", "create", "--repo", REPO, "--base", "main", "--head", branch, "--title", `chore: release ${target} ${next}`, "--body", body]).split("/").pop()!;
   }
 

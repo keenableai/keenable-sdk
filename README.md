@@ -20,13 +20,14 @@ npm install keenable
 go get github.com/keenableai/keenable-sdk/go@latest
 ```
 
-Straight from GitHub, no registry needed (each release carries the built packages; replace `<version>` with a release such as `0.1.5`):
+Straight from GitHub, no registry needed:
 
 ```bash
-pip install https://github.com/keenableai/keenable-sdk/releases/download/python-v<version>/keenable-<version>-py3-none-any.whl
-npm install https://github.com/keenableai/keenable-sdk/releases/download/ts-v<version>/keenable-<version>.tgz
-go get github.com/keenableai/keenable-sdk/go@v<version>
+pip install "git+https://github.com/keenableai/keenable-sdk.git#subdirectory=python"
+go get github.com/keenableai/keenable-sdk/go@latest
 ```
+
+Every [GitHub Release](https://github.com/keenableai/keenable-sdk/releases) also attaches the built package (the Python wheel and sdist, the TypeScript `keenable-<version>.tgz`) and lists the exact install command for that release in its notes. That is the way to install the TypeScript SDK from GitHub, and to pin any SDK to a release.
 
 ```python
 from keenable import Keenable
