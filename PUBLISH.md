@@ -4,7 +4,17 @@ Three SDKs ship from this repo, on independent version numbers.
 
 ## Automated bump and tag
 
-Actions -> **Cut SDK release** -> Run workflow, pick the SDK and `patch`, `minor`, `major` or `X.Y.Z`. It opens a `Release <sdk> vX.Y.Z` PR that bumps the version files below and moves that SDK's changelog `Unreleased` entries under the new version. Merging it tags and publishes the SDK: a GitHub Release plus `publish-python.yml` (PyPI) for Python, a GitHub Release plus `publish-typescript.yml` (npm, Trusted Publishing, no OTP) for TypeScript, a `go/v<version>` tag for Go. No tokens: it runs on the default `GITHUB_TOKEN` and dispatches the publish workflows itself (see the workflow header). One-time setup: register the npm Trusted Publisher (package `keenable`, repo `keenableai/keenable-sdk`, workflow `publish-typescript.yml`, environment `npm`, allowed action `npm publish`; new configurations default to `npm stage publish` only) and allow Actions to create PRs in repo settings. The manual steps below remain valid as a fallback.
+One command, from any machine with `gh` logged in and Node 22.18+:
+
+```bash
+node scripts/release.ts python patch       # or typescript, go; patch, minor, major or X.Y.Z
+```
+
+It runs the **Cut SDK release** workflow (bumps that SDK's version files below and moves its changelog `Unreleased` entries under the new version, on a `release/<sdk>-vX.Y.Z` branch, and runs the tests), opens the PR as you, waits for checks and the Qodo approval, squash-merges it, and waits for the publish. Merging tags and publishes the SDK: a GitHub Release plus `publish-python.yml` (PyPI) for Python, a GitHub Release plus `publish-typescript.yml` (npm, Trusted Publishing, no OTP) for TypeScript, a `go/v<version>` tag for Go. Pass `--yes` to skip the confirmation, `--dry-run` to see the version only.
+
+Without the script: Actions -> **Cut SDK release** -> Run workflow, then open the PR from the release branch yourself and merge it. The workflow doesn't open the PR itself: a PR authored by `github-actions[bot]` can't be approved by the approval bridge, which also runs as that bot.
+
+No tokens: the workflows run on the default `GITHUB_TOKEN` and dispatch the publish workflows themselves (see the workflow header). One-time setup, by an owner of the npm package: register the Trusted Publisher (package `keenable`, repo `keenableai/keenable-sdk`, workflow `publish-typescript.yml`, environment `npm`, allowed action `npm publish`; new configurations default to `npm stage publish` only). The manual steps below remain valid as a fallback.
 
 ## Python (`keenable` on PyPI)
 
