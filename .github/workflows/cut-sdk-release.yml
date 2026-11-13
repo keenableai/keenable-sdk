@@ -1,5 +1,8 @@
 name: Cut SDK release
 
+# Includes the SDK and version so scripts/release.ts can find the run it dispatched.
+run-name: Cut SDK release ${{ inputs.sdk }} ${{ inputs.bump }}
+
 # Automates PUBLISH.md, with the default GITHUB_TOKEN only (no PAT). The three
 # SDKs version independently.
 #   1. Run this workflow (Actions -> Cut SDK release, on main) with an SDK and a
@@ -43,7 +46,7 @@ on:
         required: true
         options: [python, typescript, go]
       bump:
-        description: "patch, minor, major, or an exact version like 0.2.0"
+        description: "patch, minor, major, or an exact version like 0.2.0. Only pushes a release branch: prefer scripts/release.ts, which also opens and merges the PR"
         required: true
         default: patch
   push:
@@ -148,9 +151,25 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # A re-run after a failure further down finds the branch already
-          # pushed; resume from it instead of pushing a second, divergent commit.
+          # pushed; resume from it instead of pushing a second, divergent
+          # commit. Only our own untouched branch is resumed: one bot commit
+          # on top of this main that changes just this SDK's release files.
+          # Anything else (main moved on, someone pushed to it) is not ours.
+          case "$SDK" in
+            python)     allowed='^python/(pyproject\.toml|keenable/_version\.py|CHANGELOG\.md)$' ;;
+            typescript) allowed='^typescript/(package\.json|package-lock\.json|CHANGELOG\.md)$' ;;
+            go)         allowed='^go/(version\.go|CHANGELOG\.md)$' ;;
+          esac
           if git ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null; then
-            echo "$branch already exists, resuming"
+            git fetch --quiet --depth=2 origin "$branch"
+            extra=$(git diff --name-only HEAD FETCH_HEAD | grep -v -E "$allowed" || true)
+            if [ "$(git rev-parse FETCH_HEAD^)" != "$(git rev-parse HEAD)" ] ||
+              [ "$(git log -1 --format=%ae FETCH_HEAD)" != "41898282+github-actions[bot]@users.noreply.github.com" ] ||
+              [ -n "$extra" ]; then
+              echo "::error::$branch exists but is not one bot release commit on the current main (stale or edited). Delete it (git push origin --delete $branch) and re-run."
+              exit 1
+            fi
+            echo "$branch already exists and is ours, resuming"
           else
             git checkout -b "$branch"
             git add -A
@@ -160,12 +179,19 @@ jobs:
           # A branch pushed with GITHUB_TOKEN triggers no tests; run them on the
           # branch so the checks show up on the PR head commit.
           gh workflow run test.yml --ref "$branch"
+          # A green run is not a release: nothing ships until the PR is merged.
+          # Say so where the run page shows it (annotation + summary).
+          pr_url="https://github.com/$GITHUB_REPOSITORY/compare/main...$branch?expand=1"
+          echo "::warning title=NOT RELEASED YET::Branch $branch is pushed and tests are running, but $SDK $NEXT ships only after its PR is merged. Open it: $pr_url (or run node scripts/release.ts $SDK $NEXT, which does all of this)."
           {
-            echo "### Release branch \`$branch\` is ready"
+            echo "### :warning: $SDK $NEXT is NOT released yet"
             echo
-            echo "Open the PR: https://github.com/$GITHUB_REPOSITORY/compare/main...$branch?expand=1"
+            echo "Branch \`$branch\` is pushed and tests are running. The release happens when its PR is merged."
             echo
-            echo "Or run \`node scripts/release.ts $SDK $NEXT\` to open, wait and merge it for you."
+            echo "1. Open the PR: $pr_url"
+            echo "2. Merge it once checks and the Qodo approval are in. The push to main tags and publishes $SDK $NEXT."
+            echo
+            echo "\`node scripts/release.ts $SDK $NEXT\` does all of this in one command."
           } >> "$GITHUB_STEP_SUMMARY"
 
   tag:
@@ -173,9 +199,11 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # Two quick merges must not race on the same tag or dispatch.
+    # One run per pushed commit. A shared group would drop a middle pending run
+    # when three merges land at once, and nothing needs serializing: each push
+    # only releases the versions it changed, so two runs never share a tag.
     concurrency:
-      group: cut-sdk-release-tag
+      group: cut-sdk-release-tag-${{ github.sha }}
       cancel-in-progress: false
     permissions:
       contents: write

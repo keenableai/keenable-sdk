@@ -22,9 +22,10 @@ type Sdk = "python" | "typescript" | "go";
 
 const SDKS: Record<
   Sdk,
-  { file: string; read: (text: string) => string; tag: string; publish?: string; url: (v: string) => string }
+  { file: string; read: (text: string) => string; tag: string; publish?: string; url: (v: string) => string; allowed: RegExp }
 > = {
   python: {
+    allowed: /^python\/(pyproject\.toml|keenable\/_version\.py|CHANGELOG\.md)$/,
     file: "python/pyproject.toml",
     read: (t) => /^version = "(.*)"$/m.exec(t)?.[1] ?? "",
     tag: "python-v",
@@ -32,6 +33,7 @@ const SDKS: Record<
     url: (v) => `https://pypi.org/project/keenable/${v}/`,
   },
   typescript: {
+    allowed: /^typescript\/(package\.json|package-lock\.json|CHANGELOG\.md)$/,
     file: "typescript/package.json",
     read: (t) => (JSON.parse(t) as { version: string }).version,
     tag: "ts-v",
@@ -39,6 +41,7 @@ const SDKS: Record<
     url: (v) => `https://www.npmjs.com/package/keenable/v/${v}`,
   },
   go: {
+    allowed: /^go\/(version\.go|CHANGELOG\.md)$/,
     file: "go/version.go",
     read: (t) => /^const Version = "(.*)"$/m.exec(t)?.[1] ?? "",
     tag: "go/v",
@@ -118,10 +121,13 @@ async function main(): Promise<void> {
   gh(["workflow", "run", "cut-sdk-release.yml", "--repo", REPO, "--ref", "main", "-f", `sdk=${sdk}`, "-f", `bump=${next}`]);
   let run = "";
   for (let i = 0; i < 30 && !run; i++) {
+    // The run title carries the SDK and version (run-name), so a concurrent
+    // release of another SDK or version can't be mistaken for ours.
     run =
       ghTry([
-        "run", "list", "--repo", REPO, "--workflow", "cut-sdk-release.yml", "--event", "workflow_dispatch", "--limit", "5",
-        "--json", "databaseId,createdAt", "--jq", `[.[] | select(.createdAt >= "${start}")][0].databaseId // empty`,
+        "run", "list", "--repo", REPO, "--workflow", "cut-sdk-release.yml", "--event", "workflow_dispatch", "--limit", "20",
+        "--json", "databaseId,displayTitle,createdAt", "--jq",
+        `[.[] | select(.displayTitle == "Cut SDK release ${sdk} ${next}" and .createdAt >= "${start}")][0].databaseId // empty`,
       ]) ?? "";
     if (!run) await sleep(2);
   }
@@ -130,7 +136,30 @@ async function main(): Promise<void> {
     die(`Cut SDK release failed: https://github.com/${REPO}/actions/runs/${run}`);
   }
 
+  // The workflow dispatches the tests on the branch. The ruleset requires no
+  // status checks, so a CLEAN PR does not mean the tests ran: wait for that run.
+  log(`waiting for the tests on ${branch}`);
+  let tests = "";
+  for (let i = 0; i < 30 && !tests; i++) {
+    tests =
+      ghTry([
+        "run", "list", "--repo", REPO, "--workflow", "test.yml", "--branch", branch, "--event", "workflow_dispatch", "--limit", "5",
+        "--json", "databaseId,createdAt", "--jq", `[.[] | select(.createdAt >= "${start}")][0].databaseId // empty`,
+      ]) ?? "";
+    if (!tests) await sleep(2);
+  }
+  if (!tests) die(`the tests were not dispatched on ${branch}; check the Actions tab`);
+  if (ghTry(["run", "watch", tests, "--repo", REPO, "--exit-status"]) === undefined) {
+    die(`the tests failed on ${branch}: https://github.com/${REPO}/actions/runs/${tests}`);
+  }
+
+  const me = gh(["api", "user", "--jq", ".login"]);
   let pr = ghTry(["pr", "list", "--repo", REPO, "--head", branch, "--state", "open", "--json", "number", "--jq", ".[0].number // empty"]);
+  if (pr) {
+    // Someone else's PR on our branch name is not ours to merge.
+    const author = gh(["pr", "view", pr, "--repo", REPO, "--json", "author", "--jq", ".author.login"]);
+    if (author !== me) die(`PR #${pr} on ${branch} is authored by ${author}, not you; check it, close it, and re-run`);
+  }
   if (!pr) {
     log("opening the PR");
     const changelog = ghTry(["api", "-H", "Accept: application/vnd.github.raw", `repos/${REPO}/contents/${sdk}/CHANGELOG.md?ref=${branch}`]) ?? "";
@@ -151,10 +180,18 @@ async function main(): Promise<void> {
   }
   if (state !== "CLEAN") die(`PR #${pr} is not mergeable yet (${state}): https://github.com/${REPO}/pull/${pr}`);
 
+  // Merge exactly what was checked: only this SDK's release files, at the head we saw.
+  const head = gh(["pr", "view", pr, "--repo", REPO, "--json", "headRefOid", "--jq", ".headRefOid"]);
+  const files = gh(["api", `repos/${REPO}/pulls/${pr}/files`, "--paginate", "--jq", ".[].filename"]).split("\n").filter(Boolean);
+  const extra = files.filter((f) => !cfg.allowed.test(f));
+  if (extra.length > 0) die(`PR #${pr} changes more than the release files (${extra.join(", ")}); review it, then merge by hand`);
+
   log(`merging PR #${pr}`);
-  gh(["pr", "merge", pr, "--repo", REPO, "--squash", "--delete-branch"]);
+  gh(["pr", "merge", pr, "--repo", REPO, "--squash", "--delete-branch", "--match-head-commit", head]);
 
   log(`waiting for ${tag}${cfg.publish ? ` and ${cfg.publish}` : ""}`);
+  const mergedAt = Date.now();
+  let seen = false;
   for (let i = 0; i < 360; i++) {
     if (cfg.publish) {
       const runs = ghTry(["run", "list", "--repo", REPO, "--workflow", cfg.publish, "--branch", tag, "--json", "status,conclusion"]);
@@ -163,12 +200,19 @@ async function main(): Promise<void> {
         log(`published: ${cfg.url(next)}`);
         return;
       }
-      if (list.length > 0 && list.every((r) => r.status === "completed")) {
-        die(`${cfg.publish} failed for ${tag}: https://github.com/${REPO}/actions/workflows/${cfg.publish}`);
+      if (list.length > 0) {
+        seen = true;
+        // Every run finished and none succeeded (failed, cancelled, timed out).
+        if (list.every((r) => r.status === "completed")) {
+          die(`${cfg.publish} did not succeed for ${tag} (${list.map((r) => r.conclusion).join(", ")}): https://github.com/${REPO}/actions/workflows/${cfg.publish}`);
+        }
       }
     } else if (ghTry(["api", `repos/${REPO}/git/ref/tags/${tag}`]) !== undefined) {
       log(`tagged ${tag}: ${cfg.url(next)}`);
       return;
+    }
+    if (!seen && Date.now() - mergedAt > 15 * 60 * 1000) {
+      die(`no ${cfg.publish ?? "tag"} for ${tag} after 15 min; the tag job may have failed: https://github.com/${REPO}/actions/workflows/cut-sdk-release.yml`);
     }
     await sleep(10);
   }
