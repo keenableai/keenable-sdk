@@ -75,6 +75,15 @@ export function nextVersion(cur: string, bump: string): string {
   return bump;
 }
 
+/** The entries under `## <version>` in a changelog, up to the next `## ` heading. */
+export function changelogSection(changelog: string, version: string): string {
+  const lines = changelog.split("\n");
+  const start = lines.indexOf(`## ${version}`);
+  if (start < 0) return "";
+  const end = lines.findIndex((l, i) => i > start && l.startsWith("## "));
+  return lines.slice(start + 1, end < 0 ? undefined : end).join("\n").trim();
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const flags = new Set(args.filter((a) => a.startsWith("-")));
@@ -125,7 +134,7 @@ async function main(): Promise<void> {
   if (!pr) {
     log("opening the PR");
     const changelog = ghTry(["api", "-H", "Accept: application/vnd.github.raw", `repos/${REPO}/contents/${sdk}/CHANGELOG.md?ref=${branch}`]) ?? "";
-    const notes = new RegExp(`^## ${next.replace(/\./g, "\\.")}\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))`, "m").exec(changelog)?.[1].trim() ?? "";
+    const notes = changelogSection(changelog, next);
     const body = `Bumps the ${sdk} SDK ${cur} -> ${next}. Merging tags \`${tag}\` and publishes it.\n\n${notes}`;
     pr = gh(["pr", "create", "--repo", REPO, "--base", "main", "--head", branch, "--title", `chore: release ${sdk} ${next}`, "--body", body]).split("/").pop()!;
   }
