@@ -5,6 +5,8 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
+## 0.1.5
+
 ## 0.1.4
 
 - `search()` (sync and async) accepts `exclude_domains`: a list of hosts to

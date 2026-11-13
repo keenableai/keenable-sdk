@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.5
+
 ## 0.1.2
 
 `SearchOptions` gains `ExcludeDomains`: a list of hosts to keep out of the
