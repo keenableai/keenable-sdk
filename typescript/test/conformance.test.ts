@@ -20,6 +20,8 @@ import type {
   FetchManyOptions,
   FetchOptions,
   FetchResponse,
+  FetchResult,
+  FetchStreamItem,
   KeenableOptions,
   Page,
   SearchOptions,
@@ -90,6 +92,14 @@ interface Fixture {
     expect: Record<string, Json>;
     skip: Record<string, string>;
   })[];
+  fetch_many_stream: {
+    name: string;
+    urls: string | string[];
+    headers: Record<string, string>;
+    chunks: string[];
+    expect: { items: Json[]; summary?: Json; error?: Record<string, Json> };
+    skip: Record<string, string>;
+  }[];
 }
 
 const FIXTURE: Fixture = JSON.parse(
@@ -445,11 +455,34 @@ const FETCH_MANY_NAMES: Record<string, string> = {
   highlights_max_chars: "highlightsMaxChars",
   links: "links",
   images: "images",
+  subpages: "subpages",
+  subpages_target: "subpagesTarget",
   max_age: "maxAge",
   page_timeout: "pageTimeout",
   session_id: "sessionId",
   end_user_id: "endUserId",
 };
+
+/** A fetch result in the fixture's snake_case shape. */
+function plainResult(x: FetchResult): Record<string, unknown> {
+  return {
+    url: x.url,
+    title: x.title ?? null,
+    published_at: x.publishedAt ?? null,
+    image: x.image ?? null,
+    favicon: x.favicon ?? null,
+    text: x.text ?? null,
+    next_offset: x.nextOffset ?? null,
+    summary: x.summary ?? null,
+    highlights: x.highlights,
+    links: x.links.map((l) => ({ url: l.url, text: l.text ?? null })),
+    images: x.images.map((i) => ({ url: i.url, alt: i.alt ?? null })),
+    error: x.error
+      ? { code: x.error.code, message: x.error.message, retryable: x.error.retryable, http_status: x.error.httpStatus ?? null }
+      : null,
+    subpages: x.subpages.map(plainResult),
+  };
+}
 
 const FETCH_MANY_OK: Reply = { status: 200, headers: {}, body: JSON.stringify({ results: [] }) };
 
@@ -496,23 +529,140 @@ describe("fetchMany success bodies", () => {
       request_id: r.requestId ?? null,
       latency_ms: r.latencyMs ?? null,
       session_id: r.sessionId ?? null,
-      results: r.results.map((x) => ({
-        url: x.url,
-        title: x.title ?? null,
-        published_at: x.publishedAt ?? null,
-        image: x.image ?? null,
-        favicon: x.favicon ?? null,
-        text: x.text ?? null,
-        next_offset: x.nextOffset ?? null,
-        summary: x.summary ?? null,
-        highlights: x.highlights,
-        links: x.links.map((l) => ({ url: l.url, text: l.text ?? null })),
-        images: x.images.map((i) => ({ url: i.url, alt: i.alt ?? null })),
-        error: x.error
-          ? { code: x.error.code, message: x.error.message, retryable: x.error.retryable, http_status: x.error.httpStatus ?? null }
-          : null,
-      })),
+      results: r.results.map(plainResult),
       warnings: r.warnings.map((w) => ({ code: w.code, path: w.path, message: w.message })),
     }).toEqual(c.expect);
+  });
+});
+
+/** A Response whose body arrives in the given chunks. */
+function chunked(chunks: string[], headers: Record<string, string> = {}, status = 200): Response {
+  const encoder = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+      controller.close();
+    },
+  });
+  return new Response(body, { status, headers: { "Content-Type": "application/x-ndjson", ...headers } });
+}
+
+async function drain(
+  replies: (() => Response)[],
+  urls: string | string[],
+  maxRetries = 0,
+): Promise<{ items: FetchStreamItem[]; summary: unknown; error: unknown; requests: RequestInit[] }> {
+  const requests: RequestInit[] = [];
+  const client = new Keenable({
+    apiKey: "k",
+    maxRetries,
+    fetch: (async (_input: RequestInfo | URL, init: RequestInit = {}) => {
+      requests.push(init);
+      const next = replies[requests.length - 1];
+      if (!next) throw new Error("no reply scripted");
+      return next();
+    }) as unknown as typeof globalThis.fetch,
+  });
+  const items: FetchStreamItem[] = [];
+  let error: unknown;
+  const stream = client.fetchManyStream(urls);
+  try {
+    for await (const item of stream) items.push(item);
+  } catch (caught) {
+    error = caught;
+  }
+  return { items, summary: stream.summary, error, requests };
+}
+
+describe("fetchManyStream", () => {
+  const cases = FIXTURE.fetch_many_stream.filter((c) => !("typescript" in c.skip));
+  it.each(cases.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
+    const outcome = await drain([() => chunked(c.chunks, c.headers)], c.urls);
+    const sent = outcome.requests[0]!;
+    expect((sent.headers as Record<string, string>).Accept).toBe("application/x-ndjson");
+    expect(JSON.parse(String(sent.body)).urls).toEqual(Array.isArray(c.urls) ? c.urls : [c.urls]);
+    expect(outcome.items.map((item) => ({ index: item.index, result: plainResult(item.result) }))).toEqual(
+      c.expect.items,
+    );
+    if (c.expect.summary !== undefined) {
+      expect(outcome.error).toBeUndefined();
+      const s = outcome.summary as {
+        requestId?: string;
+        latencyMs?: number;
+        sessionId?: string;
+        warnings: { code: string; path: string; message: string }[];
+        usage?: Record<string, unknown>;
+      };
+      expect({
+        request_id: s.requestId ?? null,
+        latency_ms: s.latencyMs ?? null,
+        session_id: s.sessionId ?? null,
+        warnings: s.warnings,
+        usage: s.usage ?? null,
+      }).toEqual(c.expect.summary);
+      return;
+    }
+    const want = c.expect.error!;
+    if (want.kind === "connection") {
+      expect(outcome.error).toBeInstanceOf(KeenableConnectionError);
+      expect(outcome.error).not.toBeInstanceOf(KeenableAPIError);
+      return;
+    }
+    expect(outcome.error).toBeInstanceOf(KeenableAPIError);
+    const error = outcome.error as KeenableAPIError;
+    if ("code" in want) expect(error.code).toBe(want.code);
+    if ("retryable" in want) expect(error.retryable).toBe(want.retryable);
+    if ("request_id" in want) expect(error.requestId).toBe(want.request_id);
+    if ("message" in want) expect(error.message).toContain(want.message);
+  });
+
+  it("throws an error status before any line, typed as in fetchMany", async () => {
+    const outcome = await drain(
+      [() => new Response(JSON.stringify({ code: "insufficient_credits", error: "Insufficient credits" }), { status: 402 })],
+      ["https://e.com/a"],
+    );
+    expect(outcome.items).toEqual([]);
+    expect(outcome.summary).toBeUndefined();
+    expect(outcome.error).toBeInstanceOf(KeenableInsufficientCreditsError);
+  });
+
+  it("retries a 429 before the stream opens", async () => {
+    const outcome = await drain(
+      [
+        () => new Response(JSON.stringify({ code: "x" }), { status: 429, headers: { "Retry-After": "0" } }),
+        () => chunked(['{"index":0,"url":"https://e.com/a"}\n{"done":true}\n']),
+      ],
+      ["https://e.com/a"],
+      1,
+    );
+    expect(outcome.error).toBeUndefined();
+    expect(outcome.items.map((item) => item.index)).toEqual([0]);
+    expect(outcome.requests).toHaveLength(2);
+  });
+
+  it("refuses a private URL before sending", () => {
+    const client = new Keenable({ apiKey: "k", fetch: (() => Promise.reject(new Error("sent"))) as unknown as typeof globalThis.fetch });
+    expect(() => client.fetchManyStream(["http://127.0.0.1/"])).toThrow(KeenableInvalidRequestError);
+  });
+
+  it("closes the connection when the loop stops early", async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"index":0,"url":"https://e.com/a"}\n'));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const client = new Keenable({
+      apiKey: "k",
+      fetch: (async () => new Response(body, { status: 200 })) as unknown as typeof globalThis.fetch,
+    });
+    for await (const item of client.fetchManyStream(["https://e.com/a"])) {
+      expect(item.index).toBe(0);
+      break;
+    }
+    expect(cancelled).toBe(true);
   });
 });

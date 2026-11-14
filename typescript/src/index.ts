@@ -27,6 +27,9 @@ export type {
   FetchLink,
   FetchResponse,
   FetchResult,
+  FetchStream,
+  FetchStreamItem,
+  FetchStreamSummary,
   FetchWarning,
 } from "./client.js";
 export {

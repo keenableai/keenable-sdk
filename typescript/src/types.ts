@@ -128,6 +128,13 @@ export interface FetchManyOptions extends RequestOptions {
   links?: number;
   /** How many images per page to return, with their alt text. */
   images?: number;
+  /**
+   * Also read up to this many same-site pages linked from each URL (1 to 20),
+   * with the same content options. Each is billed like a URL. Needs an API key.
+   */
+  subpages?: number;
+  /** Words that pick which links to read first (a string or a list). */
+  subpagesTarget?: string | readonly string[];
   /** Oldest copy accepted, such as `"1d"`; `"0s"` always reads the page live. */
   maxAge?: string;
   /** How long to wait for each live read, such as `"15s"`. */
