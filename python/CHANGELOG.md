@@ -5,6 +5,17 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
+- `fetch_many()` (sync and async) reads up to 100 pages in one call with
+  `POST /v1/fetch`: per-page `text` (with `max_chars` and `offset` for paging),
+  a `summary` with an optional `output_schema` for JSON in your shape,
+  `highlights`, `links` and `images`, `max_age` and `page_timeout`, plus
+  `session_id` and `end_user_id`. A failed page is an entry in
+  `FetchResponse.errors`, not an exception. Keyless calls take up to 20 URLs.
+  Preview: it works once `POST /v1/fetch` is enabled for your organization.
+- `fetch()` keeps working and still calls `GET /v1/fetch`; it is deprecated in
+  favour of `fetch_many()` and will be removed after the API retires
+  `GET /v1/fetch` (announced with 90 days' notice).
+
 ## 0.1.5
 
 ## 0.1.4

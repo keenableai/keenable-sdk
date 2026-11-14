@@ -166,3 +166,12 @@ sent unchanged. `disable_cards` is sent only as `true`; `false`, `""` and null
 are unset, and any other value is the invalid-request error. Arguments JSON
 cannot encode (`NaN`, `Infinity`) are the invalid-request error and send
 nothing.
+
+## fetch_many() (`fetch_many_body`, `fetch_many_responses`)
+
+`fetch_many(urls, options)` sends one JSON body to `POST /v1/fetch`
+(`/v1/fetch/public` without a key). Every URL is checked against the fetch()
+target rules above before anything is sent; one refused URL refuses the call.
+An empty list is refused. The body and the success-body rules are in
+`cases/fetch-many.json`'s `_comment`. A page that failed is an entry in the
+response's `errors`, never an exception.

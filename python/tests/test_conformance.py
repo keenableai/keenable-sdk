@@ -400,6 +400,75 @@ async def test_tool_call(kind: str, case: dict[str, Any], waits: list[float]) ->
         assert json.loads(seen[0].content) == case["sent"]
 
 
+FETCH_MANY_OK = (200, {}, b'{"results": []}')
+
+
+@pytest.mark.parametrize("kind", CLIENTS)
+@pytest.mark.parametrize("case", cases("fetch_many_body"))
+async def test_fetch_many_body(
+    kind: str, case: dict[str, Any], waits: list[float]
+) -> None:
+    # The SDK's argument names are the case's option names.
+    outcome = await run(
+        kind,
+        [FETCH_MANY_OK],
+        waits,
+        method="fetch_many",
+        arg=case["urls"],
+        call=case["options"],
+    )
+    assert outcome.error is None
+    assert outcome.requests[0].method == "POST"
+    assert outcome.requests[0].url.path == "/v1/fetch"
+    assert json.loads(outcome.requests[0].content) == case["sent"]
+
+
+def _plain(value: Any) -> Any:
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return {
+            f.name: _plain(getattr(value, f.name))
+            for f in dataclasses.fields(value)
+            if f.name != "raw"
+        }
+    if isinstance(value, list):
+        return [_plain(item) for item in value]
+    return value
+
+
+@pytest.mark.parametrize("kind", CLIENTS)
+@pytest.mark.parametrize("case", cases("fetch_many_responses"))
+async def test_fetch_many_responses(
+    kind: str, case: dict[str, Any], waits: list[float]
+) -> None:
+    outcome = await run(
+        kind, [reply(case)], waits, method="fetch_many", arg=case["urls"]
+    )
+    assert outcome.error is None
+    assert _plain(outcome.result) == case["expect"]
+
+
+@pytest.mark.parametrize("kind", CLIENTS)
+async def test_fetch_many_refuses_a_private_url_and_sends_nothing(
+    kind: str, waits: list[float]
+) -> None:
+    outcome = await run(
+        kind,
+        [FETCH_MANY_OK],
+        waits,
+        method="fetch_many",
+        arg=["https://example.com/", "http://127.0.0.1/"],
+    )
+    assert isinstance(outcome.error, KeenableInvalidRequestError)
+    assert outcome.requests == []
+
+
+@pytest.mark.parametrize("kind", CLIENTS)
+async def test_fetch_many_refuses_an_empty_list(kind: str, waits: list[float]) -> None:
+    outcome = await run(kind, [FETCH_MANY_OK], waits, method="fetch_many", arg=[])
+    assert isinstance(outcome.error, KeenableInvalidRequestError)
+    assert outcome.requests == []
+
+
 def test_the_fixture_has_every_section() -> None:
     sections = set(FIXTURE) - {"_comment"}
     assert sections == {
@@ -413,6 +482,8 @@ def test_the_fixture_has_every_section() -> None:
         "search_body",
         "fetch_params",
         "tool_call",
+        "fetch_many_body",
+        "fetch_many_responses",
     }
 
 

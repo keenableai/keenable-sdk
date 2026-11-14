@@ -16,7 +16,15 @@ import {
   KeenableRateLimitError,
   runToolCall,
 } from "../src/index.js";
-import type { FetchOptions, KeenableOptions, Page, SearchOptions, SearchResponse } from "../src/index.js";
+import type {
+  FetchManyOptions,
+  FetchOptions,
+  FetchResponse,
+  KeenableOptions,
+  Page,
+  SearchOptions,
+  SearchResponse,
+} from "../src/index.js";
 import { backoffMs, retryAfterHeader } from "../src/client.js";
 import { SEARCH_FILTERS } from "../src/filters.js";
 
@@ -69,6 +77,19 @@ interface Fixture {
     skip: Record<string, string>;
   }[];
   tool_call: { name: string; arguments: string; sent: Json; invalid: boolean }[];
+  fetch_many_body: {
+    name: string;
+    urls: string | string[];
+    options: Record<string, Json>;
+    sent: Json;
+    skip: Record<string, string>;
+  }[];
+  fetch_many_responses: (Reply & {
+    name: string;
+    urls: string | string[];
+    expect: Record<string, Json>;
+    skip: Record<string, string>;
+  })[];
 }
 
 const FIXTURE: Fixture = JSON.parse(
@@ -409,5 +430,94 @@ describe("tool calls", () => {
       expect(outcome.error).toBeUndefined();
       expect(JSON.parse(String(outcome.requests[0]?.init.body))).toEqual(c.sent);
     }
+  });
+});
+
+/** The case's option names, as fetchMany() spells them. */
+const FETCH_MANY_NAMES: Record<string, string> = {
+  text: "text",
+  max_chars: "maxChars",
+  offset: "offset",
+  summary: "summary",
+  output_schema: "outputSchema",
+  highlights: "highlights",
+  highlights_query: "highlightsQuery",
+  highlights_max_chars: "highlightsMaxChars",
+  links: "links",
+  images: "images",
+  max_age: "maxAge",
+  page_timeout: "pageTimeout",
+  session_id: "sessionId",
+  end_user_id: "endUserId",
+};
+
+const FETCH_MANY_OK: Reply = { status: 200, headers: {}, body: JSON.stringify({ results: [] }) };
+
+describe("the fetchMany body", () => {
+  const cases = FIXTURE.fetch_many_body.filter((c) => !("typescript" in c.skip));
+  it.each(cases.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
+    const options: Record<string, unknown> = {};
+    for (const [name, v] of Object.entries(c.options)) {
+      const mapped = FETCH_MANY_NAMES[name];
+      if (!mapped) throw new Error(`unknown option ${name}`);
+      options[mapped] = v;
+    }
+    const outcome = await call([FETCH_MANY_OK], {}, (client) =>
+      client.fetchMany(c.urls, options as FetchManyOptions),
+    );
+    expect(outcome.error).toBeUndefined();
+    expect(outcome.requests[0]?.init.method).toBe("POST");
+    expect(new URL(outcome.requests[0]!.url).pathname).toBe("/v1/fetch");
+    expect(JSON.parse(String(outcome.requests[0]?.init.body))).toEqual(c.sent);
+  });
+
+  it("a private URL anywhere in the list sends nothing", async () => {
+    const outcome = await call([FETCH_MANY_OK], {}, (client) =>
+      client.fetchMany(["https://example.com/", "http://127.0.0.1/"]),
+    );
+    expect(outcome.error).toBeInstanceOf(KeenableInvalidRequestError);
+    expect(outcome.requests).toHaveLength(0);
+  });
+
+  it("an empty list sends nothing", async () => {
+    const outcome = await call([FETCH_MANY_OK], {}, (client) => client.fetchMany([]));
+    expect(outcome.error).toBeInstanceOf(KeenableInvalidRequestError);
+    expect(outcome.requests).toHaveLength(0);
+  });
+});
+
+describe("fetchMany success bodies", () => {
+  const cases = FIXTURE.fetch_many_responses.filter((c) => !("typescript" in c.skip));
+  it.each(cases.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
+    const outcome = await call([c], { maxRetries: 0 }, (client) => client.fetchMany(c.urls));
+    expect(outcome.error).toBeUndefined();
+    const r = outcome.result as FetchResponse;
+    expect({
+      request_id: r.requestId ?? null,
+      latency_ms: r.latencyMs ?? null,
+      session_id: r.sessionId ?? null,
+      results: r.results.map((x) => ({
+        url: x.url,
+        title: x.title ?? null,
+        published_at: x.publishedAt ?? null,
+        image: x.image ?? null,
+        favicon: x.favicon ?? null,
+        text: x.text ?? null,
+        total_chars: x.totalChars ?? null,
+        next_offset: x.nextOffset ?? null,
+        summary: x.summary ?? null,
+        highlights: x.highlights,
+        links: x.links.map((l) => ({ url: l.url, text: l.text ?? null })),
+        images: x.images.map((i) => ({ url: i.url, alt: i.alt ?? null })),
+      })),
+      errors: r.errors.map((e) => ({
+        url: e.url,
+        code: e.code,
+        message: e.message,
+        retryable: e.retryable,
+        http_status: e.httpStatus ?? null,
+      })),
+      warnings: r.warnings.map((w) => ({ code: w.code, path: w.path, message: w.message })),
+    }).toEqual(c.expect);
   });
 });

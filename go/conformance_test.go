@@ -118,6 +118,22 @@ type conformance struct {
 		Sent      map[string]any `json:"sent"`
 		Invalid   bool           `json:"invalid"`
 	} `json:"tool_call"`
+	FetchManyBody []struct {
+		Name    string            `json:"name"`
+		URLs    any               `json:"urls"`
+		Options map[string]any    `json:"options"`
+		Sent    map[string]any    `json:"sent"`
+		Skip    map[string]string `json:"skip"`
+	} `json:"fetch_many_body"`
+	FetchManyResponses []struct {
+		Name    string            `json:"name"`
+		URLs    any               `json:"urls"`
+		Status  int               `json:"status"`
+		Headers map[string]string `json:"headers"`
+		Body    string            `json:"body"`
+		Expect  map[string]any    `json:"expect"`
+		Skip    map[string]string `json:"skip"`
+	} `json:"fetch_many_responses"`
 }
 
 func loadConformance(t *testing.T) *conformance {
@@ -706,5 +722,179 @@ func TestFetchOptionsDoNotBypassTheURLRefusal(t *testing.T) {
 	})
 	if !isInvalid(err) || n.Load() != 0 {
 		t.Fatalf("err=%v requests=%d", err, n.Load())
+	}
+}
+
+func stringList(t *testing.T, v any) []string {
+	t.Helper()
+	list, ok := v.([]any)
+	if !ok {
+		t.Fatalf("urls %v is not a list", v)
+	}
+	out := make([]string, 0, len(list))
+	for _, item := range list {
+		out = append(out, item.(string))
+	}
+	return out
+}
+
+func TestConformanceFetchManyBody(t *testing.T) {
+	for _, tc := range loadConformance(t).FetchManyBody {
+		t.Run(tc.Name, func(t *testing.T) {
+			skipKnown(t, tc.Name)
+			if why, ok := tc.Skip["go"]; ok {
+				t.Skip(why)
+			}
+			opts := &keenable.FetchManyOptions{}
+			for name, v := range tc.Options {
+				str, _ := v.(string)
+				switch name {
+				case "text":
+					opts.NoText = !v.(bool)
+				case "max_chars":
+					opts.MaxChars = int(v.(float64))
+				case "offset":
+					opts.Offset = int(v.(float64))
+				case "summary":
+					opts.Summary = str
+				case "output_schema":
+					opts.OutputSchema = v.(map[string]any)
+				case "highlights":
+					opts.Highlights = v.(bool)
+				case "highlights_query":
+					opts.HighlightsQuery = str
+				case "highlights_max_chars":
+					opts.HighlightsMaxChars = int(v.(float64))
+				case "links":
+					opts.Links = int(v.(float64))
+				case "images":
+					opts.Images = int(v.(float64))
+				case "max_age":
+					opts.MaxAge = str
+				case "page_timeout":
+					opts.PageTimeout = str
+				case "session_id":
+					opts.SessionID = str
+				case "end_user_id":
+					opts.EndUserID = str
+				default:
+					t.Fatalf("no Go mapping for %q", name)
+				}
+			}
+			key := "k"
+			c, seen := start(t, okBoth, &keenable.Options{APIKey: &key})
+			if _, err := c.FetchMany(context.Background(), stringList(t, tc.URLs), opts); err != nil {
+				t.Fatal(err)
+			}
+			got := one(t, seen)
+			if got.Path != "/v1/fetch" || len(got.Body) == 0 {
+				t.Fatalf("sent %s with body %q, want a JSON body to /v1/fetch", got.Path, got.Body)
+			}
+			var sent map[string]any
+			if err := json.Unmarshal(got.Body, &sent); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(sent, tc.Sent) {
+				t.Fatalf("sent %v, want %v", sent, tc.Sent)
+			}
+		})
+	}
+}
+
+func ptrOrNil[T any](p *T) any {
+	if p == nil {
+		return nil
+	}
+	return *p
+}
+
+func emptyToNil(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+func TestConformanceFetchManyResponses(t *testing.T) {
+	for _, tc := range loadConformance(t).FetchManyResponses {
+		t.Run(tc.Name, func(t *testing.T) {
+			if why, ok := tc.Skip["go"]; ok {
+				t.Skip(why)
+			}
+			c, n := counted(t, nil, raw(tc.Status, tc.Body, headerList(tc.Headers)...))
+			resp, err := c.FetchMany(context.Background(), stringList(t, tc.URLs), nil)
+			if err != nil || n.Load() != 1 {
+				t.Fatalf("err=%v requests=%d", err, n.Load())
+			}
+			results := []any{}
+			for _, r := range resp.Results {
+				links := []any{}
+				for _, l := range r.Links {
+					links = append(links, map[string]any{"url": l.URL, "text": ptrOrNil(l.Text)})
+				}
+				images := []any{}
+				for _, i := range r.Images {
+					images = append(images, map[string]any{"url": i.URL, "alt": ptrOrNil(i.Alt)})
+				}
+				results = append(results, map[string]any{
+					"url":          r.URL,
+					"title":        ptrOrNil(r.Title),
+					"published_at": ptrOrNil(r.PublishedAt),
+					"image":        ptrOrNil(r.Image),
+					"favicon":      ptrOrNil(r.Favicon),
+					"text":         ptrOrNil(r.Text),
+					"total_chars":  ptrOrNil(r.TotalChars),
+					"next_offset":  ptrOrNil(r.NextOffset),
+					"summary":      r.Summary,
+					"highlights":   r.Highlights,
+					"links":        links,
+					"images":       images,
+				})
+			}
+			errs := []any{}
+			for _, e := range resp.Errors {
+				errs = append(errs, map[string]any{
+					"url": e.URL, "code": e.Code, "message": e.Message,
+					"retryable": e.Retryable, "http_status": ptrOrNil(e.HTTPStatus),
+				})
+			}
+			warnings := []any{}
+			for _, w := range resp.Warnings {
+				warnings = append(warnings, map[string]any{"code": w.Code, "path": w.Path, "message": w.Message})
+			}
+			got := map[string]any{
+				"request_id": emptyToNil(resp.RequestID),
+				"latency_ms": ptrOrNil(resp.LatencyMS),
+				"session_id": ptrOrNil(resp.SessionID),
+				"results":    results,
+				"errors":     errs,
+				"warnings":   warnings,
+			}
+			encoded, err := json.Marshal(got)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var normalized map[string]any
+			if err := json.Unmarshal(encoded, &normalized); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(normalized, tc.Expect) {
+				t.Fatalf("got %v, want %v", normalized, tc.Expect)
+			}
+		})
+	}
+}
+
+func TestFetchManyRefusesAPrivateURLAndAnEmptyList(t *testing.T) {
+	key := "k"
+	c, seen := start(t, okBoth, &keenable.Options{APIKey: &key})
+	if _, err := c.FetchMany(context.Background(), []string{"https://example.com/", "http://127.0.0.1/"}, nil); err == nil {
+		t.Fatal("a private URL was not refused")
+	}
+	if _, err := c.FetchMany(context.Background(), nil, nil); err == nil {
+		t.Fatal("an empty list was not refused")
+	}
+	if len(*seen) != 0 {
+		t.Fatalf("sent %d requests, want none", len(*seen))
 	}
 }

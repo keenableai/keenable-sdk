@@ -5,6 +5,17 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- `fetchMany()` reads up to 100 pages in one call with `POST /v1/fetch`:
+  per-page `text` (with `maxChars` and `offset` for paging), a `summary` with
+  an optional `outputSchema` for JSON in your shape, `highlights`, `links` and
+  `images`, `maxAge` and `pageTimeout`, plus `sessionId` and `endUserId`. A
+  failed page is an entry in `FetchResponse.errors`, not a thrown error.
+  Keyless calls take up to 20 URLs. Preview: it works once `POST /v1/fetch` is
+  enabled for your organization.
+- `fetch()` keeps working and still calls `GET /v1/fetch`; it is deprecated in
+  favour of `fetchMany()` and will be removed after the API retires
+  `GET /v1/fetch` (announced with 90 days' notice).
+
 ## 0.1.5
 
 - `search()` accepts `excludeDomains`: a list of hosts to keep out of the

@@ -21,6 +21,14 @@ export {
   Page,
   SearchResponse,
 } from "./client.js";
+export type {
+  FetchError,
+  FetchImage,
+  FetchLink,
+  FetchResponse,
+  FetchResult,
+  FetchWarning,
+} from "./client.js";
 export {
   KeenableAPIError,
   KeenableAuthError,
@@ -37,6 +45,7 @@ export { FETCH_TOOL, SEARCH_TOOL, TOOLS, runToolCall } from "./tools.js";
 export type { ToolDefinition } from "./tools.js";
 export type {
   KeenableOptions,
+  FetchManyOptions,
   FetchOptions,
   RequestOptions,
   SearchOptions,

@@ -22,6 +22,7 @@ import {
 } from "./internal.js";
 import type {
   KeenableOptions,
+  FetchManyOptions,
   FetchOptions,
   RequestOptions,
   SearchOptions,
@@ -504,6 +505,156 @@ function toPage(data: Record<string, unknown>, url: string, requestId?: string):
   });
 }
 
+/** A link on a fetched page, with the words it was written as. */
+export interface FetchLink {
+  readonly url: string;
+  readonly text?: string;
+}
+
+/** An image on a fetched page, with its alt text. */
+export interface FetchImage {
+  readonly url: string;
+  readonly alt?: string;
+}
+
+/** One page `fetchMany()` read. Only what was asked for is filled. */
+export interface FetchResult {
+  readonly url: string;
+  readonly title?: string;
+  /** When the page says it was written, as ISO 8601. An estimate. */
+  readonly publishedAt?: string;
+  readonly image?: string;
+  readonly favicon?: string;
+  /** The page as markdown, from `offset` up to `maxChars`. */
+  readonly text?: string;
+  /** Length of the whole page text, so a cut is visible. */
+  readonly totalChars?: number;
+  /** Where to continue reading; undefined when the text ends here. */
+  readonly nextOffset?: number;
+  /** The model's answer: a string, or an object matching `outputSchema`. */
+  readonly summary?: string | Record<string, unknown>;
+  readonly highlights: string[];
+  readonly links: FetchLink[];
+  readonly images: FetchImage[];
+  readonly raw: Record<string, unknown>;
+}
+
+/** A URL `fetchMany()` could not read. The call itself succeeded. */
+export interface FetchError {
+  readonly url: string;
+  /** Why, such as `page_not_found` or `target_timeout`. */
+  readonly code: string;
+  readonly message: string;
+  /** Whether trying this URL again can help. */
+  readonly retryable: boolean;
+  /** What the site answered, such as 404, when it answered. */
+  readonly httpStatus?: number;
+}
+
+/** Something that did not fail the call, such as a duplicate URL. */
+export interface FetchWarning {
+  readonly code: string;
+  readonly path: string;
+  readonly message: string;
+}
+
+/** What `fetchMany()` returns: pages read and pages that failed. */
+export interface FetchResponse {
+  readonly results: FetchResult[];
+  /** One entry per URL that failed. Empty when every URL was read. */
+  readonly errors: FetchError[];
+  readonly warnings: FetchWarning[];
+  /** The API's id for this request. Quote it when reporting a problem. */
+  readonly requestId?: string;
+  readonly latencyMs?: number;
+  readonly sessionId?: string;
+  readonly raw: Record<string, unknown>;
+}
+
+function objects(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function toFetchResult(data: Record<string, unknown>): FetchResult {
+  return {
+    url: text(data.url),
+    title: nonEmpty(data.title),
+    publishedAt: nonEmpty(data.published_at),
+    image: nonEmpty(data.image),
+    favicon: nonEmpty(data.favicon),
+    text: nonEmpty(data.text),
+    totalChars: count(data.total_chars),
+    nextOffset: count(data.next_offset),
+    summary: isRecord(data.summary) ? data.summary : nonEmpty(data.summary),
+    highlights: Array.isArray(data.highlights)
+      ? data.highlights.filter((item): item is string => typeof item === "string")
+      : [],
+    links: objects(data.links).map((item) => ({ url: text(item.url), text: nonEmpty(item.text) })),
+    images: objects(data.images).map((item) => ({ url: text(item.url), alt: nonEmpty(item.alt) })),
+    raw: data,
+  };
+}
+
+function toFetchResponse(data: Record<string, unknown>, requestId?: string): FetchResponse {
+  return {
+    results: objects(data.results).map(toFetchResult),
+    errors: objects(data.errors).map((item) => ({
+      url: text(item.url),
+      code: text(item.code),
+      message: text(item.message),
+      retryable: item.retryable === true,
+      httpStatus: Number.isInteger(item.http_status) ? (item.http_status as number) : undefined,
+    })),
+    warnings: objects(data.warnings).map((item) => ({
+      code: text(item.code),
+      path: text(item.path),
+      message: text(item.message),
+    })),
+    requestId,
+    latencyMs: count(data.latency_ms),
+    sessionId: nonEmpty(data.session_id),
+    raw: data,
+  };
+}
+
+/** A string option is set unless undefined or empty (Go cannot tell the two apart). */
+function isSet(value: string | undefined): value is string {
+  return value !== undefined && value !== "";
+}
+
+/** The JSON body POST /v1/fetch takes, refusing private targets first. */
+function fetchManyBody(urls: string | readonly string[], options: FetchManyOptions): string {
+  const targets = typeof urls === "string" ? [urls] : Array.isArray(urls) ? [...urls] : undefined;
+  if (!targets || targets.length === 0) {
+    throw new KeenableInvalidRequestError("fetchMany() needs a non-empty list of URLs");
+  }
+  for (const target of targets) rejectPrivateFetchTarget(target);
+  const content: Record<string, unknown> = {};
+  if (options.text !== false) {
+    const limits: Record<string, number> = {};
+    if (options.maxChars !== undefined) limits.max_chars = options.maxChars;
+    if (options.offset !== undefined) limits.offset = options.offset;
+    content.text = Object.keys(limits).length > 0 ? limits : true;
+  }
+  const summary: Record<string, unknown> = {};
+  if (isSet(options.summary)) summary.instructions = options.summary;
+  if (options.outputSchema !== undefined) summary.output_schema = options.outputSchema;
+  if (Object.keys(summary).length > 0) content.summary = summary;
+  const detail: Record<string, unknown> = {};
+  if (isSet(options.highlightsQuery)) detail.query = options.highlightsQuery;
+  if (options.highlightsMaxChars !== undefined) detail.max_chars = options.highlightsMaxChars;
+  if (Object.keys(detail).length > 0) content.highlights = detail;
+  else if (options.highlights === true) content.highlights = true;
+  if (options.links !== undefined) content.links = options.links;
+  if (options.images !== undefined) content.images = options.images;
+  const body: Record<string, unknown> = { urls: targets, content };
+  if (isSet(options.maxAge)) body.max_age = options.maxAge;
+  if (isSet(options.pageTimeout)) body.timeout = options.pageTimeout;
+  if (isSet(options.sessionId)) body.session_id = options.sessionId;
+  if (isSet(options.endUserId)) body.end_user_id = options.endUserId;
+  return JSON.stringify(body);
+}
+
 /** Wait `ms`, or reject with the signal's reason as soon as it aborts. */
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -769,6 +920,22 @@ export class Keenable {
       target.toString(),
     );
     return toPage(data, url, requestId);
+  }
+
+  /**
+   * Read up to 100 pages in one call with `POST /v1/fetch`.
+   *
+   * Pages are read in parallel. A page that fails is an entry in
+   * `errors`, not a thrown error, and is not billed; the call throws only
+   * when it fails as a whole. Keyless calls take up to 20 URLs.
+   */
+  async fetchMany(
+    urls: string | readonly string[],
+    options: FetchManyOptions = {},
+  ): Promise<FetchResponse> {
+    const body = fetchManyBody(urls, options);
+    const { data, requestId } = await this.request("fetch", { method: "POST", body }, options);
+    return toFetchResponse(data, requestId);
   }
 
   /**

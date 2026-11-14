@@ -587,3 +587,184 @@ class Page:
             return header
         content = _clean_context_text(self.content, self.url)
         return _context_block(header, content[:budget].rstrip())
+
+
+def _int_from_zero_or_none(value: Any) -> int | None:
+    """A whole number from 0 to 2**53 - 1, or None for anything else."""
+    return _count_or_none(value)
+
+
+def _objects(value: Any) -> list[dict[str, Any]]:
+    """The objects in a JSON list; [] for anything that is not a list."""
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+@dataclass
+class FetchLink:
+    """A link on a fetched page, with the words it was written as."""
+
+    url: str
+    text: str | None = None
+
+
+@dataclass
+class FetchImage:
+    """An image on a fetched page, with its alt text."""
+
+    url: str
+    alt: str | None = None
+
+
+@dataclass
+class FetchResult:
+    """One page :meth:`Keenable.fetch_many` read.
+
+    Only what was asked for is filled: ``text`` with ``content.text``,
+    ``summary`` with a summary, ``highlights``, ``links`` and ``images`` with
+    those options. Unknown metadata is None.
+    """
+
+    url: str
+    title: str | None = None
+    published_at: str | None = None
+    """When the page says it was written, as ISO 8601. An estimate; None when
+    unknown."""
+
+    image: str | None = None
+    favicon: str | None = None
+    text: str | None = None
+    """The page as markdown, from ``offset`` up to ``max_chars``."""
+
+    total_chars: int | None = None
+    """Length of the whole page text, so a cut is visible."""
+
+    next_offset: int | None = None
+    """Where to continue reading; None when the text ends here."""
+
+    summary: str | dict[str, Any] | None = None
+    """The model's answer: a string, or an object matching ``output_schema``."""
+
+    highlights: list[str] = field(default_factory=list)
+    links: list[FetchLink] = field(default_factory=list)
+    images: list[FetchImage] = field(default_factory=list)
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> FetchResult:
+        summary = data.get("summary")
+        return cls(
+            url=_str_or_empty(data.get("url")),
+            title=_str_or_none(data.get("title")),
+            published_at=_str_or_none(data.get("published_at")),
+            image=_str_or_none(data.get("image")),
+            favicon=_str_or_none(data.get("favicon")),
+            text=_str_or_none(data.get("text")),
+            total_chars=_int_from_zero_or_none(data.get("total_chars")),
+            next_offset=_int_from_zero_or_none(data.get("next_offset")),
+            summary=summary if isinstance(summary, dict) else _str_or_none(summary),
+            highlights=[
+                item for item in data.get("highlights") or [] if isinstance(item, str)
+            ]
+            if isinstance(data.get("highlights"), list)
+            else [],
+            links=[
+                FetchLink(
+                    url=_str_or_empty(item.get("url")),
+                    text=_str_or_none(item.get("text")),
+                )
+                for item in _objects(data.get("links"))
+            ],
+            images=[
+                FetchImage(
+                    url=_str_or_empty(item.get("url")),
+                    alt=_str_or_none(item.get("alt")),
+                )
+                for item in _objects(data.get("images"))
+            ],
+            raw=data,
+        )
+
+
+@dataclass
+class FetchError:
+    """A URL :meth:`Keenable.fetch_many` could not read. The call itself succeeded."""
+
+    url: str
+    code: str
+    """Why, such as ``page_not_found`` or ``target_timeout``."""
+
+    message: str
+    retryable: bool = False
+    """Whether trying this URL again can help."""
+
+    http_status: int | None = None
+    """What the site answered, such as 404, when it answered."""
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> FetchError:
+        status = data.get("http_status")
+        return cls(
+            url=_str_or_empty(data.get("url")),
+            code=_str_or_empty(data.get("code")),
+            message=_str_or_empty(data.get("message")),
+            retryable=data.get("retryable") is True,
+            http_status=status
+            if isinstance(status, int) and not isinstance(status, bool)
+            else None,
+        )
+
+
+@dataclass
+class FetchWarning:
+    """Something that did not fail the call, such as a duplicate URL."""
+
+    code: str
+    path: str
+    message: str
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> FetchWarning:
+        return cls(
+            code=_str_or_empty(data.get("code")),
+            path=_str_or_empty(data.get("path")),
+            message=_str_or_empty(data.get("message")),
+        )
+
+
+@dataclass
+class FetchResponse:
+    """What :meth:`Keenable.fetch_many` returns: pages read and pages that failed."""
+
+    results: list[FetchResult] = field(default_factory=list)
+    errors: list[FetchError] = field(default_factory=list)
+    """One entry per URL that failed. Empty when every URL was read."""
+
+    warnings: list[FetchWarning] = field(default_factory=list)
+    request_id: str | None = None
+    """The API's id for this request. Quote it when reporting a problem."""
+
+    latency_ms: int | None = None
+    session_id: str | None = None
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(
+        cls, data: dict[str, Any], request_id: str | None = None
+    ) -> FetchResponse:
+        return cls(
+            results=[
+                FetchResult._from_json(item) for item in _objects(data.get("results"))
+            ],
+            errors=[
+                FetchError._from_json(item) for item in _objects(data.get("errors"))
+            ],
+            warnings=[
+                FetchWarning._from_json(item) for item in _objects(data.get("warnings"))
+            ],
+            request_id=_str_or_none(data.get("request_id")) or request_id,
+            latency_ms=_int_from_zero_or_none(data.get("latency_ms")),
+            session_id=_str_or_none(data.get("session_id")),
+            raw=data,
+        )

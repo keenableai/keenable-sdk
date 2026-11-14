@@ -33,7 +33,7 @@ from .errors import (
     KeenableTimeoutError,
     RateLimitInfo,
 )
-from .models import Page, SearchResponse
+from .models import FetchResponse, Page, SearchResponse
 
 __all__ = ["Keenable", "AsyncKeenable", "DEFAULT_MAX_RETRIES"]
 
@@ -288,6 +288,75 @@ def _fetch_params(
     if prompt is not None and prompt != "":
         params["prompt"] = prompt
     return params
+
+
+def _set(value: str | None) -> bool:
+    """A string option is set unless None or empty (Go cannot tell the two apart)."""
+    return value is not None and value != ""
+
+
+def _fetch_many_payload(
+    urls: Any,
+    *,
+    text: bool,
+    max_chars: int | None,
+    offset: int | None,
+    summary: str | None,
+    output_schema: Mapping[str, Any] | None,
+    highlights: bool | None,
+    highlights_query: str | None,
+    highlights_max_chars: int | None,
+    links: int | None,
+    images: int | None,
+    max_age: str | None,
+    page_timeout: str | None,
+    session_id: str | None,
+    end_user_id: str | None,
+) -> dict[str, Any]:
+    """The JSON body POST /v1/fetch takes, refusing private targets first."""
+    targets = _as_list(urls)
+    if not isinstance(targets, list) or not targets:
+        raise KeenableInvalidRequestError("fetch_many() needs a non-empty list of URLs")
+    for target in targets:
+        _reject_private_fetch_target(target)
+    content: dict[str, Any] = {}
+    if text:
+        limits: dict[str, Any] = {}
+        if max_chars is not None:
+            limits["max_chars"] = max_chars
+        if offset is not None:
+            limits["offset"] = offset
+        content["text"] = limits or True
+    summary_body: dict[str, Any] = {}
+    if _set(summary):
+        summary_body["instructions"] = summary
+    if output_schema is not None:
+        summary_body["output_schema"] = dict(output_schema)
+    if summary_body:
+        content["summary"] = summary_body
+    detail: dict[str, Any] = {}
+    if _set(highlights_query):
+        detail["query"] = highlights_query
+    if highlights_max_chars is not None:
+        detail["max_chars"] = highlights_max_chars
+    if detail:
+        content["highlights"] = detail
+    elif highlights is True:
+        content["highlights"] = True
+    if links is not None:
+        content["links"] = links
+    if images is not None:
+        content["images"] = images
+    payload: dict[str, Any] = {"urls": targets, "content": content}
+    for name, value in (
+        ("max_age", max_age),
+        ("timeout", page_timeout),
+        ("session_id", session_id),
+        ("end_user_id", end_user_id),
+    ):
+        if _set(value):
+            payload[name] = value
+    return payload
 
 
 def _as_list(value: Any) -> Any:
@@ -1145,6 +1214,90 @@ class Keenable(_BaseClient):
         )
         return Page._from_json(body, url, request_id)
 
+    def fetch_many(
+        self,
+        urls: str | Iterable[str],
+        *,
+        text: bool = True,
+        max_chars: int | None = None,
+        offset: int | None = None,
+        summary: str | None = None,
+        output_schema: Mapping[str, Any] | None = None,
+        highlights: bool | None = None,
+        highlights_query: str | None = None,
+        highlights_max_chars: int | None = None,
+        links: int | None = None,
+        images: int | None = None,
+        max_age: str | None = None,
+        page_timeout: str | None = None,
+        session_id: str | None = None,
+        end_user_id: str | None = None,
+        timeout: float | httpx.Timeout | None = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> FetchResponse:
+        """Read up to 100 pages in one call with ``POST /v1/fetch``.
+
+        Pages are read in parallel. A page that fails is an entry in
+        ``FetchResponse.errors``, not an exception, and is not billed; the
+        call raises only when it fails as a whole.
+
+        Args:
+            urls: The pages, ``http`` or ``https`` URLs (a lone string is one
+                page). Internal hosts and private addresses are refused before
+                a request is sent. Keyless calls take up to 20.
+            text: Return each page as markdown. Default ``True``.
+            max_chars: Characters of text per page.
+            offset: Where in the page text to start, to read a long page in
+                parts (see ``FetchResult.next_offset``).
+            summary: An instruction; each result's ``summary`` is the model's
+                answer for its page. Needs an API key.
+            output_schema: A JSON Schema (``type: object``); the summary is
+                then an object in that shape.
+            highlights: Return the passages most relevant to
+                ``highlights_query``.
+            highlights_query: What the highlights should be about.
+            highlights_max_chars: Characters of highlights per page.
+            links: How many links per page to return, with their text.
+            images: How many images per page to return, with their alt text.
+            max_age: Oldest copy accepted, such as ``"1d"``; ``"0s"`` always
+                reads the page live.
+            page_timeout: How long to wait for each live read, such as
+                ``"15s"``.
+            session_id: Your id for the agent session these calls belong to.
+            end_user_id: Your opaque id for the person the agent serves (no
+                personal data).
+            timeout: Deadline for each attempt of this call, as in
+                :meth:`search`.
+            max_retries: Retry budget for this call, as in :meth:`search`.
+            extra_headers: Headers for this call, over ``default_headers``.
+        """
+        payload = _fetch_many_payload(
+            urls,
+            text=text,
+            max_chars=max_chars,
+            offset=offset,
+            summary=summary,
+            output_schema=output_schema,
+            highlights=highlights,
+            highlights_query=highlights_query,
+            highlights_max_chars=highlights_max_chars,
+            links=links,
+            images=images,
+            max_age=max_age,
+            page_timeout=page_timeout,
+            session_id=session_id,
+            end_user_id=end_user_id,
+        )
+        body, request_id = self._request(
+            _FETCH,
+            json=payload,
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+        )
+        return FetchResponse._from_json(body, request_id)
+
 
 class AsyncKeenable(_BaseClient):
     """Asynchronous client for the Keenable web search API.
@@ -1296,3 +1449,52 @@ class AsyncKeenable(_BaseClient):
             extra_headers=extra_headers,
         )
         return Page._from_json(body, url, request_id)
+
+    async def fetch_many(
+        self,
+        urls: str | Iterable[str],
+        *,
+        text: bool = True,
+        max_chars: int | None = None,
+        offset: int | None = None,
+        summary: str | None = None,
+        output_schema: Mapping[str, Any] | None = None,
+        highlights: bool | None = None,
+        highlights_query: str | None = None,
+        highlights_max_chars: int | None = None,
+        links: int | None = None,
+        images: int | None = None,
+        max_age: str | None = None,
+        page_timeout: str | None = None,
+        session_id: str | None = None,
+        end_user_id: str | None = None,
+        timeout: float | httpx.Timeout | None = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> FetchResponse:
+        """Read up to 100 pages in one call. See :meth:`Keenable.fetch_many`."""
+        payload = _fetch_many_payload(
+            urls,
+            text=text,
+            max_chars=max_chars,
+            offset=offset,
+            summary=summary,
+            output_schema=output_schema,
+            highlights=highlights,
+            highlights_query=highlights_query,
+            highlights_max_chars=highlights_max_chars,
+            links=links,
+            images=images,
+            max_age=max_age,
+            page_timeout=page_timeout,
+            session_id=session_id,
+            end_user_id=end_user_id,
+        )
+        body, request_id = await self._request(
+            _FETCH,
+            json=payload,
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+        )
+        return FetchResponse._from_json(body, request_id)

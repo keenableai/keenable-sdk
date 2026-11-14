@@ -106,6 +106,38 @@ export interface FetchOptions extends RequestOptions {
   prompt?: string;
 }
 
+/** Options for `fetchMany()`: what to return for each page and how fresh. */
+export interface FetchManyOptions extends RequestOptions {
+  /** Return each page as markdown. Default `true`. */
+  text?: boolean;
+  /** Characters of text per page. */
+  maxChars?: number;
+  /** Where in the page text to start, to read a long page in parts. */
+  offset?: number;
+  /** An instruction; each result's `summary` is the model's answer. Needs an API key. */
+  summary?: string;
+  /** A JSON Schema (`type: "object"`); the summary is then an object in that shape. */
+  outputSchema?: Record<string, unknown>;
+  /** Return the passages most relevant to `highlightsQuery`. */
+  highlights?: boolean;
+  /** What the highlights should be about. */
+  highlightsQuery?: string;
+  /** Characters of highlights per page. */
+  highlightsMaxChars?: number;
+  /** How many links per page to return, with their text. */
+  links?: number;
+  /** How many images per page to return, with their alt text. */
+  images?: number;
+  /** Oldest copy accepted, such as `"1d"`; `"0s"` always reads the page live. */
+  maxAge?: string;
+  /** How long to wait for each live read, such as `"15s"`. */
+  pageTimeout?: string;
+  /** Your id for the agent session these calls belong to. */
+  sessionId?: string;
+  /** Your opaque id for the person the agent serves (no personal data). */
+  endUserId?: string;
+}
+
 /** Options for rendering results into a prompt block. */
 export interface ToContextOptions {
   /** Approximate character budget for the whole block. Default 12000. */
