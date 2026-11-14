@@ -91,6 +91,9 @@ func (c *Client) FetchManyStream(ctx context.Context, urls []string, opts *Fetch
 			return nil, err
 		}
 	}
+	if err := checkCacheOnly(opts); err != nil {
+		return nil, err
+	}
 	body, err := json.Marshal(fetchManyPayload(urls, opts))
 	if err != nil {
 		return nil, &InvalidRequestError{msg: "could not encode the fetch request: " + err.Error() + ". Pass JSON-encodable arguments."}

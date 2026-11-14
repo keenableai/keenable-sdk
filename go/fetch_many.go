@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 )
 
 // FetchManyOptions are the options for [Client.FetchMany]. Zero values are
@@ -36,7 +37,7 @@ type FetchManyOptions struct {
 	// Images is how many images per page to return, with their alt text.
 	Images int
 	// Subpages also reads up to this many same-site pages linked from each
-	// URL (1 to 20), with the same content options. Each is billed like a
+	// URL (1 to 100), with the same content options. Each is billed like a
 	// URL. Needs an API key.
 	Subpages int
 	// SubpagesTarget is words that pick which links to read first.
@@ -44,6 +45,10 @@ type FetchManyOptions struct {
 	// MaxAge is the oldest copy accepted, such as "1d"; "0s" always reads the
 	// page live.
 	MaxAge string
+	// CacheOnly never contacts the site: only stored copies are returned. A
+	// page with no stored copy (or none newer than MaxAge) gets the error
+	// not_cached and is not billed. Can't be combined with MaxAge "0s".
+	CacheOnly bool
 	// PageTimeout is how long to wait for each live read, such as "15s".
 	PageTimeout string
 	// SessionID is your id for the agent session these calls belong to.
@@ -154,6 +159,9 @@ func (c *Client) FetchMany(ctx context.Context, urls []string, opts *FetchManyOp
 			return nil, err
 		}
 	}
+	if err := checkCacheOnly(opts); err != nil {
+		return nil, err
+	}
 	body, err := json.Marshal(fetchManyPayload(urls, opts))
 	if err != nil {
 		return nil, &InvalidRequestError{msg: "could not encode the fetch request: " + err.Error() + ". Pass JSON-encodable arguments."}
@@ -169,6 +177,14 @@ func (c *Client) FetchMany(ctx context.Context, urls []string, opts *FetchManyOp
 	resp := fetchResponseFromJSON(data)
 	resp.RequestID = requestID(data, id)
 	return resp, nil
+}
+
+// checkCacheOnly refuses CacheOnly with MaxAge "0s", which asks for a live read.
+func checkCacheOnly(o *FetchManyOptions) error {
+	if o != nil && o.CacheOnly && strings.TrimSpace(o.MaxAge) == "0s" {
+		return &InvalidRequestError{msg: `CacheOnly never reads a page live, so it cannot be combined with MaxAge "0s"`}
+	}
+	return nil
 }
 
 // fetchManyPayload is the JSON body POST /v1/fetch takes.
@@ -229,6 +245,9 @@ func fetchManyPayload(urls []string, o *FetchManyOptions) map[string]any {
 	}
 	if len(pages) > 0 {
 		payload["subpages"] = pages
+	}
+	if o.CacheOnly {
+		payload["cache_only"] = true
 	}
 	for key, value := range map[string]string{
 		"max_age":     o.MaxAge,

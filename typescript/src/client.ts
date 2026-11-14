@@ -753,6 +753,11 @@ function fetchManyBody(urls: string | readonly string[], options: FetchManyOptio
     throw new KeenableInvalidRequestError("fetchMany() needs a non-empty list of URLs");
   }
   for (const target of targets) rejectPrivateFetchTarget(target);
+  if (options.cacheOnly === true && options.maxAge?.trim() === "0s") {
+    throw new KeenableInvalidRequestError(
+      'cacheOnly: true never reads a page live, so it cannot be combined with maxAge: "0s"',
+    );
+  }
   const content: Record<string, unknown> = {};
   if (options.text !== false) {
     const limits: Record<string, number> = {};
@@ -780,6 +785,7 @@ function fetchManyBody(urls: string | readonly string[], options: FetchManyOptio
   }
   if (Object.keys(pages).length > 0) body.subpages = pages;
   if (isSet(options.maxAge)) body.max_age = options.maxAge;
+  if (options.cacheOnly !== undefined) body.cache_only = options.cacheOnly;
   if (isSet(options.pageTimeout)) body.timeout = options.pageTimeout;
   if (isSet(options.sessionId)) body.session_id = options.sessionId;
   if (isSet(options.endUserId)) body.end_user_id = options.endUserId;

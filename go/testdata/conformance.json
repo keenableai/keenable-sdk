@@ -6189,6 +6189,67 @@
         }
       },
       "skip": {}
+    },
+    {
+      "name": "stored copies only",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "cache_only": true
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": true
+        },
+        "cache_only": true
+      },
+      "skip": {}
+    },
+    {
+      "name": "stored copies only, no older than a day",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "cache_only": true,
+        "max_age": "1d"
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": true
+        },
+        "max_age": "1d",
+        "cache_only": true
+      },
+      "skip": {}
+    },
+    {
+      "name": "subpages up to 100",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "subpages": 100
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": true
+        },
+        "subpages": {
+          "max": 100
+        }
+      },
+      "skip": {}
     }
   ],
   "fetch_many_responses": [

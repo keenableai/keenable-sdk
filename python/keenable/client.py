@@ -326,6 +326,7 @@ def _fetch_many_payload(
     subpages: int | None,
     subpages_target: str | Sequence[str] | None,
     max_age: str | None,
+    cache_only: bool | None,
     page_timeout: str | None,
     session_id: str | None,
     end_user_id: str | None,
@@ -336,6 +337,11 @@ def _fetch_many_payload(
         raise KeenableInvalidRequestError("fetch_many() needs a non-empty list of URLs")
     for target in targets:
         _reject_private_fetch_target(target)
+    if cache_only and isinstance(max_age, str) and max_age.strip() == "0s":
+        raise KeenableInvalidRequestError(
+            "cache_only=True never reads a page live, so it cannot be combined "
+            'with max_age="0s"'
+        )
     content: dict[str, Any] = {}
     if text:
         limits: dict[str, Any] = {}
@@ -376,6 +382,8 @@ def _fetch_many_payload(
         )
     if pages:
         payload["subpages"] = pages
+    if cache_only is not None:
+        payload["cache_only"] = cache_only
     for name, value in (
         ("max_age", max_age),
         ("timeout", page_timeout),
@@ -1429,6 +1437,7 @@ class Keenable(_BaseClient):
         subpages: int | None = None,
         subpages_target: str | Sequence[str] | None = None,
         max_age: str | None = None,
+        cache_only: bool | None = None,
         page_timeout: str | None = None,
         session_id: str | None = None,
         end_user_id: str | None = None,
@@ -1462,12 +1471,16 @@ class Keenable(_BaseClient):
             links: How many links per page to return, with their text.
             images: How many images per page to return, with their alt text.
             subpages: Also read up to this many same-site pages linked from
-                each URL (1 to 20), with the same content options. Each is
+                each URL (1 to 100), with the same content options. Each is
                 billed like a URL. Needs an API key.
             subpages_target: Words that pick which links to read first (a
                 string or a list).
             max_age: Oldest copy accepted, such as ``"1d"``; ``"0s"`` always
                 reads the page live.
+            cache_only: Never contact the site: return only stored copies. A
+                page with no stored copy (or none newer than ``max_age``) gets
+                the error ``not_cached`` and is not billed. Can't be combined
+                with ``max_age="0s"``.
             page_timeout: How long to wait for each live read, such as
                 ``"15s"``.
             session_id: Your id for the agent session these calls belong to.
@@ -1493,6 +1506,7 @@ class Keenable(_BaseClient):
             subpages=subpages,
             subpages_target=subpages_target,
             max_age=max_age,
+            cache_only=cache_only,
             page_timeout=page_timeout,
             session_id=session_id,
             end_user_id=end_user_id,
@@ -1523,6 +1537,7 @@ class Keenable(_BaseClient):
         subpages: int | None = None,
         subpages_target: str | Sequence[str] | None = None,
         max_age: str | None = None,
+        cache_only: bool | None = None,
         page_timeout: str | None = None,
         session_id: str | None = None,
         end_user_id: str | None = None,
@@ -1567,6 +1582,7 @@ class Keenable(_BaseClient):
             subpages=subpages,
             subpages_target=subpages_target,
             max_age=max_age,
+            cache_only=cache_only,
             page_timeout=page_timeout,
             session_id=session_id,
             end_user_id=end_user_id,
@@ -1807,6 +1823,7 @@ class AsyncKeenable(_BaseClient):
         subpages: int | None = None,
         subpages_target: str | Sequence[str] | None = None,
         max_age: str | None = None,
+        cache_only: bool | None = None,
         page_timeout: str | None = None,
         session_id: str | None = None,
         end_user_id: str | None = None,
@@ -1830,6 +1847,7 @@ class AsyncKeenable(_BaseClient):
             subpages=subpages,
             subpages_target=subpages_target,
             max_age=max_age,
+            cache_only=cache_only,
             page_timeout=page_timeout,
             session_id=session_id,
             end_user_id=end_user_id,
@@ -1860,6 +1878,7 @@ class AsyncKeenable(_BaseClient):
         subpages: int | None = None,
         subpages_target: str | Sequence[str] | None = None,
         max_age: str | None = None,
+        cache_only: bool | None = None,
         page_timeout: str | None = None,
         session_id: str | None = None,
         end_user_id: str | None = None,
@@ -1884,6 +1903,7 @@ class AsyncKeenable(_BaseClient):
             subpages=subpages,
             subpages_target=subpages_target,
             max_age=max_age,
+            cache_only=cache_only,
             page_timeout=page_timeout,
             session_id=session_id,
             end_user_id=end_user_id,

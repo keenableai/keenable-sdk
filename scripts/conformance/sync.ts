@@ -241,6 +241,7 @@ const FETCH_MANY_OPTIONS = new Set([
   "subpages",
   "subpages_target",
   "max_age",
+  "cache_only",
   "page_timeout",
   "session_id",
   "end_user_id",

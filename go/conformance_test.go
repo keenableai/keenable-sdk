@@ -787,6 +787,8 @@ func TestConformanceFetchManyBody(t *testing.T) {
 					opts.SubpagesTarget = stringList(t, v)
 				case "max_age":
 					opts.MaxAge = str
+				case "cache_only":
+					opts.CacheOnly = v.(bool)
 				case "page_timeout":
 					opts.PageTimeout = str
 				case "session_id":
@@ -1078,6 +1080,13 @@ func TestFetchManyRefusesAPrivateURLAndAnEmptyList(t *testing.T) {
 	}
 	if _, err := c.FetchMany(context.Background(), nil, nil); err == nil {
 		t.Fatal("an empty list was not refused")
+	}
+	cacheOnly := &keenable.FetchManyOptions{CacheOnly: true, MaxAge: "0s"}
+	if _, err := c.FetchMany(context.Background(), []string{"https://example.com/"}, cacheOnly); err == nil {
+		t.Fatal("CacheOnly with MaxAge 0s was not refused")
+	}
+	if _, err := c.FetchManyStream(context.Background(), []string{"https://example.com/"}, cacheOnly); err == nil {
+		t.Fatal("FetchManyStream: CacheOnly with MaxAge 0s was not refused")
 	}
 	if len(*seen) != 0 {
 		t.Fatalf("sent %d requests, want none", len(*seen))

@@ -458,6 +458,7 @@ const FETCH_MANY_NAMES: Record<string, string> = {
   subpages: "subpages",
   subpages_target: "subpagesTarget",
   max_age: "maxAge",
+  cache_only: "cacheOnly",
   page_timeout: "pageTimeout",
   session_id: "sessionId",
   end_user_id: "endUserId",
@@ -514,6 +515,14 @@ describe("the fetchMany body", () => {
 
   it("an empty list sends nothing", async () => {
     const outcome = await call([FETCH_MANY_OK], {}, (client) => client.fetchMany([]));
+    expect(outcome.error).toBeInstanceOf(KeenableInvalidRequestError);
+    expect(outcome.requests).toHaveLength(0);
+  });
+
+  it("cacheOnly with maxAge 0s sends nothing", async () => {
+    const outcome = await call([FETCH_MANY_OK], {}, (client) =>
+      client.fetchMany(["https://example.com/"], { cacheOnly: true, maxAge: "0s" }),
+    );
     expect(outcome.error).toBeInstanceOf(KeenableInvalidRequestError);
     expect(outcome.requests).toHaveLength(0);
   });

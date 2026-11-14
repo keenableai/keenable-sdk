@@ -5,6 +5,11 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
+- `fetch_many()` and `fetch_many_stream()` take `cache_only=True` to return
+  only stored copies and never contact the site; a page with no stored copy
+  gets the error `not_cached` and is not billed. `cache_only=True` with
+  `max_age="0s"` raises `KeenableInvalidRequestError` before sending.
+  `subpages` now goes up to 100 per URL.
 - `fetch_many()` (sync and async) reads up to 100 pages in one call with
   `POST /v1/fetch`: per-page `text` (with `max_chars` and `offset` for paging),
   a `summary` with an optional `output_schema` for JSON in your shape,

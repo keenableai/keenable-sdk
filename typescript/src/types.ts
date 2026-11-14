@@ -129,7 +129,7 @@ export interface FetchManyOptions extends RequestOptions {
   /** How many images per page to return, with their alt text. */
   images?: number;
   /**
-   * Also read up to this many same-site pages linked from each URL (1 to 20),
+   * Also read up to this many same-site pages linked from each URL (1 to 100),
    * with the same content options. Each is billed like a URL. Needs an API key.
    */
   subpages?: number;
@@ -137,6 +137,12 @@ export interface FetchManyOptions extends RequestOptions {
   subpagesTarget?: string | readonly string[];
   /** Oldest copy accepted, such as `"1d"`; `"0s"` always reads the page live. */
   maxAge?: string;
+  /**
+   * Never contact the site: return only stored copies. A page with no stored
+   * copy (or none newer than `maxAge`) gets the error `not_cached` and is not
+   * billed. Can't be combined with `maxAge: "0s"`.
+   */
+  cacheOnly?: boolean;
   /** How long to wait for each live read, such as `"15s"`. */
   pageTimeout?: string;
   /** Your id for the agent session these calls belong to. */

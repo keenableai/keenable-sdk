@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+`FetchManyOptions.CacheOnly` returns only stored copies and never contacts the
+site; a page with no stored copy gets the error `not_cached` and is not billed.
+`CacheOnly` with `MaxAge` "0s" returns an `*InvalidRequestError` before
+sending. `Subpages` now goes up to 100 per URL.
+
 `Client.FetchMany` reads up to 100 pages in one call with `POST /v1/fetch`:
 per-page text (`MaxChars` and `Offset` for paging), a `Summary` with an
 optional `OutputSchema` for JSON in your shape, `Highlights`, `Links` and

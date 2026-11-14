@@ -5,6 +5,11 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- `fetchMany()` and `fetchManyStream()` take `cacheOnly: true` to return only
+  stored copies and never contact the site; a page with no stored copy gets
+  the error `not_cached` and is not billed. `cacheOnly` with `maxAge: "0s"`
+  throws `KeenableInvalidRequestError` before sending. `subpages` now goes up
+  to 100 per URL.
 - `fetchMany()` reads up to 100 pages in one call with `POST /v1/fetch`:
   per-page `text` (with `maxChars` and `offset` for paging), a `summary` with
   an optional `outputSchema` for JSON in your shape, `highlights`, `links` and
