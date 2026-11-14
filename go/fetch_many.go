@@ -35,6 +35,12 @@ type FetchManyOptions struct {
 	Links int
 	// Images is how many images per page to return, with their alt text.
 	Images int
+	// Subpages also reads up to this many same-site pages linked from each
+	// URL (1 to 20), with the same content options. Each is billed like a
+	// URL. Needs an API key.
+	Subpages int
+	// SubpagesTarget is words that pick which links to read first.
+	SubpagesTarget []string
 	// MaxAge is the oldest copy accepted, such as "1d"; "0s" always reads the
 	// page live.
 	MaxAge string
@@ -84,8 +90,12 @@ type FetchResult struct {
 	Images     []FetchImage `json:"images"`
 	// Error says why something asked for is missing; nil when everything
 	// worked.
-	Error *FetchError    `json:"error,omitempty"`
-	Raw   map[string]any `json:"-"`
+	Error *FetchError `json:"error,omitempty"`
+	// Subpages, with FetchManyOptions.Subpages: the same-site pages read from
+	// this page's links, best match first, each an entry like this one (a
+	// failed one has Error).
+	Subpages []FetchResult  `json:"subpages"`
+	Raw      map[string]any `json:"-"`
 }
 
 // FetchError says why something asked for is missing for one URL. The call
@@ -210,6 +220,16 @@ func fetchManyPayload(urls []string, o *FetchManyOptions) map[string]any {
 		content["images"] = o.Images
 	}
 	payload := map[string]any{"urls": urls, "content": content}
+	pages := map[string]any{}
+	if o.Subpages != 0 {
+		pages["max"] = o.Subpages
+	}
+	if o.SubpagesTarget != nil {
+		pages["target"] = o.SubpagesTarget
+	}
+	if len(pages) > 0 {
+		payload["subpages"] = pages
+	}
 	for key, value := range map[string]string{
 		"max_age":     o.MaxAge,
 		"timeout":     o.PageTimeout,
@@ -250,6 +270,7 @@ func fetchResultFromJSON(data map[string]any) FetchResult {
 		Highlights:  []string{},
 		Links:       []FetchLink{},
 		Images:      []FetchImage{},
+		Subpages:    []FetchResult{},
 		Raw:         data,
 	}
 	if m, ok := data["summary"].(map[string]any); ok {
@@ -281,6 +302,9 @@ func fetchResultFromJSON(data map[string]any) FetchResult {
 			e.HTTPStatus = &n
 		}
 		r.Error = e
+	}
+	for _, item := range objects(data["subpages"]) {
+		r.Subpages = append(r.Subpages, fetchResultFromJSON(item))
 	}
 	return r
 }

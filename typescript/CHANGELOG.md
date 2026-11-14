@@ -16,6 +16,11 @@ All notable changes to the `keenable` npm package. Versions follow
 - `fetch()` keeps working and still calls `GET /v1/fetch`; it is deprecated in
   favour of `fetchMany()` and will be removed after the API retires
   `GET /v1/fetch` (announced with 90 days' notice).
+- `fetchMany()` takes `subpages` and `subpagesTarget` to also read same-site
+  pages linked from each URL; each result has `subpages`.
+- `fetchManyStream()` yields each page as `{ index, result }` as soon as it is
+  read (`for await`), over `Accept: application/x-ndjson`; `stream.summary`
+  holds the request id, warnings, usage and latency after the last item.
 
 ## 0.1.5
 

@@ -12,6 +12,12 @@ organization. `Fetch` and `FetchWithOptions` keep working on `GET /v1/fetch`;
 they are deprecated in favour of `FetchMany` and will be removed after the API
 retires `GET /v1/fetch` (announced with 90 days' notice).
 
+`FetchManyOptions` gains `Subpages` and `SubpagesTarget` to also read same-site
+pages linked from each URL; each `FetchResult` has `Subpages`.
+`Client.FetchManyStream` returns a `FetchStream` that hands over each page as
+soon as it is read (`Next`, `Item`, `Err`, `Summary`, `Close`), over
+`Accept: application/x-ndjson`.
+
 ## 0.1.5
 
 ## 0.1.2

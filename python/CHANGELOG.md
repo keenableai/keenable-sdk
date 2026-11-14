@@ -15,6 +15,12 @@ All notable changes to the `keenable` Python package. Versions follow
 - `fetch()` keeps working and still calls `GET /v1/fetch`; it is deprecated in
   favour of `fetch_many()` and will be removed after the API retires
   `GET /v1/fetch` (announced with 90 days' notice).
+- `fetch_many()` takes `subpages` and `subpages_target` to also read
+  same-site pages linked from each URL; each result has `subpages`.
+- `fetch_many_stream()` (sync and async) yields each page as a
+  `FetchStreamItem(index, result)` as soon as it is read, over
+  `Accept: application/x-ndjson`; `stream.summary` holds the request id,
+  warnings, usage and latency after the last item.
 
 ## 0.1.5
 
