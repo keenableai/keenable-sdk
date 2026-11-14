@@ -173,5 +173,14 @@ nothing.
 (`/v1/fetch/public` without a key). Every URL is checked against the fetch()
 target rules above before anything is sent; one refused URL refuses the call.
 An empty list is refused. The body and the success-body rules are in
-`cases/fetch-many.json`'s `_comment`. A page that failed is an entry in the
-response's `errors`, never an exception.
+`cases/fetch-many.json`'s `_comment`. A page that failed is its own entry,
+with `error` set, never an exception.
+
+## fetch_many_stream() (`fetch_many_stream`)
+
+`fetch_many_stream(urls, options)` sends the same body with
+`Accept: application/x-ndjson` and yields `(index, result)` items as the API
+sends their lines, then exposes the final line as a summary. A final line with
+an `error` raises the API error after the items before it; a stream that ends
+without a final line raises the connection error. The rules are in
+`cases/fetch-many.json`'s `_comment`.

@@ -484,6 +484,7 @@ def test_the_fixture_has_every_section() -> None:
         "tool_call",
         "fetch_many_body",
         "fetch_many_responses",
+        "fetch_many_stream",
     }
 
 
@@ -518,3 +519,163 @@ def test_a_blank_env_base_url_is_the_default(
 ) -> None:
     monkeypatch.setenv("KEENABLE_API_URL", "   ")
     assert Keenable()._base_url == "https://api.keenable.ai"
+
+
+class _Chunks(httpx.SyncByteStream, httpx.AsyncByteStream):
+    """A reply body delivered chunk by chunk, so a line can be split."""
+
+    def __init__(self, chunks: list[bytes]) -> None:
+        self._chunks = chunks
+
+    def __iter__(self) -> Any:
+        yield from self._chunks
+
+    async def __aiter__(self) -> Any:
+        for chunk in self._chunks:
+            yield chunk
+
+
+async def _stream(
+    kind: str, urls: Any, handler: Any
+) -> tuple[list[Any], Any, KeenableError | None]:
+    """Run fetch_many_stream; return the items, the summary and the error."""
+    transport = httpx.MockTransport(handler)
+    items: list[Any] = []
+    summary: Any = None
+    error: KeenableError | None = None
+    try:
+        if kind == "sync":
+            with (
+                Keenable(
+                    api_key="k", max_retries=0, client=httpx.Client(transport=transport)
+                ) as c,
+                c.fetch_many_stream(urls) as stream,
+            ):
+                for item in stream:
+                    items.append(item)
+                summary = stream.summary
+        else:
+            async with (
+                AsyncKeenable(
+                    api_key="k",
+                    max_retries=0,
+                    client=httpx.AsyncClient(transport=transport),
+                ) as ac,
+                await ac.fetch_many_stream(urls) as astream,
+            ):
+                async for item in astream:
+                    items.append(item)
+                summary = astream.summary
+    except KeenableError as exc:
+        error = exc
+    return items, summary, error
+
+
+@pytest.mark.parametrize("kind", CLIENTS)
+@pytest.mark.parametrize("case", cases("fetch_many_stream"))
+async def test_fetch_many_stream(kind: str, case: dict[str, Any]) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        request.read()
+        seen.append(request)
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "application/x-ndjson", **case["headers"]},
+            stream=_Chunks([chunk.encode("utf-8") for chunk in case["chunks"]]),
+        )
+
+    items, summary, error = await _stream(kind, case["urls"], handler)
+    assert seen[0].headers["Accept"] == "application/x-ndjson"
+    assert json.loads(seen[0].content)["urls"] == case["urls"]
+    expect = case["expect"]
+    assert [_plain(item) for item in items] == expect["items"]
+    if "summary" in expect:
+        assert error is None
+        assert _plain(summary) == expect["summary"]
+        return
+    want = expect["error"]
+    if want["kind"] == "connection":
+        assert isinstance(error, KeenableConnectionError)
+        return
+    assert isinstance(error, KeenableAPIError)
+    for key in ("code", "message", "retryable", "request_id"):
+        if key in want:
+            got = str(error) if key == "message" else getattr(error, key)
+            assert (want[key] in got) if key == "message" else got == want[key]
+
+
+@pytest.mark.parametrize("kind", CLIENTS)
+async def test_fetch_many_stream_raises_an_error_status_before_any_line(
+    kind: str,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            402,
+            json={
+                "error": "Insufficient credits",
+                "code": "insufficient_credits",
+                "message": "Top up",
+            },
+        )
+
+    items, summary, error = await _stream(kind, ["https://e.com/a"], handler)
+    assert items == []
+    assert summary is None
+    assert isinstance(error, KeenableInsufficientCreditsError)
+    assert error.status_code == 402
+
+
+@pytest.mark.parametrize("kind", CLIENTS)
+async def test_fetch_many_stream_retries_a_429_before_the_stream_opens(
+    kind: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def no_wait(_: float) -> None:
+        return None
+
+    monkeypatch.setattr("keenable.client.time.sleep", lambda _: None)
+    monkeypatch.setattr("keenable.client.asyncio.sleep", no_wait)
+    replies = [
+        httpx.Response(429, headers={"Retry-After": "0"}, json={"code": "x"}),
+        httpx.Response(
+            200,
+            stream=_Chunks([b'{"index":0,"url":"https://e.com/a"}\n{"done":true}\n']),
+        ),
+    ]
+    transport = httpx.MockTransport(lambda request: replies.pop(0))
+    if kind == "sync":
+        with Keenable(api_key="k", client=httpx.Client(transport=transport)) as c:
+            items = [item.index for item in c.fetch_many_stream(["https://e.com/a"])]
+    else:
+        async with AsyncKeenable(
+            api_key="k", client=httpx.AsyncClient(transport=transport)
+        ) as ac:
+            items = [
+                item.index
+                async for item in await ac.fetch_many_stream(["https://e.com/a"])
+            ]
+    assert items == [0]
+    assert replies == []
+
+
+@pytest.mark.parametrize("kind", CLIENTS)
+async def test_fetch_many_stream_refuses_a_private_url_before_sending(
+    kind: str,
+) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200)
+
+    with pytest.raises(KeenableInvalidRequestError):
+        if kind == "sync":
+            Keenable(
+                api_key="k", client=httpx.Client(transport=httpx.MockTransport(handler))
+            ).fetch_many_stream(["http://127.0.0.1/"])
+        else:
+            await AsyncKeenable(
+                api_key="k",
+                client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+            ).fetch_many_stream(["http://127.0.0.1/"])
+    assert seen == []

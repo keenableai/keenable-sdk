@@ -681,6 +681,11 @@ class FetchResult:
     error: FetchError | None = None
     """Why something asked for is missing; None when everything worked."""
 
+    subpages: list[FetchResult] = field(default_factory=list)
+    """With ``subpages``: the same-site pages read from this page's links,
+    best match first, each an entry like this one (a failed one has
+    ``error``)."""
+
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
@@ -715,6 +720,9 @@ class FetchResult:
                 for item in _objects(data.get("images"))
             ],
             error=FetchError._from_json(data.get("error")),
+            subpages=[
+                FetchResult._from_json(item) for item in _objects(data.get("subpages"))
+            ],
             raw=data,
         )
 
@@ -763,5 +771,51 @@ class FetchResponse:
             request_id=_str_or_none(data.get("request_id")) or request_id,
             latency_ms=_int_from_zero_or_none(data.get("latency_ms")),
             session_id=_str_or_none(data.get("session_id")),
+            raw=data,
+        )
+
+
+@dataclass
+class FetchStreamItem:
+    """One page from :meth:`Keenable.fetch_many_stream`, as soon as it is read.
+
+    ``index`` is its position in the ``urls`` given, so ``result`` is the
+    entry for ``urls[index]``. Items arrive in the order pages finish, not in
+    list order.
+    """
+
+    index: int
+    result: FetchResult
+
+
+@dataclass
+class FetchStreamSummary:
+    """The stream's final line: what a whole :meth:`Keenable.fetch_many` call
+    returns besides its results."""
+
+    warnings: list[FetchWarning] = field(default_factory=list)
+    request_id: str | None = None
+    """The API's id for this request. Quote it when reporting a problem."""
+
+    latency_ms: int | None = None
+    session_id: str | None = None
+    usage: dict[str, Any] | None = None
+    """What the call cost, as the API sent it; None without a key."""
+
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(
+        cls, data: dict[str, Any], request_id: str | None = None
+    ) -> FetchStreamSummary:
+        usage = data.get("usage")
+        return cls(
+            warnings=[
+                FetchWarning._from_json(item) for item in _objects(data.get("warnings"))
+            ],
+            request_id=_str_or_none(data.get("request_id")) or request_id,
+            latency_ms=_int_from_zero_or_none(data.get("latency_ms")),
+            session_id=_str_or_none(data.get("session_id")),
+            usage=usage if isinstance(usage, dict) else None,
             raw=data,
         )

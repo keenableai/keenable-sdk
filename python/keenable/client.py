@@ -11,7 +11,7 @@ import random
 import re
 import time
 import unicodedata
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import AsyncIterator, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from os import environ
@@ -33,9 +33,23 @@ from .errors import (
     KeenableTimeoutError,
     RateLimitInfo,
 )
-from .models import FetchResponse, Page, SearchResponse
+from .models import (
+    FetchResponse,
+    FetchResult,
+    FetchStreamItem,
+    FetchStreamSummary,
+    Page,
+    SearchResponse,
+    _str_or_none,
+)
 
-__all__ = ["Keenable", "AsyncKeenable", "DEFAULT_MAX_RETRIES"]
+__all__ = [
+    "AsyncFetchStream",
+    "AsyncKeenable",
+    "DEFAULT_MAX_RETRIES",
+    "FetchStream",
+    "Keenable",
+]
 
 DEFAULT_BASE_URL = "https://api.keenable.ai"
 DEFAULT_TIMEOUT = 30.0
@@ -51,6 +65,7 @@ _MAX_RETRY_AFTER_WAIT = 60.0
 # `/public` suffix, so a new endpoint is one name rather than two constants.
 _SEARCH = "search"
 _FETCH = "fetch"
+_NDJSON = "application/x-ndjson"
 
 _BLOCKED_HOSTS = frozenset({"localhost", "metadata.google.internal"})
 _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -308,6 +323,8 @@ def _fetch_many_payload(
     highlights_max_chars: int | None,
     links: int | None,
     images: int | None,
+    subpages: int | None,
+    subpages_target: str | Sequence[str] | None,
     max_age: str | None,
     page_timeout: str | None,
     session_id: str | None,
@@ -348,6 +365,17 @@ def _fetch_many_payload(
     if images is not None:
         content["images"] = images
     payload: dict[str, Any] = {"urls": targets, "content": content}
+    pages: dict[str, Any] = {}
+    if subpages is not None:
+        pages["max"] = subpages
+    if subpages_target is not None:
+        pages["target"] = (
+            subpages_target
+            if isinstance(subpages_target, str)
+            else list(subpages_target)
+        )
+    if pages:
+        payload["subpages"] = pages
     for name, value in (
         ("max_age", max_age),
         ("timeout", page_timeout),
@@ -767,6 +795,176 @@ def _decode(response: httpx.Response) -> tuple[dict[str, Any], str | None]:
             request_id=request_id,
         )
     return data, request_id
+
+
+def _check_stream(response: httpx.Response) -> None:
+    """Refuse a redirect or an error status before reading any line.
+
+    The body of an error status is read so it becomes the same typed error
+    :func:`_decode` raises.
+    """
+    if response.is_redirect or 300 <= response.status_code < 400:
+        location = response.headers.get("Location")
+        where = f" to {location}" if location else ""
+        raise _RedirectError(
+            f"the Keenable API redirected{where}. The redirect was not followed, "
+            "so the API key was not sent. Check KEENABLE_API_URL."
+        )
+    if not response.is_success:
+        raise _to_api_error(response)
+
+
+class _NdjsonReader:
+    """Turns NDJSON bytes into stream items and the final summary.
+
+    Lines can be split across chunks. Blank lines are skipped. The line with
+    ``done: true`` becomes the summary, or raises the API error it carries.
+    """
+
+    def __init__(self, status: int, request_id: str | None) -> None:
+        self._status = status
+        self._request_id = request_id
+        self._buffer = b""
+        self.summary: FetchStreamSummary | None = None
+
+    def feed(self, chunk: bytes) -> list[FetchStreamItem]:
+        self._buffer += chunk
+        *lines, self._buffer = self._buffer.split(b"\n")
+        return self._read(lines)
+
+    def end(self) -> list[FetchStreamItem]:
+        rest, self._buffer = self._buffer, b""
+        items = self._read([rest])
+        if self.summary is None:
+            raise KeenableConnectionError(
+                "the Keenable API stream ended before its final line. Retry the "
+                "URLs that have no item."
+            )
+        return items
+
+    def _read(self, lines: list[bytes]) -> list[FetchStreamItem]:
+        items: list[FetchStreamItem] = []
+        for raw in lines:
+            if self.summary is not None:
+                break
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                data = _parse_json(line)
+            except ValueError as exc:
+                raise self._bad_line(line) from exc
+            if not isinstance(data, dict):
+                raise self._bad_line(line)
+            if data.get("done") is True:
+                self._finish(data)
+                continue
+            index = data.get("index")
+            if isinstance(index, bool) or not isinstance(index, int) or index < 0:
+                continue
+            entry = {key: value for key, value in data.items() if key != "index"}
+            items.append(
+                FetchStreamItem(index=index, result=FetchResult._from_json(entry))
+            )
+        return items
+
+    def _finish(self, data: dict[str, Any]) -> None:
+        error = data.get("error")
+        request_id = _str_or_none(data.get("request_id")) or self._request_id
+        if isinstance(error, dict):
+            code = _str_or_none(error.get("code"))
+            message = _str_or_none(error.get("message")) or "the call failed"
+            retryable = error.get("retryable")
+            raise KeenableAPIError(
+                message,
+                self._status,
+                message,
+                code=code,
+                type=_derive_type(self._status, code),
+                retryable=retryable if isinstance(retryable, bool) else None,
+                request_id=request_id,
+            )
+        self.summary = FetchStreamSummary._from_json(data, request_id)
+
+    def _bad_line(self, line: bytes) -> KeenableAPIError:
+        snippet = line[:200].decode("utf-8", errors="replace")
+        return KeenableAPIError(
+            f"Keenable API sent a stream line that is not a JSON object: {snippet!r}",
+            self._status,
+            request_id=self._request_id,
+        )
+
+
+class FetchStream:
+    """Pages from :meth:`Keenable.fetch_many_stream`, as soon as each is read.
+
+    Iterate it for :class:`FetchStreamItem` values; the request is sent on the
+    first iteration. After the last item, :attr:`summary` holds the final
+    line's request id, warnings, usage and latency. Use it as a context
+    manager, or call :meth:`close`, to release the connection when you stop
+    early.
+    """
+
+    def __init__(self, items: Iterator[FetchStreamItem], reader: list[_NdjsonReader]):
+        self._items = items
+        self._reader = reader
+
+    @property
+    def summary(self) -> FetchStreamSummary | None:
+        """The final line, once the stream has ended; None until then."""
+        return self._reader[0].summary if self._reader else None
+
+    def __iter__(self) -> FetchStream:
+        return self
+
+    def __next__(self) -> FetchStreamItem:
+        return next(self._items)
+
+    def close(self) -> None:
+        """Stop reading and release the connection."""
+        close = getattr(self._items, "close", None)
+        if close is not None:
+            close()
+
+    def __enter__(self) -> FetchStream:
+        return self
+
+    def __exit__(self, *exc_info: Any) -> None:
+        self.close()
+
+
+class AsyncFetchStream:
+    """Async counterpart of :class:`FetchStream`, from
+    :meth:`AsyncKeenable.fetch_many_stream`."""
+
+    def __init__(
+        self, items: AsyncIterator[FetchStreamItem], reader: list[_NdjsonReader]
+    ):
+        self._items = items
+        self._reader = reader
+
+    @property
+    def summary(self) -> FetchStreamSummary | None:
+        """The final line, once the stream has ended; None until then."""
+        return self._reader[0].summary if self._reader else None
+
+    def __aiter__(self) -> AsyncFetchStream:
+        return self
+
+    async def __anext__(self) -> FetchStreamItem:
+        return await self._items.__anext__()
+
+    async def aclose(self) -> None:
+        """Stop reading and release the connection."""
+        close = getattr(self._items, "aclose", None)
+        if close is not None:
+            await close()
+
+    async def __aenter__(self) -> AsyncFetchStream:
+        return self
+
+    async def __aexit__(self, *exc_info: Any) -> None:
+        await self.aclose()
 
 
 @contextmanager
@@ -1228,6 +1426,8 @@ class Keenable(_BaseClient):
         highlights_max_chars: int | None = None,
         links: int | None = None,
         images: int | None = None,
+        subpages: int | None = None,
+        subpages_target: str | Sequence[str] | None = None,
         max_age: str | None = None,
         page_timeout: str | None = None,
         session_id: str | None = None,
@@ -1261,6 +1461,11 @@ class Keenable(_BaseClient):
             highlights_max_chars: Characters of highlights per page.
             links: How many links per page to return, with their text.
             images: How many images per page to return, with their alt text.
+            subpages: Also read up to this many same-site pages linked from
+                each URL (1 to 20), with the same content options. Each is
+                billed like a URL. Needs an API key.
+            subpages_target: Words that pick which links to read first (a
+                string or a list).
             max_age: Oldest copy accepted, such as ``"1d"``; ``"0s"`` always
                 reads the page live.
             page_timeout: How long to wait for each live read, such as
@@ -1285,6 +1490,8 @@ class Keenable(_BaseClient):
             highlights_max_chars=highlights_max_chars,
             links=links,
             images=images,
+            subpages=subpages,
+            subpages_target=subpages_target,
             max_age=max_age,
             page_timeout=page_timeout,
             session_id=session_id,
@@ -1298,6 +1505,138 @@ class Keenable(_BaseClient):
             extra_headers=extra_headers,
         )
         return FetchResponse._from_json(body, request_id)
+
+    def fetch_many_stream(
+        self,
+        urls: str | Iterable[str],
+        *,
+        text: bool = True,
+        max_chars: int | None = None,
+        offset: int | None = None,
+        summary: str | None = None,
+        output_schema: Mapping[str, Any] | None = None,
+        highlights: bool | None = None,
+        highlights_query: str | None = None,
+        highlights_max_chars: int | None = None,
+        links: int | None = None,
+        images: int | None = None,
+        subpages: int | None = None,
+        subpages_target: str | Sequence[str] | None = None,
+        max_age: str | None = None,
+        page_timeout: str | None = None,
+        session_id: str | None = None,
+        end_user_id: str | None = None,
+        timeout: float | httpx.Timeout | None = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> FetchStream:
+        """Like :meth:`fetch_many`, but yields each page as soon as it is read.
+
+        Sends ``Accept: application/x-ndjson``. Iterating the returned
+        :class:`FetchStream` gives :class:`FetchStreamItem` values in the order
+        pages finish; ``item.index`` is the page's position in ``urls``. After
+        the last item, ``stream.summary`` has the request id, warnings, usage
+        and latency. Billing, limits and the deadline are the same as
+        :meth:`fetch_many`.
+
+        Arguments are checked now; the request is sent on the first
+        iteration. A failure of the whole call before any page raises as in
+        :meth:`fetch_many` (and is retried the same way); one after pages were
+        sent raises :class:`KeenableAPIError` after them, and a stream cut off
+        before its final line raises :class:`KeenableConnectionError`. Pages
+        already yielded were read and billed.
+
+        Example:
+            >>> with keenable.fetch_many_stream(urls) as stream:
+            ...     for item in stream:
+            ...         print(item.index, item.result.title)
+            ...     print(stream.summary.request_id)
+        """
+        payload = _fetch_many_payload(
+            urls,
+            text=text,
+            max_chars=max_chars,
+            offset=offset,
+            summary=summary,
+            output_schema=output_schema,
+            highlights=highlights,
+            highlights_query=highlights_query,
+            highlights_max_chars=highlights_max_chars,
+            links=links,
+            images=images,
+            subpages=subpages,
+            subpages_target=subpages_target,
+            max_age=max_age,
+            page_timeout=page_timeout,
+            session_id=session_id,
+            end_user_id=end_user_id,
+        )
+        reader: list[_NdjsonReader] = []
+        return FetchStream(
+            self._stream(
+                payload,
+                reader,
+                timeout=timeout,
+                max_retries=max_retries,
+                extra_headers=extra_headers,
+            ),
+            reader,
+        )
+
+    def _stream(
+        self,
+        payload: dict[str, Any],
+        reader: list[_NdjsonReader],
+        *,
+        timeout: float | httpx.Timeout | None,
+        max_retries: int | None,
+        extra_headers: Mapping[str, str] | None,
+    ) -> Iterator[FetchStreamItem]:
+        """Open the NDJSON reply, retrying until it is open, then read it."""
+        call_timeout, retries = self._call_settings(timeout, max_retries)
+        headers = self._headers(extra_headers, json=True)
+        headers["Accept"] = _NDJSON
+        retry = 0
+        while True:
+            response: httpx.Response | None = None
+            try:
+                with _transport_errors(call_timeout):
+                    response = self._client.send(
+                        self._client.build_request(
+                            "POST",
+                            self._url(_FETCH),
+                            json=payload,
+                            headers=headers,
+                            timeout=call_timeout,
+                        ),
+                        stream=True,
+                        follow_redirects=False,
+                    )
+                    if not response.is_success:
+                        response.read()
+                _check_stream(response)
+                break
+            except KeenableError as error:
+                if response is not None:
+                    response.close()
+                delay = _retry_delay(error, retry) if retry < retries else None
+                if delay is None:
+                    raise
+                time.sleep(delay)
+                retry += 1
+        assert response is not None
+        try:
+            request_id = (response.headers.get("X-Request-Id") or "").strip() or None
+            lines = _NdjsonReader(response.status_code, request_id)
+            reader.append(lines)
+            with _transport_errors(call_timeout):
+                for chunk in response.iter_bytes():
+                    yield from lines.feed(chunk)
+                    if lines.summary is not None:
+                        break
+            yield from lines.end()
+        finally:
+            response.close()
 
 
 class AsyncKeenable(_BaseClient):
@@ -1465,6 +1804,8 @@ class AsyncKeenable(_BaseClient):
         highlights_max_chars: int | None = None,
         links: int | None = None,
         images: int | None = None,
+        subpages: int | None = None,
+        subpages_target: str | Sequence[str] | None = None,
         max_age: str | None = None,
         page_timeout: str | None = None,
         session_id: str | None = None,
@@ -1486,6 +1827,8 @@ class AsyncKeenable(_BaseClient):
             highlights_max_chars=highlights_max_chars,
             links=links,
             images=images,
+            subpages=subpages,
+            subpages_target=subpages_target,
             max_age=max_age,
             page_timeout=page_timeout,
             session_id=session_id,
@@ -1499,3 +1842,117 @@ class AsyncKeenable(_BaseClient):
             extra_headers=extra_headers,
         )
         return FetchResponse._from_json(body, request_id)
+
+    async def fetch_many_stream(
+        self,
+        urls: str | Iterable[str],
+        *,
+        text: bool = True,
+        max_chars: int | None = None,
+        offset: int | None = None,
+        summary: str | None = None,
+        output_schema: Mapping[str, Any] | None = None,
+        highlights: bool | None = None,
+        highlights_query: str | None = None,
+        highlights_max_chars: int | None = None,
+        links: int | None = None,
+        images: int | None = None,
+        subpages: int | None = None,
+        subpages_target: str | Sequence[str] | None = None,
+        max_age: str | None = None,
+        page_timeout: str | None = None,
+        session_id: str | None = None,
+        end_user_id: str | None = None,
+        timeout: float | httpx.Timeout | None = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> AsyncFetchStream:
+        """Yield each page as soon as it is read. See
+        :meth:`Keenable.fetch_many_stream`; iterate with ``async for``."""
+        payload = _fetch_many_payload(
+            urls,
+            text=text,
+            max_chars=max_chars,
+            offset=offset,
+            summary=summary,
+            output_schema=output_schema,
+            highlights=highlights,
+            highlights_query=highlights_query,
+            highlights_max_chars=highlights_max_chars,
+            links=links,
+            images=images,
+            subpages=subpages,
+            subpages_target=subpages_target,
+            max_age=max_age,
+            page_timeout=page_timeout,
+            session_id=session_id,
+            end_user_id=end_user_id,
+        )
+        reader: list[_NdjsonReader] = []
+        return AsyncFetchStream(
+            self._stream(
+                payload,
+                reader,
+                timeout=timeout,
+                max_retries=max_retries,
+                extra_headers=extra_headers,
+            ),
+            reader,
+        )
+
+    async def _stream(
+        self,
+        payload: dict[str, Any],
+        reader: list[_NdjsonReader],
+        *,
+        timeout: float | httpx.Timeout | None,
+        max_retries: int | None,
+        extra_headers: Mapping[str, str] | None,
+    ) -> AsyncIterator[FetchStreamItem]:
+        """Async counterpart of :meth:`Keenable._stream`."""
+        call_timeout, retries = self._call_settings(timeout, max_retries)
+        headers = self._headers(extra_headers, json=True)
+        headers["Accept"] = _NDJSON
+        retry = 0
+        while True:
+            response: httpx.Response | None = None
+            try:
+                with _transport_errors(call_timeout):
+                    response = await self._client.send(
+                        self._client.build_request(
+                            "POST",
+                            self._url(_FETCH),
+                            json=payload,
+                            headers=headers,
+                            timeout=call_timeout,
+                        ),
+                        stream=True,
+                        follow_redirects=False,
+                    )
+                    if not response.is_success:
+                        await response.aread()
+                _check_stream(response)
+                break
+            except KeenableError as error:
+                if response is not None:
+                    await response.aclose()
+                delay = _retry_delay(error, retry) if retry < retries else None
+                if delay is None:
+                    raise
+                await asyncio.sleep(delay)
+                retry += 1
+        assert response is not None
+        try:
+            request_id = (response.headers.get("X-Request-Id") or "").strip() or None
+            lines = _NdjsonReader(response.status_code, request_id)
+            reader.append(lines)
+            with _transport_errors(call_timeout):
+                async for chunk in response.aiter_bytes():
+                    for item in lines.feed(chunk):
+                        yield item
+                    if lines.summary is not None:
+                        break
+            for item in lines.end():
+                yield item
+        finally:
+            await response.aclose()

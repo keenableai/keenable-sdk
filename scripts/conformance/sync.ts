@@ -238,6 +238,8 @@ const FETCH_MANY_OPTIONS = new Set([
   "highlights_max_chars",
   "links",
   "images",
+  "subpages",
+  "subpages_target",
   "max_age",
   "page_timeout",
   "session_id",
@@ -275,6 +277,26 @@ function fetchManyResponses(): Obj[] {
   });
 }
 
+function fetchManyStreams(): Obj[] {
+  return (load("fetch-many.json").stream as Obj[]).map((item) => {
+    const name = item.name as string;
+    const chunks = item.chunks as Json;
+    if (!Array.isArray(chunks) || chunks.length === 0 || !chunks.every((chunk) => typeof chunk === "string")) {
+      fail(`fetch-many stream ${name}: "chunks" must be a non-empty list of strings`);
+    }
+    const expect = item.expect as Obj;
+    if (("summary" in expect) === ("error" in expect)) fail(`fetch-many stream ${name}: expect exactly one of "summary" and "error"`);
+    return {
+      name,
+      urls: item.urls as Json,
+      headers: headers(item),
+      chunks,
+      expect,
+      skip: (item.skip as Obj | undefined) ?? {},
+    };
+  });
+}
+
 function toolCalls(): Obj[] {
   return (load("tool-call.json").cases as Obj[]).map((item) => {
     const name = item.name as string;
@@ -306,6 +328,7 @@ export function buildConformance(): string {
     tool_call: toolCalls(),
     fetch_many_body: fetchManyBodies(),
     fetch_many_responses: fetchManyResponses(),
+    fetch_many_stream: fetchManyStreams(),
   };
   for (const [section, cases] of Object.entries(fixture)) {
     if (Array.isArray(cases)) uniqueNames(section, cases as { name: string }[]);
