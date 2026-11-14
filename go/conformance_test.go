@@ -767,6 +767,12 @@ func TestConformanceFetchManyBody(t *testing.T) {
 					opts.MaxChars = int(v.(float64))
 				case "offset":
 					opts.Offset = int(v.(float64))
+				case "include_sections":
+					opts.IncludeSections = stringList(t, v)
+				case "exclude_sections":
+					opts.ExcludeSections = stringList(t, v)
+				case "verbosity":
+					opts.Verbosity = str
 				case "summary":
 					opts.Summary = str
 				case "output_schema":
@@ -1080,6 +1086,10 @@ func TestFetchManyRefusesAPrivateURLAndAnEmptyList(t *testing.T) {
 	}
 	if _, err := c.FetchMany(context.Background(), nil, nil); err == nil {
 		t.Fatal("an empty list was not refused")
+	}
+	both := &keenable.FetchManyOptions{IncludeSections: []string{"body"}, ExcludeSections: []string{"footer"}}
+	if _, err := c.FetchMany(context.Background(), []string{"https://example.com/"}, both); err == nil {
+		t.Fatal("IncludeSections with ExcludeSections was not refused")
 	}
 	cacheOnly := &keenable.FetchManyOptions{CacheOnly: true, MaxAge: "0s"}
 	if _, err := c.FetchMany(context.Background(), []string{"https://example.com/"}, cacheOnly); err == nil {

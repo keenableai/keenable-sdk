@@ -485,6 +485,22 @@ async def test_fetch_many_refuses_cache_only_with_a_live_max_age(
     assert outcome.requests == []
 
 
+@pytest.mark.parametrize("kind", CLIENTS)
+async def test_fetch_many_refuses_include_with_exclude_sections(
+    kind: str, waits: list[float]
+) -> None:
+    outcome = await run(
+        kind,
+        [FETCH_MANY_OK],
+        waits,
+        method="fetch_many",
+        arg=["https://example.com/"],
+        call={"include_sections": ["body"], "exclude_sections": ["footer"]},
+    )
+    assert isinstance(outcome.error, KeenableInvalidRequestError)
+    assert outcome.requests == []
+
+
 def test_the_fixture_has_every_section() -> None:
     sections = set(FIXTURE) - {"_comment"}
     assert sections == {

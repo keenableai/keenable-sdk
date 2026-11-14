@@ -6250,6 +6250,60 @@
         }
       },
       "skip": {}
+    },
+    {
+      "name": "only the navigation and the body",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "include_sections": [
+          "navigation",
+          "body"
+        ]
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": {
+            "include_sections": [
+              "navigation",
+              "body"
+            ]
+          }
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "the whole page but its footer",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "exclude_sections": [
+          "footer"
+        ],
+        "verbosity": "full",
+        "max_chars": 5000
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": {
+            "max_chars": 5000,
+            "exclude_sections": [
+              "footer"
+            ],
+            "verbosity": "full"
+          }
+        }
+      },
+      "skip": {}
     }
   ],
   "fetch_many_responses": [

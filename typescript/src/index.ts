@@ -49,6 +49,7 @@ export type { ToolDefinition } from "./tools.js";
 export type {
   KeenableOptions,
   FetchManyOptions,
+  FetchSection,
   FetchOptions,
   RequestOptions,
   SearchOptions,

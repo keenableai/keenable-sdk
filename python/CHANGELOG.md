@@ -5,6 +5,11 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
+- `fetch_many()` and `fetch_many_stream()` take `include_sections`,
+  `exclude_sections` and `verbosity` to pick which parts of each page the text
+  holds (`banner`, `header`, `navigation`, `metadata`, `body`, `sidebar`,
+  `footer`). Sending both `include_sections` and `exclude_sections` raises
+  `KeenableInvalidRequestError` before sending.
 - `fetch_many()` and `fetch_many_stream()` take `cache_only=True` to return
   only stored copies and never contact the site; a page with no stored copy
   gets the error `not_cached` and is not billed. `cache_only=True` with

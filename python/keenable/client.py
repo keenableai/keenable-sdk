@@ -316,6 +316,9 @@ def _fetch_many_payload(
     text: bool,
     max_chars: int | None,
     offset: int | None,
+    include_sections: Sequence[str] | None,
+    exclude_sections: Sequence[str] | None,
+    verbosity: str | None,
     summary: str | None,
     output_schema: Mapping[str, Any] | None,
     highlights: bool | None,
@@ -349,6 +352,20 @@ def _fetch_many_payload(
             limits["max_chars"] = max_chars
         if offset is not None:
             limits["offset"] = offset
+        if include_sections is not None and exclude_sections is not None:
+            raise KeenableInvalidRequestError(
+                "fetch_many() takes include_sections or exclude_sections, not both"
+            )
+        for name, sections in (
+            ("include_sections", include_sections),
+            ("exclude_sections", exclude_sections),
+        ):
+            if sections is not None:
+                limits[name] = (
+                    [sections] if isinstance(sections, str) else list(sections)
+                )
+        if _set(verbosity):
+            limits["verbosity"] = verbosity
         content["text"] = limits or True
     summary_body: dict[str, Any] = {}
     if _set(summary):
@@ -1427,6 +1444,9 @@ class Keenable(_BaseClient):
         text: bool = True,
         max_chars: int | None = None,
         offset: int | None = None,
+        include_sections: Sequence[str] | None = None,
+        exclude_sections: Sequence[str] | None = None,
+        verbosity: str | None = None,
         summary: str | None = None,
         output_schema: Mapping[str, Any] | None = None,
         highlights: bool | None = None,
@@ -1460,6 +1480,17 @@ class Keenable(_BaseClient):
             max_chars: Characters of text per page.
             offset: Where in the page text to start, to read a long page in
                 parts (see ``FetchResult.next_offset``).
+            include_sections: Only these parts of each page: ``"banner"``,
+                ``"header"``, ``"navigation"``, ``"metadata"``, ``"body"`` (the
+                main content), ``"sidebar"``, ``"footer"``. Anything beyond the
+                body is a live read (billed as ``fetch.live``) and needs an API
+                key; when it isn't possible the page keeps its main content and
+                the response has a ``sections_unavailable`` warning.
+            exclude_sections: Every part except these (from ``verbosity``, or
+                the whole page). Not together with ``include_sections``.
+            verbosity: ``"compact"`` (main content, the default),
+                ``"standard"`` (plus metadata and sidebar) or ``"full"`` (the
+                whole page).
             summary: An instruction; each result's ``summary`` is the model's
                 answer for its page. Needs an API key.
             output_schema: A JSON Schema (``type: object``); the summary is
@@ -1496,6 +1527,9 @@ class Keenable(_BaseClient):
             text=text,
             max_chars=max_chars,
             offset=offset,
+            include_sections=include_sections,
+            exclude_sections=exclude_sections,
+            verbosity=verbosity,
             summary=summary,
             output_schema=output_schema,
             highlights=highlights,
@@ -1527,6 +1561,9 @@ class Keenable(_BaseClient):
         text: bool = True,
         max_chars: int | None = None,
         offset: int | None = None,
+        include_sections: Sequence[str] | None = None,
+        exclude_sections: Sequence[str] | None = None,
+        verbosity: str | None = None,
         summary: str | None = None,
         output_schema: Mapping[str, Any] | None = None,
         highlights: bool | None = None,
@@ -1572,6 +1609,9 @@ class Keenable(_BaseClient):
             text=text,
             max_chars=max_chars,
             offset=offset,
+            include_sections=include_sections,
+            exclude_sections=exclude_sections,
+            verbosity=verbosity,
             summary=summary,
             output_schema=output_schema,
             highlights=highlights,
@@ -1813,6 +1853,9 @@ class AsyncKeenable(_BaseClient):
         text: bool = True,
         max_chars: int | None = None,
         offset: int | None = None,
+        include_sections: Sequence[str] | None = None,
+        exclude_sections: Sequence[str] | None = None,
+        verbosity: str | None = None,
         summary: str | None = None,
         output_schema: Mapping[str, Any] | None = None,
         highlights: bool | None = None,
@@ -1837,6 +1880,9 @@ class AsyncKeenable(_BaseClient):
             text=text,
             max_chars=max_chars,
             offset=offset,
+            include_sections=include_sections,
+            exclude_sections=exclude_sections,
+            verbosity=verbosity,
             summary=summary,
             output_schema=output_schema,
             highlights=highlights,
@@ -1868,6 +1914,9 @@ class AsyncKeenable(_BaseClient):
         text: bool = True,
         max_chars: int | None = None,
         offset: int | None = None,
+        include_sections: Sequence[str] | None = None,
+        exclude_sections: Sequence[str] | None = None,
+        verbosity: str | None = None,
         summary: str | None = None,
         output_schema: Mapping[str, Any] | None = None,
         highlights: bool | None = None,
@@ -1893,6 +1942,9 @@ class AsyncKeenable(_BaseClient):
             text=text,
             max_chars=max_chars,
             offset=offset,
+            include_sections=include_sections,
+            exclude_sections=exclude_sections,
+            verbosity=verbosity,
             summary=summary,
             output_schema=output_schema,
             highlights=highlights,

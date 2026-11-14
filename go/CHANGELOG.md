@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+`FetchManyOptions.IncludeSections`, `ExcludeSections` and `Verbosity` pick
+which parts of each page the text holds ("banner", "header", "navigation",
+"metadata", "body", "sidebar", "footer"). Both section lists together return an
+`*InvalidRequestError` before sending.
+
 `FetchManyOptions.CacheOnly` returns only stored copies and never contacts the
 site; a page with no stored copy gets the error `not_cached` and is not billed.
 `CacheOnly` with `MaxAge` "0s" returns an `*InvalidRequestError` before

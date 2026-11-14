@@ -20,6 +20,18 @@ type FetchManyOptions struct {
 	// Offset is where in the page text to start, to read a long page in parts
 	// (see FetchResult.NextOffset).
 	Offset int
+	// IncludeSections returns only these parts of each page: "banner",
+	// "header", "navigation", "metadata", "body" (the main content), "sidebar",
+	// "footer". Anything beyond the body is a live read (billed as fetch.live)
+	// and needs an API key; when it isn't possible the page keeps its main
+	// content and the response has a "sections_unavailable" warning.
+	IncludeSections []string
+	// ExcludeSections returns every part except these (from Verbosity, or the
+	// whole page). Not together with IncludeSections.
+	ExcludeSections []string
+	// Verbosity is "compact" (main content, the default), "standard" (plus
+	// metadata and sidebar) or "full" (the whole page).
+	Verbosity string
 	// Summary is an instruction; each result's Summary is the model's answer
 	// for its page. Needs an API key.
 	Summary string
@@ -179,10 +191,14 @@ func (c *Client) FetchMany(ctx context.Context, urls []string, opts *FetchManyOp
 	return resp, nil
 }
 
-// checkCacheOnly refuses CacheOnly with MaxAge "0s", which asks for a live read.
+// checkCacheOnly refuses CacheOnly with MaxAge "0s", which asks for a live
+// read, and IncludeSections together with ExcludeSections.
 func checkCacheOnly(o *FetchManyOptions) error {
 	if o != nil && o.CacheOnly && strings.TrimSpace(o.MaxAge) == "0s" {
 		return &InvalidRequestError{msg: `CacheOnly never reads a page live, so it cannot be combined with MaxAge "0s"`}
+	}
+	if o != nil && o.IncludeSections != nil && o.ExcludeSections != nil {
+		return &InvalidRequestError{msg: "FetchMany() takes IncludeSections or ExcludeSections, not both"}
 	}
 	return nil
 }
@@ -200,6 +216,15 @@ func fetchManyPayload(urls []string, o *FetchManyOptions) map[string]any {
 		}
 		if o.Offset != 0 {
 			limits["offset"] = o.Offset
+		}
+		if o.IncludeSections != nil {
+			limits["include_sections"] = o.IncludeSections
+		}
+		if o.ExcludeSections != nil {
+			limits["exclude_sections"] = o.ExcludeSections
+		}
+		if o.Verbosity != "" {
+			limits["verbosity"] = o.Verbosity
 		}
 		if len(limits) > 0 {
 			content["text"] = limits

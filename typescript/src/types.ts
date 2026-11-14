@@ -106,6 +106,9 @@ export interface FetchOptions extends RequestOptions {
   prompt?: string;
 }
 
+/** A part of a page for `includeSections` / `excludeSections`. */
+export type FetchSection = "banner" | "header" | "navigation" | "metadata" | "body" | "sidebar" | "footer";
+
 /** Options for `fetchMany()`: what to return for each page and how fresh. */
 export interface FetchManyOptions extends RequestOptions {
   /** Return each page as markdown. Default `true`. */
@@ -114,6 +117,17 @@ export interface FetchManyOptions extends RequestOptions {
   maxChars?: number;
   /** Where in the page text to start, to read a long page in parts. */
   offset?: number;
+  /**
+   * Only these parts of each page: `"banner"`, `"header"`, `"navigation"`, `"metadata"`,
+   * `"body"` (the main content), `"sidebar"`, `"footer"`. Anything beyond the body is a live
+   * read (billed as `fetch.live`) and needs an API key; when it isn't possible the page keeps
+   * its main content and the response has a `sections_unavailable` warning.
+   */
+  includeSections?: readonly FetchSection[];
+  /** Every part except these (from `verbosity`, or the whole page). Not with `includeSections`. */
+  excludeSections?: readonly FetchSection[];
+  /** `"compact"` (main content, the default), `"standard"` (plus metadata and sidebar) or `"full"`. */
+  verbosity?: "compact" | "standard" | "full";
   /** An instruction; each result's `summary` is the model's answer. Needs an API key. */
   summary?: string;
   /** A JSON Schema (`type: "object"`); the summary is then an object in that shape. */

@@ -760,9 +760,15 @@ function fetchManyBody(urls: string | readonly string[], options: FetchManyOptio
   }
   const content: Record<string, unknown> = {};
   if (options.text !== false) {
-    const limits: Record<string, number> = {};
+    const limits: Record<string, unknown> = {};
     if (options.maxChars !== undefined) limits.max_chars = options.maxChars;
     if (options.offset !== undefined) limits.offset = options.offset;
+    if (options.includeSections !== undefined && options.excludeSections !== undefined) {
+      throw new KeenableInvalidRequestError("fetchMany() takes includeSections or excludeSections, not both");
+    }
+    if (options.includeSections !== undefined) limits.include_sections = [...options.includeSections];
+    if (options.excludeSections !== undefined) limits.exclude_sections = [...options.excludeSections];
+    if (isSet(options.verbosity)) limits.verbosity = options.verbosity;
     content.text = Object.keys(limits).length > 0 ? limits : true;
   }
   const summary: Record<string, unknown> = {};

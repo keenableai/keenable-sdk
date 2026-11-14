@@ -448,6 +448,9 @@ const FETCH_MANY_NAMES: Record<string, string> = {
   text: "text",
   max_chars: "maxChars",
   offset: "offset",
+  include_sections: "includeSections",
+  exclude_sections: "excludeSections",
+  verbosity: "verbosity",
   summary: "summary",
   output_schema: "outputSchema",
   highlights: "highlights",
@@ -522,6 +525,14 @@ describe("the fetchMany body", () => {
   it("cacheOnly with maxAge 0s sends nothing", async () => {
     const outcome = await call([FETCH_MANY_OK], {}, (client) =>
       client.fetchMany(["https://example.com/"], { cacheOnly: true, maxAge: "0s" }),
+    );
+    expect(outcome.error).toBeInstanceOf(KeenableInvalidRequestError);
+    expect(outcome.requests).toHaveLength(0);
+  });
+
+  it("includeSections with excludeSections sends nothing", async () => {
+    const outcome = await call([FETCH_MANY_OK], {}, (client) =>
+      client.fetchMany(["https://example.com/"], { includeSections: ["body"], excludeSections: ["footer"] }),
     );
     expect(outcome.error).toBeInstanceOf(KeenableInvalidRequestError);
     expect(outcome.requests).toHaveLength(0);

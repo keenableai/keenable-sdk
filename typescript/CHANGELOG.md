@@ -5,6 +5,11 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- `fetchMany()` and `fetchManyStream()` take `includeSections`,
+  `excludeSections` and `verbosity` to pick which parts of each page the text
+  holds (`FetchSection`: `banner`, `header`, `navigation`, `metadata`, `body`,
+  `sidebar`, `footer`). Sending both section lists throws
+  `KeenableInvalidRequestError` before sending.
 - `fetchMany()` and `fetchManyStream()` take `cacheOnly: true` to return only
   stored copies and never contact the site; a page with no stored copy gets
   the error `not_cached` and is not billed. `cacheOnly` with `maxAge: "0s"`
