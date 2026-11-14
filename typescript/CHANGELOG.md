@@ -5,6 +5,33 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- `fetchMany()` and `fetchManyStream()` take `includeSections`,
+  `excludeSections` and `verbosity` to pick which parts of each page the text
+  holds (`FetchSection`: `banner`, `header`, `navigation`, `metadata`, `body`,
+  `sidebar`, `footer`). Sending both section lists throws
+  `KeenableInvalidRequestError` before sending.
+- `fetchMany()` and `fetchManyStream()` take `cacheOnly: true` to return only
+  stored copies and never contact the site; a page with no stored copy gets
+  the error `not_cached` and is not billed. `cacheOnly` with `maxAge: "0s"`
+  throws `KeenableInvalidRequestError` before sending. `subpages` now goes up
+  to 100 per URL.
+- `fetchMany()` reads up to 100 pages in one call with `POST /v1/fetch`:
+  per-page `text` (with `maxChars` and `offset` for paging), a `summary` with
+  an optional `outputSchema` for JSON in your shape, `highlights`, `links` and
+  `images`, `maxAge` and `pageTimeout`, plus `sessionId` and `endUserId`. `results[i]`
+  is the entry for `urls[i]`; a failed page has its `error` set, not a thrown
+  error.
+  Keyless calls take up to 20 URLs. Preview: it works once `POST /v1/fetch` is
+  enabled for your organization.
+- `fetch()` keeps working and still calls `GET /v1/fetch`; it is deprecated in
+  favour of `fetchMany()` and will be removed after the API retires
+  `GET /v1/fetch` (announced with 90 days' notice).
+- `fetchMany()` takes `subpages` and `subpagesTarget` to also read same-site
+  pages linked from each URL; each result has `subpages`.
+- `fetchManyStream()` yields each page as `{ index, result }` as soon as it is
+  read (`for await`), over `Accept: application/x-ndjson`; `stream.summary`
+  holds the request id, warnings, usage and latency after the last item.
+
 ## 0.1.5
 
 - `search()` accepts `excludeDomains`: a list of hosts to keep out of the

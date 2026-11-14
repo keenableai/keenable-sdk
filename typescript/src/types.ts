@@ -106,6 +106,65 @@ export interface FetchOptions extends RequestOptions {
   prompt?: string;
 }
 
+/** A part of a page for `includeSections` / `excludeSections`. */
+export type FetchSection = "banner" | "header" | "navigation" | "metadata" | "body" | "sidebar" | "footer";
+
+/** Options for `fetchMany()`: what to return for each page and how fresh. */
+export interface FetchManyOptions extends RequestOptions {
+  /** Return each page as markdown. Default `true`. */
+  text?: boolean;
+  /** Characters of text per page. */
+  maxChars?: number;
+  /** Where in the page text to start, to read a long page in parts. */
+  offset?: number;
+  /**
+   * Only these parts of each page: `"banner"`, `"header"`, `"navigation"`, `"metadata"`,
+   * `"body"` (the main content), `"sidebar"`, `"footer"`. Anything beyond the body is a live
+   * read (billed as `fetch.live`) and needs an API key; when it isn't possible the page keeps
+   * its main content and the response has a `sections_unavailable` warning.
+   */
+  includeSections?: readonly FetchSection[];
+  /** Every part except these (from `verbosity`, or the whole page). Not with `includeSections`. */
+  excludeSections?: readonly FetchSection[];
+  /** `"compact"` (main content, the default), `"standard"` (plus metadata and sidebar) or `"full"`. */
+  verbosity?: "compact" | "standard" | "full";
+  /** An instruction; each result's `summary` is the model's answer. Needs an API key. */
+  summary?: string;
+  /** A JSON Schema (`type: "object"`); the summary is then an object in that shape. */
+  outputSchema?: Record<string, unknown>;
+  /** Return the passages most relevant to `highlightsQuery`. */
+  highlights?: boolean;
+  /** What the highlights should be about. */
+  highlightsQuery?: string;
+  /** Characters of highlights per page. */
+  highlightsMaxChars?: number;
+  /** How many links per page to return, with their text. */
+  links?: number;
+  /** How many images per page to return, with their alt text. */
+  images?: number;
+  /**
+   * Also read up to this many same-site pages linked from each URL (1 to 100),
+   * with the same content options. Each is billed like a URL. Needs an API key.
+   */
+  subpages?: number;
+  /** Words that pick which links to read first (a string or a list). */
+  subpagesTarget?: string | readonly string[];
+  /** Oldest copy accepted, such as `"1d"`; `"0s"` always reads the page live. */
+  maxAge?: string;
+  /**
+   * Never contact the site: return only stored copies. A page with no stored
+   * copy (or none newer than `maxAge`) gets the error `not_cached` and is not
+   * billed. Can't be combined with `maxAge: "0s"`.
+   */
+  cacheOnly?: boolean;
+  /** How long to wait for each live read, such as `"15s"`. */
+  pageTimeout?: string;
+  /** Your id for the agent session these calls belong to. */
+  sessionId?: string;
+  /** Your opaque id for the person the agent serves (no personal data). */
+  endUserId?: string;
+}
+
 /** Options for rendering results into a prompt block. */
 export interface ToContextOptions {
   /** Approximate character budget for the whole block. Default 12000. */

@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+`FetchManyOptions.IncludeSections`, `ExcludeSections` and `Verbosity` pick
+which parts of each page the text holds ("banner", "header", "navigation",
+"metadata", "body", "sidebar", "footer"). Both section lists together return an
+`*InvalidRequestError` before sending.
+
+`FetchManyOptions.CacheOnly` returns only stored copies and never contacts the
+site; a page with no stored copy gets the error `not_cached` and is not billed.
+`CacheOnly` with `MaxAge` "0s" returns an `*InvalidRequestError` before
+sending. `Subpages` now goes up to 100 per URL.
+
+`Client.FetchMany` reads up to 100 pages in one call with `POST /v1/fetch`:
+per-page text (`MaxChars` and `Offset` for paging), a `Summary` with an
+optional `OutputSchema` for JSON in your shape, `Highlights`, `Links` and
+`Images`, `MaxAge` and `PageTimeout`, plus `SessionID` and `EndUserID`. `Results[i]`
+is the entry for `urls[i]`; a failed page has its `Error` set, not an error. Keyless calls
+take up to 20 URLs. Preview: it works once `POST /v1/fetch` is enabled for your
+organization. `Fetch` and `FetchWithOptions` keep working on `GET /v1/fetch`;
+they are deprecated in favour of `FetchMany` and will be removed after the API
+retires `GET /v1/fetch` (announced with 90 days' notice).
+
+`FetchManyOptions` gains `Subpages` and `SubpagesTarget` to also read same-site
+pages linked from each URL; each `FetchResult` has `Subpages`.
+`Client.FetchManyStream` returns a `FetchStream` that hands over each page as
+soon as it is read (`Next`, `Item`, `Err`, `Summary`, `Close`), over
+`Accept: application/x-ndjson`.
+
 ## 0.1.5
 
 ## 0.1.2

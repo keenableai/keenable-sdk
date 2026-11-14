@@ -22,6 +22,7 @@ import {
 } from "./internal.js";
 import type {
   KeenableOptions,
+  FetchManyOptions,
   FetchOptions,
   RequestOptions,
   SearchOptions,
@@ -504,6 +505,299 @@ function toPage(data: Record<string, unknown>, url: string, requestId?: string):
   });
 }
 
+/** A link on a fetched page, with the words it was written as. */
+export interface FetchLink {
+  readonly url: string;
+  readonly text?: string;
+}
+
+/** An image on a fetched page, with its alt text. */
+export interface FetchImage {
+  readonly url: string;
+  readonly alt?: string;
+}
+
+/**
+ * The entry for one URL given to `fetchMany()`: `results[i]` is for `urls[i]`.
+ * Only what was asked for is filled. `error` is set when something asked for
+ * is missing; when the page could not be read, it is the only field besides `url`.
+ */
+export interface FetchResult {
+  readonly url: string;
+  readonly title?: string;
+  /** When the page says it was written, as ISO 8601. An estimate. */
+  readonly publishedAt?: string;
+  readonly image?: string;
+  readonly favicon?: string;
+  /** The page as markdown, from `offset` up to `maxChars`. */
+  readonly text?: string;
+  /** Set only when the page has more text: call again with `offset` set to it. */
+  readonly nextOffset?: number;
+  /** The model's answer: a string, or an object matching `outputSchema`. */
+  readonly summary?: string | Record<string, unknown>;
+  readonly highlights: string[];
+  readonly links: FetchLink[];
+  readonly images: FetchImage[];
+  /** Why something asked for is missing; undefined when everything worked. */
+  readonly error?: FetchError;
+  /**
+   * With `subpages`: the same-site pages read from this page's links, best
+   * match first, each an entry like this one (a failed one has `error`).
+   */
+  readonly subpages: FetchResult[];
+  readonly raw: Record<string, unknown>;
+}
+
+/** Why something asked for is missing for one URL. The call itself succeeded. */
+export interface FetchError {
+  /** Why, such as `page_not_found` or `target_timeout`. */
+  readonly code: string;
+  readonly message: string;
+  /** Whether trying this URL again can help. */
+  readonly retryable: boolean;
+  /** What the site answered, such as 404, when it answered. */
+  readonly httpStatus?: number;
+}
+
+/** Something that did not fail the call, such as a duplicate URL. */
+export interface FetchWarning {
+  readonly code: string;
+  readonly path: string;
+  readonly message: string;
+}
+
+/** What `fetchMany()` returns: one entry per URL, in the order given. */
+export interface FetchResponse {
+  readonly results: FetchResult[];
+  readonly warnings: FetchWarning[];
+  /** The API's id for this request. Quote it when reporting a problem. */
+  readonly requestId?: string;
+  readonly latencyMs?: number;
+  readonly sessionId?: string;
+  readonly raw: Record<string, unknown>;
+}
+
+/** One page from `fetchManyStream()`, as soon as it is read. */
+export interface FetchStreamItem {
+  /** The page's position in the `urls` given: `result` is for `urls[index]`. */
+  readonly index: number;
+  readonly result: FetchResult;
+}
+
+/** The stream's final line: what `fetchMany()` returns besides its results. */
+export interface FetchStreamSummary {
+  readonly warnings: FetchWarning[];
+  /** The API's id for this request. Quote it when reporting a problem. */
+  readonly requestId?: string;
+  readonly latencyMs?: number;
+  readonly sessionId?: string;
+  /** What the call cost, as the API sent it; undefined without a key. */
+  readonly usage?: Record<string, unknown>;
+  readonly raw: Record<string, unknown>;
+}
+
+/**
+ * Pages from `fetchManyStream()`. Iterate it with `for await`; the request is
+ * sent when iteration starts. After the last item, `summary` holds the final
+ * line. Breaking out of the loop closes the connection.
+ */
+export interface FetchStream extends AsyncIterable<FetchStreamItem> {
+  /** The final line, once the stream has ended; undefined until then. */
+  readonly summary: FetchStreamSummary | undefined;
+}
+
+function toFetchWarnings(value: unknown): FetchWarning[] {
+  return objects(value).map((item) => ({
+    code: text(item.code),
+    path: text(item.path),
+    message: text(item.message),
+  }));
+}
+
+/** Turns NDJSON text into stream items and the final summary. */
+class NdjsonReader {
+  summary: FetchStreamSummary | undefined;
+  private buffer = "";
+  private readonly decoder = new TextDecoder();
+
+  constructor(
+    private readonly status: number,
+    private readonly requestId: string | undefined,
+  ) {}
+
+  feed(chunk: Uint8Array): FetchStreamItem[] {
+    this.buffer += this.decoder.decode(chunk, { stream: true });
+    const lines = this.buffer.split("\n");
+    this.buffer = lines.pop() ?? "";
+    return this.read(lines);
+  }
+
+  end(): FetchStreamItem[] {
+    const rest = this.buffer + this.decoder.decode();
+    this.buffer = "";
+    const items = this.read([rest]);
+    if (this.summary === undefined) {
+      throw new KeenableConnectionError(
+        "the Keenable API stream ended before its final line. Retry the URLs that have no item.",
+      );
+    }
+    return items;
+  }
+
+  private read(lines: string[]): FetchStreamItem[] {
+    const items: FetchStreamItem[] = [];
+    for (const raw of lines) {
+      if (this.summary !== undefined) break;
+      const line = raw.trim();
+      if (line === "") continue;
+      const parsed = parseJson(line);
+      if (!parsed || !isRecord(parsed.value)) {
+        throw new KeenableAPIError(
+          `Keenable API sent a stream line that is not a JSON object: ${JSON.stringify(line.slice(0, 200))}`,
+          this.status,
+          undefined,
+          { requestId: this.requestId },
+        );
+      }
+      const data = parsed.value;
+      if (data.done === true) {
+        this.finish(data);
+        continue;
+      }
+      const index = data.index;
+      if (typeof index !== "number" || !Number.isSafeInteger(index) || index < 0) continue;
+      const { index: _index, ...entry } = data;
+      items.push({ index, result: toFetchResult(entry) });
+    }
+    return items;
+  }
+
+  private finish(data: Record<string, unknown>): void {
+    const requestId = nonEmpty(data.request_id) ?? this.requestId;
+    if (isRecord(data.error)) {
+      const code = nonEmpty(data.error.code);
+      const message = nonEmpty(data.error.message) ?? "the call failed";
+      throw new KeenableAPIError(message, this.status, message, {
+        code,
+        type: deriveType(this.status, code),
+        retryable: typeof data.error.retryable === "boolean" ? data.error.retryable : undefined,
+        requestId,
+      });
+    }
+    this.summary = {
+      warnings: toFetchWarnings(data.warnings),
+      requestId,
+      latencyMs: count(data.latency_ms),
+      sessionId: nonEmpty(data.session_id),
+      usage: isRecord(data.usage) ? data.usage : undefined,
+      raw: data,
+    };
+  }
+}
+
+function objects(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function toFetchResult(data: Record<string, unknown>): FetchResult {
+  return {
+    url: text(data.url),
+    title: nonEmpty(data.title),
+    publishedAt: nonEmpty(data.published_at),
+    image: nonEmpty(data.image),
+    favicon: nonEmpty(data.favicon),
+    text: nonEmpty(data.text),
+    nextOffset: count(data.next_offset),
+    summary: isRecord(data.summary) ? data.summary : nonEmpty(data.summary),
+    highlights: Array.isArray(data.highlights)
+      ? data.highlights.filter((item): item is string => typeof item === "string")
+      : [],
+    links: objects(data.links).map((item) => ({ url: text(item.url), text: nonEmpty(item.text) })),
+    images: objects(data.images).map((item) => ({ url: text(item.url), alt: nonEmpty(item.alt) })),
+    error: toFetchError(data.error),
+    subpages: objects(data.subpages).map(toFetchResult),
+    raw: data,
+  };
+}
+
+function toFetchError(value: unknown): FetchError | undefined {
+  if (!isRecord(value)) return undefined;
+  return {
+    code: text(value.code),
+    message: text(value.message),
+    retryable: value.retryable === true,
+    httpStatus: Number.isInteger(value.http_status) ? (value.http_status as number) : undefined,
+  };
+}
+
+function toFetchResponse(data: Record<string, unknown>, requestId?: string): FetchResponse {
+  return {
+    results: objects(data.results).map(toFetchResult),
+    warnings: toFetchWarnings(data.warnings),
+    requestId,
+    latencyMs: count(data.latency_ms),
+    sessionId: nonEmpty(data.session_id),
+    raw: data,
+  };
+}
+
+/** A string option is set unless undefined or empty (Go cannot tell the two apart). */
+function isSet(value: string | undefined): value is string {
+  return value !== undefined && value !== "";
+}
+
+/** The JSON body POST /v1/fetch takes, refusing private targets first. */
+function fetchManyBody(urls: string | readonly string[], options: FetchManyOptions): string {
+  const targets = typeof urls === "string" ? [urls] : Array.isArray(urls) ? [...urls] : undefined;
+  if (!targets || targets.length === 0) {
+    throw new KeenableInvalidRequestError("fetchMany() needs a non-empty list of URLs");
+  }
+  for (const target of targets) rejectPrivateFetchTarget(target);
+  if (options.cacheOnly === true && options.maxAge?.trim() === "0s") {
+    throw new KeenableInvalidRequestError(
+      'cacheOnly: true never reads a page live, so it cannot be combined with maxAge: "0s"',
+    );
+  }
+  const content: Record<string, unknown> = {};
+  if (options.text !== false) {
+    const limits: Record<string, unknown> = {};
+    if (options.maxChars !== undefined) limits.max_chars = options.maxChars;
+    if (options.offset !== undefined) limits.offset = options.offset;
+    if (options.includeSections !== undefined && options.excludeSections !== undefined) {
+      throw new KeenableInvalidRequestError("fetchMany() takes includeSections or excludeSections, not both");
+    }
+    if (options.includeSections !== undefined) limits.include_sections = [...options.includeSections];
+    if (options.excludeSections !== undefined) limits.exclude_sections = [...options.excludeSections];
+    if (isSet(options.verbosity)) limits.verbosity = options.verbosity;
+    content.text = Object.keys(limits).length > 0 ? limits : true;
+  }
+  const summary: Record<string, unknown> = {};
+  if (isSet(options.summary)) summary.instructions = options.summary;
+  if (options.outputSchema !== undefined) summary.output_schema = options.outputSchema;
+  if (Object.keys(summary).length > 0) content.summary = summary;
+  const detail: Record<string, unknown> = {};
+  if (isSet(options.highlightsQuery)) detail.query = options.highlightsQuery;
+  if (options.highlightsMaxChars !== undefined) detail.max_chars = options.highlightsMaxChars;
+  if (Object.keys(detail).length > 0) content.highlights = detail;
+  else if (options.highlights === true) content.highlights = true;
+  if (options.links !== undefined) content.links = options.links;
+  if (options.images !== undefined) content.images = options.images;
+  const body: Record<string, unknown> = { urls: targets, content };
+  const pages: Record<string, unknown> = {};
+  if (options.subpages !== undefined) pages.max = options.subpages;
+  if (options.subpagesTarget !== undefined) {
+    pages.target =
+      typeof options.subpagesTarget === "string" ? options.subpagesTarget : [...options.subpagesTarget];
+  }
+  if (Object.keys(pages).length > 0) body.subpages = pages;
+  if (isSet(options.maxAge)) body.max_age = options.maxAge;
+  if (options.cacheOnly !== undefined) body.cache_only = options.cacheOnly;
+  if (isSet(options.pageTimeout)) body.timeout = options.pageTimeout;
+  if (isSet(options.sessionId)) body.session_id = options.sessionId;
+  if (isSet(options.endUserId)) body.end_user_id = options.endUserId;
+  return JSON.stringify(body);
+}
+
 /** Wait `ms`, or reject with the signal's reason as soon as it aborts. */
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -535,6 +829,24 @@ export function backoffMs(retry: number, random: number = Math.random()): number
 
 /** A redirect this SDK refused to follow; retrying would refuse it again. */
 class KeenableRedirectError extends KeenableConnectionError {}
+
+const NDJSON = "application/x-ndjson";
+
+/** Refuse a redirect or an error status before reading any line. */
+async function checkStream(response: Response): Promise<void> {
+  if (response.redirected) {
+    throw new KeenableRedirectError(
+      `the Keenable API redirected to ${response.url || "another URL"}, and the fetch function you passed followed it although the SDK asked it not to. The response was discarded. Check KEENABLE_API_URL and the fetch option.`,
+    );
+  }
+  if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400)) {
+    const location = response.headers.get("Location");
+    throw new KeenableRedirectError(
+      `the Keenable API redirected${location ? ` to ${location}` : ""}. The redirect was not followed, so the API key was not sent. Check KEENABLE_API_URL.`,
+    );
+  }
+  if (!response.ok) throw toApiError(response.status, await response.text(), response.headers);
+}
 
 /**
  * How long to wait before retrying after `error`, or undefined when it should
@@ -769,6 +1081,157 @@ export class Keenable {
       target.toString(),
     );
     return toPage(data, url, requestId);
+  }
+
+  /**
+   * Read up to 100 pages in one call with `POST /v1/fetch`.
+   *
+   * Pages are read in parallel. `results[i]` is the entry for `urls[i]`. A
+   * page that fails has its `error` set instead of throwing, and is not
+   * billed; the call throws only when it fails as a whole. Keyless calls take
+   * up to 20 URLs.
+   */
+  async fetchMany(
+    urls: string | readonly string[],
+    options: FetchManyOptions = {},
+  ): Promise<FetchResponse> {
+    const body = fetchManyBody(urls, options);
+    const { data, requestId } = await this.request("fetch", { method: "POST", body }, options);
+    return toFetchResponse(data, requestId);
+  }
+
+  /**
+   * Like `fetchMany()`, but yields each page as soon as it is read.
+   *
+   * Sends `Accept: application/x-ndjson`. Items arrive in the order pages
+   * finish; `item.index` is the page's position in `urls`. After the last
+   * item, `stream.summary` has the request id, warnings, usage and latency.
+   * Billing, limits and the deadline are the same as `fetchMany()`.
+   *
+   * Arguments are checked now; the request is sent when iteration starts. A
+   * failure of the whole call before any page throws as in `fetchMany()` (and
+   * is retried the same way); one after pages were sent throws a
+   * `KeenableAPIError` after them, and a stream cut off before its final line
+   * throws a `KeenableConnectionError`. `timeoutMs` is how long to wait for
+   * each next piece of the reply.
+   *
+   * ```ts
+   * const stream = keenable.fetchManyStream(urls);
+   * for await (const { index, result } of stream) console.log(index, result.title);
+   * console.log(stream.summary?.requestId);
+   * ```
+   */
+  fetchManyStream(urls: string | readonly string[], options: FetchManyOptions = {}): FetchStream {
+    const body = fetchManyBody(urls, options);
+    const holder: { reader?: NdjsonReader } = {};
+    const items = () => this.stream(body, options, holder);
+    return {
+      get summary() {
+        return holder.reader?.summary;
+      },
+      [Symbol.asyncIterator]: () => items()[Symbol.asyncIterator](),
+    };
+  }
+
+  /** Open the NDJSON reply, retrying until it is open, then read it line by line. */
+  private async *stream(
+    body: string,
+    options: RequestOptions,
+    holder: { reader?: NdjsonReader },
+  ): AsyncGenerator<FetchStreamItem, void, undefined> {
+    const timeoutMs =
+      options.timeoutMs === undefined
+        ? this.timeoutMs
+        : positiveTimeout("timeoutMs", options.timeoutMs);
+    const maxRetries =
+      options.maxRetries === undefined
+        ? this.maxRetries
+        : nonNegativeInteger("maxRetries", options.maxRetries);
+    const headers = this.headers(checkHeaders("headers", options.headers ?? {}), true);
+    for (const name of Object.keys(headers)) {
+      if (name.toLowerCase() === "accept") delete headers[name];
+    }
+    headers.Accept = NDJSON;
+    const callerSignal = options.signal;
+    if (callerSignal?.aborted) throw callerSignal.reason;
+    let controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let timedOut = false;
+    const arm = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, Math.min(timeoutMs, MAX_TIMER_MS));
+    };
+    const onAbort = () => controller.abort();
+    callerSignal?.addEventListener("abort", onAbort);
+    const failure = (cause: unknown): unknown => {
+      if (callerSignal?.aborted) return callerSignal.reason ?? cause;
+      if (timedOut) {
+        return new KeenableTimeoutError(`the Keenable API sent nothing for ${timeoutMs} ms`);
+      }
+      if (cause instanceof KeenableAPIError || cause instanceof KeenableConnectionError) return cause;
+      return new KeenableConnectionError(`could not reach the Keenable API: ${String(cause)}`);
+    };
+    try {
+      let response: Response;
+      for (let retry = 0; ; retry += 1) {
+        try {
+          controller = new AbortController();
+          if (callerSignal?.aborted) controller.abort();
+          arm();
+          response = await this.fetchImpl(this.url("fetch"), {
+            method: "POST",
+            body,
+            headers,
+            redirect: "manual",
+            signal: controller.signal,
+          });
+          await checkStream(response);
+          break;
+        } catch (cause) {
+          const error = failure(cause);
+          timedOut = false;
+          const delay = retry < maxRetries ? retryDelayMs(error, retry) : undefined;
+          if (delay === undefined) throw error;
+          clearTimeout(timer);
+          await sleep(delay, callerSignal);
+        }
+      }
+      const reader = new NdjsonReader(
+        response.status,
+        nonEmpty(response.headers.get("X-Request-Id")?.trim()),
+      );
+      holder.reader = reader;
+      if (response.body === null) {
+        yield* reader.end();
+        return;
+      }
+      const chunks = response.body.getReader();
+      try {
+        for (;;) {
+          arm();
+          let next: ReadableStreamReadResult<Uint8Array>;
+          try {
+            next = await chunks.read();
+          } catch (cause) {
+            throw failure(cause);
+          }
+          if (next.done) break;
+          yield* reader.feed(next.value);
+          if (reader.summary !== undefined) break;
+        }
+        clearTimeout(timer);
+        yield* reader.end();
+      } finally {
+        chunks.cancel().catch(() => undefined);
+      }
+    } finally {
+      clearTimeout(timer);
+      callerSignal?.removeEventListener("abort", onAbort);
+      controller.abort();
+    }
   }
 
   /**

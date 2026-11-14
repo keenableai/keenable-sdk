@@ -227,6 +227,80 @@ function fetchParams(): Obj[] {
   });
 }
 
+const FETCH_MANY_OPTIONS = new Set([
+  "text",
+  "max_chars",
+  "offset",
+  "include_sections",
+  "exclude_sections",
+  "verbosity",
+  "summary",
+  "output_schema",
+  "highlights",
+  "highlights_query",
+  "highlights_max_chars",
+  "links",
+  "images",
+  "subpages",
+  "subpages_target",
+  "max_age",
+  "cache_only",
+  "page_timeout",
+  "session_id",
+  "end_user_id",
+]);
+
+function fetchManyBodies(): Obj[] {
+  return (load("fetch-many.json").body as Obj[]).map((item) => {
+    const name = item.name as string;
+    for (const key of Object.keys(item.options as Obj)) {
+      if (!FETCH_MANY_OPTIONS.has(key)) fail(`fetch-many body ${name}: unknown option ${key}`);
+    }
+    return {
+      name,
+      urls: item.urls as Json,
+      options: item.options as Obj,
+      sent: item.sent as Obj,
+      skip: (item.skip as Obj | undefined) ?? {},
+    };
+  });
+}
+
+function fetchManyResponses(): Obj[] {
+  return (load("fetch-many.json").responses as Obj[]).map((item) => {
+    const name = item.name as string;
+    return {
+      name,
+      urls: item.urls as Json,
+      status: (item.status as number | undefined) ?? 200,
+      headers: headers(item),
+      body: bodyText(item, `fetch-many responses ${name}`),
+      expect: item.expect as Obj,
+      skip: (item.skip as Obj | undefined) ?? {},
+    };
+  });
+}
+
+function fetchManyStreams(): Obj[] {
+  return (load("fetch-many.json").stream as Obj[]).map((item) => {
+    const name = item.name as string;
+    const chunks = item.chunks as Json;
+    if (!Array.isArray(chunks) || chunks.length === 0 || !chunks.every((chunk) => typeof chunk === "string")) {
+      fail(`fetch-many stream ${name}: "chunks" must be a non-empty list of strings`);
+    }
+    const expect = item.expect as Obj;
+    if (("summary" in expect) === ("error" in expect)) fail(`fetch-many stream ${name}: expect exactly one of "summary" and "error"`);
+    return {
+      name,
+      urls: item.urls as Json,
+      headers: headers(item),
+      chunks,
+      expect,
+      skip: (item.skip as Obj | undefined) ?? {},
+    };
+  });
+}
+
 function toolCalls(): Obj[] {
   return (load("tool-call.json").cases as Obj[]).map((item) => {
     const name = item.name as string;
@@ -256,6 +330,9 @@ export function buildConformance(): string {
     search_body: searchBodies(),
     fetch_params: fetchParams(),
     tool_call: toolCalls(),
+    fetch_many_body: fetchManyBodies(),
+    fetch_many_responses: fetchManyResponses(),
+    fetch_many_stream: fetchManyStreams(),
   };
   for (const [section, cases] of Object.entries(fixture)) {
     if (Array.isArray(cases)) uniqueNames(section, cases as { name: string }[]);

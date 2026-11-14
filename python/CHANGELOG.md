@@ -5,6 +5,33 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
+- `fetch_many()` and `fetch_many_stream()` take `include_sections`,
+  `exclude_sections` and `verbosity` to pick which parts of each page the text
+  holds (`banner`, `header`, `navigation`, `metadata`, `body`, `sidebar`,
+  `footer`). Sending both `include_sections` and `exclude_sections` raises
+  `KeenableInvalidRequestError` before sending.
+- `fetch_many()` and `fetch_many_stream()` take `cache_only=True` to return
+  only stored copies and never contact the site; a page with no stored copy
+  gets the error `not_cached` and is not billed. `cache_only=True` with
+  `max_age="0s"` raises `KeenableInvalidRequestError` before sending.
+  `subpages` now goes up to 100 per URL.
+- `fetch_many()` (sync and async) reads up to 100 pages in one call with
+  `POST /v1/fetch`: per-page `text` (with `max_chars` and `offset` for paging),
+  a `summary` with an optional `output_schema` for JSON in your shape,
+  `highlights`, `links` and `images`, `max_age` and `page_timeout`, plus
+  `session_id` and `end_user_id`. `results[i]` is the entry
+  for `urls[i]`; a failed page has its `error` set, not an exception. Keyless calls take up to 20 URLs.
+  Preview: it works once `POST /v1/fetch` is enabled for your organization.
+- `fetch()` keeps working and still calls `GET /v1/fetch`; it is deprecated in
+  favour of `fetch_many()` and will be removed after the API retires
+  `GET /v1/fetch` (announced with 90 days' notice).
+- `fetch_many()` takes `subpages` and `subpages_target` to also read
+  same-site pages linked from each URL; each result has `subpages`.
+- `fetch_many_stream()` (sync and async) yields each page as a
+  `FetchStreamItem(index, result)` as soon as it is read, over
+  `Accept: application/x-ndjson`; `stream.summary` holds the request id,
+  warnings, usage and latency after the last item.
+
 ## 0.1.5
 
 ## 0.1.4

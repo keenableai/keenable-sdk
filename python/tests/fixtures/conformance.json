@@ -5672,5 +5672,1395 @@
       },
       "invalid": false
     }
+  ],
+  "fetch_many_body": [
+    {
+      "name": "one url, no options",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {},
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": true
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "several urls in order",
+      "urls": [
+        "https://a.example/",
+        "https://b.example/x",
+        "https://a.example/"
+      ],
+      "options": {},
+      "sent": {
+        "urls": [
+          "https://a.example/",
+          "https://b.example/x",
+          "https://a.example/"
+        ],
+        "content": {
+          "text": true
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "a lone url string is wrapped",
+      "urls": "https://example.com/",
+      "options": {},
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": true
+        }
+      },
+      "skip": {
+        "go": "FetchMany takes a []string"
+      }
+    },
+    {
+      "name": "text limits",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "max_chars": 20000,
+        "offset": 20000
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": {
+            "max_chars": 20000,
+            "offset": 20000
+          }
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "max_chars alone",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "max_chars": 500
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": {
+            "max_chars": 500
+          }
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "text off with a summary",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "text": false,
+        "summary": "List the prices"
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "summary": {
+            "instructions": "List the prices"
+          }
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "text and a summary together",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "summary": "List the prices"
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": true,
+          "summary": {
+            "instructions": "List the prices"
+          }
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "a summary with an output schema",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "text": false,
+        "summary": "Card fees",
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "pct": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "summary": {
+            "instructions": "Card fees",
+            "output_schema": {
+              "type": "object",
+              "properties": {
+                "pct": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "an output schema alone is sent for the API to reject",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "text": false,
+        "output_schema": {
+          "type": "object"
+        }
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "summary": {
+            "output_schema": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "highlights with defaults",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "text": false,
+        "highlights": true
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "highlights": true
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "highlights with a query and a budget",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "text": false,
+        "highlights_query": "pricing",
+        "highlights_max_chars": 3000
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "highlights": {
+            "query": "pricing",
+            "max_chars": 3000
+          }
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "links and images",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "links": 50,
+        "images": 5
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": true,
+          "links": 50,
+          "images": 5
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "freshness and timeout",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "max_age": "1d",
+        "page_timeout": "15s"
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": true
+        },
+        "max_age": "1d",
+        "timeout": "15s"
+      },
+      "skip": {}
+    },
+    {
+      "name": "always live",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "max_age": "0s"
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": true
+        },
+        "max_age": "0s"
+      },
+      "skip": {}
+    },
+    {
+      "name": "session and end user",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "session_id": "chat-42",
+        "end_user_id": "user_7"
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": true
+        },
+        "session_id": "chat-42",
+        "end_user_id": "user_7"
+      },
+      "skip": {}
+    },
+    {
+      "name": "empty strings are unset",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "summary": "",
+        "highlights_query": "",
+        "max_age": "",
+        "page_timeout": "",
+        "session_id": "",
+        "end_user_id": ""
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": true
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "zero links is sent",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "links": 0
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": true,
+          "links": 0
+        }
+      },
+      "skip": {
+        "go": "FetchManyOptions.Links is an int whose zero means unset"
+      }
+    },
+    {
+      "name": "every option",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "max_chars": 1000,
+        "offset": 10,
+        "summary": "S",
+        "output_schema": {
+          "type": "object"
+        },
+        "highlights_query": "q",
+        "highlights_max_chars": 200,
+        "links": 3,
+        "images": 2,
+        "max_age": "2h",
+        "page_timeout": "30s",
+        "session_id": "s",
+        "end_user_id": "u"
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": {
+            "max_chars": 1000,
+            "offset": 10
+          },
+          "summary": {
+            "instructions": "S",
+            "output_schema": {
+              "type": "object"
+            }
+          },
+          "highlights": {
+            "query": "q",
+            "max_chars": 200
+          },
+          "links": 3,
+          "images": 2
+        },
+        "max_age": "2h",
+        "timeout": "30s",
+        "session_id": "s",
+        "end_user_id": "u"
+      },
+      "skip": {}
+    },
+    {
+      "name": "subpages with a count",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "subpages": 5
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": true
+        },
+        "subpages": {
+          "max": 5
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "subpages with target words",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "subpages": 3,
+        "subpages_target": [
+          "pricing",
+          "docs"
+        ]
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": true
+        },
+        "subpages": {
+          "max": 3,
+          "target": [
+            "pricing",
+            "docs"
+          ]
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "subpages with one target word",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "subpages": 3,
+        "subpages_target": "pricing"
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": true
+        },
+        "subpages": {
+          "max": 3,
+          "target": "pricing"
+        }
+      },
+      "skip": {
+        "go": "SubpagesTarget is a []string"
+      }
+    },
+    {
+      "name": "subpages target alone is sent for the API to reject",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "subpages_target": [
+          "pricing"
+        ]
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": true
+        },
+        "subpages": {
+          "target": [
+            "pricing"
+          ]
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "stored copies only",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "cache_only": true
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": true
+        },
+        "cache_only": true
+      },
+      "skip": {}
+    },
+    {
+      "name": "stored copies only, no older than a day",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "cache_only": true,
+        "max_age": "1d"
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": true
+        },
+        "max_age": "1d",
+        "cache_only": true
+      },
+      "skip": {}
+    },
+    {
+      "name": "subpages up to 100",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "subpages": 100
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": true
+        },
+        "subpages": {
+          "max": 100
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "only the navigation and the body",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "include_sections": [
+          "navigation",
+          "body"
+        ]
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": {
+            "include_sections": [
+              "navigation",
+              "body"
+            ]
+          }
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "the whole page but its footer",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "exclude_sections": [
+          "footer"
+        ],
+        "verbosity": "full",
+        "max_chars": 5000
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "text": {
+            "max_chars": 5000,
+            "exclude_sections": [
+              "footer"
+            ],
+            "verbosity": "full"
+          }
+        }
+      },
+      "skip": {}
+    }
+  ],
+  "fetch_many_responses": [
+    {
+      "name": "a full response",
+      "urls": [
+        "https://e.com/a",
+        "https://e.com/b"
+      ],
+      "status": 200,
+      "headers": {},
+      "body": "{\"request_id\":\"rid\",\"latency_ms\":840,\"session_id\":\"s1\",\"results\":[{\"url\":\"https://e.com/a\",\"title\":\"A\",\"published_at\":\"2024-01-01T00:00:00Z\",\"image\":\"https://e.com/i.png\",\"favicon\":\"https://e.com/f.ico\",\"text\":\"hello\",\"total_chars\":11,\"next_offset\":5,\"highlights\":[\"h1\",\"h2\"],\"links\":[{\"url\":\"https://e.com/x\",\"text\":\"X\"}],\"images\":[{\"url\":\"https://e.com/i.png\",\"alt\":\"I\"}]},{\"url\":\"https://e.com/b\",\"error\":{\"code\":\"page_not_found\",\"message\":\"404\",\"retryable\":false,\"http_status\":404}}],\"warnings\":[{\"code\":\"duplicate_url\",\"path\":\"/urls/2\",\"message\":\"dup\"}]}",
+      "expect": {
+        "request_id": "rid",
+        "latency_ms": 840,
+        "session_id": "s1",
+        "results": [
+          {
+            "url": "https://e.com/a",
+            "title": "A",
+            "published_at": "2024-01-01T00:00:00Z",
+            "image": "https://e.com/i.png",
+            "favicon": "https://e.com/f.ico",
+            "text": "hello",
+            "next_offset": 5,
+            "summary": null,
+            "highlights": [
+              "h1",
+              "h2"
+            ],
+            "links": [
+              {
+                "url": "https://e.com/x",
+                "text": "X"
+              }
+            ],
+            "images": [
+              {
+                "url": "https://e.com/i.png",
+                "alt": "I"
+              }
+            ],
+            "error": null,
+            "subpages": []
+          },
+          {
+            "url": "https://e.com/b",
+            "title": null,
+            "published_at": null,
+            "image": null,
+            "favicon": null,
+            "text": null,
+            "next_offset": null,
+            "summary": null,
+            "highlights": [],
+            "links": [],
+            "images": [],
+            "error": {
+              "code": "page_not_found",
+              "message": "404",
+              "retryable": false,
+              "http_status": 404
+            },
+            "subpages": []
+          }
+        ],
+        "warnings": [
+          {
+            "code": "duplicate_url",
+            "path": "/urls/2",
+            "message": "dup"
+          }
+        ]
+      },
+      "skip": {}
+    },
+    {
+      "name": "an empty object",
+      "urls": [
+        "https://e.com/a"
+      ],
+      "status": 200,
+      "headers": {},
+      "body": "{}",
+      "expect": {
+        "request_id": null,
+        "latency_ms": null,
+        "session_id": null,
+        "results": [],
+        "warnings": []
+      },
+      "skip": {}
+    },
+    {
+      "name": "a text summary",
+      "urls": [
+        "https://e.com/a"
+      ],
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[{\"url\":\"https://e.com/a\",\"summary\":\"Two tiers\"}]}",
+      "expect": {
+        "request_id": null,
+        "latency_ms": null,
+        "session_id": null,
+        "results": [
+          {
+            "url": "https://e.com/a",
+            "title": null,
+            "published_at": null,
+            "image": null,
+            "favicon": null,
+            "text": null,
+            "next_offset": null,
+            "summary": "Two tiers",
+            "highlights": [],
+            "links": [],
+            "images": [],
+            "error": null,
+            "subpages": []
+          }
+        ],
+        "warnings": []
+      },
+      "skip": {}
+    },
+    {
+      "name": "a structured summary",
+      "urls": [
+        "https://e.com/a"
+      ],
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[{\"url\":\"https://e.com/a\",\"summary\":{\"pct\":2.9,\"fixed\":0.3}}]}",
+      "expect": {
+        "request_id": null,
+        "latency_ms": null,
+        "session_id": null,
+        "results": [
+          {
+            "url": "https://e.com/a",
+            "title": null,
+            "published_at": null,
+            "image": null,
+            "favicon": null,
+            "text": null,
+            "next_offset": null,
+            "summary": {
+              "pct": 2.9,
+              "fixed": 0.3
+            },
+            "highlights": [],
+            "links": [],
+            "images": [],
+            "error": null,
+            "subpages": []
+          }
+        ],
+        "warnings": []
+      },
+      "skip": {}
+    },
+    {
+      "name": "mistyped fields",
+      "urls": [
+        "https://e.com/a"
+      ],
+      "status": 200,
+      "headers": {},
+      "body": "{\"latency_ms\":-1,\"session_id\":\" \",\"results\":[1,{\"url\":5,\"title\":3,\"text\":[\"x\"],\"total_chars\":1.5,\"next_offset\":\"5\",\"summary\":7,\"highlights\":[\"ok\",3,null],\"links\":[{\"url\":1,\"text\":2},\"x\"],\"images\":[{\"url\":\"u\"}],\"error\":{\"code\":4,\"retryable\":\"yes\",\"http_status\":\"404\"}},{\"url\":\"https://e.com/c\",\"error\":\"x\"}],\"warnings\":\"none\"}",
+      "expect": {
+        "request_id": null,
+        "latency_ms": null,
+        "session_id": null,
+        "results": [
+          {
+            "url": "",
+            "title": null,
+            "published_at": null,
+            "image": null,
+            "favicon": null,
+            "text": null,
+            "next_offset": null,
+            "summary": null,
+            "highlights": [
+              "ok"
+            ],
+            "links": [
+              {
+                "url": "",
+                "text": null
+              }
+            ],
+            "images": [
+              {
+                "url": "u",
+                "alt": null
+              }
+            ],
+            "error": {
+              "code": "",
+              "message": "",
+              "retryable": false,
+              "http_status": null
+            },
+            "subpages": []
+          },
+          {
+            "url": "https://e.com/c",
+            "title": null,
+            "published_at": null,
+            "image": null,
+            "favicon": null,
+            "text": null,
+            "next_offset": null,
+            "summary": null,
+            "highlights": [],
+            "links": [],
+            "images": [],
+            "error": null,
+            "subpages": []
+          }
+        ],
+        "warnings": []
+      },
+      "skip": {}
+    },
+    {
+      "name": "the header's request id",
+      "urls": [
+        "https://e.com/a"
+      ],
+      "status": 200,
+      "headers": {
+        "X-Request-Id": " hdr "
+      },
+      "body": "{}",
+      "expect": {
+        "request_id": "hdr",
+        "latency_ms": null,
+        "session_id": null,
+        "results": [],
+        "warnings": []
+      },
+      "skip": {}
+    },
+    {
+      "name": "subpages, with a failed one",
+      "urls": [
+        "https://e.com/a"
+      ],
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[{\"url\":\"https://e.com/a\",\"text\":\"root\",\"subpages\":[{\"url\":\"https://e.com/a/p\",\"title\":\"P\",\"text\":\"sub\"},{\"url\":\"https://e.com/a/q\",\"error\":{\"code\":\"target_timeout\",\"message\":\"slow\",\"retryable\":true}},7]}]}",
+      "expect": {
+        "request_id": null,
+        "latency_ms": null,
+        "session_id": null,
+        "results": [
+          {
+            "url": "https://e.com/a",
+            "title": null,
+            "published_at": null,
+            "image": null,
+            "favicon": null,
+            "text": "root",
+            "next_offset": null,
+            "summary": null,
+            "highlights": [],
+            "links": [],
+            "images": [],
+            "error": null,
+            "subpages": [
+              {
+                "url": "https://e.com/a/p",
+                "title": "P",
+                "published_at": null,
+                "image": null,
+                "favicon": null,
+                "text": "sub",
+                "next_offset": null,
+                "summary": null,
+                "highlights": [],
+                "links": [],
+                "images": [],
+                "error": null,
+                "subpages": []
+              },
+              {
+                "url": "https://e.com/a/q",
+                "title": null,
+                "published_at": null,
+                "image": null,
+                "favicon": null,
+                "text": null,
+                "next_offset": null,
+                "summary": null,
+                "highlights": [],
+                "links": [],
+                "images": [],
+                "error": {
+                  "code": "target_timeout",
+                  "message": "slow",
+                  "retryable": true,
+                  "http_status": null
+                },
+                "subpages": []
+              }
+            ]
+          }
+        ],
+        "warnings": []
+      },
+      "skip": {}
+    },
+    {
+      "name": "subpages that are not a list",
+      "urls": [
+        "https://e.com/a"
+      ],
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[{\"url\":\"https://e.com/a\",\"subpages\":{\"url\":\"x\"}}]}",
+      "expect": {
+        "request_id": null,
+        "latency_ms": null,
+        "session_id": null,
+        "results": [
+          {
+            "url": "https://e.com/a",
+            "title": null,
+            "published_at": null,
+            "image": null,
+            "favicon": null,
+            "text": null,
+            "next_offset": null,
+            "summary": null,
+            "highlights": [],
+            "links": [],
+            "images": [],
+            "error": null,
+            "subpages": []
+          }
+        ],
+        "warnings": []
+      },
+      "skip": {}
+    }
+  ],
+  "fetch_many_stream": [
+    {
+      "name": "lines in arrival order, then the summary",
+      "urls": [
+        "https://e.com/a",
+        "https://e.com/b"
+      ],
+      "headers": {},
+      "chunks": [
+        "{\"index\": 1, \"url\": \"https://e.com/b\", \"error\": {\"code\": \"page_not_found\", \"message\": \"404\", \"retryable\": false, \"http_status\": 404}}\n{\"index\": 0, \"url\": \"https://e.com/a\", \"title\": \"A\", \"text\": \"hello\", \"next_offset\": 5}\n",
+        "{\"done\": true, \"request_id\": \"rid\", \"latency_ms\": 900, \"session_id\": \"s1\", \"warnings\": [{\"code\": \"duplicate_url\", \"path\": \"/urls/2\", \"message\": \"dup\"}], \"usage\": {\"cost_usd\": 0.001, \"billed_from\": \"balance\"}}\n"
+      ],
+      "expect": {
+        "items": [
+          {
+            "index": 1,
+            "result": {
+              "url": "https://e.com/b",
+              "title": null,
+              "published_at": null,
+              "image": null,
+              "favicon": null,
+              "text": null,
+              "next_offset": null,
+              "summary": null,
+              "highlights": [],
+              "links": [],
+              "images": [],
+              "error": {
+                "code": "page_not_found",
+                "message": "404",
+                "retryable": false,
+                "http_status": 404
+              },
+              "subpages": []
+            }
+          },
+          {
+            "index": 0,
+            "result": {
+              "url": "https://e.com/a",
+              "title": "A",
+              "published_at": null,
+              "image": null,
+              "favicon": null,
+              "text": "hello",
+              "next_offset": 5,
+              "summary": null,
+              "highlights": [],
+              "links": [],
+              "images": [],
+              "error": null,
+              "subpages": []
+            }
+          }
+        ],
+        "summary": {
+          "request_id": "rid",
+          "latency_ms": 900,
+          "session_id": "s1",
+          "warnings": [
+            {
+              "code": "duplicate_url",
+              "path": "/urls/2",
+              "message": "dup"
+            }
+          ],
+          "usage": {
+            "cost_usd": 0.001,
+            "billed_from": "balance"
+          }
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "a line split across chunks",
+      "urls": [
+        "https://e.com/a",
+        "https://e.com/b"
+      ],
+      "headers": {},
+      "chunks": [
+        "{\"index",
+        "\": 0, \"url\": \"https://e.com/a\", \"title\": \"A\", \"text\": \"hello\", \"next_offset\": 5}\n{\"index\": 1, \"url\": ",
+        "\"https://e.com/b\", \"error\": {\"code\": \"page_not_found\", \"message\": \"404\", \"retryable\": false, \"http_status\": 404}}\n{\"d",
+        "one\": true, \"request_id\": \"rid\", \"latency_ms\": 900, \"session_id\": \"s1\", \"warnings\": [{\"code\": \"duplicate_url\", \"path\": \"/urls/2\", \"message\": \"dup\"}], \"usage\": {\"cost_usd\": 0.001, \"billed_from\": \"balance\"}}\n"
+      ],
+      "expect": {
+        "items": [
+          {
+            "index": 0,
+            "result": {
+              "url": "https://e.com/a",
+              "title": "A",
+              "published_at": null,
+              "image": null,
+              "favicon": null,
+              "text": "hello",
+              "next_offset": 5,
+              "summary": null,
+              "highlights": [],
+              "links": [],
+              "images": [],
+              "error": null,
+              "subpages": []
+            }
+          },
+          {
+            "index": 1,
+            "result": {
+              "url": "https://e.com/b",
+              "title": null,
+              "published_at": null,
+              "image": null,
+              "favicon": null,
+              "text": null,
+              "next_offset": null,
+              "summary": null,
+              "highlights": [],
+              "links": [],
+              "images": [],
+              "error": {
+                "code": "page_not_found",
+                "message": "404",
+                "retryable": false,
+                "http_status": 404
+              },
+              "subpages": []
+            }
+          }
+        ],
+        "summary": {
+          "request_id": "rid",
+          "latency_ms": 900,
+          "session_id": "s1",
+          "warnings": [
+            {
+              "code": "duplicate_url",
+              "path": "/urls/2",
+              "message": "dup"
+            }
+          ],
+          "usage": {
+            "cost_usd": 0.001,
+            "billed_from": "balance"
+          }
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "blank lines and CRLF are ignored, no trailing newline",
+      "urls": [
+        "https://e.com/a"
+      ],
+      "headers": {},
+      "chunks": [
+        "\n{\"index\": 0, \"url\": \"https://e.com/a\", \"title\": \"A\", \"text\": \"hello\", \"next_offset\": 5}\r\n\r\n",
+        "{\"done\": true, \"request_id\": \"rid\", \"latency_ms\": 900, \"session_id\": \"s1\", \"warnings\": [{\"code\": \"duplicate_url\", \"path\": \"/urls/2\", \"message\": \"dup\"}], \"usage\": {\"cost_usd\": 0.001, \"billed_from\": \"balance\"}}"
+      ],
+      "expect": {
+        "items": [
+          {
+            "index": 0,
+            "result": {
+              "url": "https://e.com/a",
+              "title": "A",
+              "published_at": null,
+              "image": null,
+              "favicon": null,
+              "text": "hello",
+              "next_offset": 5,
+              "summary": null,
+              "highlights": [],
+              "links": [],
+              "images": [],
+              "error": null,
+              "subpages": []
+            }
+          }
+        ],
+        "summary": {
+          "request_id": "rid",
+          "latency_ms": 900,
+          "session_id": "s1",
+          "warnings": [
+            {
+              "code": "duplicate_url",
+              "path": "/urls/2",
+              "message": "dup"
+            }
+          ],
+          "usage": {
+            "cost_usd": 0.001,
+            "billed_from": "balance"
+          }
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "a minimal final line takes the header's request id",
+      "urls": [
+        "https://e.com/a"
+      ],
+      "headers": {
+        "X-Request-Id": " hdr "
+      },
+      "chunks": [
+        "{\"index\": 0, \"url\": \"https://e.com/a\", \"title\": \"A\", \"text\": \"hello\", \"next_offset\": 5}\n",
+        "{\"done\": true}\n"
+      ],
+      "expect": {
+        "items": [
+          {
+            "index": 0,
+            "result": {
+              "url": "https://e.com/a",
+              "title": "A",
+              "published_at": null,
+              "image": null,
+              "favicon": null,
+              "text": "hello",
+              "next_offset": 5,
+              "summary": null,
+              "highlights": [],
+              "links": [],
+              "images": [],
+              "error": null,
+              "subpages": []
+            }
+          }
+        ],
+        "summary": {
+          "request_id": "hdr",
+          "latency_ms": null,
+          "session_id": null,
+          "warnings": [],
+          "usage": null
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "an item without an integer index is skipped",
+      "urls": [
+        "https://e.com/a"
+      ],
+      "headers": {},
+      "chunks": [
+        "{\"index\": \"0\", \"url\": \"https://e.com/a\"}\n{\"url\": \"https://e.com/a\"}\n{\"index\": 0, \"url\": \"https://e.com/a\", \"title\": \"A\", \"text\": \"hello\", \"next_offset\": 5}\n{\"done\": true, \"request_id\": \"rid\", \"latency_ms\": 900, \"session_id\": \"s1\", \"warnings\": [{\"code\": \"duplicate_url\", \"path\": \"/urls/2\", \"message\": \"dup\"}], \"usage\": {\"cost_usd\": 0.001, \"billed_from\": \"balance\"}}\n"
+      ],
+      "expect": {
+        "items": [
+          {
+            "index": 0,
+            "result": {
+              "url": "https://e.com/a",
+              "title": "A",
+              "published_at": null,
+              "image": null,
+              "favicon": null,
+              "text": "hello",
+              "next_offset": 5,
+              "summary": null,
+              "highlights": [],
+              "links": [],
+              "images": [],
+              "error": null,
+              "subpages": []
+            }
+          }
+        ],
+        "summary": {
+          "request_id": "rid",
+          "latency_ms": 900,
+          "session_id": "s1",
+          "warnings": [
+            {
+              "code": "duplicate_url",
+              "path": "/urls/2",
+              "message": "dup"
+            }
+          ],
+          "usage": {
+            "cost_usd": 0.001,
+            "billed_from": "balance"
+          }
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "a final line with an error raises after the items",
+      "urls": [
+        "https://e.com/a",
+        "https://e.com/b"
+      ],
+      "headers": {},
+      "chunks": [
+        "{\"index\": 0, \"url\": \"https://e.com/a\", \"title\": \"A\", \"text\": \"hello\", \"next_offset\": 5}\n",
+        "{\"done\": true, \"request_id\": \"rid\", \"error\": {\"code\": \"insufficient_credits\", \"message\": \"Out of credits\", \"retryable\": false}, \"latency_ms\": 10}\n"
+      ],
+      "expect": {
+        "items": [
+          {
+            "index": 0,
+            "result": {
+              "url": "https://e.com/a",
+              "title": "A",
+              "published_at": null,
+              "image": null,
+              "favicon": null,
+              "text": "hello",
+              "next_offset": 5,
+              "summary": null,
+              "highlights": [],
+              "links": [],
+              "images": [],
+              "error": null,
+              "subpages": []
+            }
+          }
+        ],
+        "error": {
+          "kind": "api",
+          "code": "insufficient_credits",
+          "message": "Out of credits",
+          "retryable": false,
+          "request_id": "rid"
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "a stream that ends without the final line",
+      "urls": [
+        "https://e.com/a",
+        "https://e.com/b"
+      ],
+      "headers": {},
+      "chunks": [
+        "{\"index\": 0, \"url\": \"https://e.com/a\", \"title\": \"A\", \"text\": \"hello\", \"next_offset\": 5}\n"
+      ],
+      "expect": {
+        "items": [
+          {
+            "index": 0,
+            "result": {
+              "url": "https://e.com/a",
+              "title": "A",
+              "published_at": null,
+              "image": null,
+              "favicon": null,
+              "text": "hello",
+              "next_offset": 5,
+              "summary": null,
+              "highlights": [],
+              "links": [],
+              "images": [],
+              "error": null,
+              "subpages": []
+            }
+          }
+        ],
+        "error": {
+          "kind": "connection"
+        }
+      },
+      "skip": {}
+    },
+    {
+      "name": "a line that is not JSON",
+      "urls": [
+        "https://e.com/a"
+      ],
+      "headers": {},
+      "chunks": [
+        "{\"index\": 0, \"url\": \"https://e.com/a\", \"title\": \"A\", \"text\": \"hello\", \"next_offset\": 5}\n",
+        "<html>\n"
+      ],
+      "expect": {
+        "items": [
+          {
+            "index": 0,
+            "result": {
+              "url": "https://e.com/a",
+              "title": "A",
+              "published_at": null,
+              "image": null,
+              "favicon": null,
+              "text": "hello",
+              "next_offset": 5,
+              "summary": null,
+              "highlights": [],
+              "links": [],
+              "images": [],
+              "error": null,
+              "subpages": []
+            }
+          }
+        ],
+        "error": {
+          "kind": "api"
+        }
+      },
+      "skip": {}
+    }
   ]
 }
