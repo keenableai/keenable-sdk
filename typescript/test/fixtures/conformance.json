@@ -6100,7 +6100,7 @@
       ],
       "status": 200,
       "headers": {},
-      "body": "{\"request_id\":\"rid\",\"latency_ms\":840,\"session_id\":\"s1\",\"results\":[{\"url\":\"https://e.com/a\",\"title\":\"A\",\"published_at\":\"2024-01-01T00:00:00Z\",\"image\":\"https://e.com/i.png\",\"favicon\":\"https://e.com/f.ico\",\"text\":\"hello\",\"total_chars\":11,\"next_offset\":5,\"highlights\":[\"h1\",\"h2\"],\"links\":[{\"url\":\"https://e.com/x\",\"text\":\"X\"}],\"images\":[{\"url\":\"https://e.com/i.png\",\"alt\":\"I\"}]}],\"errors\":[{\"url\":\"https://e.com/b\",\"code\":\"page_not_found\",\"message\":\"404\",\"retryable\":false,\"http_status\":404}],\"warnings\":[{\"code\":\"duplicate_url\",\"path\":\"/urls/2\",\"message\":\"dup\"}]}",
+      "body": "{\"request_id\":\"rid\",\"latency_ms\":840,\"session_id\":\"s1\",\"results\":[{\"url\":\"https://e.com/a\",\"title\":\"A\",\"published_at\":\"2024-01-01T00:00:00Z\",\"image\":\"https://e.com/i.png\",\"favicon\":\"https://e.com/f.ico\",\"text\":\"hello\",\"total_chars\":11,\"next_offset\":5,\"highlights\":[\"h1\",\"h2\"],\"links\":[{\"url\":\"https://e.com/x\",\"text\":\"X\"}],\"images\":[{\"url\":\"https://e.com/i.png\",\"alt\":\"I\"}]},{\"url\":\"https://e.com/b\",\"error\":{\"code\":\"page_not_found\",\"message\":\"404\",\"retryable\":false,\"http_status\":404}}],\"warnings\":[{\"code\":\"duplicate_url\",\"path\":\"/urls/2\",\"message\":\"dup\"}]}",
       "expect": {
         "request_id": "rid",
         "latency_ms": 840,
@@ -6113,7 +6113,6 @@
             "image": "https://e.com/i.png",
             "favicon": "https://e.com/f.ico",
             "text": "hello",
-            "total_chars": 11,
             "next_offset": 5,
             "summary": null,
             "highlights": [
@@ -6131,16 +6130,27 @@
                 "url": "https://e.com/i.png",
                 "alt": "I"
               }
-            ]
-          }
-        ],
-        "errors": [
+            ],
+            "error": null
+          },
           {
             "url": "https://e.com/b",
-            "code": "page_not_found",
-            "message": "404",
-            "retryable": false,
-            "http_status": 404
+            "title": null,
+            "published_at": null,
+            "image": null,
+            "favicon": null,
+            "text": null,
+            "next_offset": null,
+            "summary": null,
+            "highlights": [],
+            "links": [],
+            "images": [],
+            "error": {
+              "code": "page_not_found",
+              "message": "404",
+              "retryable": false,
+              "http_status": 404
+            }
           }
         ],
         "warnings": [
@@ -6166,7 +6176,6 @@
         "latency_ms": null,
         "session_id": null,
         "results": [],
-        "errors": [],
         "warnings": []
       },
       "skip": {}
@@ -6191,15 +6200,14 @@
             "image": null,
             "favicon": null,
             "text": null,
-            "total_chars": null,
             "next_offset": null,
             "summary": "Two tiers",
             "highlights": [],
             "links": [],
-            "images": []
+            "images": [],
+            "error": null
           }
         ],
-        "errors": [],
         "warnings": []
       },
       "skip": {}
@@ -6224,7 +6232,6 @@
             "image": null,
             "favicon": null,
             "text": null,
-            "total_chars": null,
             "next_offset": null,
             "summary": {
               "pct": 2.9,
@@ -6232,10 +6239,10 @@
             },
             "highlights": [],
             "links": [],
-            "images": []
+            "images": [],
+            "error": null
           }
         ],
-        "errors": [],
         "warnings": []
       },
       "skip": {}
@@ -6247,7 +6254,7 @@
       ],
       "status": 200,
       "headers": {},
-      "body": "{\"latency_ms\":-1,\"session_id\":\" \",\"results\":[1,{\"url\":5,\"title\":3,\"text\":[\"x\"],\"total_chars\":1.5,\"next_offset\":\"5\",\"summary\":7,\"highlights\":[\"ok\",3,null],\"links\":[{\"url\":1,\"text\":2},\"x\"],\"images\":[{\"url\":\"u\"}]}],\"errors\":[{\"url\":null,\"code\":4,\"retryable\":\"yes\",\"http_status\":\"404\"}],\"warnings\":\"none\"}",
+      "body": "{\"latency_ms\":-1,\"session_id\":\" \",\"results\":[1,{\"url\":5,\"title\":3,\"text\":[\"x\"],\"total_chars\":1.5,\"next_offset\":\"5\",\"summary\":7,\"highlights\":[\"ok\",3,null],\"links\":[{\"url\":1,\"text\":2},\"x\"],\"images\":[{\"url\":\"u\"}],\"error\":{\"code\":4,\"retryable\":\"yes\",\"http_status\":\"404\"}},{\"url\":\"https://e.com/c\",\"error\":\"x\"}],\"warnings\":\"none\"}",
       "expect": {
         "request_id": null,
         "latency_ms": null,
@@ -6260,7 +6267,6 @@
             "image": null,
             "favicon": null,
             "text": null,
-            "total_chars": null,
             "next_offset": null,
             "summary": null,
             "highlights": [
@@ -6277,16 +6283,27 @@
                 "url": "u",
                 "alt": null
               }
-            ]
-          }
-        ],
-        "errors": [
+            ],
+            "error": {
+              "code": "",
+              "message": "",
+              "retryable": false,
+              "http_status": null
+            }
+          },
           {
-            "url": "",
-            "code": "",
-            "message": "",
-            "retryable": false,
-            "http_status": null
+            "url": "https://e.com/c",
+            "title": null,
+            "published_at": null,
+            "image": null,
+            "favicon": null,
+            "text": null,
+            "next_offset": null,
+            "summary": null,
+            "highlights": [],
+            "links": [],
+            "images": [],
+            "error": null
           }
         ],
         "warnings": []
@@ -6308,7 +6325,6 @@
         "latency_ms": null,
         "session_id": null,
         "results": [],
-        "errors": [],
         "warnings": []
       },
       "skip": {}

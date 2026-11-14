@@ -517,7 +517,11 @@ export interface FetchImage {
   readonly alt?: string;
 }
 
-/** One page `fetchMany()` read. Only what was asked for is filled. */
+/**
+ * The entry for one URL given to `fetchMany()`: `results[i]` is for `urls[i]`.
+ * Only what was asked for is filled. `error` is set when something asked for
+ * is missing; when the page could not be read, it is the only field besides `url`.
+ */
 export interface FetchResult {
   readonly url: string;
   readonly title?: string;
@@ -527,21 +531,20 @@ export interface FetchResult {
   readonly favicon?: string;
   /** The page as markdown, from `offset` up to `maxChars`. */
   readonly text?: string;
-  /** Length of the whole page text, so a cut is visible. */
-  readonly totalChars?: number;
-  /** Where to continue reading; undefined when the text ends here. */
+  /** Set only when the page has more text: call again with `offset` set to it. */
   readonly nextOffset?: number;
   /** The model's answer: a string, or an object matching `outputSchema`. */
   readonly summary?: string | Record<string, unknown>;
   readonly highlights: string[];
   readonly links: FetchLink[];
   readonly images: FetchImage[];
+  /** Why something asked for is missing; undefined when everything worked. */
+  readonly error?: FetchError;
   readonly raw: Record<string, unknown>;
 }
 
-/** A URL `fetchMany()` could not read. The call itself succeeded. */
+/** Why something asked for is missing for one URL. The call itself succeeded. */
 export interface FetchError {
-  readonly url: string;
   /** Why, such as `page_not_found` or `target_timeout`. */
   readonly code: string;
   readonly message: string;
@@ -558,11 +561,9 @@ export interface FetchWarning {
   readonly message: string;
 }
 
-/** What `fetchMany()` returns: pages read and pages that failed. */
+/** What `fetchMany()` returns: one entry per URL, in the order given. */
 export interface FetchResponse {
   readonly results: FetchResult[];
-  /** One entry per URL that failed. Empty when every URL was read. */
-  readonly errors: FetchError[];
   readonly warnings: FetchWarning[];
   /** The API's id for this request. Quote it when reporting a problem. */
   readonly requestId?: string;
@@ -583,7 +584,6 @@ function toFetchResult(data: Record<string, unknown>): FetchResult {
     image: nonEmpty(data.image),
     favicon: nonEmpty(data.favicon),
     text: nonEmpty(data.text),
-    totalChars: count(data.total_chars),
     nextOffset: count(data.next_offset),
     summary: isRecord(data.summary) ? data.summary : nonEmpty(data.summary),
     highlights: Array.isArray(data.highlights)
@@ -591,20 +591,24 @@ function toFetchResult(data: Record<string, unknown>): FetchResult {
       : [],
     links: objects(data.links).map((item) => ({ url: text(item.url), text: nonEmpty(item.text) })),
     images: objects(data.images).map((item) => ({ url: text(item.url), alt: nonEmpty(item.alt) })),
+    error: toFetchError(data.error),
     raw: data,
+  };
+}
+
+function toFetchError(value: unknown): FetchError | undefined {
+  if (!isRecord(value)) return undefined;
+  return {
+    code: text(value.code),
+    message: text(value.message),
+    retryable: value.retryable === true,
+    httpStatus: Number.isInteger(value.http_status) ? (value.http_status as number) : undefined,
   };
 }
 
 function toFetchResponse(data: Record<string, unknown>, requestId?: string): FetchResponse {
   return {
     results: objects(data.results).map(toFetchResult),
-    errors: objects(data.errors).map((item) => ({
-      url: text(item.url),
-      code: text(item.code),
-      message: text(item.message),
-      retryable: item.retryable === true,
-      httpStatus: Number.isInteger(item.http_status) ? (item.http_status as number) : undefined,
-    })),
     warnings: objects(data.warnings).map((item) => ({
       code: text(item.code),
       path: text(item.path),

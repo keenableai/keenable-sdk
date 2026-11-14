@@ -1238,9 +1238,10 @@ class Keenable(_BaseClient):
     ) -> FetchResponse:
         """Read up to 100 pages in one call with ``POST /v1/fetch``.
 
-        Pages are read in parallel. A page that fails is an entry in
-        ``FetchResponse.errors``, not an exception, and is not billed; the
-        call raises only when it fails as a whole.
+        Pages are read in parallel. ``results[i]`` is the entry for
+        ``urls[i]``. A page that fails has its ``error`` set instead of
+        raising, and is not billed; the call raises only when it fails as a
+        whole.
 
         Args:
             urls: The pages, ``http`` or ``https`` URLs (a lone string is one

@@ -836,6 +836,13 @@ func TestConformanceFetchManyResponses(t *testing.T) {
 				for _, i := range r.Images {
 					images = append(images, map[string]any{"url": i.URL, "alt": ptrOrNil(i.Alt)})
 				}
+				var resultErr any
+				if r.Error != nil {
+					resultErr = map[string]any{
+						"code": r.Error.Code, "message": r.Error.Message,
+						"retryable": r.Error.Retryable, "http_status": ptrOrNil(r.Error.HTTPStatus),
+					}
+				}
 				results = append(results, map[string]any{
 					"url":          r.URL,
 					"title":        ptrOrNil(r.Title),
@@ -843,19 +850,12 @@ func TestConformanceFetchManyResponses(t *testing.T) {
 					"image":        ptrOrNil(r.Image),
 					"favicon":      ptrOrNil(r.Favicon),
 					"text":         ptrOrNil(r.Text),
-					"total_chars":  ptrOrNil(r.TotalChars),
 					"next_offset":  ptrOrNil(r.NextOffset),
 					"summary":      r.Summary,
 					"highlights":   r.Highlights,
 					"links":        links,
 					"images":       images,
-				})
-			}
-			errs := []any{}
-			for _, e := range resp.Errors {
-				errs = append(errs, map[string]any{
-					"url": e.URL, "code": e.Code, "message": e.Message,
-					"retryable": e.Retryable, "http_status": ptrOrNil(e.HTTPStatus),
+					"error":        resultErr,
 				})
 			}
 			warnings := []any{}
@@ -867,7 +867,6 @@ func TestConformanceFetchManyResponses(t *testing.T) {
 				"latency_ms": ptrOrNil(resp.LatencyMS),
 				"session_id": ptrOrNil(resp.SessionID),
 				"results":    results,
-				"errors":     errs,
 				"warnings":   warnings,
 			}
 			encoded, err := json.Marshal(got)

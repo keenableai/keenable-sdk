@@ -59,8 +59,10 @@ type FetchImage struct {
 	Alt *string `json:"alt,omitempty"`
 }
 
-// FetchResult is one page [Client.FetchMany] read. Only what was asked for
-// is filled; unknown metadata is nil.
+// FetchResult is the entry for one URL given to [Client.FetchMany]:
+// Results[i] is for urls[i]. Only what was asked for is filled; unknown
+// metadata is nil. Error is set when something asked for is missing; when the
+// page could not be read, it is the only field besides URL.
 type FetchResult struct {
 	URL   string  `json:"url"`
 	Title *string `json:"title,omitempty"`
@@ -71,23 +73,24 @@ type FetchResult struct {
 	Favicon     *string `json:"favicon,omitempty"`
 	// Text is the page as markdown, from Offset up to MaxChars.
 	Text *string `json:"text,omitempty"`
-	// TotalChars is the length of the whole page text, so a cut is visible.
-	TotalChars *int `json:"total_chars,omitempty"`
-	// NextOffset is where to continue reading; nil when the text ends here.
+	// NextOffset is set only when the page has more text: call again with
+	// Offset set to it. Nil when the text reaches the end.
 	NextOffset *int `json:"next_offset,omitempty"`
 	// Summary is the model's answer: a string, or a map matching
 	// OutputSchema. Nil when none was asked for.
-	Summary    any            `json:"summary,omitempty"`
-	Highlights []string       `json:"highlights"`
-	Links      []FetchLink    `json:"links"`
-	Images     []FetchImage   `json:"images"`
-	Raw        map[string]any `json:"-"`
+	Summary    any          `json:"summary,omitempty"`
+	Highlights []string     `json:"highlights"`
+	Links      []FetchLink  `json:"links"`
+	Images     []FetchImage `json:"images"`
+	// Error says why something asked for is missing; nil when everything
+	// worked.
+	Error *FetchError    `json:"error,omitempty"`
+	Raw   map[string]any `json:"-"`
 }
 
-// FetchError is a URL [Client.FetchMany] could not read. The call itself
-// succeeded.
+// FetchError says why something asked for is missing for one URL. The call
+// itself succeeded.
 type FetchError struct {
-	URL string `json:"url"`
 	// Code says why, such as "page_not_found" or "target_timeout".
 	Code    string `json:"code"`
 	Message string `json:"message"`
@@ -105,13 +108,10 @@ type FetchWarning struct {
 	Message string `json:"message"`
 }
 
-// FetchResponse is what [Client.FetchMany] returns: pages read and pages
-// that failed.
+// FetchResponse is what [Client.FetchMany] returns: one entry per URL, in
+// the order given.
 type FetchResponse struct {
-	Results []FetchResult `json:"results"`
-	// Errors has one entry per URL that failed. Empty when every URL was
-	// read.
-	Errors   []FetchError   `json:"errors"`
+	Results  []FetchResult  `json:"results"`
 	Warnings []FetchWarning `json:"warnings"`
 	// RequestID is the API's id for this request. Quote it when reporting a
 	// problem.
@@ -123,8 +123,9 @@ type FetchResponse struct {
 
 // FetchMany reads up to 100 pages in one call with POST /v1/fetch.
 //
-// Pages are read in parallel. A page that fails is an entry in
-// FetchResponse.Errors, not an error, and is not billed; FetchMany returns an
+// Pages are read in parallel. Results[i] is the entry for urls[i]. A page
+// that fails has its Error set instead of returning an error, and is not
+// billed; FetchMany returns an
 // error only when the call fails as a whole. Internal hosts and private
 // addresses are refused here, before a request is sent. Keyless calls take up
 // to 20 URLs. opts may be nil.
@@ -245,7 +246,6 @@ func fetchResultFromJSON(data map[string]any) FetchResult {
 		Image:       nonEmptyString(data["image"]),
 		Favicon:     nonEmptyString(data["favicon"]),
 		Text:        nonEmptyString(data["text"]),
-		TotalChars:  count(data["total_chars"]),
 		NextOffset:  count(data["next_offset"]),
 		Highlights:  []string{},
 		Links:       []FetchLink{},
@@ -270,24 +270,8 @@ func fetchResultFromJSON(data map[string]any) FetchResult {
 	for _, item := range objects(data["images"]) {
 		r.Images = append(r.Images, FetchImage{URL: asString(item["url"]), Alt: nonEmptyString(item["alt"])})
 	}
-	return r
-}
-
-func fetchResponseFromJSON(data map[string]any) *FetchResponse {
-	resp := &FetchResponse{
-		Results:   []FetchResult{},
-		Errors:    []FetchError{},
-		Warnings:  []FetchWarning{},
-		LatencyMS: count(data["latency_ms"]),
-		SessionID: nonEmptyString(data["session_id"]),
-		Raw:       data,
-	}
-	for _, item := range objects(data["results"]) {
-		resp.Results = append(resp.Results, fetchResultFromJSON(item))
-	}
-	for _, item := range objects(data["errors"]) {
-		e := FetchError{
-			URL:       asString(item["url"]),
+	if item, ok := data["error"].(map[string]any); ok {
+		e := &FetchError{
 			Code:      asString(item["code"]),
 			Message:   asString(item["message"]),
 			Retryable: item["retryable"] == true,
@@ -296,7 +280,21 @@ func fetchResponseFromJSON(data map[string]any) *FetchResponse {
 			n := int(f)
 			e.HTTPStatus = &n
 		}
-		resp.Errors = append(resp.Errors, e)
+		r.Error = e
+	}
+	return r
+}
+
+func fetchResponseFromJSON(data map[string]any) *FetchResponse {
+	resp := &FetchResponse{
+		Results:   []FetchResult{},
+		Warnings:  []FetchWarning{},
+		LatencyMS: count(data["latency_ms"]),
+		SessionID: nonEmptyString(data["session_id"]),
+		Raw:       data,
+	}
+	for _, item := range objects(data["results"]) {
+		resp.Results = append(resp.Results, fetchResultFromJSON(item))
 	}
 	for _, item := range objects(data["warnings"]) {
 		resp.Warnings = append(resp.Warnings, FetchWarning{

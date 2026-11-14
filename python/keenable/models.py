@@ -618,12 +618,43 @@ class FetchImage:
 
 
 @dataclass
-class FetchResult:
-    """One page :meth:`Keenable.fetch_many` read.
+class FetchError:
+    """Why something asked for is missing for one URL. The call itself succeeded."""
 
-    Only what was asked for is filled: ``text`` with ``content.text``,
-    ``summary`` with a summary, ``highlights``, ``links`` and ``images`` with
-    those options. Unknown metadata is None.
+    code: str
+    """Why, such as ``page_not_found`` or ``target_timeout``."""
+
+    message: str
+    retryable: bool = False
+    """Whether trying this URL again can help."""
+
+    http_status: int | None = None
+    """What the site answered, such as 404, when it answered."""
+
+    @classmethod
+    def _from_json(cls, data: Any) -> FetchError | None:
+        if not isinstance(data, dict):
+            return None
+        status = data.get("http_status")
+        return cls(
+            code=_str_or_empty(data.get("code")),
+            message=_str_or_empty(data.get("message")),
+            retryable=data.get("retryable") is True,
+            http_status=status
+            if isinstance(status, int) and not isinstance(status, bool)
+            else None,
+        )
+
+
+@dataclass
+class FetchResult:
+    """The entry for one URL :meth:`Keenable.fetch_many` was given.
+
+    ``results[i]`` is the entry for ``urls[i]``. Only what was asked for is
+    filled: ``text`` with ``content.text``, ``summary`` with a summary,
+    ``highlights``, ``links`` and ``images`` with those options. Unknown
+    metadata is None. ``error`` is set when something asked for is missing;
+    when the page could not be read, it is the only field besides ``url``.
     """
 
     url: str
@@ -637,11 +668,9 @@ class FetchResult:
     text: str | None = None
     """The page as markdown, from ``offset`` up to ``max_chars``."""
 
-    total_chars: int | None = None
-    """Length of the whole page text, so a cut is visible."""
-
     next_offset: int | None = None
-    """Where to continue reading; None when the text ends here."""
+    """Set only when the page has more text: send the same URL again with
+    ``offset`` set to it. None when the text reaches the end."""
 
     summary: str | dict[str, Any] | None = None
     """The model's answer: a string, or an object matching ``output_schema``."""
@@ -649,6 +678,9 @@ class FetchResult:
     highlights: list[str] = field(default_factory=list)
     links: list[FetchLink] = field(default_factory=list)
     images: list[FetchImage] = field(default_factory=list)
+    error: FetchError | None = None
+    """Why something asked for is missing; None when everything worked."""
+
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
@@ -661,7 +693,6 @@ class FetchResult:
             image=_str_or_none(data.get("image")),
             favicon=_str_or_none(data.get("favicon")),
             text=_str_or_none(data.get("text")),
-            total_chars=_int_from_zero_or_none(data.get("total_chars")),
             next_offset=_int_from_zero_or_none(data.get("next_offset")),
             summary=summary if isinstance(summary, dict) else _str_or_none(summary),
             highlights=[
@@ -683,36 +714,8 @@ class FetchResult:
                 )
                 for item in _objects(data.get("images"))
             ],
+            error=FetchError._from_json(data.get("error")),
             raw=data,
-        )
-
-
-@dataclass
-class FetchError:
-    """A URL :meth:`Keenable.fetch_many` could not read. The call itself succeeded."""
-
-    url: str
-    code: str
-    """Why, such as ``page_not_found`` or ``target_timeout``."""
-
-    message: str
-    retryable: bool = False
-    """Whether trying this URL again can help."""
-
-    http_status: int | None = None
-    """What the site answered, such as 404, when it answered."""
-
-    @classmethod
-    def _from_json(cls, data: dict[str, Any]) -> FetchError:
-        status = data.get("http_status")
-        return cls(
-            url=_str_or_empty(data.get("url")),
-            code=_str_or_empty(data.get("code")),
-            message=_str_or_empty(data.get("message")),
-            retryable=data.get("retryable") is True,
-            http_status=status
-            if isinstance(status, int) and not isinstance(status, bool)
-            else None,
         )
 
 
@@ -735,12 +738,9 @@ class FetchWarning:
 
 @dataclass
 class FetchResponse:
-    """What :meth:`Keenable.fetch_many` returns: pages read and pages that failed."""
+    """What :meth:`Keenable.fetch_many` returns: one entry per URL, in order."""
 
     results: list[FetchResult] = field(default_factory=list)
-    errors: list[FetchError] = field(default_factory=list)
-    """One entry per URL that failed. Empty when every URL was read."""
-
     warnings: list[FetchWarning] = field(default_factory=list)
     request_id: str | None = None
     """The API's id for this request. Quote it when reporting a problem."""
@@ -756,9 +756,6 @@ class FetchResponse:
         return cls(
             results=[
                 FetchResult._from_json(item) for item in _objects(data.get("results"))
-            ],
-            errors=[
-                FetchError._from_json(item) for item in _objects(data.get("errors"))
             ],
             warnings=[
                 FetchWarning._from_json(item) for item in _objects(data.get("warnings"))

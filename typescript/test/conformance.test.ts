@@ -503,19 +503,14 @@ describe("fetchMany success bodies", () => {
         image: x.image ?? null,
         favicon: x.favicon ?? null,
         text: x.text ?? null,
-        total_chars: x.totalChars ?? null,
         next_offset: x.nextOffset ?? null,
         summary: x.summary ?? null,
         highlights: x.highlights,
         links: x.links.map((l) => ({ url: l.url, text: l.text ?? null })),
         images: x.images.map((i) => ({ url: i.url, alt: i.alt ?? null })),
-      })),
-      errors: r.errors.map((e) => ({
-        url: e.url,
-        code: e.code,
-        message: e.message,
-        retryable: e.retryable,
-        http_status: e.httpStatus ?? null,
+        error: x.error
+          ? { code: x.error.code, message: x.error.message, retryable: x.error.retryable, http_status: x.error.httpStatus ?? null }
+          : null,
       })),
       warnings: r.warnings.map((w) => ({ code: w.code, path: w.path, message: w.message })),
     }).toEqual(c.expect);
