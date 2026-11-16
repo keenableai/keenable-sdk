@@ -580,6 +580,76 @@
       "name": "refused: multicast: \"https://[ff02::1]/\"",
       "url": "https://[ff02::1]/",
       "allowed": false
+    },
+    {
+      "name": "refused: loopback in circled digits, which a WHATWG parser folds to 127: \"https://①②⑦.0.0.1/\"",
+      "url": "https://①②⑦.0.0.1/",
+      "allowed": false
+    },
+    {
+      "name": "refused: loopback in mathematical bold digits: \"https://𝟏𝟐𝟕.0.0.1/\"",
+      "url": "https://𝟏𝟐𝟕.0.0.1/",
+      "allowed": false
+    },
+    {
+      "name": "refused: localhost with a script small l (U+2113): \"https://ℓocalhost/\"",
+      "url": "https://ℓocalhost/",
+      "allowed": false
+    },
+    {
+      "name": "refused: cloud metadata with subscript digits: \"https://169.254.169.₂₅₄/\"",
+      "url": "https://169.254.169.₂₅₄/",
+      "allowed": false
+    },
+    {
+      "name": "refused: an empty label inside a hostname: \"https://a..b/\"",
+      "url": "https://a..b/",
+      "allowed": false
+    },
+    {
+      "name": "refused: an empty label inside a hostname: \"https://example..com/\"",
+      "url": "https://example..com/",
+      "allowed": false
+    },
+    {
+      "name": "refused: a leading dot: \"https://.example.com/\"",
+      "url": "https://.example.com/",
+      "allowed": false
+    },
+    {
+      "name": "refused: two trailing dots: \"https://example.com../\"",
+      "url": "https://example.com../",
+      "allowed": false
+    },
+    {
+      "name": "refused: localhost with two trailing dots: \"https://localhost../\"",
+      "url": "https://localhost../",
+      "allowed": false
+    },
+    {
+      "name": "refused: an empty label inside a loopback address: \"https://127.0.0..1/\"",
+      "url": "https://127.0.0..1/",
+      "allowed": false
+    },
+    {
+      "name": "refused: an empty label inside a short loopback address: \"https://127..1/\"",
+      "url": "https://127..1/",
+      "allowed": false
+    },
+    {
+      "name": "refused: a leading dot before a loopback address: \"https://.127.0.0.1/\"",
+      "url": "https://.127.0.0.1/",
+      "allowed": false
+    },
+    {
+      "name": "refused: a host that is only a dot: \"https://./\"",
+      "url": "https://./",
+      "allowed": false
+    },
+    {
+      "name": "refused: a host that is only dots: \"https://../\"",
+      "url": "https://../",
+      "allowed": false
     }
   ],
   "base_url": [
@@ -666,6 +736,56 @@
     {
       "name": "invalid: a fragment, which the endpoint path would be appended to: \"https://api.keenable.ai#frag\"",
       "base_url": "https://api.keenable.ai#frag",
+      "valid": false
+    },
+    {
+      "name": "invalid: a backslash before the host: a WHATWG parser sends this to evil.example: \"http://evil.example\\\\@localhost\"",
+      "base_url": "http://evil.example\\@localhost",
+      "valid": false
+    },
+    {
+      "name": "invalid: a backslash before the host, with a port: \"http://evil.example\\\\@localhost:8080\"",
+      "base_url": "http://evil.example\\@localhost:8080",
+      "valid": false
+    },
+    {
+      "name": "invalid: a backslash after the host: \"http://localhost\\\\@evil.example\"",
+      "base_url": "http://localhost\\@evil.example",
+      "valid": false
+    },
+    {
+      "name": "invalid: a backslash in an https authority: \"https://api.keenable.ai\\\\@evil.example\"",
+      "base_url": "https://api.keenable.ai\\@evil.example",
+      "valid": false
+    },
+    {
+      "name": "invalid: a user name: \"http://user@localhost:8080\"",
+      "base_url": "http://user@localhost:8080",
+      "valid": false
+    },
+    {
+      "name": "invalid: a user name and password: \"http://user:pass@127.0.0.1:3000\"",
+      "base_url": "http://user:pass@127.0.0.1:3000",
+      "valid": false
+    },
+    {
+      "name": "invalid: a user name and password on https: \"https://user:pass@api.keenable.ai\"",
+      "base_url": "https://user:pass@api.keenable.ai",
+      "valid": false
+    },
+    {
+      "name": "invalid: an empty user name: \"https://@api.keenable.ai\"",
+      "base_url": "https://@api.keenable.ai",
+      "valid": false
+    },
+    {
+      "name": "invalid: http to localhost in fullwidth letters: only the three plain spellings count: \"http://ｌｏｃａｌｈｏｓｔ:8080\"",
+      "base_url": "http://ｌｏｃａｌｈｏｓｔ:8080",
+      "valid": false
+    },
+    {
+      "name": "invalid: http to localhost with two trailing dots: \"http://localhost..:8080\"",
+      "base_url": "http://localhost..:8080",
       "valid": false
     }
   ],

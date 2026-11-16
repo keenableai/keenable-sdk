@@ -29,10 +29,15 @@ A refused URL raises the invalid-request error and sends nothing. In order:
 3. The authority (up to the first `/`, `?` or `#`) has no backslash: WHATWG
    parsers read `\` as `/`, other parsers do not, so the two disagree on the host.
 4. The host is read as the language's URL parser reads it, then percent-decoded,
-   width-folded (`１２７。０。０。１` is `127.0.0.1`), stripped of the characters
+   folded to its compatibility form (Unicode NFKC, which a WHATWG parser's
+   IDNA mapping also applies: `１２７。０。０。１` and `①②⑦.0.0.1` are
+   `127.0.0.1`, `ℓocalhost` is `localhost`), stripped of the characters
    IDNA mapping deletes (soft hyphen U+00AD, U+200B, U+2060, U+FEFF),
-   lowercased, and stripped of IPv6 brackets, an IPv6 zone and trailing dots.
-   An empty host is refused.
+   lowercased, and stripped of IPv6 brackets and an IPv6 zone.
+   A hostname with an empty label is refused: two dots in a row (`a..b`,
+   `127.0.0..1`, `example.com..`) or a leading dot (`.example.com`).
+   Resolvers and URL parsers disagree on what such a name means. One trailing
+   dot is the root label and is dropped. An empty host is refused.
 5. `localhost`, any name under `.localhost`, and `metadata.google.internal` are
    refused.
 6. An IP literal, including IPv4 written as one number, in hex or octal, or with
@@ -56,8 +61,14 @@ A refused URL raises the invalid-request error and sends nothing. In order:
 ## Base URLs (`base_url`)
 
 Surrounding whitespace and trailing slashes are dropped. The URL must be
-`https`, or `http` to `localhost`, `127.0.0.1` or `::1` (a trailing dot on the
-host is ignored), with a host and no query or fragment.
+`https`, or `http` to `localhost`, `127.0.0.1` or `::1` (one trailing dot on the
+host is ignored), with a host and no query or fragment. For `http`, only those
+three spellings count, in any letter case: not `127.1`, not fullwidth letters.
+
+The part before the path must have no backslash and no user name or password
+(no `@`). The API key is sent to this host, and a WHATWG parser reads
+`http://evil.example\@localhost` as the host `evil.example` where it looks
+like `localhost`.
 
 ## Retry-After (`retry_after`)
 

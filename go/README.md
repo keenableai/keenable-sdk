@@ -371,7 +371,8 @@ client, err := keenable.New(&keenable.Options{APIKey: &key})
 ```
 
 `BaseURL` must be `https`, except `http` to `localhost`, `127.0.0.1`, or `::1`.
-It cannot include a query string or a fragment. `Timeout` of zero means 30
+It cannot include a query string, a fragment, a user name or password, or a
+backslash before its path. `Timeout` of zero means 30
 seconds when this SDK creates the HTTP client. When you pass `HTTPClient`,
 zero adds no extra deadline and that client's `Timeout` is left unchanged.
 `ClientSource` is sent as

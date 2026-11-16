@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Security fix:** `Fetch` refuses loopback and private hosts spelled with
+  Unicode compatibility characters, which a browser or Node folds to plain
+  ones: `①②⑦.0.0.1`, `𝟏𝟐𝟕.0.0.1`, `ℓocalhost`. Hosts are now NFKC-normalized
+  before the check, as in the Python and TypeScript SDKs. This adds the
+  module's first dependency, `golang.org/x/text`.
+- **Changed:** `Fetch` refuses a host with an empty label before sending: two
+  dots in a row (`a..b`, `127.0.0..1`, `example.com..`) or a leading dot
+  (`.example.com`). One trailing dot is still fine.
+- **Changed:** `BaseURL` and `KEENABLE_API_URL` are refused when they have a
+  user name or password, or a backslash before the path. Plain `http` is
+  accepted only for `localhost`, `127.0.0.1` and `::1` spelled exactly so (one
+  trailing dot is ignored); fullwidth letters and `localhost..` no longer
+  count.
+
 ## 0.1.5
 
 ## 0.1.2

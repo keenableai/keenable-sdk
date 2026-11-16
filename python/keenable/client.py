@@ -76,10 +76,22 @@ def _resolve_base_url(base_url: str | None) -> str:
         host = parsed.hostname
     except ValueError:
         host = None
+    # The API key is sent to this host. A backslash makes URL parsers disagree
+    # on which host that is (http://evil.example\@localhost is evil.example to
+    # a WHATWG parser), and a user name or password has no use here.
+    authority = re.split(r"[/?#]", base.partition("://")[2], maxsplit=1)[0]
+    if "\\" in authority or "@" in authority:
+        raise KeenableInvalidRequestError(
+            "base_url must not contain a backslash, user name or password "
+            "before its path; pass an https:// URL with only a host, an "
+            "optional port and an optional path"
+        )
     if host and not parsed.query and not parsed.fragment:
         if parsed.scheme == "https":
             return base
-        if parsed.scheme == "http" and _canonical_host(host) in _LOCAL_HOSTS:
+        # Only the three plain spellings, with at most one trailing dot.
+        written = host[:-1] if host.endswith(".") else host
+        if parsed.scheme == "http" and written in _LOCAL_HOSTS:
             return base
     raise KeenableInvalidRequestError(
         "base_url must be an https:// URL with a host and no query or fragment "
@@ -94,6 +106,11 @@ def _canonical_host(host: str) -> str:
     ideographic full stops (``１２７。０。０。１`` is 127.0.0.1), so this check
     has to see the host the same way.
     """
+    return _folded_host(host).rstrip(".")
+
+
+def _folded_host(host: str) -> str:
+    """``_canonical_host`` with the trailing dots still on."""
     folded = unicodedata.normalize("NFKC", host)
     for stop in _IDEOGRAPHIC_STOPS:
         folded = folded.replace(stop, ".")
@@ -101,7 +118,17 @@ def _canonical_host(host: str) -> str:
     # WHATWG parser (and to the TypeScript SDK).
     for ignored in _IDNA_IGNORED:
         folded = folded.replace(ignored, "")
-    return folded.strip().lower().rstrip(".")
+    return folded.strip().lower()
+
+
+def _has_empty_label(host: str) -> bool:
+    """Whether a folded hostname has an empty label: ``a..b``, ``.a``, ``a..``.
+
+    One trailing dot is the root label and is fine. Resolvers and URL parsers
+    disagree on what an empty label means, so such a name is never fetched.
+    """
+    name = host[:-1] if host.endswith(".") else host
+    return bool(name) and ":" not in name and "" in name.split(".")
 
 
 _IDEOGRAPHIC_STOPS = ("\u3002", "\uff0e", "\uff61")
@@ -220,7 +247,13 @@ def _reject_private_fetch_target(url: Any) -> None:
 
     # Percent-decoded as a URL parser decodes a host; a trailing dot resolves
     # to the same host but does not match it as a string.
-    host = _canonical_host(unquote(hostname))
+    folded = _folded_host(unquote(hostname))
+    if _has_empty_label(folded):
+        raise KeenableInvalidRequestError(
+            f"fetch() URL has an empty label in its host (two dots in a row, "
+            f"or a leading dot): {url!r}"
+        )
+    host = folded.rstrip(".")
     if ":" in host:
         host = host.split("%", 1)[0]  # an IPv6 zone
     if not host:

@@ -5,6 +5,16 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
+- **Changed:** `base_url` and `KEENABLE_API_URL` are refused when the part
+  before the path has a backslash or a user name or password (`@`). The API key
+  goes to this host, and URL parsers disagree on the host of a URL such as
+  `http://evil.example\@localhost`. Plain `http` is accepted only for
+  `localhost`, `127.0.0.1` and `::1` spelled exactly so (one trailing dot is
+  ignored); fullwidth letters and `localhost..` no longer count.
+- **Changed:** `fetch()` refuses a host with an empty label before sending: two
+  dots in a row (`a..b`, `127.0.0..1`, `example.com..`) or a leading dot
+  (`.example.com`). One trailing dot is still fine.
+
 ## 0.1.5
 
 ## 0.1.4
