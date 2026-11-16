@@ -428,3 +428,56 @@ def test_stalled_lookups_share_one_thread_per_name_and_stay_under_the_cap(
         _pause(0.02)
     assert _lookup_threads() == 0
     assert not keenable_client._lookups
+
+
+def test_a_lookup_whose_thread_cannot_start_frees_its_slot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ends = time.monotonic() + 3
+    while keenable_client._lookups and time.monotonic() < ends:
+        _pause(0.02)
+    assert not keenable_client._lookups
+    real_start = threading.Thread.start
+    failures = []
+
+    def start_once(thread: threading.Thread) -> None:
+        if thread.name == "keenable-dns" and not failures:
+            failures.append(thread)
+            raise RuntimeError("can't start new thread")
+        real_start(thread)
+
+    monkeypatch.setattr(threading.Thread, "start", start_once)
+    began = time.monotonic()
+    with pytest.raises(httpcore.ConnectError, match="could not start resolving"):
+        keenable_client._resolve_within("localhost", 443, 5)
+    assert time.monotonic() - began < 1
+    assert failures
+    assert not keenable_client._lookups
+
+    # The next lookup for the same name starts afresh and succeeds.
+    infos = keenable_client._resolve_within("localhost", 443, 5)
+    assert infos
+    assert not keenable_client._lookups
+
+
+def test_a_failed_lookup_start_is_a_connection_error_on_search(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    real_start = threading.Thread.start
+
+    def never(thread: threading.Thread) -> None:
+        if thread.name == "keenable-dns":
+            raise RuntimeError("can't start new thread")
+        real_start(thread)
+
+    monkeypatch.setattr(threading.Thread, "start", never)
+    client = Keenable(
+        "k", base_url="https://api.example.invalid", timeout=5, max_retries=0
+    )
+    began = time.monotonic()
+    with pytest.raises(KeenableConnectionError):
+        client.search("q")
+    assert time.monotonic() - began < 1
+    assert not keenable_client._lookups

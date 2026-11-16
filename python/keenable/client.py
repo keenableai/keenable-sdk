@@ -887,7 +887,18 @@ def _start_lookup(host: str, port: int, seconds: float | None) -> _Lookup:
                 del _lookups[key]
                 _lookups_changed.notify_all()
 
-    threading.Thread(target=resolve, name="keenable-dns", daemon=True).start()
+    try:
+        threading.Thread(target=resolve, name="keenable-dns", daemon=True).start()
+    except BaseException as exc:
+        # No thread will ever finish this lookup: take it back out so it does
+        # not hold a slot or strand the attempts already waiting on it.
+        lookup.error = exc
+        lookup.finished.set()
+        with _lookups_changed:
+            if _lookups.get(key) is lookup:
+                del _lookups[key]
+            _lookups_changed.notify_all()
+        raise httpcore.ConnectError(f"could not start resolving {host}: {exc}") from exc
     return lookup
 
 
