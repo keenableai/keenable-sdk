@@ -10,6 +10,7 @@ import time
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import httpcore
 import httpx
 import pytest
 
@@ -376,3 +377,54 @@ def test_a_passed_client_keeps_httpxs_per_phase_timeout(server: str) -> None:
         client.search("q", extra_headers={"X-Path": "trickle"})
     # The 3 s trickle ends with the body short, not with a timeout at 0.5 s.
     assert time.monotonic() - started > 2
+
+
+def _lookup_threads() -> int:
+    return sum(1 for t in threading.enumerate() if t.name == "keenable-dns")
+
+
+def test_stalled_lookups_share_one_thread_per_name_and_stay_under_the_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    release = threading.Event()
+    real = socket.getaddrinfo
+
+    def stalled(host: str, *args: object, **kwargs: object) -> object:
+        if host.endswith(".stalled.invalid"):
+            # Released in the finally below; the long wait only bounds a
+            # lookup thread if the test dies first.
+            release.wait(60)
+        return real("127.0.0.1", *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(socket, "getaddrinfo", stalled)
+    for name in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    limit = keenable_client._DNS_LOOKUP_LIMIT
+    # A lookup another test left behind would be counted below.
+    ends = time.monotonic() + 3
+    while _lookup_threads() and time.monotonic() < ends:
+        _pause(0.02)
+    assert _lookup_threads() == 0
+    try:
+        client = Keenable(
+            "k", base_url="https://api.stalled.invalid", timeout=0.15, max_retries=1
+        )
+        for _ in range(4):
+            with pytest.raises(KeenableTimeoutError):
+                client.search("q")
+            assert _lookup_threads() == 1
+
+        # Other names each start one lookup, up to the cap; past it an attempt
+        # waits for a slot and gives up at its deadline without a new thread.
+        for i in range(limit + 3):
+            with pytest.raises(httpcore.ConnectTimeout):
+                keenable_client._resolve_within(f"h{i}.stalled.invalid", 443, 0.05)
+            assert _lookup_threads() <= limit
+        assert _lookup_threads() == limit
+    finally:
+        release.set()
+    ends = time.monotonic() + 3
+    while _lookup_threads() and time.monotonic() < ends:
+        _pause(0.02)
+    assert _lookup_threads() == 0
+    assert not keenable_client._lookups

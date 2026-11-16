@@ -834,13 +834,71 @@ class _DeadlineStream(httpcore.NetworkStream):
         return self._stream.get_extra_info(info)
 
 
+# At most this many name lookups run at once. The SDK only ever resolves the
+# API host (and a proxy host), so the cap is reached only while lookups stall.
+_DNS_LOOKUP_LIMIT = 4
+
+
+class _Lookup:
+    """One ``getaddrinfo`` in flight, shared by every attempt that needs it."""
+
+    def __init__(self) -> None:
+        self.finished = threading.Event()
+        self.infos: list[tuple[Any, ...]] = []
+        self.error: BaseException | None = None
+
+
+_lookups: dict[tuple[str, int], _Lookup] = {}
+_lookups_changed = threading.Condition()
+
+
+def _start_lookup(host: str, port: int, seconds: float | None) -> _Lookup:
+    """The lookup in flight for ``host``/``port``, started if there is none.
+
+    An attempt whose lookup is already running waits on that one rather than
+    starting another thread, so a stalled resolver costs one thread per name,
+    and at most _DNS_LOOKUP_LIMIT in all: past it, an attempt waits for a slot
+    until its deadline.
+    """
+    key = (host, port)
+    ends = None if seconds is None else time.monotonic() + seconds
+    with _lookups_changed:
+        while key not in _lookups and len(_lookups) >= _DNS_LOOKUP_LIMIT:
+            left = None if ends is None else ends - time.monotonic()
+            if left is not None and left <= 0:
+                raise httpcore.ConnectTimeout(
+                    f"resolving {host} did not start in time: "
+                    f"{_DNS_LOOKUP_LIMIT} lookups are still running"
+                )
+            _lookups_changed.wait(left)
+        lookup = _lookups.get(key)
+        if lookup is not None:
+            return lookup
+        lookup = _lookups[key] = _Lookup()
+
+    def resolve() -> None:
+        try:
+            lookup.infos = socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM)
+        except BaseException as exc:  # handed to the waiting attempts
+            lookup.error = exc
+        finally:
+            lookup.finished.set()
+            with _lookups_changed:
+                del _lookups[key]
+                _lookups_changed.notify_all()
+
+    threading.Thread(target=resolve, name="keenable-dns", daemon=True).start()
+    return lookup
+
+
 def _resolve_within(
     host: str, port: int, seconds: float | None
 ) -> list[tuple[Any, ...]]:
     """``getaddrinfo`` for a TCP connection, given up on after ``seconds``.
 
     ``getaddrinfo`` takes no timeout, so a stalled resolver would hold the
-    attempt past its deadline. The lookup runs on a daemon thread; when the
+    attempt past its deadline. The lookup runs on a daemon thread, shared with
+    any other attempt resolving the same name (see _start_lookup); when the
     deadline passes first, only that lookup is left behind, never a connection.
     """
     try:
@@ -849,24 +907,14 @@ def _resolve_within(
         pass
     else:
         return socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM)
-    outcome: dict[str, Any] = {}
-    finished = threading.Event()
-
-    def resolve() -> None:
-        try:
-            outcome["infos"] = socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM)
-        except BaseException as exc:  # handed to the caller's thread below
-            outcome["error"] = exc
-        finally:
-            finished.set()
-
-    threading.Thread(target=resolve, name="keenable-dns", daemon=True).start()
-    if not finished.wait(seconds):
+    ends = None if seconds is None else time.monotonic() + seconds
+    lookup = _start_lookup(host, port, seconds)
+    left = None if ends is None else max(0.0, ends - time.monotonic())
+    if not lookup.finished.wait(left):
         raise httpcore.ConnectTimeout(f"resolving {host} did not finish in time")
-    if "error" in outcome:
-        raise httpcore.ConnectError(str(outcome["error"])) from outcome["error"]
-    infos: list[tuple[Any, ...]] = outcome["infos"]
-    return infos
+    if lookup.error is not None:
+        raise httpcore.ConnectError(str(lookup.error)) from lookup.error
+    return lookup.infos
 
 
 class _DeadlineBackend(httpcore.NetworkBackend):
