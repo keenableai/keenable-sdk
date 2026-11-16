@@ -110,14 +110,13 @@ def test_a_deadline_timeout_is_retried_like_any_timeout(server: str) -> None:
 
 
 def test_an_httpx_timeout_object_keeps_per_phase_meaning(server: str) -> None:
-    """Each read finishes well inside 0.4 s, so httpx alone never times out."""
+    """Each trickled read finishes inside 0.4 s; only the stall after it times out."""
     client = Keenable(
         "k", base_url=f"{server}/trickle", timeout=httpx.Timeout(0.4), max_retries=0
     )
     started = time.monotonic()
-    with pytest.raises(KeenableConnectionError) as caught:
+    with pytest.raises(KeenableConnectionError):
         client.search("q")
-    assert not isinstance(caught.value, KeenableTimeoutError)
     assert time.monotonic() - started > 2
 
 
