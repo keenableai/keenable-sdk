@@ -8,9 +8,10 @@ All notable changes to the `keenable` Python package. Versions follow
 - **Changed:** a numeric `timeout` is now the deadline for the whole attempt,
   as in the TypeScript and Go SDKs, not only for each httpx phase. Before, a
   server that kept sending a few bytes inside every read timeout could hold a
-  request open indefinitely. `Keenable` checks the clock as each piece of the
-  body arrives (an attempt ends at the latest one `timeout` after its
-  deadline); `AsyncKeenable` cancels the attempt at the deadline. An
+  request open indefinitely. The deadline covers connecting, the response
+  headers, the body and its end, and ends the attempt on time in both
+  `Keenable` and `AsyncKeenable`. The request still goes through the client's
+  own `request()`, so a passed client that overrides it is still used. An
   `httpx.Timeout`, `timeout=None` and a passed client's own timeout keep
   httpx's per-phase meaning.
 - **Changed:** `base_url` and `KEENABLE_API_URL` are refused when the part

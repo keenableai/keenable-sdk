@@ -4,6 +4,7 @@
  * `fetch`, so a behaviour that differs between the SDKs fails here.
  */
 import { readFileSync } from "node:fs";
+import { createServer, type AddressInfo, type Server, type Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -14,6 +15,7 @@ import {
   KeenableInsufficientCreditsError,
   KeenableInvalidRequestError,
   KeenableRateLimitError,
+  KeenableTimeoutError,
   runToolCall,
 } from "../src/index.js";
 import type { FetchOptions, KeenableOptions, Page, SearchOptions, SearchResponse } from "../src/index.js";
@@ -69,6 +71,18 @@ interface Fixture {
     skip: Record<string, string>;
   }[];
   tool_call: { name: string; arguments: string; sent: Json; invalid: boolean }[];
+  deadline: {
+    slack: number;
+    cases: {
+      name: string;
+      phase: "headers" | "body" | "terminator" | "none";
+      timeout: number;
+      interval: number;
+      pieces: number;
+      outcome: "timeout" | "success";
+      skip: Record<string, string>;
+    }[];
+  };
 }
 
 const FIXTURE: Fixture = JSON.parse(
@@ -408,6 +422,98 @@ describe("tool calls", () => {
     } else {
       expect(outcome.error).toBeUndefined();
       expect(JSON.parse(String(outcome.requests[0]?.init.body))).toEqual(c.sent);
+    }
+  });
+});
+
+describe("the whole-attempt deadline", () => {
+  const DEADLINE_JSON = '{"results": []}';
+  type DeadlineCase = Fixture["deadline"]["cases"][number];
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  /** Answers as the case says (scripts/conformance/cases/deadline.json). */
+  async function servePhase(socket: Socket, c: DeadlineCase): Promise<void> {
+    const write = (text: string) => {
+      if (!socket.destroyed) socket.write(text);
+    };
+    const trickle = async (unit: string) => {
+      for (let i = 0; i < c.pieces; i++) {
+        await sleep(c.interval * 1000);
+        write(unit);
+      }
+    };
+    const rest = `Content-Type: application/json\r\nContent-Length: ${DEADLINE_JSON.length}\r\n\r\n${DEADLINE_JSON}`;
+    if (c.phase === "headers") {
+      write("HTTP/1.1 200 OK\r\nX-Slow: ");
+      await trickle("a");
+      write(`\r\n${rest}`);
+    } else if (c.phase === "body") {
+      write(
+        `HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${c.pieces + DEADLINE_JSON.length}\r\n\r\n`,
+      );
+      await trickle(" ");
+      write(DEADLINE_JSON);
+    } else if (c.phase === "terminator") {
+      write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n");
+      await sleep(c.interval * 1000);
+      write(`${DEADLINE_JSON.length.toString(16)}\r\n${DEADLINE_JSON}\r\n`);
+      await trickle("0\r\n\r\n");
+    } else {
+      write(`HTTP/1.1 200 OK\r\n${rest}`);
+    }
+  }
+
+  /** A raw HTTP/1.1 server on 127.0.0.1; resolves to its base URL. */
+  async function deadlineServer(c: DeadlineCase): Promise<{ base: string; server: Server }> {
+    const server = createServer((socket) => {
+      socket.on("error", () => {});
+      let seen = "";
+      let answered = false;
+      socket.on("data", (chunk) => {
+        seen += chunk.toString("latin1");
+        const end = seen.indexOf("\r\n\r\n");
+        if (answered || end < 0) return;
+        const length = Number(/content-length:\s*(\d+)/i.exec(seen.slice(0, end))?.[1] ?? 0);
+        if (seen.length - end - 4 < length) return;
+        answered = true;
+        void servePhase(socket, c).then(() => setTimeout(() => socket.destroy(), 200));
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as AddressInfo;
+    return { base: `http://127.0.0.1:${port}`, server };
+  }
+
+  const cases = FIXTURE.deadline.cases.filter((c) => !("typescript" in c.skip));
+  it.each(cases.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
+    const { base, server } = await deadlineServer(c);
+    try {
+      const keenable = new Keenable({
+        apiKey: "",
+        baseUrl: base,
+        timeoutMs: c.timeout * 1000,
+        maxRetries: 0,
+      });
+      const started = performance.now();
+      let error: unknown;
+      let result: SearchResponse | undefined;
+      try {
+        result = await keenable.search("q");
+      } catch (caught) {
+        error = caught;
+      }
+      const elapsed = (performance.now() - started) / 1000;
+      if (c.outcome === "timeout") {
+        expect(error).toBeInstanceOf(KeenableTimeoutError);
+        expect(elapsed).toBeGreaterThanOrEqual(c.timeout - 0.05);
+        expect(elapsed).toBeLessThanOrEqual(c.timeout + FIXTURE.deadline.slack);
+      } else {
+        expect(error).toBeUndefined();
+        expect(result?.results).toEqual([]);
+        expect(elapsed).toBeLessThan(c.timeout);
+      }
+    } finally {
+      server.close();
     }
   });
 });

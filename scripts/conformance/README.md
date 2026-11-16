@@ -146,8 +146,9 @@ body's, else the trimmed `X-Request-Id` header.
   timeout over 2,147,483.647 seconds (about 24.8 days, the longest a JavaScript
   timer can wait) is treated as that long.
 - A numeric timeout is the deadline for one whole attempt, from sending the
-  request to the last byte of the body, not for each read on its own. A server
-  that keeps trickling bytes still times out.
+  request to the end of the body, not for each read on its own. A server that
+  keeps trickling bytes still times out. The `deadline` cases check it against
+  a live server.
 - Header names are HTTP tokens and values hold no CR, LF or NUL; anything else is
   the invalid-request error, not a retried connection failure. `X-API-Key` is
   ignored: the key always comes from the client.
@@ -169,6 +170,28 @@ body's, else the trimmed `X-Request-Id` header.
   an absent `live` is false), and `prompt` as given. An empty prompt is unset.
   The URL is checked first (`fetch_url`), so a refused URL sends nothing
   whatever the options.
+
+## The whole-attempt deadline (`deadline`)
+
+Each case runs one keyless search, with no retries and the case's timeout,
+against a raw HTTP/1.1 server on 127.0.0.1 that answers every request the same
+way. The server stretches out one phase of the reply:
+
+- `headers`: one byte of a header value every `interval` seconds, `pieces`
+  times, before the rest of the headers and the body.
+- `body`: the headers at once, then one space of the body every `interval`
+  seconds, `pieces` times, then the JSON.
+- `terminator`: a chunked reply with the whole JSON in one chunk after
+  `interval` seconds, and the terminating chunk after `interval` seconds more.
+  Every gap is shorter than the timeout, so a timeout on each read alone never
+  fires: only a deadline on the whole attempt does.
+- `none`: the whole reply at once.
+
+A `timeout` outcome is the SDK's timeout error, raised no earlier than 0.05 s
+before the timeout and no later than `slack` seconds after it. A `success`
+outcome is a result with no results, returned before the timeout. Each SDK runs
+its own server (Go `net.Listen`, Node `net.createServer`, Python `socket`), so
+the reply bytes are the same everywhere.
 
 ## Tool calls (`tool_call`)
 

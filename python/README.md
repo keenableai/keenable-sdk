@@ -266,7 +266,8 @@ with jitter. A `Retry-After` over 60 s, such as the keyless hourly cap, is not
 waited out: the error is raised at once so your code decides.
 
 `timeout` (default 30 s) is the deadline for each attempt as a whole, from
-sending the request to the last byte of the answer. A timed-out request
+connecting to the end of the answer, headers included: a server that keeps
+sending a few bytes at a time still times out on schedule. A timed-out request
 raises `KeenableTimeoutError`, a subclass of `KeenableConnectionError`. Pass an
 `httpx.Timeout` instead of a number to set httpx's per-phase timeouts
 (connect, read, write, pool) with no overall deadline.

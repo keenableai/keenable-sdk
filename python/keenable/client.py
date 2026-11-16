@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import enum
 import ipaddress
 import json as jsonlib
 import math
 import random
 import re
+import threading
 import time
 import unicodedata
 from collections.abc import Iterable, Iterator, Mapping
@@ -766,33 +768,44 @@ def _attempt_deadline(timeout: Any) -> float | None:
 def _send_within(
     client: httpx.Client, deadline: float | None, method: str, url: str, **kwargs: Any
 ) -> httpx.Response:
-    """Send a request and read its body, giving up once ``deadline`` has passed.
+    """Send a request through ``client.request``, giving up at ``deadline``.
 
-    The clock is checked as each piece of the body arrives. One silent read
-    can still last the per-phase timeout, so an attempt ends at the latest one
-    timeout after its deadline.
+    The deadline covers the whole attempt: connecting, sending, the response
+    headers, the body and its end. The request runs on a daemon thread so the
+    caller can stop waiting at the deadline whatever the server is doing (httpx
+    can't interrupt its own blocking reads, and its timeouts apply to each read
+    on its own). A request abandoned that way still runs until httpx's own
+    per-phase timeout or the server ends it, and its result is discarded;
+    ``httpx.Client`` is safe to use from several threads at once.
+
+    ``client.request`` is the call either way, so a caller's client that
+    overrides it, or a transport that hands back a finished response, behaves
+    as it does without a deadline.
     """
     if deadline is None:
         return client.request(method, url, **kwargs)
-    ends = time.monotonic() + deadline
-    with client.stream(method, url, **kwargs) as response:
-        if response.is_stream_consumed:
-            # A transport that hands over a complete body (a mock, a cache).
-            return response
-        body = bytearray()
-        for chunk in response.iter_raw():
-            body += chunk
-            if time.monotonic() > ends:
-                raise httpx.ReadTimeout(
-                    "the response body was still arriving at the deadline",
-                    request=response.request,
-                )
-        return httpx.Response(
-            response.status_code,
-            headers=response.headers,
-            content=bytes(body),
-            request=response.request,
+    outcome: dict[str, Any] = {}
+    finished = threading.Event()
+
+    def attempt() -> None:
+        try:
+            outcome["response"] = client.request(method, url, **kwargs)
+        except BaseException as exc:  # handed to the caller's thread below
+            outcome["error"] = exc
+        finally:
+            finished.set()
+
+    context = contextvars.copy_context()
+    threading.Thread(
+        target=context.run, args=(attempt,), name="keenable-request", daemon=True
+    ).start()
+    if not finished.wait(deadline):
+        raise httpx.ReadTimeout(
+            "no complete response arrived before the deadline", request=None
         )
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["response"]
 
 
 def _backoff(retry: int, jitter: float | None = None) -> float:

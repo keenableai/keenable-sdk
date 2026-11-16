@@ -5792,5 +5792,64 @@
       },
       "invalid": false
     }
-  ]
+  ],
+  "deadline": {
+    "slack": 0.3,
+    "cases": [
+      {
+        "name": "headers trickled past the timeout",
+        "phase": "headers",
+        "timeout": 0.5,
+        "interval": 0.05,
+        "pieces": 30,
+        "outcome": "timeout",
+        "skip": {}
+      },
+      {
+        "name": "body trickled past the timeout",
+        "phase": "body",
+        "timeout": 0.5,
+        "interval": 0.05,
+        "pieces": 30,
+        "outcome": "timeout",
+        "skip": {}
+      },
+      {
+        "name": "terminating chunk after the timeout",
+        "phase": "terminator",
+        "timeout": 0.5,
+        "interval": 0.3,
+        "pieces": 1,
+        "outcome": "timeout",
+        "skip": {}
+      },
+      {
+        "name": "body trickled but finished within the timeout",
+        "phase": "body",
+        "timeout": 2,
+        "interval": 0.05,
+        "pieces": 4,
+        "outcome": "success",
+        "skip": {}
+      },
+      {
+        "name": "headers trickled but finished within the timeout",
+        "phase": "headers",
+        "timeout": 2,
+        "interval": 0.05,
+        "pieces": 4,
+        "outcome": "success",
+        "skip": {}
+      },
+      {
+        "name": "whole reply at once",
+        "phase": "none",
+        "timeout": 2,
+        "interval": 0,
+        "pieces": 0,
+        "outcome": "success",
+        "skip": {}
+      }
+    ]
+  }
 }

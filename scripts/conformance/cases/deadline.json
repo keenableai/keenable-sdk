@@ -1,0 +1,12 @@
+{
+  "_comment": "The whole-attempt deadline. Each case runs one keyless search (max_retries 0, the case's timeout in seconds; TypeScript's timeoutMs is this times 1000, Go's Duration this times one second) against a raw HTTP/1.1 server on 127.0.0.1 that answers every request the same way, in one of four phases. headers: the status line, then one byte of a header value every `interval` seconds, `pieces` times, then the rest of the headers and the body. body: the headers at once (Content-Length set), then one space of the body every `interval` seconds, `pieces` times, then the JSON. terminator: chunked headers at once, the one data chunk (the whole JSON) after `interval` seconds, and the terminating zero-length chunk after `interval` seconds more (pieces is 1). Each gap is shorter than the timeout, so only a deadline on the whole attempt catches it. none: the whole reply at once. The JSON is {\"results\": []}. outcome timeout: the SDK's timeout error, raised no earlier than timeout - 0.05 s and no later than timeout + slack. outcome success: a result with no results, sooner than the timeout.",
+  "slack": 0.3,
+  "cases": [
+    {"name": "headers trickled past the timeout", "phase": "headers", "timeout": 0.5, "interval": 0.05, "pieces": 30, "outcome": "timeout"},
+    {"name": "body trickled past the timeout", "phase": "body", "timeout": 0.5, "interval": 0.05, "pieces": 30, "outcome": "timeout"},
+    {"name": "terminating chunk after the timeout", "phase": "terminator", "timeout": 0.5, "interval": 0.3, "pieces": 1, "outcome": "timeout"},
+    {"name": "body trickled but finished within the timeout", "phase": "body", "timeout": 2, "interval": 0.05, "pieces": 4, "outcome": "success"},
+    {"name": "headers trickled but finished within the timeout", "phase": "headers", "timeout": 2, "interval": 0.05, "pieces": 4, "outcome": "success"},
+    {"name": "whole reply at once", "phase": "none", "timeout": 2, "interval": 0, "pieces": 0, "outcome": "success"}
+  ]
+}

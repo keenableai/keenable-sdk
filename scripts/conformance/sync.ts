@@ -241,6 +241,33 @@ function toolCalls(): Obj[] {
   });
 }
 
+const DEADLINE_PHASES = new Set(["headers", "body", "terminator", "none"]);
+
+function deadline(): Obj {
+  const source = load("deadline.json");
+  if (typeof source.slack !== "number") fail("deadline: needs a numeric slack");
+  return {
+    slack: source.slack,
+    cases: (source.cases as Obj[]).map((item) => {
+      const name = item.name as string;
+      if (!DEADLINE_PHASES.has(item.phase as string)) fail(`deadline ${name}: unknown phase`);
+      if (item.outcome !== "timeout" && item.outcome !== "success") fail(`deadline ${name}: unknown outcome`);
+      for (const key of ["timeout", "interval", "pieces"]) {
+        if (typeof item[key] !== "number") fail(`deadline ${name}: "${key}" must be a number`);
+      }
+      return {
+        name,
+        phase: item.phase as string,
+        timeout: item.timeout as number,
+        interval: item.interval as number,
+        pieces: item.pieces as number,
+        outcome: item.outcome as string,
+        skip: (item.skip as Obj | undefined) ?? {},
+      };
+    }),
+  };
+}
+
 /** The fixture's exact text for the case files on disk. */
 export function buildConformance(): string {
   const fixture = {
@@ -256,11 +283,13 @@ export function buildConformance(): string {
     search_body: searchBodies(),
     fetch_params: fetchParams(),
     tool_call: toolCalls(),
+    deadline: deadline(),
   };
   for (const [section, cases] of Object.entries(fixture)) {
     if (Array.isArray(cases)) uniqueNames(section, cases as { name: string }[]);
   }
   uniqueNames("retry_after", fixture.retry_after.cases as { name: string }[]);
+  uniqueNames("deadline", fixture.deadline.cases as { name: string }[]);
   return `${JSON.stringify(fixture, null, 2)}\n`;
 }
 
