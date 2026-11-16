@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import socket
 import threading
 import time
 from collections.abc import Iterator
@@ -18,6 +19,7 @@ from keenable import (
     KeenableConnectionError,
     KeenableTimeoutError,
 )
+from keenable import client as keenable_client
 
 BODY = json.dumps({"query": "q", "results": []}).encode()
 
@@ -25,6 +27,18 @@ BODY = json.dumps({"query": "q", "results": []}).encode()
 def _pause(seconds: float) -> None:
     """Sleep without time.sleep, which other tests patch for the whole process."""
     threading.Event().wait(seconds)
+
+
+class _Open:
+    """How many replies the test server is still writing."""
+
+    lock = threading.Lock()
+    count = 0
+
+    @classmethod
+    def change(cls, by: int) -> None:
+        with cls.lock:
+            cls.count += by
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -41,7 +55,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         self.rfile.read(int(self.headers.get("Content-Length") or 0))
-        if self.path.startswith("/trickle"):
+        if self.path.startswith("/trickle") or self.headers.get("X-Path") == "trickle":
             self._trickle()
         elif self.path.startswith("/headers"):
             self._trickled_headers()
@@ -62,18 +76,25 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _trickle(self) -> None:
-        """One byte every 50 ms: each read is quick, the body never ends in time."""
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", "100000")
-        self.end_headers()
+        """One byte every 50 ms: each read is quick, the body never ends in time.
+
+        Stops as soon as a write fails, that is once the client has closed the
+        connection; _Open counts the replies still being written.
+        """
+        _Open.change(1)
         try:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", "100000")
+            self.end_headers()
             for _ in range(60):
                 self.wfile.write(b" ")
                 self.wfile.flush()
                 _pause(0.05)
         except OSError:
             pass
+        finally:
+            _Open.change(-1)
 
     def _trickled_headers(self) -> None:
         """A header line one byte every 50 ms for 1 s: it never ends within 0.5 s."""
@@ -261,3 +282,97 @@ def test_sync_deadline_hands_back_the_requests_own_error() -> None:
     client = Keenable("k", client=http, timeout=5, max_retries=0)
     with pytest.raises(KeenableConnectionError, match="refused"):
         client.search("q")
+
+
+def _wait_until_no_reply_is_open(within: float) -> bool:
+    ends = time.monotonic() + within
+    while time.monotonic() < ends:
+        if _Open.count == 0:
+            return True
+        _pause(0.02)
+    return _Open.count == 0
+
+
+def test_the_sdk_client_is_bound_by_the_deadline() -> None:
+    """Fails loudly if an httpx upgrade moves the private attributes it relies on."""
+    client = Keenable("k", timeout=5)
+    assert client._bounds_attempts
+    backend = client._client._transport._pool._network_backend  # type: ignore[attr-defined]
+    assert isinstance(backend, keenable_client._DeadlineBackend)
+
+
+def test_a_passed_client_is_left_alone() -> None:
+    http = httpx.Client()
+    client = Keenable("k", client=http, timeout=5)
+    assert not client._bounds_attempts
+    backend = http._transport._pool._network_backend  # type: ignore[attr-defined]
+    assert not isinstance(backend, keenable_client._DeadlineBackend)
+
+
+def test_sync_timeouts_close_their_connection_and_free_the_pool(server: str) -> None:
+    """A timed-out attempt leaves nothing running: its connection is closed at once.
+
+    The thread-based deadline it replaces left each abandoned request reading
+    for as long as the server kept trickling, holding a pooled connection.
+    """
+    client = Keenable("k", base_url=server, timeout=0.3, max_retries=0)
+    threads_before = threading.active_count()
+    for _ in range(5):
+        started = time.monotonic()
+        with pytest.raises(KeenableTimeoutError, match="within 0.3 s"):
+            client.search("q", extra_headers={"X-Path": "trickle"})
+        assert time.monotonic() - started < 0.7
+        assert _wait_until_no_reply_is_open(within=0.5), "the connection stayed open"
+    assert not [t for t in threading.enumerate() if t.name == "keenable-request"]
+    assert threading.active_count() <= threads_before
+    started = time.monotonic()
+    assert client.search("q").results == []
+    assert time.monotonic() - started < 0.5
+
+
+async def test_async_timeouts_close_their_connection_and_free_the_pool(
+    server: str,
+) -> None:
+    client = AsyncKeenable("k", base_url=server, timeout=0.3, max_retries=0)
+    for _ in range(5):
+        with pytest.raises(KeenableTimeoutError, match="within 0.3 s"):
+            await client.search("q", extra_headers={"X-Path": "trickle"})
+        assert _wait_until_no_reply_is_open(within=0.5), "the connection stayed open"
+    started = time.monotonic()
+    assert (await client.search("q")).results == []
+    assert time.monotonic() - started < 0.5
+
+
+def test_a_stalled_name_lookup_ends_at_the_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real = socket.getaddrinfo
+
+    def stalled(host: str, *args: object, **kwargs: object) -> object:
+        if host == "stalled-dns.invalid":
+            _pause(1.5)
+        return real(host, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(socket, "getaddrinfo", stalled)
+    monkeypatch.delenv("HTTPS_PROXY", raising=False)
+    monkeypatch.delenv("https_proxy", raising=False)
+    monkeypatch.delenv("ALL_PROXY", raising=False)
+    monkeypatch.delenv("all_proxy", raising=False)
+    client = Keenable(
+        "k", base_url="https://stalled-dns.invalid", timeout=0.4, max_retries=0
+    )
+    started = time.monotonic()
+    with pytest.raises(KeenableTimeoutError, match="within 0.4 s"):
+        client.search("q")
+    assert 0.35 < time.monotonic() - started < 0.8
+
+
+def test_a_passed_client_keeps_httpxs_per_phase_timeout(server: str) -> None:
+    """The SDK cannot reach into a client you pass: each read gets the timeout."""
+    http = httpx.Client()
+    client = Keenable("k", base_url=server, client=http, timeout=0.5, max_retries=0)
+    started = time.monotonic()
+    with pytest.raises(KeenableConnectionError):
+        client.search("q", extra_headers={"X-Path": "trickle"})
+    # The 3 s trickle ends with the body short, not with a timeout at 0.5 s.
+    assert time.monotonic() - started > 2

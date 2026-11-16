@@ -148,7 +148,10 @@ body's, else the trimmed `X-Request-Id` header.
 - A numeric timeout is the deadline for one whole attempt, from sending the
   request to the end of the body, not for each read on its own. A server that
   keeps trickling bytes still times out. The `deadline` cases check it against
-  a live server.
+  a live server. It applies to the HTTP client each SDK creates; Python's sync
+  `Keenable` cannot impose it on an `httpx.Client` the caller passes, which
+  keeps httpx's per-phase timeouts (documented in the Python README), as a
+  caller's TypeScript `fetch` must honour what the SDK passes it.
 - Header names are HTTP tokens and values hold no CR, LF or NUL; anything else is
   the invalid-request error, not a retried connection failure. `X-API-Key` is
   ignored: the key always comes from the client.
