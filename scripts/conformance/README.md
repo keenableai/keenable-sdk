@@ -166,3 +166,31 @@ sent unchanged. `disable_cards` is sent only as `true`; `false`, `""` and null
 are unset, and any other value is the invalid-request error. Arguments JSON
 cannot encode (`NaN`, `Infinity`) are the invalid-request error and send
 nothing.
+
+## The anonymous client ID (`client_id_token`, `client_id_path`)
+
+A keyless client keeps the ID the API issues in the `X-Keenable-Client`
+response header and sends it back in that header on later keyless requests. A
+client with an API key, or with the ID turned off (the client option, or a
+non-empty `KEENABLE_NO_CLIENT_ID`), never reads, sends, captures or writes one.
+
+- A token is 1 to 128 characters of `A-Z`, `a-z`, `0-9`, `.`, `_` and `-`, and
+  is never parsed. Any other header value is ignored as if the header were
+  absent, and so is a header sent more than once. The file's content is
+  trimmed of surrounding whitespace and then held to the same rule.
+- The file is `<config dir>/keenable/client-id`, the token on one line. The
+  config dir is `XDG_CONFIG_HOME` when it is set and absolute; else on Windows
+  `APPDATA` when it is set and not empty, falling back to `AppData\Roaming`
+  under the home directory; else `.config` under the home directory. With no
+  such directory (no home directory and no usable variable) there is no file.
+- Absolute means: off Windows, starting with `/`; on Windows, starting with
+  `\` or `/`, or with a drive letter, `:` and `\` or `/` (what Node's
+  `path.win32.isAbsolute` accepts, so the Keenable MCP bridge resolves the
+  same file). The parts are joined with `\` on Windows and `/` elsewhere,
+  after trailing separators are dropped; nothing else is normalized.
+- The file is read once per client, before its first keyless request, and
+  written only when the ID changes: the directory is created with mode 0700,
+  the token is written to a temporary file in it with mode 0600, and that file
+  is renamed over the target. No filesystem failure is raised or logged; the
+  ID then lives in memory for that client. Where there is no filesystem (the
+  TypeScript SDK in a browser or an edge runtime) it is in memory only.

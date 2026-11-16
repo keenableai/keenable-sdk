@@ -18,6 +18,7 @@ import {
 } from "../src/index.js";
 import type { FetchOptions, KeenableOptions, Page, SearchOptions, SearchResponse } from "../src/index.js";
 import { backoffMs, retryAfterHeader } from "../src/client.js";
+import { clientIdPath, validClientId } from "../src/client-id.js";
 import { SEARCH_FILTERS } from "../src/filters.js";
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
@@ -69,6 +70,14 @@ interface Fixture {
     skip: Record<string, string>;
   }[];
   tool_call: { name: string; arguments: string; sent: Json; invalid: boolean }[];
+  client_id_token: { name: string; value: string; valid: boolean }[];
+  client_id_path: {
+    name: string;
+    platform: "windows" | "linux" | "darwin";
+    env: Record<string, string>;
+    home: string;
+    path: string | null;
+  }[];
 }
 
 const FIXTURE: Fixture = JSON.parse(
@@ -409,5 +418,15 @@ describe("tool calls", () => {
       expect(outcome.error).toBeUndefined();
       expect(JSON.parse(String(outcome.requests[0]?.init.body))).toEqual(c.sent);
     }
+  });
+});
+
+describe("the anonymous client ID", () => {
+  it.each(FIXTURE.client_id_token.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    expect(validClientId(c.value) ?? null).toBe(c.valid ? c.value : null);
+  });
+
+  it.each(FIXTURE.client_id_path.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    expect(clientIdPath(c.env, c.platform === "windows", c.home) ?? null).toBe(c.path);
   });
 });

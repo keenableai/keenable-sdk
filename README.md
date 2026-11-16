@@ -87,6 +87,27 @@ Each SDK exposes the same surface: search, fetch, a `to_context()` /
 definitions for tool calling. See the per-language READMEs for the full
 reference.
 
+## Anonymous client ID
+
+A keyless client is told apart from other keyless callers by an ID the API
+issues, not by its address or user agent. The API sends an opaque token in the
+`X-Keenable-Client` response header; the client keeps it and sends it back in
+the same header on later keyless requests.
+
+- It identifies an installation, not a person. The token is opaque: the SDK
+  never parses it, and it carries no personal data. It is not a credential and
+  grants nothing.
+- It is stored on one line in `<config dir>/keenable/client-id`, where the
+  config dir is `$XDG_CONFIG_HOME` when set to an absolute path, else
+  `%APPDATA%` on Windows, else `~/.config`. The Keenable MCP bridge uses the
+  same file, so one machine keeps one ID. If the file cannot be read or
+  written, the ID lives in memory for the client's lifetime and nothing is
+  raised.
+  In a browser or an edge runtime the TypeScript SDK keeps it in memory only.
+- A client with an API key never sends, reads or stores it.
+- To turn it off, set `KEENABLE_NO_CLIENT_ID` to any non-empty value, or
+  pass `anonymous_client_id=False` (Python), `anonymousClientId: false` (TypeScript) or `AnonymousClientID` pointing to `false` (Go) to the client. Nothing is then read, written, sent or kept.
+
 ## Examples
 
 - [`examples/cerebras/`](./examples/cerebras) - grounding a Cerebras model in

@@ -118,6 +118,18 @@ type conformance struct {
 		Sent      map[string]any `json:"sent"`
 		Invalid   bool           `json:"invalid"`
 	} `json:"tool_call"`
+	ClientIDToken []struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+		Valid bool   `json:"valid"`
+	} `json:"client_id_token"`
+	ClientIDPath []struct {
+		Name     string            `json:"name"`
+		Platform string            `json:"platform"`
+		Env      map[string]string `json:"env"`
+		Home     string            `json:"home"`
+		Path     *string           `json:"path"`
+	} `json:"client_id_path"`
 }
 
 func loadConformance(t *testing.T) *conformance {
@@ -706,5 +718,31 @@ func TestFetchOptionsDoNotBypassTheURLRefusal(t *testing.T) {
 	})
 	if !isInvalid(err) || n.Load() != 0 {
 		t.Fatalf("err=%v requests=%d", err, n.Load())
+	}
+}
+
+func TestConformanceClientIDToken(t *testing.T) {
+	for _, tc := range loadConformance(t).ClientIDToken {
+		t.Run(tc.Name, func(t *testing.T) {
+			if got := keenable.ValidClientID(tc.Value); got != tc.Valid {
+				t.Fatalf("valid=%v, want %v", got, tc.Valid)
+			}
+		})
+	}
+}
+
+func TestConformanceClientIDPath(t *testing.T) {
+	for _, tc := range loadConformance(t).ClientIDPath {
+		t.Run(tc.Name, func(t *testing.T) {
+			env := func(name string) string { return tc.Env[name] }
+			got := keenable.ClientIDPath(env, tc.Platform == "windows", tc.Home)
+			want := ""
+			if tc.Path != nil {
+				want = *tc.Path
+			}
+			if got != want {
+				t.Fatalf("got %q, want %q", got, want)
+			}
+		})
 	}
 }

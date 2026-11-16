@@ -96,6 +96,19 @@ type Options struct {
 	// not close it. Redirects are still never followed, whatever its
 	// CheckRedirect says, so X-API-Key goes only to the configured host.
 	HTTPClient *http.Client
+	// AnonymousClientID turns the anonymous client ID off when it points to
+	// false, as does a non-empty KEENABLE_NO_CLIENT_ID. Nil means on.
+	//
+	// A keyless client keeps the opaque ID the API issues in the
+	// X-Keenable-Client response header and sends it back on later keyless
+	// requests. It identifies an installation, not a person, and is not a
+	// credential. It is stored in <config dir>/keenable/client-id, where the
+	// config dir is $XDG_CONFIG_HOME, else %APPDATA% on Windows, else
+	// ~/.config. A client with an API key never uses it.
+	//
+	//	off := false
+	//	client, err := keenable.New(&keenable.Options{AnonymousClientID: &off})
+	AnonymousClientID *bool
 }
 
 // Client calls the Keenable web search API.
@@ -123,6 +136,10 @@ type Client struct {
 	maxRetries    int
 	// defaultHeaders is a copy of Options.Headers.
 	defaultHeaders map[string]string
+	// clientID is the anonymous client ID of the keyless tier. It is nil for
+	// a client with a key, or when the ID is turned off, so such a client
+	// never reads, sends, captures or writes one.
+	clientID *clientIDStore
 }
 
 // RequestOptions are per-call transport settings. Each overrides the client's
@@ -220,6 +237,10 @@ func New(opts *Options) (*Client, error) {
 		clientSource:   source,
 		maxRetries:     maxRetries,
 		defaultHeaders: headers,
+	}
+	enabled := opts.AnonymousClientID == nil || *opts.AnonymousClientID
+	if c.apiKey == "" && enabled && os.Getenv(clientIDOptOutEnv) == "" {
+		c.clientID = &clientIDStore{}
 	}
 	if opts.HTTPClient != nil {
 		c.http = opts.HTTPClient
@@ -478,12 +499,22 @@ func (c *Client) attempt(ctx context.Context, method, rawURL string, body []byte
 		return nil, "", &InvalidRequestError{msg: "could not build the request: " + err.Error() + ". Check Options.BaseURL or KEENABLE_API_URL."}
 	}
 	req.Header = header.Clone()
+	if c.clientID != nil {
+		// Read per attempt, so a retry carries the ID the failed attempt's
+		// response issued.
+		if token := c.clientID.get(); token != "" {
+			req.Header.Set(clientIDHeader, token)
+		}
+	}
 
 	resp, err := c.requestClient().Do(req)
 	if err != nil {
 		return nil, "", c.transportError(ctx, reqCtx, err, timeout)
 	}
 	defer resp.Body.Close()
+	if c.clientID != nil {
+		c.clientID.capture(resp.Header)
+	}
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, "", c.transportError(ctx, reqCtx, err, timeout)

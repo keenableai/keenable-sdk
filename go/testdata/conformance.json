@@ -5672,5 +5672,345 @@
       },
       "invalid": false
     }
+  ],
+  "client_id_token": [
+    {
+      "name": "accepted: a normal token: \"kc1.AbC-dEf_123.s1x2y3.q9\"",
+      "value": "kc1.AbC-dEf_123.s1x2y3.q9",
+      "valid": true
+    },
+    {
+      "name": "accepted: one character: \"a\"",
+      "value": "a",
+      "valid": true
+    },
+    {
+      "name": "accepted: every kind of allowed character: \"A-Za-z0-9._-\"",
+      "value": "A-Za-z0-9._-",
+      "valid": true
+    },
+    {
+      "name": "accepted: dots only: the token is not parsed: \"...\"",
+      "value": "...",
+      "valid": true
+    },
+    {
+      "name": "accepted: 128 characters: \"aaaaaaaa... (128)\"",
+      "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": true
+    },
+    {
+      "name": "ignored: 129 characters: \"aaaaaaaa... (129)\"",
+      "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": false
+    },
+    {
+      "name": "ignored: empty: \"\"",
+      "value": "",
+      "valid": false
+    },
+    {
+      "name": "ignored: a space only: \" \"",
+      "value": " ",
+      "valid": false
+    },
+    {
+      "name": "ignored: a space inside: \"kc1 abc\"",
+      "value": "kc1 abc",
+      "valid": false
+    },
+    {
+      "name": "ignored: a leading space: \" kc1.abc\"",
+      "value": " kc1.abc",
+      "valid": false
+    },
+    {
+      "name": "ignored: a trailing space: \"kc1.abc \"",
+      "value": "kc1.abc ",
+      "valid": false
+    },
+    {
+      "name": "ignored: a slash: \"kc1/abc\"",
+      "value": "kc1/abc",
+      "valid": false
+    },
+    {
+      "name": "ignored: a backslash: \"kc1\\\\abc\"",
+      "value": "kc1\\abc",
+      "valid": false
+    },
+    {
+      "name": "ignored: a trailing newline: \"kc1.abc\\n\"",
+      "value": "kc1.abc\n",
+      "valid": false
+    },
+    {
+      "name": "ignored: two lines: \"kc1.abc\\nkc1.def\"",
+      "value": "kc1.abc\nkc1.def",
+      "valid": false
+    },
+    {
+      "name": "ignored: a tab: \"kc1\\tabc\"",
+      "value": "kc1\tabc",
+      "valid": false
+    },
+    {
+      "name": "ignored: two header values joined: \"kc1.abc, kc1.def\"",
+      "value": "kc1.abc, kc1.def",
+      "valid": false
+    },
+    {
+      "name": "ignored: a plus: \"kc1+abc\"",
+      "value": "kc1+abc",
+      "valid": false
+    },
+    {
+      "name": "ignored: an equals sign: \"kc1=abc\"",
+      "value": "kc1=abc",
+      "valid": false
+    },
+    {
+      "name": "ignored: a colon: \"kc1:abc\"",
+      "value": "kc1:abc",
+      "valid": false
+    },
+    {
+      "name": "ignored: a tilde: \"kc1~abc\"",
+      "value": "kc1~abc",
+      "valid": false
+    },
+    {
+      "name": "ignored: a non-ASCII letter: \"kc1.é\"",
+      "value": "kc1.é",
+      "valid": false
+    },
+    {
+      "name": "ignored: a non-ASCII digit: \"kc1.١\"",
+      "value": "kc1.١",
+      "valid": false
+    },
+    {
+      "name": "ignored: a NUL: \"kc1.abc\\u0000\"",
+      "value": "kc1.abc\u0000",
+      "valid": false
+    }
+  ],
+  "client_id_path": [
+    {
+      "name": "linux: XDG_CONFIG_HOME",
+      "platform": "linux",
+      "env": {
+        "XDG_CONFIG_HOME": "/xdg"
+      },
+      "home": "/home/u",
+      "path": "/xdg/keenable/client-id"
+    },
+    {
+      "name": "linux: XDG_CONFIG_HOME with a trailing slash",
+      "platform": "linux",
+      "env": {
+        "XDG_CONFIG_HOME": "/xdg/"
+      },
+      "home": "/home/u",
+      "path": "/xdg/keenable/client-id"
+    },
+    {
+      "name": "linux: XDG_CONFIG_HOME is the root",
+      "platform": "linux",
+      "env": {
+        "XDG_CONFIG_HOME": "/"
+      },
+      "home": "/home/u",
+      "path": "/keenable/client-id"
+    },
+    {
+      "name": "linux: no XDG_CONFIG_HOME",
+      "platform": "linux",
+      "env": {},
+      "home": "/home/u",
+      "path": "/home/u/.config/keenable/client-id"
+    },
+    {
+      "name": "linux: an empty XDG_CONFIG_HOME is unset",
+      "platform": "linux",
+      "env": {
+        "XDG_CONFIG_HOME": ""
+      },
+      "home": "/home/u",
+      "path": "/home/u/.config/keenable/client-id"
+    },
+    {
+      "name": "linux: a relative XDG_CONFIG_HOME is ignored",
+      "platform": "linux",
+      "env": {
+        "XDG_CONFIG_HOME": "xdg/config"
+      },
+      "home": "/home/u",
+      "path": "/home/u/.config/keenable/client-id"
+    },
+    {
+      "name": "linux: a dot-relative XDG_CONFIG_HOME is ignored",
+      "platform": "linux",
+      "env": {
+        "XDG_CONFIG_HOME": "./xdg"
+      },
+      "home": "/home/u",
+      "path": "/home/u/.config/keenable/client-id"
+    },
+    {
+      "name": "linux: a Windows path in XDG_CONFIG_HOME is not absolute",
+      "platform": "linux",
+      "env": {
+        "XDG_CONFIG_HOME": "C:\\xdg"
+      },
+      "home": "/home/u",
+      "path": "/home/u/.config/keenable/client-id"
+    },
+    {
+      "name": "linux: APPDATA is not read",
+      "platform": "linux",
+      "env": {
+        "APPDATA": "/appdata"
+      },
+      "home": "/home/u",
+      "path": "/home/u/.config/keenable/client-id"
+    },
+    {
+      "name": "linux: the home directory is the root",
+      "platform": "linux",
+      "env": {},
+      "home": "/",
+      "path": "/.config/keenable/client-id"
+    },
+    {
+      "name": "linux: no home directory and no XDG_CONFIG_HOME",
+      "platform": "linux",
+      "env": {},
+      "home": "",
+      "path": null
+    },
+    {
+      "name": "linux: no home directory but XDG_CONFIG_HOME",
+      "platform": "linux",
+      "env": {
+        "XDG_CONFIG_HOME": "/xdg"
+      },
+      "home": "",
+      "path": "/xdg/keenable/client-id"
+    },
+    {
+      "name": "darwin: ~/.config, not ~/Library",
+      "platform": "darwin",
+      "env": {},
+      "home": "/Users/u",
+      "path": "/Users/u/.config/keenable/client-id"
+    },
+    {
+      "name": "darwin: XDG_CONFIG_HOME",
+      "platform": "darwin",
+      "env": {
+        "XDG_CONFIG_HOME": "/Users/u/cfg"
+      },
+      "home": "/Users/u",
+      "path": "/Users/u/cfg/keenable/client-id"
+    },
+    {
+      "name": "windows: APPDATA",
+      "platform": "windows",
+      "env": {
+        "APPDATA": "C:\\Users\\u\\AppData\\Roaming"
+      },
+      "home": "C:\\Users\\u",
+      "path": "C:\\Users\\u\\AppData\\Roaming\\keenable\\client-id"
+    },
+    {
+      "name": "windows: XDG_CONFIG_HOME wins over APPDATA",
+      "platform": "windows",
+      "env": {
+        "XDG_CONFIG_HOME": "D:\\cfg",
+        "APPDATA": "C:\\Users\\u\\AppData\\Roaming"
+      },
+      "home": "C:\\Users\\u",
+      "path": "D:\\cfg\\keenable\\client-id"
+    },
+    {
+      "name": "windows: XDG_CONFIG_HOME with forward slashes",
+      "platform": "windows",
+      "env": {
+        "XDG_CONFIG_HOME": "D:/cfg/"
+      },
+      "home": "C:\\Users\\u",
+      "path": "D:/cfg\\keenable\\client-id"
+    },
+    {
+      "name": "windows: XDG_CONFIG_HOME on a network share",
+      "platform": "windows",
+      "env": {
+        "XDG_CONFIG_HOME": "\\\\server\\share\\cfg"
+      },
+      "home": "C:\\Users\\u",
+      "path": "\\\\server\\share\\cfg\\keenable\\client-id"
+    },
+    {
+      "name": "windows: a rooted XDG_CONFIG_HOME without a drive is absolute",
+      "platform": "windows",
+      "env": {
+        "XDG_CONFIG_HOME": "\\cfg"
+      },
+      "home": "C:\\Users\\u",
+      "path": "\\cfg\\keenable\\client-id"
+    },
+    {
+      "name": "windows: a drive-relative XDG_CONFIG_HOME is ignored",
+      "platform": "windows",
+      "env": {
+        "XDG_CONFIG_HOME": "D:cfg",
+        "APPDATA": "C:\\Users\\u\\AppData\\Roaming"
+      },
+      "home": "C:\\Users\\u",
+      "path": "C:\\Users\\u\\AppData\\Roaming\\keenable\\client-id"
+    },
+    {
+      "name": "windows: a relative XDG_CONFIG_HOME is ignored",
+      "platform": "windows",
+      "env": {
+        "XDG_CONFIG_HOME": "cfg",
+        "APPDATA": "C:\\Users\\u\\AppData\\Roaming"
+      },
+      "home": "C:\\Users\\u",
+      "path": "C:\\Users\\u\\AppData\\Roaming\\keenable\\client-id"
+    },
+    {
+      "name": "windows: no APPDATA",
+      "platform": "windows",
+      "env": {},
+      "home": "C:\\Users\\u",
+      "path": "C:\\Users\\u\\AppData\\Roaming\\keenable\\client-id"
+    },
+    {
+      "name": "windows: an empty APPDATA is unset",
+      "platform": "windows",
+      "env": {
+        "APPDATA": ""
+      },
+      "home": "C:\\Users\\u",
+      "path": "C:\\Users\\u\\AppData\\Roaming\\keenable\\client-id"
+    },
+    {
+      "name": "windows: a drive root as APPDATA",
+      "platform": "windows",
+      "env": {
+        "APPDATA": "E:\\"
+      },
+      "home": "C:\\Users\\u",
+      "path": "E:\\keenable\\client-id"
+    },
+    {
+      "name": "windows: no APPDATA and no home directory",
+      "platform": "windows",
+      "env": {},
+      "home": "",
+      "path": null
+    }
   ]
 }

@@ -20,6 +20,9 @@ from urllib.parse import unquote, urlsplit
 
 import httpx
 
+from ._client_id import HEADER as _CLIENT_ID_HEADER
+from ._client_id import OPT_OUT_ENV as _CLIENT_ID_OPT_OUT_ENV
+from ._client_id import ClientIdStore
 from ._filters import SEARCH_FILTERS
 from ._version import __version__
 from .errors import (
@@ -835,6 +838,7 @@ class _BaseClient:
         max_retries: int = DEFAULT_MAX_RETRIES,
         default_headers: Mapping[str, str] | None = None,
         client_source: str = "Keenable SDK",
+        anonymous_client_id: bool = True,
     ) -> None:
         key = api_key if api_key is not None else environ.get("KEENABLE_API_KEY")
         self._api_key = (key or "").strip() or None
@@ -843,6 +847,15 @@ class _BaseClient:
         self._timeout: Any = _check_client_timeout(timeout)
         self._max_retries = _check_max_retries(max_retries)
         self._default_headers = _check_headers(default_headers or {}, "default_headers")
+        # The anonymous client ID belongs to the keyless tier: a client with a
+        # key has no store, so it never reads, sends, captures or writes one.
+        self._client_id: ClientIdStore | None = (
+            ClientIdStore()
+            if self._api_key is None
+            and anonymous_client_id
+            and not environ.get(_CLIENT_ID_OPT_OUT_ENV)
+            else None
+        )
 
     @property
     def keyless(self) -> bool:
@@ -877,6 +890,24 @@ class _BaseClient:
         if json:
             headers["Content-Type"] = "application/json"
         return headers
+
+    def _attempt_headers(self, headers: httpx.Headers) -> httpx.Headers:
+        """``headers`` for one attempt, with the anonymous client ID if any.
+
+        Read per attempt, so a retry carries the ID the failed attempt's
+        response issued.
+        """
+        token = self._client_id.get() if self._client_id is not None else None
+        if token is None:
+            return headers
+        headers = headers.copy()
+        headers[_CLIENT_ID_HEADER] = token
+        return headers
+
+    def _capture_client_id(self, response: httpx.Response) -> None:
+        """Keep the anonymous client ID a keyless response issued, if any."""
+        if self._client_id is not None:
+            self._client_id.capture(response.headers.get(_CLIENT_ID_HEADER))
 
     def _url(self, endpoint: str) -> str:
         """The endpoint URL, keyless or keyed depending on the configured key."""
@@ -938,6 +969,15 @@ class Keenable(_BaseClient):
         client_source: Name this client reports as its traffic source. Leave it
             alone unless you are building an integration on top of this SDK and
             want your own attribution.
+        anonymous_client_id: ``False`` turns off the anonymous client ID, as
+            does a non-empty ``KEENABLE_NO_CLIENT_ID``. By default a keyless
+            client keeps the opaque ID the API issues in the
+            ``X-Keenable-Client`` response header and sends it back on later
+            keyless requests. It identifies an installation, not a person, is
+            not a credential, and is stored in
+            ``<config dir>/keenable/client-id`` (``$XDG_CONFIG_HOME``, else
+            ``%APPDATA%`` on Windows, else ``~/.config``). A client with an
+            API key never uses it.
         client: Bring your own ``httpx.Client`` (proxies, transport).
     """
 
@@ -950,6 +990,7 @@ class Keenable(_BaseClient):
         max_retries: int = DEFAULT_MAX_RETRIES,
         default_headers: Mapping[str, str] | None = None,
         client_source: str = "Keenable SDK",
+        anonymous_client_id: bool = True,
         client: httpx.Client | None = None,
     ) -> None:
         super().__init__(
@@ -959,6 +1000,7 @@ class Keenable(_BaseClient):
             max_retries=max_retries,
             default_headers=default_headers,
             client_source=client_source,
+            anonymous_client_id=anonymous_client_id,
         )
         # A client you pass keeps its own timeout unless you set one here.
         self._use_client_timeout = client is not None and isinstance(timeout, _Unset)
@@ -1005,12 +1047,13 @@ class Keenable(_BaseClient):
                         self._url(endpoint),
                         params=params,
                         json=json,
-                        headers=headers,
+                        headers=self._attempt_headers(headers),
                         timeout=call_timeout,
                         # Never follow: httpx would carry X-API-Key to the
                         # host a redirect names.
                         follow_redirects=False,
                     )
+                self._capture_client_id(response)
                 return _decode(response)
             except KeenableError as error:
                 delay = _retry_delay(error, retry) if retry < retries else None
@@ -1170,6 +1213,7 @@ class AsyncKeenable(_BaseClient):
         max_retries: int = DEFAULT_MAX_RETRIES,
         default_headers: Mapping[str, str] | None = None,
         client_source: str = "Keenable SDK",
+        anonymous_client_id: bool = True,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         super().__init__(
@@ -1179,6 +1223,7 @@ class AsyncKeenable(_BaseClient):
             max_retries=max_retries,
             default_headers=default_headers,
             client_source=client_source,
+            anonymous_client_id=anonymous_client_id,
         )
         self._use_client_timeout = client is not None and isinstance(timeout, _Unset)
         self._client = client or httpx.AsyncClient(timeout=self._timeout)
@@ -1220,10 +1265,11 @@ class AsyncKeenable(_BaseClient):
                         self._url(endpoint),
                         params=params,
                         json=json,
-                        headers=headers,
+                        headers=self._attempt_headers(headers),
                         timeout=call_timeout,
                         follow_redirects=False,
                     )
+                self._capture_client_id(response)
                 return _decode(response)
             except KeenableError as error:
                 delay = _retry_delay(error, retry) if retry < retries else None

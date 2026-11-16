@@ -359,8 +359,9 @@ carry the API's request id; quote it when reporting a problem.
 |---|---|---|
 | `KEENABLE_API_KEY` | unset | Lifts the hourly rate limit. Create one at [keenable.ai/console](https://keenable.ai/console) |
 | `KEENABLE_API_URL` | `https://api.keenable.ai` | Override the API base URL |
+| `KEENABLE_NO_CLIENT_ID` | unset | Any non-empty value turns off the [anonymous client ID](#anonymous-client-id) |
 
-`New(nil)` reads both. `APIKey` and `BaseURL` are pointers so "unset" and
+`New(nil)` reads all three. `APIKey` and `BaseURL` are pointers so "unset" and
 "explicitly empty" differ: nil reads the environment, a pointer to `""` forces
 keyless (or rejects an empty base URL) even when the variable is set. A Go
 literal cannot be addressed, so put the string in a variable:
@@ -377,6 +378,31 @@ zero adds no extra deadline and that client's `Timeout` is left unchanged.
 `ClientSource` is sent as
 `X-Keenable-Title`; empty means "Keenable SDK". Set it when you wrap this SDK
 and want your own traffic attribution.
+
+## Anonymous client ID
+
+A keyless client is told apart from other keyless callers by an ID the API
+issues, not by its address or user agent. The API sends an opaque token in the
+`X-Keenable-Client` response header; the client keeps it and sends it back in
+the same header on later keyless requests.
+
+- It identifies an installation, not a person. The token is opaque: the SDK
+  never parses it, and it carries no personal data. It is not a credential and
+  grants nothing.
+- It is stored on one line in `<config dir>/keenable/client-id`, where the
+  config dir is `$XDG_CONFIG_HOME` when set to an absolute path, else
+  `%APPDATA%` on Windows, else `~/.config`. The Keenable MCP bridge uses the
+  same file, so one machine keeps one ID. If the file cannot be read or
+  written, the ID lives in memory for the client's lifetime and nothing is
+  raised.
+- A client with an API key never sends, reads or stores it.
+- To turn it off, set `KEENABLE_NO_CLIENT_ID` to any non-empty value, or
+  set `Options.AnonymousClientID` to a pointer to `false`. Nothing is then read, written, sent or kept.
+
+```go
+off := false
+client, err := keenable.New(&keenable.Options{AnonymousClientID: &off})
+```
 
 ## License
 

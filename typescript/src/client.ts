@@ -1,3 +1,4 @@
+import { CLIENT_ID_HEADER, CLIENT_ID_OPT_OUT_ENV, ClientIdStore } from "./client-id.js";
 import {
   KeenableAPIError,
   KeenableAuthError,
@@ -594,6 +595,20 @@ function checkHeaders(name: string, headers: Record<string, string>): Record<str
 /** The longest delay a JavaScript timer can wait; a longer one fires at once. */
 const MAX_TIMER_MS = 2_147_483_647;
 
+/** `headers` with `name` set to `value`, replacing the name in any case. */
+function withHeader(
+  headers: Record<string, string>,
+  name: string,
+  value: string,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, existing] of Object.entries(headers)) {
+    if (key.toLowerCase() !== name.toLowerCase()) out[key] = existing;
+  }
+  out[name] = value;
+  return out;
+}
+
 function positiveTimeout(name: string, value: number): number {
   if (!Number.isFinite(value) || value <= 0) {
     throw new KeenableInvalidRequestError(
@@ -624,6 +639,11 @@ export class Keenable {
   private readonly maxRetries: number;
   private readonly defaultHeaders: Record<string, string>;
   private readonly fetchImpl: typeof globalThis.fetch;
+  /**
+   * The anonymous client ID, for the keyless tier only: a client with a key
+   * has no store, so it never reads, sends, captures or writes one.
+   */
+  private readonly clientId?: ClientIdStore;
 
   constructor(options: KeenableOptions = {}) {
     this.apiKey = nonEmpty(options.apiKey ?? readEnv("KEENABLE_API_KEY"))?.trim();
@@ -639,6 +659,13 @@ export class Keenable {
       );
     }
     this.fetchImpl = fetchImpl;
+    if (
+      this.apiKey === undefined &&
+      options.anonymousClientId !== false &&
+      !readEnv(CLIENT_ID_OPT_OUT_ENV)
+    ) {
+      this.clientId = new ClientIdStore();
+    }
   }
 
   /** True when no API key is configured and the public tier is in use. */
@@ -799,7 +826,11 @@ export class Keenable {
 
     for (let retry = 0; ; retry += 1) {
       try {
-        return await this.attempt(url, { ...init, headers }, timeoutMs, options.signal);
+        // Read per attempt, so a retry carries the ID the failed attempt's
+        // response issued.
+        const token = this.clientId ? await this.clientId.get() : undefined;
+        const sent = token === undefined ? headers : withHeader(headers, CLIENT_ID_HEADER, token);
+        return await this.attempt(url, { ...init, headers: sent }, timeoutMs, options.signal);
       } catch (error) {
         const delay = retry < maxRetries ? retryDelayMs(error, retry) : undefined;
         if (delay === undefined) throw error;
@@ -859,6 +890,7 @@ export class Keenable {
         `the Keenable API redirected to ${response.url || "another URL"}, and the fetch function you passed followed it although the SDK asked it not to. The response was discarded. Check KEENABLE_API_URL and the fetch option.`,
       );
     }
+    this.clientId?.capture(response.headers.get(CLIENT_ID_HEADER));
     if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400)) {
       const location = response.headers.get("Location");
       throw new KeenableRedirectError(

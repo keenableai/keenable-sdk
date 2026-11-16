@@ -241,6 +241,38 @@ function toolCalls(): Obj[] {
   });
 }
 
+function clientIdTokens(): Obj[] {
+  const source = load("client-id.json");
+  return (source.tokens as [string, boolean, string][]).map(([value, valid, why]) => ({
+    name: `${valid ? "accepted" : "ignored"}: ${why}: ${JSON.stringify(value.length > 40 ? `${value.slice(0, 8)}... (${value.length})` : value)}`,
+    value,
+    valid,
+  }));
+}
+
+const PLATFORMS = new Set(["windows", "linux", "darwin"]);
+
+function clientIdPaths(): Obj[] {
+  return (load("client-id.json").paths as Obj[]).map((item) => {
+    const name = item.name as string;
+    if (!PLATFORMS.has(item.platform as string)) fail(`client-id ${name}: unknown platform`);
+    if (typeof item.home !== "string") fail(`client-id ${name}: "home" must be a string`);
+    if (item.path !== null && typeof item.path !== "string") {
+      fail(`client-id ${name}: "path" must be a string or null`);
+    }
+    for (const set of Object.values(item.env as Obj)) {
+      if (typeof set !== "string") fail(`client-id ${name}: "env" values must be strings`);
+    }
+    return {
+      name,
+      platform: item.platform as string,
+      env: item.env as Obj,
+      home: item.home,
+      path: item.path,
+    };
+  });
+}
+
 /** The fixture's exact text for the case files on disk. */
 export function buildConformance(): string {
   const fixture = {
@@ -256,6 +288,8 @@ export function buildConformance(): string {
     search_body: searchBodies(),
     fetch_params: fetchParams(),
     tool_call: toolCalls(),
+    client_id_token: clientIdTokens(),
+    client_id_path: clientIdPaths(),
   };
   for (const [section, cases] of Object.entries(fixture)) {
     if (Array.isArray(cases)) uniqueNames(section, cases as { name: string }[]);

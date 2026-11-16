@@ -287,12 +287,35 @@ cannot leak to another host.
 |---|---|---|
 | `KEENABLE_API_KEY` | unset | Lifts the hourly rate limit. Create one at [keenable.ai/console](https://keenable.ai/console) |
 | `KEENABLE_API_URL` | `https://api.keenable.ai` | Override the API base URL |
+| `KEENABLE_NO_CLIENT_ID` | unset | Any non-empty value turns off the [anonymous client ID](#anonymous-client-id) |
 
-Both can also be passed to the constructor as `apiKey` and `baseUrl`, alongside
+The first two can also be passed to the constructor as `apiKey` and `baseUrl`, alongside
 `timeoutMs`, `maxRetries`, `defaultHeaders`, a custom `fetch` (e.g. for a
 proxy), and `clientSource`. Building an integration on
 top of this SDK? Set `clientSource: "Your Integration"` so your traffic is
 attributed to you rather than to the bare SDK.
+
+## Anonymous client ID
+
+A keyless client is told apart from other keyless callers by an ID the API
+issues, not by its address or user agent. The API sends an opaque token in the
+`X-Keenable-Client` response header; the client keeps it and sends it back in
+the same header on later keyless requests.
+
+- It identifies an installation, not a person. The token is opaque: the SDK
+  never parses it, and it carries no personal data. It is not a credential and
+  grants nothing.
+- It is stored on one line in `<config dir>/keenable/client-id`, where the
+  config dir is `$XDG_CONFIG_HOME` when set to an absolute path, else
+  `%APPDATA%` on Windows, else `~/.config`. The Keenable MCP bridge uses the
+  same file, so one machine keeps one ID. If the file cannot be read or
+  written, the ID lives in memory for the client's lifetime and nothing is
+  raised.
+  In a browser or an edge runtime there is no file: the ID is kept in memory
+  only, and the SDK imports no Node module there.
+- A client with an API key never sends, reads or stores it.
+- To turn it off, set `KEENABLE_NO_CLIENT_ID` to any non-empty value, or
+  pass `anonymousClientId: false` to `new Keenable()`. Nothing is then read, written, sent or kept.
 
 ## License
 

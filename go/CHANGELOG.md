@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+A keyless client keeps an anonymous client ID. The API issues an opaque token
+in the `X-Keenable-Client` response header, on a success or an error; the
+client sends it back in that header on every later keyless request, and a
+newer one replaces it. The token is 1 to 128 characters of `A-Z a-z 0-9 . _ -`;
+any other value is ignored. It identifies an installation, not a person, is
+not a credential, and is stored in `<config dir>/keenable/client-id`
+(`$XDG_CONFIG_HOME` when absolute, else `%APPDATA%` on Windows, else
+`~/.config`), the file the Keenable MCP bridge uses. The file is read once,
+before the first keyless request, and written only when the ID changes; a
+filesystem failure is never raised, and the ID then lives in memory. A
+client with an API key never sends, reads or stores it. Turn it off with
+`Options.AnonymousClientID` pointing to `false` or a non-empty `KEENABLE_NO_CLIENT_ID`. An API that does not send the
+header changes nothing.
+
 ## 0.1.5
 
 ## 0.1.2
