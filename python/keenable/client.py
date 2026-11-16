@@ -99,18 +99,14 @@ def _resolve_base_url(base_url: str | None) -> str:
     )
 
 
-def _canonical_host(host: str) -> str:
-    """The host as a URL parser reads it: width-folded, lowercased, no final dot.
+def _folded_host(host: str) -> str:
+    """The host as a URL parser reads it: width-folded and lowercased.
 
     Browsers, Node and the TypeScript SDK fold fullwidth characters and
-    ideographic full stops (``１２７。０。０。１`` is 127.0.0.1), so this check
-    has to see the host the same way.
+    ideographic full stops (``１２７。０。０。１`` is 127.0.0.1), so the fetch
+    check has to see the host the same way. Trailing dots stay on, so the
+    caller can tell ``example.com.`` from ``example.com..``.
     """
-    return _folded_host(host).rstrip(".")
-
-
-def _folded_host(host: str) -> str:
-    """``_canonical_host`` with the trailing dots still on."""
     folded = unicodedata.normalize("NFKC", host)
     for stop in _IDEOGRAPHIC_STOPS:
         folded = folded.replace(stop, ".")
@@ -742,7 +738,7 @@ def _transport_errors(timeout: Any) -> Iterator[None]:
     """
     try:
         yield
-    except httpx.TimeoutException as exc:
+    except (httpx.TimeoutException, asyncio.TimeoutError) as exc:
         within = f" within {timeout} s" if isinstance(timeout, (int, float)) else ""
         raise KeenableTimeoutError(
             f"the Keenable API did not respond{within}: {exc!r}"
@@ -751,6 +747,52 @@ def _transport_errors(timeout: Any) -> Iterator[None]:
         raise KeenableConnectionError(
             f"could not reach the Keenable API: {exc!r}"
         ) from exc
+
+
+def _attempt_deadline(timeout: Any) -> float | None:
+    """The seconds one whole attempt may take, when ``timeout`` is a number.
+
+    httpx applies a number to each phase on its own (connect, write, every
+    read), so a server that keeps trickling bytes would never time out. A
+    number is therefore also the deadline for the attempt as a whole, as in
+    the TypeScript and Go SDKs. An ``httpx.Timeout``, ``None`` and a passed
+    client's own timeout keep httpx's per-phase meaning.
+    """
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
+        return None
+    return float(timeout)
+
+
+def _send_within(
+    client: httpx.Client, deadline: float | None, method: str, url: str, **kwargs: Any
+) -> httpx.Response:
+    """Send a request and read its body, giving up once ``deadline`` has passed.
+
+    The clock is checked as each piece of the body arrives. One silent read
+    can still last the per-phase timeout, so an attempt ends at the latest one
+    timeout after its deadline.
+    """
+    if deadline is None:
+        return client.request(method, url, **kwargs)
+    ends = time.monotonic() + deadline
+    with client.stream(method, url, **kwargs) as response:
+        if response.is_stream_consumed:
+            # A transport that hands over a complete body (a mock, a cache).
+            return response
+        body = bytearray()
+        for chunk in response.iter_raw():
+            body += chunk
+            if time.monotonic() > ends:
+                raise httpx.ReadTimeout(
+                    "the response body was still arriving at the deadline",
+                    request=response.request,
+                )
+        return httpx.Response(
+            response.status_code,
+            headers=response.headers,
+            content=bytes(body),
+            request=response.request,
+        )
 
 
 def _backoff(retry: int, jitter: float | None = None) -> float:
@@ -1033,7 +1075,9 @@ class Keenable(_BaseClient):
         while True:
             try:
                 with _transport_errors(call_timeout):
-                    response = self._client.request(
+                    response = _send_within(
+                        self._client,
+                        _attempt_deadline(call_timeout),
                         "GET" if json is None else "POST",
                         self._url(endpoint),
                         params=params,
@@ -1248,14 +1292,18 @@ class AsyncKeenable(_BaseClient):
         while True:
             try:
                 with _transport_errors(call_timeout):
-                    response = await self._client.request(
-                        "GET" if json is None else "POST",
-                        self._url(endpoint),
-                        params=params,
-                        json=json,
-                        headers=headers,
-                        timeout=call_timeout,
-                        follow_redirects=False,
+                    # A number bounds the whole attempt, not only each phase.
+                    response = await asyncio.wait_for(
+                        self._client.request(
+                            "GET" if json is None else "POST",
+                            self._url(endpoint),
+                            params=params,
+                            json=json,
+                            headers=headers,
+                            timeout=call_timeout,
+                            follow_redirects=False,
+                        ),
+                        _attempt_deadline(call_timeout),
                     )
                 return _decode(response)
             except KeenableError as error:

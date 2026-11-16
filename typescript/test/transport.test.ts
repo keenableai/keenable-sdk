@@ -686,8 +686,17 @@ describe("transport guards the shared cases cannot reach", () => {
     expect(outcome.error).not.toBeInstanceOf(KeenableTimeoutError);
     expect((outcome.error as Error).message).toContain("https://elsewhere.example/v1/search");
     expect((outcome.error as Error).message).toContain("followed it");
+    expect((outcome.error as Error).message).toContain("Your API key may have been sent");
+    expect((outcome.error as Error).message).toContain("rotate it");
+    expect((outcome.error as Error).message).not.toContain('"k"');
     expect(outcome.requests).toHaveLength(1);
     expect(waits).toEqual([]);
+
+    vi.stubEnv("KEENABLE_API_KEY", "");
+    const keyless = await run([followed], { apiKey: "", maxRetries: 0 });
+    expect(keyless.error).toBeInstanceOf(KeenableConnectionError);
+    expect((keyless.error as Error).message).toContain("followed it");
+    expect((keyless.error as Error).message).not.toContain("API key");
   });
 
   it("treats a blank KEENABLE_API_URL as unset", async () => {

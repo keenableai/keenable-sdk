@@ -145,6 +145,9 @@ body's, else the trimmed `X-Request-Id` header.
 - A per-call timeout is a finite number above 0; unset keeps the client's. A
   timeout over 2,147,483.647 seconds (about 24.8 days, the longest a JavaScript
   timer can wait) is treated as that long.
+- A numeric timeout is the deadline for one whole attempt, from sending the
+  request to the last byte of the body, not for each read on its own. A server
+  that keeps trickling bytes still times out.
 - Header names are HTTP tokens and values hold no CR, LF or NUL; anything else is
   the invalid-request error, not a retried connection failure. `X-API-Key` is
   ignored: the key always comes from the client.

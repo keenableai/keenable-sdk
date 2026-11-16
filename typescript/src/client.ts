@@ -881,9 +881,13 @@ export class Keenable {
 
     if (response.redirected) {
       // A custom fetch followed the redirect although the SDK passed
-      // redirect: "manual"; the reply came from wherever it led.
+      // redirect: "manual"; the reply came from wherever it led, and that
+      // fetch may have carried X-API-Key there.
+      const sentKey = this.apiKey
+        ? " Your API key may have been sent to that address: rotate it at https://keenable.ai/console."
+        : "";
       throw new KeenableRedirectError(
-        `the Keenable API redirected to ${response.url || "another URL"}, and the fetch function you passed followed it although the SDK asked it not to. The response was discarded. Check KEENABLE_API_URL and the fetch option.`,
+        `the Keenable API redirected to ${response.url || "another URL"}, and the fetch function you passed followed it although the SDK asked it not to (redirect: "manual").${sentKey} The response was discarded. Check KEENABLE_API_URL, and make the fetch option honour redirect: "manual".`,
       );
     }
     if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400)) {
