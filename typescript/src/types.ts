@@ -157,6 +157,17 @@ export interface KeenableOptions {
   maxRetries?: number;
   /** Headers sent with every request, e.g. for a proxy or gateway. */
   defaultHeaders?: Record<string, string>;
+  /**
+   * `false` turns off the anonymous client ID, as does a non-empty
+   * `KEENABLE_NO_CLIENT_ID`. By default a keyless client keeps the opaque ID
+   * the API issues in the `X-Keenable-Client` response header and sends it
+   * back on later keyless requests. It identifies an installation, not a
+   * person, and is not a credential. On Node it is stored in
+   * `<config dir>/keenable/client-id` (`$XDG_CONFIG_HOME`, else `%APPDATA%`
+   * on Windows, else `~/.config`); in a browser or edge runtime it is kept in
+   * memory only. A client with an API key never uses it.
+   */
+  anonymousClientId?: boolean;
   /** Custom fetch implementation (for tests or a proxy). */
   fetch?: typeof globalThis.fetch;
 }

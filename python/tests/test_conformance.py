@@ -31,6 +31,7 @@ from keenable import (
     arun_tool_call,
     run_tool_call,
 )
+from keenable import _client_id as client_id_module
 from keenable import client as client_module
 
 FIXTURE: dict[str, Any] = json.loads(
@@ -400,6 +401,23 @@ async def test_tool_call(kind: str, case: dict[str, Any], waits: list[float]) ->
         assert json.loads(seen[0].content) == case["sent"]
 
 
+# --- the anonymous client ID -------------------------------------------------
+
+
+@pytest.mark.parametrize("case", cases("client_id_token"))
+def test_client_id_token(case: dict[str, Any]) -> None:
+    want = case["value"] if case["valid"] else None
+    assert client_id_module.valid_token(case["value"]) == want
+
+
+@pytest.mark.parametrize("case", cases("client_id_path"))
+def test_client_id_path(case: dict[str, Any]) -> None:
+    got = client_id_module.client_id_path(
+        case["env"], case["platform"] == "windows", case["home"]
+    )
+    assert got == case["path"]
+
+
 def test_the_fixture_has_every_section() -> None:
     sections = set(FIXTURE) - {"_comment"}
     assert sections == {
@@ -413,6 +431,8 @@ def test_the_fixture_has_every_section() -> None:
         "search_body",
         "fetch_params",
         "tool_call",
+        "client_id_token",
+        "client_id_path",
     }
 
 
