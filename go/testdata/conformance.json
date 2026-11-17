@@ -3219,6 +3219,34 @@
       }
     },
     {
+      "name": "an include_domains invalid_filter 400 names the rejected value and reason",
+      "status": 400,
+      "headers": {},
+      "body": "{\"error\":\"invalid_filter\",\"message\":\"Invalid include_domains value \\\"arxiv.org/abs\\\": paths are not supported; give only the host, such as example.com\",\"field\":\"include_domains\",\"value\":\"arxiv.org/abs\",\"reason\":\"paths are not supported; give only the host, such as example.com\",\"type\":\"invalid_request_error\",\"code\":\"invalid_parameter\",\"fix\":\"Fix \\\"include_domains\\\" and retry: paths are not supported; give only the host, such as example.com.\",\"docs_url\":\"https://docs.keenable.ai/errors#invalid-parameter\",\"retryable\":false,\"param\":\"include_domains\"}",
+      "expect": {
+        "kind": "api",
+        "detail": "Invalid include_domains value \"arxiv.org/abs\": paths are not supported; give only the host, such as example.com",
+        "code": "invalid_parameter",
+        "type": "invalid_request_error",
+        "error": "invalid_filter",
+        "fix": "Fix \"include_domains\" and retry: paths are not supported; give only the host, such as example.com.",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": "include_domains",
+        "value": "arxiv.org/abs",
+        "reason": "paths are not supported; give only the host, such as example.com",
+        "limit": null,
+        "message_contains": [
+          "Fix \"include_domains\" and retry: paths are not supported; give only the host, such as example.com."
+        ],
+        "message_excludes": [],
+        "absent": [
+          "https://docs.keenable.ai/errors#invalid-parameter"
+        ]
+      }
+    },
+    {
       "name": "an invalid_filter 400 without a value or param",
       "status": 400,
       "headers": {},
@@ -5455,6 +5483,121 @@
       "skip": {}
     },
     {
+      "name": "include_domains is sent as a list",
+      "query": "q",
+      "options": {
+        "include_domains": [
+          "arxiv.org",
+          ".gov"
+        ]
+      },
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "include_domains": [
+          "arxiv.org",
+          ".gov"
+        ]
+      },
+      "skip": {}
+    },
+    {
+      "name": "an empty include_domains is sent",
+      "query": "q",
+      "options": {
+        "include_domains": []
+      },
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "include_domains": []
+      },
+      "skip": {}
+    },
+    {
+      "name": "include_domains entries are sent as given",
+      "query": "q",
+      "options": {
+        "include_domains": [
+          " https://WWW.ArXiv.org/ ",
+          "arxiv.org",
+          "arxiv.org/abs",
+          "*.edu"
+        ]
+      },
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "include_domains": [
+          " https://WWW.ArXiv.org/ ",
+          "arxiv.org",
+          "arxiv.org/abs",
+          "*.edu"
+        ]
+      },
+      "skip": {}
+    },
+    {
+      "name": "a lone include_domains string is wrapped",
+      "query": "q",
+      "options": {
+        "include_domains": "arxiv.org"
+      },
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "include_domains": [
+          "arxiv.org"
+        ]
+      },
+      "skip": {
+        "go": "SearchOptions.IncludeDomains is a []string",
+        "rust": "SearchOptions::include_domains is an Option<Vec<String>>"
+      }
+    },
+    {
+      "name": "include_domains and exclude_domains together",
+      "query": "q",
+      "options": {
+        "include_domains": [
+          "github.com"
+        ],
+        "exclude_domains": [
+          "gist.github.com"
+        ]
+      },
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "include_domains": [
+          "github.com"
+        ],
+        "exclude_domains": [
+          "gist.github.com"
+        ]
+      },
+      "skip": {}
+    },
+    {
+      "name": "the deprecated site is still sent beside include_domains",
+      "query": "q",
+      "options": {
+        "site": "arxiv.org",
+        "include_domains": [
+          "export.arxiv.org"
+        ]
+      },
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "site": "arxiv.org",
+        "include_domains": [
+          "export.arxiv.org"
+        ]
+      },
+      "skip": {}
+    },
+    {
       "name": "disable_cards true is sent",
       "query": "q",
       "options": {
@@ -5752,6 +5895,70 @@
         ]
       },
       "invalid": false
+    },
+    {
+      "name": "include_domains is sent as given",
+      "arguments": "{\"query\":\"q\",\"include_domains\":[\"arxiv.org\",\".gov\"]}",
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "include_domains": [
+          "arxiv.org",
+          ".gov"
+        ]
+      },
+      "invalid": false
+    },
+    {
+      "name": "a lone include_domains string is wrapped",
+      "arguments": "{\"query\":\"q\",\"include_domains\":\"arxiv.org\"}",
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "include_domains": [
+          "arxiv.org"
+        ]
+      },
+      "invalid": false
+    },
+    {
+      "name": "an empty include_domains string is unset",
+      "arguments": "{\"query\":\"q\",\"include_domains\":\"\"}",
+      "sent": {
+        "query": "q",
+        "mode": "pro"
+      },
+      "invalid": false
+    },
+    {
+      "name": "include_domains null is unset",
+      "arguments": "{\"query\":\"q\",\"include_domains\":null}",
+      "sent": {
+        "query": "q",
+        "mode": "pro"
+      },
+      "invalid": false
+    },
+    {
+      "name": "include_domains and exclude_domains together",
+      "arguments": "{\"query\":\"q\",\"include_domains\":[\"github.com\"],\"exclude_domains\":[\"gist.github.com\"]}",
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "include_domains": [
+          "github.com"
+        ],
+        "exclude_domains": [
+          "gist.github.com"
+        ]
+      },
+      "invalid": false
+    },
+    {
+      "name": "NaN in include_domains is invalid",
+      "arguments": "{\"query\": \"q\", \"include_domains\": [NaN]}",
+      "sent": null,
+      "invalid": true
     },
     {
       "name": "NaN in the list is invalid",

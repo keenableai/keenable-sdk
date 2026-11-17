@@ -273,6 +273,43 @@ func TestSearchRawKeepsWarning(t *testing.T) {
 	}
 }
 
+func TestSearchSendsIncludeDomains(t *testing.T) {
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, searchBody), nil)
+	for _, opts := range []*keenable.SearchOptions{
+		{IncludeDomains: []string{"arxiv.org", ".gov"}},
+		{IncludeDomains: []string{}},
+		{IncludeDomains: []string{"github.com"}, ExcludeDomains: []string{"gist.github.com"}},
+		{},
+	} {
+		if _, err := c.Search(context.Background(), "q", opts); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := keenable.RunToolCall(context.Background(), c, "keenable_search", map[string]any{"query": "q", "include_domains": "a.com"}); err != nil {
+		t.Fatal(err)
+	}
+	requests := *seen
+	if len(requests) != 5 {
+		t.Fatalf("got %d requests", len(requests))
+	}
+	listed, empty, both, unset, tool := payloadOf(t, requests[0]), payloadOf(t, requests[1]), payloadOf(t, requests[2]), payloadOf(t, requests[3]), payloadOf(t, requests[4])
+	if !reflect.DeepEqual(listed["include_domains"], []any{"arxiv.org", ".gov"}) {
+		t.Fatalf("include_domains: %#v", listed)
+	}
+	if !reflect.DeepEqual(empty["include_domains"], []any{}) {
+		t.Fatalf("an empty include_domains should be sent as []: %#v", empty)
+	}
+	if !reflect.DeepEqual(both["include_domains"], []any{"github.com"}) || !reflect.DeepEqual(both["exclude_domains"], []any{"gist.github.com"}) {
+		t.Fatalf("include and exclude together: %#v", both)
+	}
+	if _, ok := unset["include_domains"]; ok {
+		t.Fatalf("sent a nil include_domains: %#v", unset)
+	}
+	if !reflect.DeepEqual(tool["include_domains"], []any{"a.com"}) {
+		t.Fatalf("tool include_domains: %#v", tool)
+	}
+}
+
 func TestToolSchemaOffersSiteAndExcludeDomains(t *testing.T) {
 	props := searchToolProperties(t)
 	prop, _ := props["exclude_domains"].(map[string]any)
@@ -283,9 +320,16 @@ func TestToolSchemaOffersSiteAndExcludeDomains(t *testing.T) {
 	if items["type"] != "string" {
 		t.Fatalf("exclude_domains items should be strings: %#v", prop)
 	}
+	include, _ := props["include_domains"].(map[string]any)
+	if include["type"] != "array" {
+		t.Fatalf("include_domains should be an array: %#v", include)
+	}
 	site, _ := props["site"].(map[string]any)
 	if site["type"] != "string" {
 		t.Fatalf("site: %#v", site)
+	}
+	if desc, _ := site["description"].(string); !strings.Contains(desc, "Deprecated") {
+		t.Fatalf("site should say it is deprecated: %#v", site)
 	}
 }
 

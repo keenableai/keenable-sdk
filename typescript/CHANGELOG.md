@@ -5,6 +5,8 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- **Added:** `includeDomains` option on `search()` (`include_domains` on the wire): return results only from these hosts and their subdomains, up to 50 (100 entries as sent); `".gov"` or `"*.edu"` covers every host under the suffix. Any iterable of strings, a lone string being one host, sent as given for the API to validate like `excludeDomains`. The search tool offers it to a model.
+- **Deprecated:** the `site` option, now tagged `@deprecated`. The API removes it on 2027-02-15; use `includeDomains: ["example.com"]`. It still works, and the response's `warning` (in `raw`) says the same.
 - **Added:** `objective` option on `search()`: what the search is for, in two or three natural sentences, up to 1,000 characters. Left out of the request when unset or empty. The API validates and logs it; it does not change results or price. The search tool offers it to a model.
 
 - **Security fix:** `baseUrl` and `KEENABLE_API_URL` are refused when the part

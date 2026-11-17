@@ -38,7 +38,7 @@ Filters are optional and combine freely:
 
 ```ts
 const results = await keenable.search("post-training quantization results", {
-  site: "arxiv.org",
+  includeDomains: ["arxiv.org"],
   publishedAfter: "2026-01-01",
   snippetMaxLength: 500,
 });
@@ -46,7 +46,7 @@ const results = await keenable.search("post-training quantization results", {
 
 | Option | What it does |
 |---|---|
-| `site` | Restrict to one domain, e.g. `"arxiv.org"` |
+| `includeDomains` | Return results only from these hosts or their subdomains, up to 50; see below |
 | `excludeDomains` | Never return results from these hosts or their subdomains; see below |
 | `publishedAfter` / `publishedBefore` | Filter by publication date (`YYYY-MM-DD`) |
 | `acquiredAfter` / `acquiredBefore` | Filter by when Keenable indexed the page |
@@ -56,7 +56,32 @@ const results = await keenable.search("post-training quantization results", {
 | `objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price. Not sent when empty |
 | `mode` | Search mode: `"pro"` (default) does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops |
 | `disableCards` | `true` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). Default `false`, which is not sent; a non-boolean throws `KeenableInvalidRequestError`. In the next release after 0.1.4 |
+| `site` | **Deprecated** (`@deprecated`), removed from the API on 2027-02-15: use `includeDomains`. Restricts to one domain |
 | `signal` | An `AbortSignal` to cancel the request |
+
+### Restricting to domains
+
+`includeDomains` returns results only from the listed sites.
+
+```ts
+const results = await keenable.search("post-training quantization results", {
+  includeDomains: ["arxiv.org", "openreview.net"],
+});
+```
+
+Each entry is a host, which covers itself and every subdomain, so
+`"reddit.com"` also matches `old.reddit.com`. A public suffix written with a
+leading dot or `*.` (`".gov"`, `"*.edu"`) covers every host under it. Up to 50
+distinct hosts, and at most 100 entries as sent. Entries are cleaned up and
+validated like `excludeDomains` entries (below), and a rejected one throws the
+same `invalid_filter` error with `param` set to `"include_domains"`. Results
+from outside the list are dropped, so fewer than `maxResults` may come back.
+`excludeDomains` still applies within the list: `includeDomains: ["github.com"]`
+with `excludeDomains: ["gist.github.com"]` keeps github.com but not gists.
+
+`site` is deprecated and the API removes it on 2027-02-15. It still works, and
+the response carries a `warning` string in `response.raw.warning`. Replace
+`site: "example.com"` with `includeDomains: ["example.com"]`.
 
 ### Excluding domains
 
@@ -105,8 +130,9 @@ characters followed by `"..."`.
 
 If every match is excluded, the response can be empty. The SDK sends the list
 as given and leaves validation to the API; `runToolCall` does the same with a
-model's `exclude_domains` argument. `site` still works for a single domain,
-and the `keenable_search` tool offers the model `site` and `exclude_domains`.
+model's `include_domains` and `exclude_domains` arguments. The
+`keenable_search` tool offers the model `include_domains`, `exclude_domains`
+and the deprecated `site`.
 
 ## Ground a model in one line
 
@@ -189,8 +215,8 @@ whichever the model picked and returns text ready for the `tool` message. Both
 tools render the same numbered, citable block, so the model can cite a fetched
 page the way it cites a search result.
 
-The model may set `site`, `exclude_domains`, `published_after` and
-`disable_cards` on search. The other filters stay on `search()` for you to set
+The model may set `include_domains`, `exclude_domains`, `published_after`,
+`objective`, `disable_cards` and the deprecated `site` on search. The other filters stay on `search()` for you to set
 yourself.
 
 ## Errors

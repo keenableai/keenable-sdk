@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from collections.abc import Iterator
 from typing import Any
 
@@ -256,6 +257,67 @@ async def test_async_search_raw_keeps_the_filter_warning() -> None:
     assert response.raw["warning"] == "3 results were removed by your domain filter"
 
 
+def test_search_sends_include_domains_as_a_list() -> None:
+    keenable, seen = _client(_ok(SEARCH_BODY))
+    keenable.search("q", include_domains=(d for d in ["arxiv.org", ".gov"]))
+    keenable.search("q", include_domains="arxiv.org")
+    keenable.search("q", include_domains=[])
+    keenable.search(
+        "q", include_domains=["github.com"], exclude_domains=["gist.github.com"]
+    )
+
+    generated, lone, empty, both = (json.loads(r.content) for r in seen)
+    assert generated["include_domains"] == ["arxiv.org", ".gov"]
+    assert lone["include_domains"] == ["arxiv.org"]
+    assert empty["include_domains"] == []
+    assert both["include_domains"] == ["github.com"]
+    assert both["exclude_domains"] == ["gist.github.com"]
+
+
+def test_tool_call_sends_include_domains() -> None:
+    keenable, seen = _client(_routed)
+    run_tool_call(
+        keenable, "keenable_search", {"query": "q", "include_domains": "arxiv.org"}
+    )
+    run_tool_call(
+        keenable, "keenable_search", {"query": "q", "include_domains": ["a.com"]}
+    )
+
+    lone, listed = (json.loads(r.content) for r in seen)
+    assert lone["include_domains"] == ["arxiv.org"]
+    assert listed["include_domains"] == ["a.com"]
+
+
+def test_site_is_deprecated_but_still_sent() -> None:
+    body = {**SEARCH_BODY, "warning": "The site parameter is deprecated"}
+    keenable, seen = _client(_ok(body))
+    with pytest.warns(DeprecationWarning, match="include_domains") as caught:
+        response = keenable.search("q", site="arxiv.org")
+
+    assert caught[0].filename == __file__
+    assert json.loads(seen[0].content)["site"] == "arxiv.org"
+    assert response.raw["warning"] == "The site parameter is deprecated"
+
+
+def test_search_without_site_does_not_warn() -> None:
+    keenable, _ = _client(_ok(SEARCH_BODY))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        keenable.search("q", include_domains=["arxiv.org"], site="")
+
+
+async def test_async_site_is_deprecated_but_still_sent() -> None:
+    keenable, seen = _aclient(_routed)
+    async with keenable:
+        with pytest.warns(DeprecationWarning, match="2027-02-15") as caught:
+            await keenable.search("q", site="arxiv.org", include_domains=["a.com"])
+
+    assert caught[0].filename == __file__
+    payload = json.loads(seen[0].content)
+    assert payload["site"] == "arxiv.org"
+    assert payload["include_domains"] == ["a.com"]
+
+
 def test_keyless_client_uses_public_endpoint_and_identifies_itself() -> None:
     keenable, seen = _client(_ok(SEARCH_BODY))
     keenable.search("hello")
@@ -456,6 +518,9 @@ def test_tool_call_forwards_only_the_filters_the_schema_offers() -> None:
 def test_tool_schema_offers_site_and_exclude_domains() -> None:
     search = next(t for t in TOOLS if t["function"]["name"] == "keenable_search")
     props = search["function"]["parameters"]["properties"]
+    assert props["include_domains"]["type"] == "array"
+    assert props["include_domains"]["items"] == {"type": "string"}
+    assert "Deprecated" in props["site"]["description"]
     assert props["exclude_domains"]["type"] == "array"
     assert props["exclude_domains"]["items"] == {"type": "string"}
     assert props["site"]["type"] == "string"

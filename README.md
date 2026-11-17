@@ -95,6 +95,22 @@ results = keenable.search(
 )
 ```
 
+Search only some sites with `include_domains` (`includeDomains` in
+TypeScript, `IncludeDomains` in Go, `include_domains` on `SearchOptions` in
+Rust), up to 50 hosts. Each entry covers its subdomains, and `".gov"` covers
+every host under the suffix:
+
+```python
+results = keenable.search(
+    "post-training quantization results",
+    include_domains=["arxiv.org", "openreview.net"],
+)
+```
+
+`site` is deprecated and the API removes it on 2027-02-15: replace
+`site="example.com"` with `include_domains=["example.com"]`. Until then it
+still works, and the response carries a `warning`.
+
 Each SDK exposes the same surface: search, fetch, a `to_context()` /
 `toContext()` / `ToContext()` / `to_context()` renderer for prompts, and OpenAI-compatible tool
 definitions for tool calling. See the per-language READMEs for the full
@@ -105,7 +121,8 @@ reference.
 - [`examples/cerebras/`](./examples/cerebras) - grounding a Cerebras model in
   live web results, and letting it call Keenable as a tool. Python and Node.
 - [`examples/domain-filters/`](./examples/domain-filters) - keeping sites out
-  of the results with `exclude_domains`. Python and TypeScript.
+  of the results with `exclude_domains`, and searching only some sites with
+  `include_domains`. Python and TypeScript.
 
 ## Documentation for partners
 

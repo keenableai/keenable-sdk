@@ -5,6 +5,8 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
+- **Added:** `include_domains` on `search()` (sync and async): return results only from these hosts and their subdomains, up to 50 (100 entries as sent); `".gov"` or `"*.edu"` covers every host under the suffix. Any iterable of strings, a lone string being one host, sent as given for the API to validate like `exclude_domains`. The search tool offers it to a model.
+- **Deprecated:** `site` on `search()`. The API removes it on 2027-02-15; use `include_domains=["example.com"]`. Passing it still works but raises a `DeprecationWarning`, and the response's `warning` (in `SearchResponse.raw`) says the same.
 - **Added:** `objective` on `search()` (sync and async): what the search is for, in two or three natural sentences, up to 1,000 characters. Left out of the request when unset or empty. The API validates and logs it; it does not change results or price. The search tool offers it to a model.
 
 - **Changed:** a numeric `timeout` is now the deadline for the whole attempt,

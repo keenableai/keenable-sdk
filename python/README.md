@@ -33,7 +33,7 @@ Filters are optional and combine freely:
 ```python
 results = keenable.search(
     "post-training quantization results",
-    site="arxiv.org",
+    include_domains=["arxiv.org"],
     published_after="2026-01-01",
     snippet_max_length=500,
 )
@@ -41,7 +41,7 @@ results = keenable.search(
 
 | Argument | What it does |
 |---|---|
-| `site` | Restrict to one domain, e.g. `"arxiv.org"` |
+| `include_domains` | Return results only from these hosts or their subdomains, up to 50; see below |
 | `exclude_domains` | Never return results from these hosts or their subdomains; see below |
 | `published_after` / `published_before` | Filter by publication date (`YYYY-MM-DD`) |
 | `acquired_after` / `acquired_before` | Filter by when Keenable indexed the page |
@@ -50,7 +50,34 @@ results = keenable.search(
 | `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price. Not sent when empty |
 | `mode` | Search mode: `"pro"` (default) does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops |
+| `site` | **Deprecated**, removed from the API on 2027-02-15: use `include_domains`. Restricts to one domain; passing it raises a `DeprecationWarning` |
 | `disable_cards` | `True` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). Default `False`, which is not sent; any other value raises `KeenableInvalidRequestError`. In the next release after 0.1.3 |
+
+### Restricting to domains
+
+`include_domains` returns results only from the listed sites.
+
+```python
+results = keenable.search(
+    "post-training quantization results",
+    include_domains=["arxiv.org", "openreview.net"],
+)
+```
+
+Each entry is a host, which covers itself and every subdomain, so
+`"reddit.com"` also matches `old.reddit.com`. A public suffix written with a
+leading dot or `*.` (`".gov"`, `"*.edu"`) covers every host under it. Up to 50
+distinct hosts, and at most 100 entries as sent. Entries are cleaned up and
+validated like `exclude_domains` entries (below), and a rejected one raises the
+same `invalid_filter` error with `param` set to `"include_domains"`. Results
+from outside the list are dropped, so fewer than `max_results` may come back.
+`exclude_domains` still applies within the list: `include_domains=["github.com"]`
+with `exclude_domains=["gist.github.com"]` keeps github.com but not gists.
+
+`site` is deprecated and the API removes it on 2027-02-15. Passing it still
+works but raises a `DeprecationWarning`, and the response carries a `warning`
+string, in `response.raw["warning"]`. Replace `site="example.com"` with
+`include_domains=["example.com"]`.
 
 ### Excluding domains
 
@@ -95,8 +122,9 @@ characters followed by `"..."`.
 
 If every match is excluded, the response can be empty. The SDK sends the list
 as given and leaves validation to the API; `run_tool_call` does the same with a
-model's `exclude_domains` argument. `site` still works for a single domain,
-and the `keenable_search` tool offers the model `site` and `exclude_domains`.
+model's `include_domains` and `exclude_domains` arguments. The
+`keenable_search` tool offers the model `include_domains`, `exclude_domains`
+and the deprecated `site`.
 
 ## Ground a model in one line
 
@@ -178,9 +206,9 @@ tools render the same numbered, citable block, so the model can cite a fetched
 page the way it cites a search result. `arun_tool_call` is the async
 counterpart, for use with `AsyncKeenable`.
 
-The model may set `site`, `exclude_domains`, `published_after` and
-`disable_cards` on search. The other filters stay on `search()` for you to set
-yourself.
+The model may set `include_domains`, `exclude_domains`, `published_after`,
+`objective`, `disable_cards` and the deprecated `site` on search. The other
+filters stay on `search()` for you to set yourself.
 
 ## Async
 

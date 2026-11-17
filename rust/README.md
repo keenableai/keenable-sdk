@@ -79,7 +79,7 @@ let results = client
     .search_with(
         "post-training quantization results",
         &keenable::SearchOptions {
-            site: Some("arxiv.org".into()),
+            include_domains: Some(vec!["arxiv.org".into()]),
             published_after: Some("2026-01-01".into()),
             max_results: Some(5),
             ..Default::default()
@@ -94,7 +94,7 @@ for result in &results {
 | Field | What it does |
 |---|---|
 | `mode` | `"pro"` (the default) does deeper retrieval; `"realtime"` gives the fastest response |
-| `site` | Restrict to one domain, such as `"arxiv.org"` |
+| `include_domains` | Return results only from these hosts or their subdomains, up to 50 (100 entries as sent); `".gov"` covers every host under the suffix |
 | `exclude_domains` | Never return results from these hosts or their subdomains, up to 1,000 |
 | `published_after` / `published_before` | Filter by publication date (`YYYY-MM-DD`) |
 | `acquired_after` / `acquired_before` | Filter by when Keenable indexed the page |
@@ -103,11 +103,13 @@ for result in &results {
 | `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price |
 | `disable_cards` | `true` returns ordinary web pages in place of Keenable's cards |
+| `site` | **Deprecated** (`#[deprecated]`), removed from the API on 2027-02-15: use `include_domains`. Restricts to one domain; the response carries a `warning` in `raw` |
 | `request` | This call's timeout, retry budget and headers (`RequestOptions`) |
 
 An empty string is unset and is not sent. When the API rejects an
-`exclude_domains` entry, the error is an `Error::Api` whose `ApiError` has
-`param` (`exclude_domains`), `value` (the rejected entry) and `reason`.
+`include_domains` or `exclude_domains` entry, the error is an `Error::Api`
+whose `ApiError` has `param` (the list's name), `value` (the rejected entry)
+and `reason`. `exclude_domains` still applies within `include_domains`.
 
 ## Ground a model in one line
 
@@ -175,8 +177,8 @@ let content = match client.run_tool_call(&call.name, &call.arguments).await {
 ```
 
 `arguments` is the JSON text the model sent, or a `serde_json::Value`. The
-model may set `site`, `exclude_domains`, `published_after`, `objective` and
-`disable_cards` on search.
+model may set `include_domains`, `exclude_domains`, `published_after`,
+`objective`, `disable_cards` and the deprecated `site` on search.
 
 ## Retries
 

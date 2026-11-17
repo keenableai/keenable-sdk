@@ -87,6 +87,20 @@ async fn call_headers_go_over_client_headers_and_never_set_the_key() {
 }
 
 #[tokio::test]
+async fn include_domains_is_sent_with_exclude_domains() {
+    let server = start(Script::Replies(vec![search_reply()])).await;
+    let opts = SearchOptions {
+        include_domains: Some(vec!["github.com".into(), ".gov".into()]),
+        exclude_domains: Some(vec!["gist.github.com".into()]),
+        ..Default::default()
+    };
+    keyed(&server).search_with("q", &opts).await.unwrap();
+    let sent: serde_json::Value = serde_json::from_slice(&server.requests()[0].body).unwrap();
+    assert_eq!(sent["include_domains"], json!(["github.com", ".gov"]));
+    assert_eq!(sent["exclude_domains"], json!(["gist.github.com"]));
+}
+
+#[tokio::test]
 async fn a_redirect_is_not_followed() {
     let server = start(Script::Replies(vec![
         Reply::new(302, "").header("Location", "https://elsewhere.example/v1/search")
@@ -191,6 +205,7 @@ fn the_tool_definitions_match_the_other_sdks() {
         [
             "disable_cards",
             "exclude_domains",
+            "include_domains",
             "objective",
             "published_after",
             "query",
@@ -198,6 +213,11 @@ fn the_tool_definitions_match_the_other_sdks() {
         ]
     );
     assert_eq!(props["exclude_domains"]["items"], json!({"type": "string"}));
+    assert_eq!(props["include_domains"]["items"], json!({"type": "string"}));
+    assert!(props["site"]["description"]
+        .as_str()
+        .unwrap()
+        .contains("Deprecated"));
     assert_eq!(props["disable_cards"]["type"], "boolean");
 }
 

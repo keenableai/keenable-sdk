@@ -39,8 +39,17 @@ pub const FETCH_TOOL_NAME: &str = "keenable_fetch";
 
 /// The search filters a model may set, with their JSON type. They are both
 /// the tool schema's properties and the allow-list `run_tool_call` reads.
-const TOOL_FILTERS: [(&str, &str, &str); 5] = [
-    ("site", "string", "Optional. Restrict results to one domain, e.g. 'arxiv.org'."),
+const TOOL_FILTERS: [(&str, &str, &str); 6] = [
+    (
+        "site",
+        "string",
+        "Optional. Deprecated, removed on 2027-02-15: use include_domains. Restrict results to one domain, e.g. 'arxiv.org'.",
+    ),
+    (
+        "include_domains",
+        "array",
+        "Optional. Return results only from these hosts or their subdomains, e.g. 'arxiv.org'. Hosts only, no paths or wildcards. Up to 50.",
+    ),
     (
         "exclude_domains",
         "array",

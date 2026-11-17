@@ -27,7 +27,18 @@ export const SEARCH_FILTERS: readonly Filter[] = [
   {
     wire: "site",
     option: "site",
-    description: "Optional. Restrict results to one domain, e.g. 'arxiv.org'.",
+    description:
+      "Optional. Deprecated, removed on 2027-02-15: use include_domains. " +
+      "Restrict results to one domain, e.g. 'arxiv.org'.",
+    toolExposed: true,
+  },
+  {
+    wire: "include_domains",
+    option: "includeDomains",
+    description:
+      "Optional. Return results only from these hosts or their subdomains, " +
+      "e.g. 'arxiv.org'. Hosts only, no paths or wildcards. Up to 50.",
+    jsonType: "array",
     toolExposed: true,
   },
   {

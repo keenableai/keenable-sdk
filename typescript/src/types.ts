@@ -53,8 +53,18 @@ export interface SearchOptions extends RequestOptions {
    * gives the fastest response, for latency-sensitive agent loops.
    */
   mode?: "pro" | "realtime";
-  /** Restrict results to one domain, e.g. `"arxiv.org"`. */
+  /**
+   * Restrict results to one domain, e.g. `"arxiv.org"`. Responses to a request
+   * that sends it carry a `warning` in `raw`.
+   *
+   * @deprecated Removed from the API on 2027-02-15. Use `includeDomains` instead.
+   */
   site?: string;
+  /**
+   * Return results only from these hosts and their subdomains, up to 50. Any
+   * iterable; a lone string is one host. `".gov"` covers every host under the suffix.
+   */
+  includeDomains?: Iterable<string>;
   /** Never return results from these hosts and their subdomains. Any iterable; a lone string is one host. */
   excludeDomains?: Iterable<string>;
   /** Only pages published on or after this date (`YYYY-MM-DD`). */
