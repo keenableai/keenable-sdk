@@ -84,6 +84,7 @@ SEARCH_FILTERS: tuple[Filter, ...] = (
         "task context the query does not state; which sources count or must be "
         "excluded; what is already established and what is still unknown. "
         "Do not paste the conversation. Up to 5,000 characters.",
+        tool_exposed=True,
     ),
     Filter(
         "disable_cards",

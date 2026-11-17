@@ -289,6 +289,16 @@ func TestToolSchemaOffersSiteAndExcludeDomains(t *testing.T) {
 	}
 }
 
+func TestToolSchemaOffersObjectiveAsAString(t *testing.T) {
+	prop, _ := searchToolProperties(t)["objective"].(map[string]any)
+	if prop["type"] != "string" {
+		t.Fatalf("objective should be a string: %#v", prop)
+	}
+	if desc, _ := prop["description"].(string); !strings.Contains(desc, "what this search is for") {
+		t.Fatalf("objective description: %#v", prop)
+	}
+}
+
 func TestToolSchemaOffersDisableCardsAsABoolean(t *testing.T) {
 	prop, _ := searchToolProperties(t)["disable_cards"].(map[string]any)
 	if prop["type"] != "boolean" {

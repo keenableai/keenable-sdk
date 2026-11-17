@@ -71,6 +71,7 @@ var searchFilters = []filter{
 			"facts, figures, dates or names a useful page must contain; task context the query " +
 			"does not state; which sources count or must be excluded; what is already " +
 			"established and what is still unknown. Do not paste the conversation. Up to 5,000 characters.",
+		toolExposed: true,
 	},
 	{
 		wire: "disable_cards",
@@ -285,6 +286,10 @@ func assignFilter(opts *SearchOptions, wire string, v any) {
 			return
 		}
 		opts.SnippetMaxLength = &n
+	case "objective":
+		if s, ok := v.(string); ok {
+			opts.Objective = s
+		}
 	}
 }
 

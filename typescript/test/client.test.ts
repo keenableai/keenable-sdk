@@ -467,6 +467,15 @@ describe("runToolCall", () => {
     expect(properties.disable_cards?.description).toContain("cards");
   });
 
+  it("offers objective in the search tool schema as a string", () => {
+    const properties = SEARCH_TOOL.function.parameters.properties as Record<
+      string,
+      { type: string; description: string }
+    >;
+    expect(properties.objective?.type).toBe("string");
+    expect(properties.objective?.description).toContain("what this search is for");
+  });
+
   it("sends disableCards only as true", async () => {
     const { client, seen } = mockClient(routed);
     await client.search("q", { disableCards: true });

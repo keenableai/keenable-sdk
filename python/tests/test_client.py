@@ -148,11 +148,11 @@ def test_search_sends_objective_and_leaves_it_out_when_unset() -> None:
     assert "objective" not in sent[2]
 
 
-def test_tool_schema_keeps_objective_out() -> None:
+def test_tool_schema_offers_objective() -> None:
     from keenable import TOOLS
 
     search = next(t for t in TOOLS if t["function"]["name"] == "keenable_search")
-    assert "objective" not in search["function"]["parameters"]["properties"]
+    assert search["function"]["parameters"]["properties"]["objective"]["type"] == "string"
 
 
 @pytest.mark.parametrize(

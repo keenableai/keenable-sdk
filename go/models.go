@@ -49,8 +49,7 @@ type SearchOptions struct {
 	// sentences: the facts a useful page must contain, the task context the
 	// query leaves out, the sources to prefer or exclude, and what is already
 	// known. Up to 5,000 characters. The API validates and logs it; it does
-	// not change results or price yet, and only organizations with the
-	// quality_params flag may send it.
+	// not change results or price yet.
 	Objective string
 	// DisableCards returns ordinary web pages in place of Keenable's cards,
 	// results Keenable writes for queries such as prices, exchange rates or
