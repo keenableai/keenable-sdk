@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import enum
 import ipaddress
 import json as jsonlib
 import math
 import random
 import re
+import socket
+import threading
 import time
 import unicodedata
 from collections.abc import Iterable, Iterator, Mapping
@@ -18,6 +21,7 @@ from os import environ
 from typing import Any, Literal
 from urllib.parse import unquote, urlsplit
 
+import httpcore
 import httpx
 
 from ._filters import SEARCH_FILTERS
@@ -76,10 +80,22 @@ def _resolve_base_url(base_url: str | None) -> str:
         host = parsed.hostname
     except ValueError:
         host = None
+    # The API key is sent to this host. A backslash makes URL parsers disagree
+    # on which host that is (http://evil.example\@localhost is evil.example to
+    # a WHATWG parser), and a user name or password has no use here.
+    authority = re.split(r"[/?#]", base.partition("://")[2], maxsplit=1)[0]
+    if "\\" in authority or "@" in authority:
+        raise KeenableInvalidRequestError(
+            "base_url must not contain a backslash, user name or password "
+            "before its path; pass an https:// URL with only a host, an "
+            "optional port and an optional path"
+        )
     if host and not parsed.query and not parsed.fragment:
         if parsed.scheme == "https":
             return base
-        if parsed.scheme == "http" and _canonical_host(host) in _LOCAL_HOSTS:
+        # Only the three plain spellings, with at most one trailing dot.
+        written = host[:-1] if host.endswith(".") else host
+        if parsed.scheme == "http" and written in _LOCAL_HOSTS:
             return base
     raise KeenableInvalidRequestError(
         "base_url must be an https:// URL with a host and no query or fragment "
@@ -87,12 +103,13 @@ def _resolve_base_url(base_url: str | None) -> str:
     )
 
 
-def _canonical_host(host: str) -> str:
-    """The host as a URL parser reads it: width-folded, lowercased, no final dot.
+def _folded_host(host: str) -> str:
+    """The host as a URL parser reads it: width-folded and lowercased.
 
     Browsers, Node and the TypeScript SDK fold fullwidth characters and
-    ideographic full stops (``１２７。０。０。１`` is 127.0.0.1), so this check
-    has to see the host the same way.
+    ideographic full stops (``１２７。０。０。１`` is 127.0.0.1), so the fetch
+    check has to see the host the same way. Trailing dots stay on, so the
+    caller can tell ``example.com.`` from ``example.com..``.
     """
     folded = unicodedata.normalize("NFKC", host)
     for stop in _IDEOGRAPHIC_STOPS:
@@ -101,7 +118,17 @@ def _canonical_host(host: str) -> str:
     # WHATWG parser (and to the TypeScript SDK).
     for ignored in _IDNA_IGNORED:
         folded = folded.replace(ignored, "")
-    return folded.strip().lower().rstrip(".")
+    return folded.strip().lower()
+
+
+def _has_empty_label(host: str) -> bool:
+    """Whether a folded hostname has an empty label: ``a..b``, ``.a``, ``a..``.
+
+    One trailing dot is the root label and is fine. Resolvers and URL parsers
+    disagree on what an empty label means, so such a name is never fetched.
+    """
+    name = host[:-1] if host.endswith(".") else host
+    return bool(name) and ":" not in name and "" in name.split(".")
 
 
 _IDEOGRAPHIC_STOPS = ("\u3002", "\uff0e", "\uff61")
@@ -220,7 +247,13 @@ def _reject_private_fetch_target(url: Any) -> None:
 
     # Percent-decoded as a URL parser decodes a host; a trailing dot resolves
     # to the same host but does not match it as a string.
-    host = _canonical_host(unquote(hostname))
+    folded = _folded_host(unquote(hostname))
+    if _has_empty_label(folded):
+        raise KeenableInvalidRequestError(
+            f"fetch() URL has an empty label in its host (two dots in a row, "
+            f"or a leading dot): {url!r}"
+        )
+    host = folded.rstrip(".")
     if ":" in host:
         host = host.split("%", 1)[0]  # an IPv6 zone
     if not host:
@@ -709,7 +742,7 @@ def _transport_errors(timeout: Any) -> Iterator[None]:
     """
     try:
         yield
-    except httpx.TimeoutException as exc:
+    except (httpx.TimeoutException, asyncio.TimeoutError) as exc:
         within = f" within {timeout} s" if isinstance(timeout, (int, float)) else ""
         raise KeenableTimeoutError(
             f"the Keenable API did not respond{within}: {exc!r}"
@@ -718,6 +751,294 @@ def _transport_errors(timeout: Any) -> Iterator[None]:
         raise KeenableConnectionError(
             f"could not reach the Keenable API: {exc!r}"
         ) from exc
+
+
+def _attempt_deadline(timeout: Any) -> float | None:
+    """The seconds one whole attempt may take, when ``timeout`` is a number.
+
+    httpx applies a number to each phase on its own (connect, write, every
+    read), so a server that keeps trickling bytes would never time out. A
+    number is therefore also the deadline for the attempt as a whole, as in
+    the TypeScript and Go SDKs. An ``httpx.Timeout``, ``None`` and a passed
+    client's own timeout keep httpx's per-phase meaning, and so does a number
+    on a sync ``httpx.Client`` you pass (see _bound_by_deadline).
+    """
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
+        return None
+    return float(timeout)
+
+
+# When the attempt running on this thread must end, by time.monotonic(); None
+# outside a deadline-bound attempt. Read by _DeadlineBackend on every socket
+# operation, so a pooled connection reused by a later attempt obeys that
+# attempt's deadline.
+_ATTEMPT_ENDS: contextvars.ContextVar[float | None] = contextvars.ContextVar(
+    "keenable_attempt_ends", default=None
+)
+
+
+def _within_deadline(
+    timeout: float | None, expired: type[httpcore.TimeoutException]
+) -> float | None:
+    """``timeout`` shortened to what is left of the attempt, or ``expired`` raised."""
+    ends = _ATTEMPT_ENDS.get()
+    if ends is None:
+        return timeout
+    left = ends - time.monotonic()
+    if left <= 0:
+        raise expired("the attempt's deadline passed")
+    return left if timeout is None else min(timeout, left)
+
+
+class _DeadlineStream(httpcore.NetworkStream):
+    """A network stream whose every read and write ends by the attempt's deadline.
+
+    A timeout raised here is an ordinary httpcore timeout: httpcore closes the
+    connection, so nothing is left running and the pool gets its slot back.
+    """
+
+    def __init__(self, stream: httpcore.NetworkStream) -> None:
+        self._stream = stream
+
+    def read(self, max_bytes: int, timeout: float | None = None) -> bytes:
+        return self._stream.read(
+            max_bytes, _within_deadline(timeout, httpcore.ReadTimeout)
+        )
+
+    def write(self, buffer: bytes, timeout: float | None = None) -> None:
+        self._stream.write(buffer, _within_deadline(timeout, httpcore.WriteTimeout))
+
+    def close(self) -> None:
+        self._stream.close()
+
+    def start_tls(
+        self,
+        ssl_context: Any,
+        server_hostname: str | None = None,
+        timeout: float | None = None,
+    ) -> httpcore.NetworkStream:
+        stream = self._stream.start_tls(
+            ssl_context,
+            server_hostname,
+            _within_deadline(timeout, httpcore.ConnectTimeout),
+        )
+        try:
+            # The handshake bounds each socket operation, not the whole of it.
+            _within_deadline(None, httpcore.ConnectTimeout)
+        except httpcore.ConnectTimeout:
+            stream.close()
+            raise
+        return _DeadlineStream(stream)
+
+    def get_extra_info(self, info: str) -> Any:
+        return self._stream.get_extra_info(info)
+
+
+# At most this many name lookups run at once. The SDK only ever resolves the
+# API host (and a proxy host), so the cap is reached only while lookups stall.
+_DNS_LOOKUP_LIMIT = 4
+
+
+class _Lookup:
+    """One ``getaddrinfo`` in flight, shared by every attempt that needs it."""
+
+    def __init__(self) -> None:
+        self.finished = threading.Event()
+        self.infos: list[tuple[Any, ...]] = []
+        self.error: BaseException | None = None
+
+
+_lookups: dict[tuple[str, int], _Lookup] = {}
+_lookups_changed = threading.Condition()
+
+
+def _start_lookup(host: str, port: int, seconds: float | None) -> _Lookup:
+    """The lookup in flight for ``host``/``port``, started if there is none.
+
+    An attempt whose lookup is already running waits on that one rather than
+    starting another thread, so a stalled resolver costs one thread per name,
+    and at most _DNS_LOOKUP_LIMIT in all: past it, an attempt waits for a slot
+    until its deadline.
+    """
+    key = (host, port)
+    ends = None if seconds is None else time.monotonic() + seconds
+    with _lookups_changed:
+        while key not in _lookups and len(_lookups) >= _DNS_LOOKUP_LIMIT:
+            left = None if ends is None else ends - time.monotonic()
+            if left is not None and left <= 0:
+                raise httpcore.ConnectTimeout(
+                    f"resolving {host} did not start in time: "
+                    f"{_DNS_LOOKUP_LIMIT} lookups are still running"
+                )
+            _lookups_changed.wait(left)
+        lookup = _lookups.get(key)
+        if lookup is not None:
+            return lookup
+        lookup = _lookups[key] = _Lookup()
+
+    def resolve() -> None:
+        try:
+            lookup.infos = socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM)
+        except BaseException as exc:  # handed to the waiting attempts
+            lookup.error = exc
+        finally:
+            lookup.finished.set()
+            with _lookups_changed:
+                del _lookups[key]
+                _lookups_changed.notify_all()
+
+    try:
+        threading.Thread(target=resolve, name="keenable-dns", daemon=True).start()
+    except BaseException as exc:
+        # No thread will ever finish this lookup: take it back out so it does
+        # not hold a slot or strand the attempts already waiting on it.
+        lookup.error = exc
+        lookup.finished.set()
+        with _lookups_changed:
+            if _lookups.get(key) is lookup:
+                del _lookups[key]
+            _lookups_changed.notify_all()
+        raise httpcore.ConnectError(f"could not start resolving {host}: {exc}") from exc
+    return lookup
+
+
+def _resolve_within(
+    host: str, port: int, seconds: float | None
+) -> list[tuple[Any, ...]]:
+    """``getaddrinfo`` for a TCP connection, given up on after ``seconds``.
+
+    ``getaddrinfo`` takes no timeout, so a stalled resolver would hold the
+    attempt past its deadline. The lookup runs on a daemon thread, shared with
+    any other attempt resolving the same name (see _start_lookup); when the
+    deadline passes first, only that lookup is left behind, never a connection.
+    """
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        return socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM)
+    ends = None if seconds is None else time.monotonic() + seconds
+    lookup = _start_lookup(host, port, seconds)
+    left = None if ends is None else max(0.0, ends - time.monotonic())
+    if not lookup.finished.wait(left):
+        raise httpcore.ConnectTimeout(f"resolving {host} did not finish in time")
+    if lookup.error is not None:
+        raise httpcore.ConnectError(str(lookup.error)) from lookup.error
+    return lookup.infos
+
+
+class _DeadlineBackend(httpcore.NetworkBackend):
+    """httpcore's network backend, bounded by the attempt's deadline.
+
+    Outside a deadline-bound attempt it is the wrapped backend unchanged.
+    Inside one, the name lookup, the connect, the TLS handshake and every read
+    and write share what is left of the attempt, so a server that trickles
+    bytes, or a resolver that stalls, cannot hold the attempt past it.
+    """
+
+    def __init__(self, backend: httpcore.NetworkBackend) -> None:
+        self._backend = backend
+
+    def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: Iterable[Any] | None = None,
+    ) -> httpcore.NetworkStream:
+        if _ATTEMPT_ENDS.get() is None:
+            return _DeadlineStream(
+                self._backend.connect_tcp(
+                    host, port, timeout, local_address, socket_options
+                )
+            )
+        infos = _resolve_within(
+            host, port, _within_deadline(timeout, httpcore.ConnectTimeout)
+        )
+        if not infos:
+            raise httpcore.ConnectError(f"{host} has no address")
+        # The order socket.create_connection would try them in; each connect
+        # gets an address literal, so the wrapped backend does no lookup.
+        last_error: Exception | None = None
+        for info in infos:
+            address = str(info[4][0])
+            try:
+                return _DeadlineStream(
+                    self._backend.connect_tcp(
+                        address,
+                        port,
+                        _within_deadline(timeout, httpcore.ConnectTimeout),
+                        local_address,
+                        socket_options,
+                    )
+                )
+            except httpcore.ConnectError as exc:
+                last_error = exc
+        assert last_error is not None
+        raise last_error
+
+    def connect_unix_socket(
+        self,
+        path: str,
+        timeout: float | None = None,
+        socket_options: Iterable[Any] | None = None,
+    ) -> httpcore.NetworkStream:  # pragma: no cover - the SDK never uses a socket path
+        return _DeadlineStream(
+            self._backend.connect_unix_socket(
+                path,
+                _within_deadline(timeout, httpcore.ConnectTimeout),
+                socket_options,
+            )
+        )
+
+    def sleep(self, seconds: float) -> None:
+        self._backend.sleep(seconds)
+
+
+def _bound_by_deadline(client: httpx.Client) -> bool:
+    """Put _DeadlineBackend under every connection pool of ``client``.
+
+    Covers the default transport and the proxy transports httpx mounts from the
+    environment. It relies on httpx's ``_transport``/``_mounts`` and httpcore's
+    pool ``_network_backend``, which are private: when they are missing (a
+    future httpx), it changes nothing and returns False, and a numeric timeout
+    keeps httpx's per-phase meaning.
+    """
+    transports = [getattr(client, "_transport", None)]
+    transports += list((getattr(client, "_mounts", None) or {}).values())
+    bound = False
+    for transport in transports:
+        pool = getattr(transport, "_pool", None)
+        backend = getattr(pool, "_network_backend", None)
+        if not isinstance(backend, httpcore.NetworkBackend):
+            continue
+        if not isinstance(backend, _DeadlineBackend):
+            pool._network_backend = _DeadlineBackend(backend)  # type: ignore[union-attr]
+        bound = True
+    return bound
+
+
+def _send_within(
+    client: httpx.Client, deadline: float | None, method: str, url: str, **kwargs: Any
+) -> httpx.Response:
+    """``client.request``, with the whole attempt ending by ``deadline`` seconds.
+
+    The request runs on the caller's thread. The deadline is handed to
+    _DeadlineBackend, which shortens every socket operation to what is left of
+    it: connecting, sending, the response headers, the body and its end. The
+    pool wait is bounded by the request's own timeout, which is the same
+    number. Only a client prepared by _bound_by_deadline enforces it; for any
+    other, ``deadline`` should be None.
+    """
+    if deadline is None:
+        return client.request(method, url, **kwargs)
+    token = _ATTEMPT_ENDS.set(time.monotonic() + deadline)
+    try:
+        return client.request(method, url, **kwargs)
+    finally:
+        _ATTEMPT_ENDS.reset(token)
 
 
 def _backoff(retry: int, jitter: float | None = None) -> float:
@@ -938,7 +1259,9 @@ class Keenable(_BaseClient):
         client_source: Name this client reports as its traffic source. Leave it
             alone unless you are building an integration on top of this SDK and
             want your own attribution.
-        client: Bring your own ``httpx.Client`` (proxies, transport).
+        client: Bring your own ``httpx.Client`` (proxies, transport). A numeric
+            ``timeout`` then keeps httpx's per-phase meaning: the SDK can only
+            bound the whole attempt on the client it creates.
     """
 
     def __init__(
@@ -964,6 +1287,10 @@ class Keenable(_BaseClient):
         self._use_client_timeout = client is not None and isinstance(timeout, _Unset)
         self._client = client or httpx.Client(timeout=self._timeout)
         self._owns_client = client is None
+        # A number bounds the whole attempt only on the client created here:
+        # the SDK cannot reach into a client you pass, so there it keeps
+        # httpx's per-phase meaning.
+        self._bounds_attempts = self._owns_client and _bound_by_deadline(self._client)
 
     def _call_default_timeout(self) -> Any:
         return httpx.USE_CLIENT_DEFAULT if self._use_client_timeout else self._timeout
@@ -1000,7 +1327,11 @@ class Keenable(_BaseClient):
         while True:
             try:
                 with _transport_errors(call_timeout):
-                    response = self._client.request(
+                    response = _send_within(
+                        self._client,
+                        _attempt_deadline(call_timeout)
+                        if self._bounds_attempts
+                        else None,
                         "GET" if json is None else "POST",
                         self._url(endpoint),
                         params=params,
@@ -1215,14 +1546,18 @@ class AsyncKeenable(_BaseClient):
         while True:
             try:
                 with _transport_errors(call_timeout):
-                    response = await self._client.request(
-                        "GET" if json is None else "POST",
-                        self._url(endpoint),
-                        params=params,
-                        json=json,
-                        headers=headers,
-                        timeout=call_timeout,
-                        follow_redirects=False,
+                    # A number bounds the whole attempt, not only each phase.
+                    response = await asyncio.wait_for(
+                        self._client.request(
+                            "GET" if json is None else "POST",
+                            self._url(endpoint),
+                            params=params,
+                            json=json,
+                            headers=headers,
+                            timeout=call_timeout,
+                            follow_redirects=False,
+                        ),
+                        _attempt_deadline(call_timeout),
                     )
                 return _decode(response)
             except KeenableError as error:

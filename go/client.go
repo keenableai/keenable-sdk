@@ -18,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 const (
@@ -647,9 +649,26 @@ func resolveBaseURL(explicit *string) (string, error) {
 	if raw == "" {
 		return "", &InvalidRequestError{msg: `baseURL must be an https:// URL with a host, got ""`}
 	}
+	// The API key is sent to this host. A backslash makes URL parsers disagree
+	// on which host that is (http://evil.example\@localhost is evil.example to
+	// a WHATWG parser), and a user name or password has no use here.
+	if _, rest, found := strings.Cut(raw, "://"); found {
+		authority := rest
+		if end := strings.IndexAny(authority, "/?#"); end >= 0 {
+			authority = authority[:end]
+		}
+		if strings.ContainsAny(authority, `\@`) {
+			return "", &InvalidRequestError{msg: "baseURL must not contain a backslash, user name or password before its path. " +
+				"Pass an https:// URL with only a host, an optional port and an optional path."}
+		}
+	}
 	u, err := url.Parse(raw)
 	if err != nil || u.Hostname() == "" {
 		return "", &InvalidRequestError{msg: fmt.Sprintf("baseURL must be an https:// URL with a host, got %q", raw)}
+	}
+	if u.User != nil {
+		return "", &InvalidRequestError{msg: "baseURL must not contain a user name or password. " +
+			"Pass an https:// URL with only a host, an optional port and an optional path."}
 	}
 	if u.RawQuery != "" || u.Fragment != "" {
 		return "", &InvalidRequestError{msg: fmt.Sprintf(
@@ -658,7 +677,8 @@ func resolveBaseURL(explicit *string) (string, error) {
 		)}
 	}
 	scheme := strings.ToLower(u.Scheme)
-	host := normalizeHost(u.Hostname())
+	// Only the three plain spellings, with at most one trailing dot.
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
 	if scheme == "https" || (scheme == "http" && isLocalHost(host)) {
 		return raw, nil
 	}
@@ -715,6 +735,10 @@ func rejectPrivateFetchTarget(raw string) error {
 	if err != nil {
 		return notHTTP
 	}
+	folded := foldHost(u.Hostname())
+	if hasEmptyLabel(folded) {
+		return &InvalidRequestError{msg: fmt.Sprintf("fetch() URL has an empty label in its host (two dots in a row, or a leading dot): %q. Pass an https URL with a public host.", raw)}
+	}
 	host := fetchHost(u.Hostname())
 	if host == "" {
 		return &InvalidRequestError{msg: fmt.Sprintf("fetch() URL has no host: %q. Pass an https URL with a public host.", raw)}
@@ -739,6 +763,19 @@ func rejectPrivateFetchTarget(raw string) error {
 // characters IDNA mapping deletes, lowercased, without brackets, an IPv6
 // zone or trailing dots. url.Parse has already percent-decoded it.
 func fetchHost(host string) string {
+	host = normalizeHost(foldHost(host))
+	if i := strings.IndexByte(host, '%'); i >= 0 && strings.Contains(host, ":") {
+		host = host[:i]
+	}
+	return strings.TrimRight(host, ".")
+}
+
+// foldHost folds a host as a URL parser's IDNA mapping does, keeping its
+// dots: compatibility characters become their plain form (NFKC, so "①②⑦"
+// is 127 and "ℓocalhost" is localhost), ideographic full stops become dots,
+// the characters IDNA deletes are dropped, and the result is lowercased.
+func foldHost(host string) string {
+	host = norm.NFKC.String(host)
 	host = strings.Map(func(r rune) rune {
 		switch r {
 		case 0x00AD, 0x200B, 0x2060, 0xFEFF:
@@ -746,11 +783,24 @@ func fetchHost(host string) string {
 		}
 		return r
 	}, host)
-	host = normalizeHost(host)
-	if i := strings.IndexByte(host, '%'); i >= 0 && strings.Contains(host, ":") {
-		host = host[:i]
+	return strings.ToLower(strings.TrimSpace(foldWidth(host)))
+}
+
+// hasEmptyLabel reports whether a folded hostname has an empty label: a..b,
+// .a or a... One trailing dot is the root label and is fine. Resolvers and
+// URL parsers disagree on what an empty label means, so such a name is never
+// fetched.
+func hasEmptyLabel(host string) bool {
+	name := strings.TrimSuffix(host, ".")
+	if name == "" || strings.Contains(name, ":") {
+		return false
 	}
-	return strings.TrimRight(host, ".")
+	for _, label := range strings.Split(name, ".") {
+		if label == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // numericIPv4 is the IPv4 address a host spelled as numbers names, as a URL

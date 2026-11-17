@@ -10,6 +10,10 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import socket
+import threading
+import time
+from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -53,6 +57,8 @@ Reply = tuple[int, dict[str, str], bytes]
 def cases(section: str) -> Any:
     """A section's cases as pytest params, named, without Python's skips."""
     items = FIXTURE[section]
+    if isinstance(items, dict):
+        items = items["cases"]
     return [
         pytest.param(case, id=case["name"])
         for case in items
@@ -413,7 +419,166 @@ def test_the_fixture_has_every_section() -> None:
         "search_body",
         "fetch_params",
         "tool_call",
+        "deadline",
     }
+
+
+# --- the whole-attempt deadline -----------------------------------------------
+
+DEADLINE_JSON = b'{"results": []}'
+
+
+def _pause(seconds: float) -> None:
+    """Sleep without time.sleep, which other tests patch for the whole process."""
+    threading.Event().wait(seconds)
+
+
+def _read_request(conn: socket.socket) -> None:
+    """Read one request: its headers and a Content-Length body."""
+    data = b""
+    while b"\r\n\r\n" not in data:
+        chunk = conn.recv(65536)
+        if not chunk:
+            return
+        data += chunk
+    head, _, rest = data.partition(b"\r\n\r\n")
+    length = 0
+    for line in head.split(b"\r\n")[1:]:
+        name, _, val = line.partition(b":")
+        if name.strip().lower() == b"content-length":
+            length = int(val.strip())
+    while len(rest) < length:
+        chunk = conn.recv(65536)
+        if not chunk:
+            return
+        rest += chunk
+
+
+def _serve_phase(conn: socket.socket, case: dict[str, Any]) -> None:
+    phase, interval, pieces = case["phase"], case["interval"], case["pieces"]
+
+    def trickle(unit: bytes) -> None:
+        for _ in range(pieces):
+            _pause(interval)
+            conn.sendall(unit)
+
+    rest = (
+        b"Content-Type: application/json\r\n"
+        + b"Content-Length: %d\r\n\r\n" % len(DEADLINE_JSON)
+        + DEADLINE_JSON
+    )
+    if phase == "headers":
+        conn.sendall(b"HTTP/1.1 200 OK\r\nX-Slow: ")
+        trickle(b"a")
+        conn.sendall(b"\r\n" + rest)
+    elif phase == "body":
+        conn.sendall(
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+            + b"Content-Length: %d\r\n\r\n" % (pieces + len(DEADLINE_JSON))
+        )
+        trickle(b" ")
+        conn.sendall(DEADLINE_JSON)
+    elif phase == "terminator":
+        conn.sendall(
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+            + b"Transfer-Encoding: chunked\r\n\r\n"
+        )
+        _pause(interval)
+        conn.sendall(b"%x\r\n" % len(DEADLINE_JSON) + DEADLINE_JSON + b"\r\n")
+        trickle(b"0\r\n\r\n")
+    else:
+        conn.sendall(b"HTTP/1.1 200 OK\r\n" + rest)
+
+
+@pytest.fixture
+def deadline_server() -> Iterator[Any]:
+    """A raw HTTP/1.1 server on 127.0.0.1 that answers as the case says."""
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(8)
+    state: dict[str, Any] = {}
+    threads: list[threading.Thread] = []
+
+    def handle(conn: socket.socket) -> None:
+        with conn:
+            try:
+                _read_request(conn)
+                _serve_phase(conn, state["case"])
+                _pause(0.2)
+            except OSError:
+                pass
+
+    stop = threading.Event()
+    listener.settimeout(0.05)
+
+    def accept() -> None:
+        while not stop.is_set():
+            try:
+                conn, _ = listener.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+            conn.settimeout(None)
+            thread = threading.Thread(target=handle, args=(conn,), daemon=True)
+            threads.append(thread)
+            thread.start()
+
+    acceptor = threading.Thread(target=accept, daemon=True)
+    acceptor.start()
+
+    def use(case: dict[str, Any]) -> str:
+        state["case"] = case
+        return f"http://127.0.0.1:{listener.getsockname()[1]}"
+
+    try:
+        yield use
+    finally:
+        # Close the listener and wait for every reply to finish, so no thread
+        # of this test is still running when the next one starts.
+        stop.set()
+        acceptor.join(5)
+        listener.close()
+        for thread in threads:
+            thread.join(5)
+
+
+@pytest.mark.parametrize("kind", CLIENTS)
+@pytest.mark.parametrize("case", cases("deadline"))
+async def test_deadline(
+    kind: str,
+    case: dict[str, Any],
+    deadline_server: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("KEENABLE_API_KEY", raising=False)
+    monkeypatch.delenv("KEENABLE_API_URL", raising=False)
+    settings = {
+        "base_url": deadline_server(case),
+        "timeout": case["timeout"],
+        "max_retries": 0,
+    }
+    started = time.monotonic()
+    error: KeenableError | None = None
+    result: Any = None
+    try:
+        if kind == "sync":
+            with Keenable(**settings) as c:
+                result = c.search("q")
+        else:
+            async with AsyncKeenable(**settings) as ac:
+                result = await ac.search("q")
+    except KeenableError as exc:
+        error = exc
+    elapsed = time.monotonic() - started
+    if case["outcome"] == "timeout":
+        assert isinstance(error, KeenableTimeoutError), error
+        slack = FIXTURE["deadline"]["slack"]
+        assert case["timeout"] - 0.05 <= elapsed <= case["timeout"] + slack
+    else:
+        assert error is None, error
+        assert result.results == []
+        assert elapsed < case["timeout"]
 
 
 # --- what the shared cases cannot express ------------------------------------

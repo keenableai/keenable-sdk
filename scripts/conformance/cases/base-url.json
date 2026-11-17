@@ -19,6 +19,16 @@
     ["api.keenable.ai", "no scheme"],
     ["https://", "no host"],
     ["https://api.keenable.ai?x=1", "a query, which the endpoint path would be appended to"],
-    ["https://api.keenable.ai#frag", "a fragment, which the endpoint path would be appended to"]
+    ["https://api.keenable.ai#frag", "a fragment, which the endpoint path would be appended to"],
+    ["http://evil.example\\@localhost", "a backslash before the host: a WHATWG parser sends this to evil.example"],
+    ["http://evil.example\\@localhost:8080", "a backslash before the host, with a port"],
+    ["http://localhost\\@evil.example", "a backslash after the host"],
+    ["https://api.keenable.ai\\@evil.example", "a backslash in an https authority"],
+    ["http://user@localhost:8080", "a user name"],
+    ["http://user:pass@127.0.0.1:3000", "a user name and password"],
+    ["https://user:pass@api.keenable.ai", "a user name and password on https"],
+    ["https://@api.keenable.ai", "an empty user name"],
+    ["http://ｌｏｃａｌｈｏｓｔ:8080", "http to localhost in fullwidth letters: only the three plain spellings count"],
+    ["http://localhost..:8080", "http to localhost with two trailing dots"]
   ]
 }

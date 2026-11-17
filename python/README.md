@@ -265,8 +265,19 @@ Failed requests are retried twice by default. Connection errors, timeouts, 408,
 with jitter. A `Retry-After` over 60 s, such as the keyless hourly cap, is not
 waited out: the error is raised at once so your code decides.
 
-`timeout` (default 30 s) is the deadline for each attempt. A timed-out request
-raises `KeenableTimeoutError`, a subclass of `KeenableConnectionError`.
+`timeout` (default 30 s) is the deadline for each attempt as a whole, from
+connecting to the end of the answer, headers included: a server that keeps
+sending a few bytes at a time still times out on schedule. A timed-out request
+raises `KeenableTimeoutError`, a subclass of `KeenableConnectionError`, and its
+connection is closed, so nothing keeps running after it. Pass an
+`httpx.Timeout` instead of a number to set httpx's per-phase timeouts
+(connect, read, write, pool) with no overall deadline.
+
+The overall deadline needs the HTTP client the SDK creates. With your own
+`client=httpx.Client(...)`, a numeric `timeout` keeps httpx's per-phase
+meaning: each connect and each read gets the timeout, and a server that keeps
+trickling bytes is not cut off. `AsyncKeenable` enforces the deadline either
+way.
 
 ```python
 keenable = Keenable(max_retries=4, timeout=10, default_headers={"X-Team": "search"})

@@ -294,6 +294,11 @@ proxy), and `clientSource`. Building an integration on
 top of this SDK? Set `clientSource: "Your Integration"` so your traffic is
 attributed to you rather than to the bare SDK.
 
+A custom `fetch` must honour `redirect: "manual"`, which the SDK passes on
+every request so the API key never follows a redirect. If yours follows one
+anyway, the SDK throws a `KeenableRedirectError` that tells you to rotate the
+key, since it may already have been sent to the redirect's target.
+
 ## License
 
 MIT

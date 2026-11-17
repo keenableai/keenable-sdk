@@ -429,6 +429,33 @@ func TestEmptyAPIKeyStaysKeylessWhenEnvIsSet(t *testing.T) {
 	}
 }
 
+func TestBlankAPIKeyIsKeyless(t *testing.T) {
+	for _, blank := range []string{" ", "\t\n", "   \r\n "} {
+		// Explicit: keyless, and the env key is not used instead.
+		t.Setenv("KEENABLE_API_KEY", "keen_env")
+		key := blank
+		c, seen := start(t, jsonHandler(http.StatusOK, searchBody), &keenable.Options{APIKey: &key})
+		if _, err := c.Search(context.Background(), "hello", nil); err != nil {
+			t.Fatal(err)
+		}
+		req := one(t, seen)
+		if !c.Keyless() || req.Path != "/v1/search/public" || len(req.Header.Values("X-API-Key")) != 0 {
+			t.Fatalf("explicit %q: keyless %v path %s key %q", blank, c.Keyless(), req.Path, req.Header.Values("X-API-Key"))
+		}
+
+		// From the environment: the same.
+		t.Setenv("KEENABLE_API_KEY", blank)
+		c, seen = start(t, jsonHandler(http.StatusOK, searchBody), nil)
+		if _, err := c.Search(context.Background(), "hello", nil); err != nil {
+			t.Fatal(err)
+		}
+		req = one(t, seen)
+		if !c.Keyless() || req.Path != "/v1/search/public" || len(req.Header.Values("X-API-Key")) != 0 {
+			t.Fatalf("env %q: keyless %v path %s key %q", blank, c.Keyless(), req.Path, req.Header.Values("X-API-Key"))
+		}
+	}
+}
+
 func TestEnvAPIKey(t *testing.T) {
 	t.Setenv("KEENABLE_API_KEY", "keen_env")
 	c, seen := start(t, jsonHandler(http.StatusOK, searchBody), nil)

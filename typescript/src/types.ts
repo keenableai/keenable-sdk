@@ -157,6 +157,13 @@ export interface KeenableOptions {
   maxRetries?: number;
   /** Headers sent with every request, e.g. for a proxy or gateway. */
   defaultHeaders?: Record<string, string>;
-  /** Custom fetch implementation (for tests or a proxy). */
+  /**
+   * Custom fetch implementation (for tests or a proxy).
+   *
+   * It must honour `redirect: "manual"`, which the SDK passes on every
+   * request: a fetch that follows a redirect anyway can carry the API key to
+   * the redirect's target. The SDK can only notice afterwards, and then
+   * throws a `KeenableRedirectError` telling you to rotate the key.
+   */
   fetch?: typeof globalThis.fetch;
 }

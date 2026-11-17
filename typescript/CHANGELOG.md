@@ -5,6 +5,21 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- **Security fix:** `baseUrl` and `KEENABLE_API_URL` are refused when the part
+  before the path has a backslash or a user name or password (`@`).
+  `http://evil.example\@localhost` passed the "plain http only to localhost"
+  check while `fetch()` sent the request, and the API key, to `evil.example`
+  over plain http. The localhost check now also has to hold for the host
+  `fetch()` connects to. `http://localhost..` is no longer accepted (one
+  trailing dot still is).
+- **Changed:** when a custom `fetch` follows a redirect although the SDK passed
+  `redirect: "manual"`, the `KeenableRedirectError` now says that the API key
+  may have been sent to the redirect's target and should be rotated. The
+  `fetch` option's documentation states the requirement.
+- **Behaviour change:** `fetch()` refuses a host with an empty label before
+  sending: two dots in a row (`a..b`, `example.com..`) or a leading dot
+  (`.example.com`). One trailing dot is still fine.
+
 ## 0.1.5
 
 - `search()` accepts `excludeDomains`: a list of hosts to keep out of the
