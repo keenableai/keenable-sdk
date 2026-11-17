@@ -5,6 +5,8 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- **Changed:** `maxResults` on `search()` now documents the API's new range, 1 to 100 (was 1 to 50). The SDK does not check the range; the API does.
+
 - **Added:** `objective` option on `search()`: what the search is for, in two or three natural sentences, up to 1,000 characters. Left out of the request when unset or empty. The API validates and logs it; it does not change results or price. The search tool offers it to a model.
 
 - **Security fix:** `baseUrl` and `KEENABLE_API_URL` are refused when the part

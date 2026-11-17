@@ -1389,7 +1389,7 @@ class Keenable(_BaseClient):
                 where the publication date is unreliable or missing.
             acquired_before: Keep pages indexed on or before ``YYYY-MM-DD``.
             snippet_max_length: Cap the characters of page text per result.
-            max_results: How many results to return, 1 to 50. The API
+            max_results: How many results to return, 1 to 100. The API
                 default is 10.
             query_time: Search the index as it stood at this moment; pages
                 newer than it are excluded. It sets no lower bound, so it is

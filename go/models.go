@@ -37,7 +37,7 @@ type SearchOptions struct {
 	// SnippetMaxLength caps the characters of page text per result.
 	// Nil means unset. A pointer to zero is sent.
 	SnippetMaxLength *int
-	// MaxResults is how many results to return, 1 to 50. Zero means unset,
+	// MaxResults is how many results to return, 1 to 100. Zero means unset,
 	// and the API returns its default of 10.
 	MaxResults int
 	// QueryTime searches the index as it stood at this moment; pages newer

@@ -67,7 +67,7 @@ SEARCH_FILTERS: tuple[Filter, ...] = (
     ),
     Filter(
         "max_results",
-        "Optional. How many results to return, 1 to 50. The API default is 10.",
+        "Optional. How many results to return, 1 to 100. The API default is 10.",
         json_type="integer",
     ),
     Filter(

@@ -67,7 +67,7 @@ export interface SearchOptions extends RequestOptions {
   acquiredBefore?: string;
   /** Cap the characters of page text returned per result. */
   snippetMaxLength?: number;
-  /** How many results to return, 1 to 50. The API default is 10. */
+  /** How many results to return, 1 to 100. The API default is 10. */
   maxResults?: number;
   /**
    * Search the index as it stood at this moment; pages newer than it are
