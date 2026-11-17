@@ -240,3 +240,46 @@ async fn a_bad_tool_call_sends_nothing() {
     }
     assert_eq!(server.count(), 0);
 }
+
+#[test]
+fn debug_output_never_shows_the_api_key() {
+    let opts = Options {
+        api_key: Some("keen_secret_value".into()),
+        headers: [("X-Gateway".to_string(), "header-secret".to_string())].into(),
+        ..Default::default()
+    };
+    let shown = format!("{opts:?}");
+    assert!(
+        !shown.contains("keen_secret_value") && !shown.contains("header-secret"),
+        "{shown}"
+    );
+    assert!(shown.contains("<redacted>"), "{shown}");
+    let client = Client::with_options(opts).unwrap();
+    let shown = format!("{client:?}");
+    assert!(
+        !shown.contains("keen_secret_value") && !shown.contains("header-secret"),
+        "{shown}"
+    );
+    assert!(shown.contains("<redacted>"), "{shown}");
+    let keyless = Client::with_options(Options {
+        api_key: Some(String::new()),
+        ..Default::default()
+    })
+    .unwrap();
+    assert!(format!("{keyless:?}").contains("<empty>"));
+}
+
+#[tokio::test]
+async fn parsed_null_arguments_are_rejected_like_the_text_null() {
+    let server = start(Script::Replies(vec![search_reply()])).await;
+    let client = keyed(&server);
+    let parsed = client.run_tool_call("keenable_search", Value::Null).await;
+    let text = client.run_tool_call("keenable_search", "null").await;
+    for got in [parsed, text] {
+        let Err(Error::InvalidRequest(e)) = got else {
+            panic!("{got:?}")
+        };
+        assert!(e.to_string().contains("must be a JSON object"), "{e}");
+    }
+    assert_eq!(server.count(), 0);
+}

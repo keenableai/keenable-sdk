@@ -1,17 +1,25 @@
 name: Publish Rust to crates.io
 
-# Packages the `keenable` Rust crate once, then ships the same .crate file two
-# ways:
-#   - GitHub Release assets: `keenable-<version>.crate` is attached to the
-#     `rust-v<version>` release. Cargo also installs straight from the tag,
-#     with no crates.io involved:
+# Packages the `keenable` Rust crate and ships it two ways:
+#   - GitHub Release assets: the build job's `keenable-<version>.crate` is
+#     attached to the `rust-v<version>` release. Cargo also installs straight
+#     from the tag, with no crates.io involved:
 #       cargo add keenable --git https://github.com/keenableai/keenable-sdk --tag rust-v<version>
 #   - crates.io, via Trusted Publishing (OIDC): no API token stored anywhere.
-#     rust-lang/crates-io-auth-action trades the job's OIDC token for a
-#     short-lived publish token.
+#     `cargo publish` packages the same tag again; the publish job first checks
+#     that this package is byte-identical to the build job's `.crate`, so both
+#     channels carry the same file.
 # The two ship jobs are independent: crates.io failing (for example before the
 # Trusted Publisher is registered) does not stop the GitHub assets, and
 # re-running the failed job finishes crates.io later.
+#
+# No third-party action runs here. The publish job holds `id-token: write`, so
+# any code it runs could mint a crates.io token; it uses only actions/* and the
+# runner's own rustup and curl. The token exchange is done inline, as
+# rust-lang/crates-io-auth-action does it: the job's OIDC token (audience
+# `crates.io`) is POSTed to https://crates.io/api/v1/trusted_publishing/tokens
+# for a short-lived publish token, which is revoked (DELETE) when the step
+# ends, whether the publish worked or not.
 #
 # Runs when a GitHub Release whose tag starts with `rust-v` is published, or
 # when cut-sdk-release.yml dispatches it on the `rust-v<version>` tag. The tag
@@ -74,7 +82,8 @@ jobs:
             exit 1
           fi
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal && rustup default stable
 
       # Builds the packaged sources on their own, as crates.io will, and runs
       # the tests once more on the exact commit being released.
@@ -162,14 +171,48 @@ jobs:
             echo "published=false" >> "$GITHUB_OUTPUT"
           fi
           rm -f index.jsonl
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Download the build job's .crate
         if: steps.check.outputs.published == 'false'
-      - name: Get a crates.io token (Trusted Publishing)
+        uses: actions/download-artifact@v8
+        with:
+          name: crate
+          path: rust/built/
+      - name: Install Rust
         if: steps.check.outputs.published == 'false'
-        id: auth
-        uses: rust-lang/crates-io-auth-action@v1
-      - name: Publish to crates.io
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      # What cargo publish uploads is this package; it must be the file the
+      # GitHub Release got.
+      - name: Same package as the build job
+        if: steps.check.outputs.published == 'false'
+        run: |
+          set -euo pipefail
+          cargo package --locked --no-verify
+          ours=$(sha256sum target/package/keenable-*.crate | cut -d' ' -f1)
+          theirs=$(sha256sum built/keenable-*.crate | cut -d' ' -f1)
+          if [ "$ours" != "$theirs" ]; then
+            echo "::error::the package built here ($ours) differs from the build job's ($theirs); not publishing"
+            exit 1
+          fi
+      - name: Publish to crates.io (Trusted Publishing)
         if: steps.check.outputs.published == 'false'
         env:
-          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-        run: cargo publish --locked
+          UA: keenable-sdk-release (github.com/keenableai/keenable-sdk)
+        run: |
+          set -euo pipefail
+          endpoint=https://crates.io/api/v1/trusted_publishing/tokens
+          # The job's OIDC token for crates.io. The request URL and its bearer
+          # token come from id-token: write.
+          jwt=$(curl -sSf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=crates.io" | jq -r .value)
+          echo "::add-mask::$jwt"
+          token=$(jq -n --arg jwt "$jwt" '{jwt: $jwt}' |
+            curl -sSf -X POST -H "Content-Type: application/json" -H "User-Agent: $UA" \
+              --data @- "$endpoint" | jq -r .token)
+          if [ -z "$token" ] || [ "$token" = "null" ]; then
+            echo "::error::crates.io returned no token. Check the Trusted Publisher on crates.io (repo, publish-rust.yml, environment crates-io)."
+            exit 1
+          fi
+          echo "::add-mask::$token"
+          # Revoke the token when this step ends, whether the publish worked or not.
+          trap 'curl -sS -X DELETE -H "Authorization: Bearer $token" -H "User-Agent: $UA" "$endpoint" -o /dev/null -w "token revoked: HTTP %{http_code}\n"' EXIT
+          CARGO_REGISTRY_TOKEN="$token" cargo publish --locked

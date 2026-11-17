@@ -46,7 +46,7 @@ const MAX_TIMEOUT: Duration = Duration::from_millis(2_147_483_647);
 /// })?;
 /// # Ok::<(), keenable::Error>(())
 /// ```
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct Options {
     /// The API key. `None` reads `KEENABLE_API_KEY`; `Some("")` forces the
     /// keyless tier even when the variable is set.
@@ -182,7 +182,6 @@ pub struct Client {
     inner: Arc<Inner>,
 }
 
-#[derive(Debug)]
 struct Inner {
     api_key: String,
     base_url: String,
@@ -191,6 +190,43 @@ struct Inner {
     max_retries: u32,
     headers: HashMap<String, String>,
     http: reqwest::Client,
+}
+
+/// How an API key shows in `Debug` output: never the key itself, so a
+/// `{:?}` of a client or its options can't put it in a log.
+fn redacted_key(key: Option<&str>) -> &'static str {
+    match key {
+        None => "<unset>",
+        Some(k) if k.trim().is_empty() => "<empty>",
+        Some(_) => "<redacted>",
+    }
+}
+
+impl std::fmt::Debug for Options {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Options")
+            .field("api_key", &redacted_key(self.api_key.as_deref()))
+            .field("base_url", &self.base_url)
+            .field("timeout", &self.timeout)
+            .field("client_source", &self.client_source)
+            .field("max_retries", &self.max_retries)
+            .field("headers", &self.headers.keys().collect::<Vec<_>>())
+            .field("http_client", &self.http_client.as_ref().map(|_| "<set>"))
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for Inner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("api_key", &redacted_key(Some(&self.api_key)))
+            .field("base_url", &self.base_url)
+            .field("client_source", &self.client_source)
+            .field("timeout", &self.timeout)
+            .field("max_retries", &self.max_retries)
+            .field("headers", &self.headers.keys().collect::<Vec<_>>())
+            .finish_non_exhaustive()
+    }
 }
 
 impl Client {

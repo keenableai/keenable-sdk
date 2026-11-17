@@ -153,13 +153,15 @@ jobs:
         rust: ["1.80", "stable"]
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ matrix.rust }}
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: rust
+      # rustup ships on GitHub's Ubuntu runners, so no third-party action is
+      # needed (and the org allows none outside its list).
+      - name: Install Rust ${{ matrix.rust }}
+        env:
+          TOOLCHAIN: ${{ matrix.rust }}
+        run: |
+          rustup toolchain install "$TOOLCHAIN" --profile minimal --component clippy,rustfmt
+          rustup default "$TOOLCHAIN"
+          rustc --version
       - name: Test
         run: cargo test --locked
       - name: Example builds

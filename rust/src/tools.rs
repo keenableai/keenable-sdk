@@ -170,7 +170,7 @@ impl ToolArguments for Value {
     fn into_arguments(self) -> Result<Map<String, Value>> {
         match self {
             Value::Object(obj) => Ok(obj),
-            Value::Null => Ok(Map::new()),
+            // null is not an object, as the JSON text "null" is not.
             other => Err(not_an_object(&other.to_string())),
         }
     }
