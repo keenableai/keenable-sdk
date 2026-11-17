@@ -193,6 +193,70 @@ The model may set `site`, `exclude_domains`, `published_after` and
 `disable_cards` on search. The other filters stay on `search()` for you to set
 yourself.
 
+## Monitors
+
+A monitor is a standing search: it watches the web for a topic and hands over
+every new page that matches, by webhook, in scheduled runs, or when you poll
+it. Monitors need an API key (`KEENABLE_API_KEY`); without one, every call
+throws `KeenableAuthError` with `code === "missing_api_key"` and sends nothing.
+An organization can have 100 active monitors.
+
+```ts
+import { Keenable } from "keenable";
+
+const keenable = new Keenable();
+const monitor = await keenable.monitors.create({
+  search: { query: "new open-weights LLM releases", maxResults: 20 },
+  schedule: { type: "cron", value: "0 9 * * 1-5", timezone: "Europe/Paris" },
+  webhook: { url: "https://example.com/keenable", events: ["monitor.hit"] },
+  metadata: { team: "research" },
+});
+const secret = monitor.webhook?.secret; // whsec_..., returned by create() only
+
+const pages = await keenable.monitors.pages(monitor.id, { minImportance: 4 });
+for (const page of pages.data) console.log(page.importance, page.title, page.url);
+```
+
+| Method | What it does |
+|---|---|
+| `create({ search, name, schedule, outputSchema, webhook, metadata, idempotencyKey })` | Make a monitor (`POST /v1/monitors`) |
+| `list({ status, name, metadata, limit, cursor })` / `listAll(...)` | One page of monitors / an async iterator over all of them |
+| `get(id)`, `update(id, fields)`, `delete(id)` | Read, change (only the fields set; `null` removes the schedule, webhook or output schema), delete |
+| `pause(id)`, `resume(id)` | `update(id, { status: "paused" / "active" })` |
+| `trigger(id)` | Start a run now; returns the queued `MonitorRun` |
+| `runs(id, { limit, cursor })`, `run(id, runId)` | A monitor's runs |
+| `pages(id, { limit, cursor, minImportance })` | The pages it accepted, newest first, one per story |
+| `deliveries(id, { limit, cursor })` | Webhook events of the last 7 days, with attempts and errors |
+| `stats()` | Counts by status and by kind of schedule |
+| `bulk(action, { ids, filter, limit, dryRun })` | Pause, resume or delete many; a dry run unless `dryRun: false` |
+
+Every call also takes `signal`, `timeoutMs`, `maxRetries` and `headers`. Reads
+and deletes are retried like a search; `create()` sends an `Idempotency-Key`
+(yours, or a new one per call), so its retries cannot make a second monitor;
+`update()`, `trigger()` and `bulk()` are retried only on a 429.
+
+### Verify webhooks
+
+Deliveries are signed as [Standard Webhooks](https://www.standardwebhooks.com).
+Verify the raw body before trusting it:
+
+```ts
+import { verifyWebhook, WebhookVerificationError } from "keenable";
+
+try {
+  const event = await verifyWebhook(rawBody, request.headers, secret);
+  if (event.type === "monitor.hit") console.log(event.data.result?.url);
+} catch (error) {
+  if (error instanceof WebhookVerificationError) return new Response(null, { status: 400 });
+  throw error;
+}
+```
+
+`verifyWebhook` is async (it uses Web Crypto), checks the HMAC-SHA256
+signature in constant time and refuses a timestamp more than 5 minutes from
+now (`{ toleranceSeconds }` changes it). Drop repeats by `event.id`, which stays
+the same across retries.
+
 ## Errors
 
 All errors extend `KeenableError`:

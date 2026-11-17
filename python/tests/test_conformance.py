@@ -32,8 +32,10 @@ from keenable import (
     KeenableInvalidRequestError,
     KeenableRateLimitError,
     KeenableTimeoutError,
+    WebhookVerificationError,
     arun_tool_call,
     run_tool_call,
+    verify_webhook,
 )
 from keenable import client as client_module
 
@@ -420,7 +422,25 @@ def test_the_fixture_has_every_section() -> None:
         "fetch_params",
         "tool_call",
         "deadline",
+        "webhook",
     }
+
+
+@pytest.mark.parametrize("case", cases("webhook"))
+def test_webhook(case: dict[str, Any]) -> None:
+    try:
+        event = verify_webhook(
+            case["body"].encode("utf-8"),
+            case["headers"],
+            case["secret"],
+            tolerance=case["tolerance"],
+            now=case["now"],
+        )
+    except WebhookVerificationError:
+        assert not case["valid"]
+    else:
+        assert case["valid"]
+        assert event.type == case["type"]
 
 
 # --- the whole-attempt deadline -----------------------------------------------

@@ -238,6 +238,78 @@ attempts are retried (see [Retries](#retries)).
 There is one client. Reuse it. `Close` drops idle connections on the client
 this SDK created, and does nothing when you passed your own `http.Client`.
 
+## Monitors
+
+A monitor is a standing search: it watches the web for a topic and hands over
+every new page that matches, by webhook, in scheduled runs, or when you poll
+it. Monitors need an API key (`KEENABLE_API_KEY`); without one, every call
+returns an `*AuthError` with `APICode == "missing_api_key"` and sends nothing.
+An organization can have 100 active monitors.
+
+```go
+ctx := context.Background()
+monitor, err := client.Monitors.Create(ctx, &keenable.MonitorCreateParams{
+	Search:   keenable.MonitorSearchParams{Query: "new open-weights LLM releases", MaxResults: 20},
+	Schedule: &keenable.MonitorScheduleParams{Type: "cron", Value: "0 9 * * 1-5", Timezone: "Europe/Paris"},
+	Webhook:  &keenable.MonitorWebhookParams{URL: "https://example.com/keenable", Events: []string{"monitor.hit"}},
+	Metadata: map[string]string{"team": "research"},
+})
+if err != nil {
+	log.Fatal(err)
+}
+secret := *monitor.Webhook.Secret // whsec_..., returned by Create only
+
+pages, err := client.Monitors.Pages(ctx, monitor.ID, &keenable.MonitorPagesParams{MinImportance: 4})
+if err != nil {
+	log.Fatal(err)
+}
+for _, page := range pages.Data {
+	fmt.Println(page.URL)
+}
+```
+
+| Method | What it does |
+|---|---|
+| `Create(ctx, *MonitorCreateParams)` | Make a monitor (`POST /v1/monitors`) |
+| `List(ctx, *MonitorListParams)` / `ListAll(ctx, *MonitorListParams)` | One page of monitors / a `*MonitorIterator` over all of them |
+| `Get(ctx, id, *RequestOptions)`, `Update(ctx, id, *MonitorUpdateParams)`, `Delete(ctx, id, *RequestOptions)` | Read, change (only what is set; `RemoveSchedule`, `RemoveWebhook`, ... send null), delete |
+| `Pause(ctx, id, *RequestOptions)`, `Resume(ctx, id, *RequestOptions)` | Update with Status "paused" / "active" |
+| `Trigger(ctx, id, *RequestOptions)` | Start a run now; returns the queued `*MonitorRun` |
+| `Runs(ctx, id, *MonitorPageParams)`, `Run(ctx, id, runID, *RequestOptions)` | A monitor's runs |
+| `Pages(ctx, id, *MonitorPagesParams)` | The pages it accepted, newest first, one per story |
+| `Deliveries(ctx, id, *MonitorPageParams)` | Webhook events of the last 7 days, with attempts and errors |
+| `Stats(ctx, *RequestOptions)` | Counts by status and by kind of schedule |
+| `Bulk(ctx, action, *MonitorBulkParams)` | Pause, resume or delete many; a dry run unless `DryRun` points to false |
+
+Every params struct embeds `RequestOptions`. Reads and deletes are retried like
+a search; `Create` sends an `Idempotency-Key` (yours, or a new one per call), so
+its retries cannot make a second monitor; `Update`, `Trigger` and `Bulk` are
+retried only on a 429.
+
+### Verify webhooks
+
+Deliveries are signed as [Standard Webhooks](https://www.standardwebhooks.com).
+Verify the raw body before trusting it:
+
+```go
+func hook(w http.ResponseWriter, r *http.Request) {
+	body, _ := io.ReadAll(r.Body)
+	event, err := keenable.VerifyWebhook(body, r.Header, secret, nil)
+	if err != nil {
+		http.Error(w, "bad signature", http.StatusBadRequest)
+		return
+	}
+	if event.Type == "monitor.hit" {
+		fmt.Println(event.Data.Result.URL)
+	}
+}
+```
+
+`VerifyWebhook` checks the HMAC-SHA256 signature in constant time and refuses
+a timestamp more than 5 minutes from now (`WebhookOptions.Tolerance` changes
+it). It returns a `*WebhookVerificationError`. Drop repeats by `event.ID`,
+which stays the same across retries.
+
 ## Errors
 
 SDK errors implement `keenable.Error`. `errors.As` into that interface

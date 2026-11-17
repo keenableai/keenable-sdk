@@ -134,6 +134,16 @@ type conformance struct {
 			Skip     map[string]string `json:"skip"`
 		} `json:"cases"`
 	} `json:"deadline"`
+	Webhook []struct {
+		Name      string            `json:"name"`
+		Secret    string            `json:"secret"`
+		Headers   map[string]string `json:"headers"`
+		Body      string            `json:"body"`
+		Now       int64             `json:"now"`
+		Tolerance float64           `json:"tolerance"`
+		Valid     bool              `json:"valid"`
+		Type      *string           `json:"type"`
+	} `json:"webhook"`
 }
 
 func loadConformance(t *testing.T) *conformance {
@@ -859,6 +869,34 @@ func TestConformanceDeadline(t *testing.T) {
 			}
 			if elapsed >= timeout {
 				t.Fatalf("took %v, want under %v", elapsed, timeout)
+			}
+		})
+	}
+}
+
+func TestConformanceWebhook(t *testing.T) {
+	for _, tc := range loadConformance(t).Webhook {
+		t.Run(tc.Name, func(t *testing.T) {
+			headers := http.Header{}
+			for k, v := range tc.Headers {
+				headers[k] = []string{v}
+			}
+			event, err := keenable.VerifyWebhook([]byte(tc.Body), headers, tc.Secret, &keenable.WebhookOptions{
+				Tolerance: time.Duration(tc.Tolerance * float64(time.Second)),
+				Now:       time.Unix(tc.Now, 0),
+			})
+			if !tc.Valid {
+				var bad *keenable.WebhookVerificationError
+				if !errors.As(err, &bad) {
+					t.Fatalf("want a WebhookVerificationError, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if event.Type != *tc.Type {
+				t.Fatalf("type %q, want %q", event.Type, *tc.Type)
 			}
 		})
 	}

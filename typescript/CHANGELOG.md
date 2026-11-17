@@ -5,6 +5,10 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- **Added:** Keenable Monitors. `new Keenable().monitors` calls `https://api.keenable.ai/v1/monitors` (or `KEENABLE_API_URL`): `create`, `list`, `listAll` (async iterator), `get`, `update`, `delete`, `pause`, `resume`, `trigger`, `runs`, `run`, `pages`, `deliveries`, `stats` and `bulk`, with typed results (`Monitor`, `MonitorRun`, `MonitorResult`, `MonitorDelivery`, `MonitorStats`, `BulkResult`, `ListPage<T>`). Monitors need an API key: without one a call throws `KeenableAuthError` (`code: "missing_api_key"`) and sends nothing. `create()` sends an `Idempotency-Key` (`idempotencyKey`, or a new UUID per call), so it is retried safely; `update()`, `trigger()` and `bulk()` are retried only on a 429.
+- **Added:** `verifyWebhook(payload, headers, secret, { toleranceSeconds, now })` checks a Monitors webhook (Standard Webhooks: HMAC-SHA256 through Web Crypto, `whsec_` secret, several signatures, 5-minute tolerance) and resolves to a `WebhookEvent`; a failure rejects with the new `WebhookVerificationError`.
+- **Changed:** the error contract fixtures follow the backend's current catalog, including the Monitors codes `monitors_not_enabled`, `monitor_limit_reached` (403, `KeenableAuthError`), `monitor_option_not_supported`, `idempotency_conflict` (`KeenableAPIError`) and `monitors_unavailable` (503, retryable).
+
 - **Added:** `objective` option on `search()`: what the search is for, in two or three natural sentences, up to 1,000 characters. Left out of the request when unset or empty. The API validates and logs it; it does not change results or price. The search tool offers it to a model.
 
 - **Security fix:** `baseUrl` and `KEENABLE_API_URL` are refused when the part

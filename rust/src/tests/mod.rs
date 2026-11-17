@@ -4,6 +4,7 @@
 mod client;
 mod conformance;
 mod contract;
+mod monitors;
 mod server;
 
 use std::path::PathBuf;

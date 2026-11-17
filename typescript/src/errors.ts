@@ -154,3 +154,10 @@ export class KeenableInsufficientCreditsError extends KeenableAPIError {}
 export const KeenableCreditsError = KeenableInsufficientCreditsError;
 /** Alias of {@link KeenableInsufficientCreditsError}, the name the docs use. */
 export type KeenableCreditsError = KeenableInsufficientCreditsError;
+
+/**
+ * A webhook delivery failed `verifyWebhook`: the signature did not match, a
+ * header was missing, the timestamp was too far from now, or the signed body
+ * was not a JSON object. Answer such a request with a 400 and do not act on it.
+ */
+export class WebhookVerificationError extends KeenableError {}

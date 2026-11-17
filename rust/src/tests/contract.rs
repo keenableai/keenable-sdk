@@ -127,7 +127,7 @@ async fn a_server_without_type_gets_the_catalog_type_derived() {
             .map(|a| a.error_type.clone())
             .unwrap_or_default();
         let want = &case["expect"];
-        if got != want["type"].as_str().unwrap()
+        if got != want["derived_type"].as_str().unwrap()
             || matches!(err, Error::Auth(_)) != (want["kind"] == "auth")
         {
             failures.push(format!("{}: derived {got}, {err:?}", case["name"]));

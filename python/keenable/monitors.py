@@ -1,0 +1,1438 @@
+"""Keenable Monitors: standing searches that report new pages as they appear.
+
+A monitor watches the web for a topic and hands over every new page that
+matches it, by webhook, in scheduled runs, or by polling its pages. Monitors
+need an API key.
+
+    from keenable import Keenable
+
+    keenable = Keenable()
+    monitor = keenable.monitors.create(
+        search={"query": "new open-weights LLM releases"},
+        schedule={"type": "cron", "value": "0 9 * * 1-5", "timezone": "Europe/Paris"},
+    )
+    for page in keenable.monitors.pages(monitor.id).data:
+        print(page.title, page.url)
+"""
+
+from __future__ import annotations
+
+import enum
+import uuid
+from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Generic, Literal, TypedDict, TypeVar, Union
+from urllib.parse import quote
+
+import httpx
+
+from .errors import KeenableInvalidRequestError
+
+if TYPE_CHECKING:
+    from .client import AsyncKeenable, Keenable
+
+
+class MonitorContentParams(TypedDict, total=False):
+    """``{"text": True}`` returns each page's text."""
+
+    text: bool
+
+
+class MonitorSearchParams(TypedDict, total=False):
+    """What a monitor watches for. ``query`` is required on create."""
+
+    query: str
+    max_results: int
+    include_domains: Sequence[str] | None
+    exclude_domains: Sequence[str] | None
+    content: MonitorContentParams | None
+
+
+class MonitorScheduleParams(TypedDict, total=False):
+    """When runs happen: cron, interval or once."""
+
+    type: Literal["cron", "interval", "once"]
+    value: str | None
+    timezone: str | None
+
+
+class MonitorWebhookParams(TypedDict, total=False):
+    """Where events go, and which."""
+
+    url: str
+    events: Sequence[str] | None
+
+
+class BulkFilterParams(TypedDict, total=False):
+    """Which monitors :meth:`Monitors.bulk` acts on."""
+
+    status: Literal["active", "paused", "disabled", "completed"]
+    name: str
+    metadata: Mapping[str, str]
+
+
+__all__ = [
+    "BulkFilterParams",
+    "BulkResult",
+    "DeliveryList",
+    "Monitor",
+    "MonitorContentParams",
+    "MonitorDelivery",
+    "MonitorList",
+    "MonitorResult",
+    "MonitorResultChange",
+    "MonitorRun",
+    "MonitorRunError",
+    "MonitorRunOutput",
+    "MonitorSchedule",
+    "MonitorScheduleParams",
+    "MonitorSearch",
+    "MonitorSearchParams",
+    "MonitorStats",
+    "MonitorWebhook",
+    "MonitorWebhookParams",
+    "PageList",
+    "RunList",
+    "AsyncMonitors",
+    "Monitors",
+    "NOT_GIVEN",
+]
+
+MonitorStatus = Literal["active", "paused", "disabled", "completed"]
+RunStatus = Literal["queued", "running", "completed", "failed", "cancelled"]
+BulkAction = Literal["pause", "resume", "delete"]
+
+_BULK_ACTIONS = ("pause", "resume", "delete")
+
+
+class _NotGiven(enum.Enum):
+    """Marks an :meth:`Monitors.update` field the caller left out.
+
+    ``None`` is a value there: it removes the schedule, the webhook or the
+    output schema.
+    """
+
+    TOKEN = 0
+
+    def __repr__(self) -> str:
+        return "NOT_GIVEN"
+
+
+NOT_GIVEN = _NotGiven.TOKEN
+
+
+def _str(value: Any) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _req_str(value: Any) -> str:
+    return value if isinstance(value, str) else ""
+
+
+def _int(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, float) and not value.is_integer():
+        return None
+    return int(value)
+
+
+def _float(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _bool(value: Any) -> bool | None:
+    return value if isinstance(value, bool) else None
+
+
+def _dict(value: Any) -> dict[str, Any] | None:
+    return value if isinstance(value, dict) else None
+
+
+def _strs(value: Any) -> list[str] | None:
+    if not isinstance(value, list):
+        return None
+    return [v for v in value if isinstance(v, str)]
+
+
+def _str_map(value: Any) -> dict[str, str] | None:
+    if not isinstance(value, dict):
+        return None
+    return {k: v for k, v in value.items() if isinstance(v, str)}
+
+
+def _int_map(value: Any) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    out: dict[str, int] = {}
+    for k, v in value.items():
+        n = _int(v)
+        if n is not None:
+            out[k] = n
+    return out
+
+
+def _objects(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [v for v in value if isinstance(v, dict)]
+
+
+@dataclass
+class MonitorSearch:
+    """What a monitor watches for."""
+
+    query: str
+    """The topic in plain words, as written when the monitor was made."""
+    max_results: int
+    """Pages a run returns at most."""
+    include_domains: list[str] | None = None
+    """Only pages on these sites."""
+    exclude_domains: list[str] | None = None
+    """Never pages on these sites."""
+    content_text: bool = False
+    """Whether each page's text is returned (first 6,000 characters)."""
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> MonitorSearch:
+        content = _dict(data.get("content")) or {}
+        return cls(
+            query=_req_str(data.get("query")),
+            max_results=_int(data.get("max_results")) or 0,
+            include_domains=_strs(data.get("include_domains")),
+            exclude_domains=_strs(data.get("exclude_domains")),
+            content_text=content.get("text") is True,
+            raw=data,
+        )
+
+
+@dataclass
+class MonitorSchedule:
+    """When a monitor's runs happen."""
+
+    type: str
+    """``"cron"``, ``"interval"`` or ``"once"``."""
+    value: str | None = None
+    """cron: five fields. interval: ``"6h"``, ``"5d"``, ``"2w"``. once: a
+    timestamp or a delay."""
+    timezone: str | None = None
+    """An IANA name, for cron; UTC when unset."""
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> MonitorSchedule:
+        return cls(
+            type=_req_str(data.get("type")),
+            value=_str(data.get("value")),
+            timezone=_str(data.get("timezone")),
+        )
+
+
+@dataclass
+class MonitorWebhook:
+    """Where a monitor's events go."""
+
+    url: str
+    events: list[str]
+    secret: str | None = None
+    """The signing secret (``whsec_...``), only in the response to
+    :meth:`Monitors.create`. Keep it: :func:`keenable.verify_webhook` needs
+    it."""
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> MonitorWebhook:
+        return cls(
+            url=_req_str(data.get("url")),
+            events=_strs(data.get("events")) or [],
+            secret=_str(data.get("secret")),
+        )
+
+
+@dataclass
+class Monitor:
+    """A monitor, as :meth:`Monitors.create`, :meth:`Monitors.get` and the
+    other calls return it."""
+
+    id: str
+    object: str
+    name: str | None
+    status: str
+    """``"active"``, ``"paused"``, ``"disabled"`` or ``"completed"``."""
+    search: MonitorSearch
+    schedule: MonitorSchedule | None
+    output_schema: dict[str, Any] | None
+    webhook: MonitorWebhook | None
+    metadata: dict[str, str] | None
+    last_run_at: str | None
+    next_run_at: str | None
+    upcoming_runs: list[str]
+    """The next three run times, UTC."""
+    created_at: str
+    updated_at: str
+    agent_run_id: Any = None
+    """Not available yet: always None."""
+    backfill: Any = None
+    """Not available yet: always None."""
+    memory_scope: Any = None
+    """Not available yet: always None."""
+    estimated_cost_usd: float | None = None
+    """None until monitors are priced."""
+    cost_this_month_usd: float | None = None
+    """None until monitors are priced."""
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+    request_id: str | None = None
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any], request_id: str | None = None) -> Monitor:
+        schedule = _dict(data.get("schedule"))
+        webhook = _dict(data.get("webhook"))
+        return cls(
+            id=_req_str(data.get("id")),
+            object=_req_str(data.get("object")) or "monitor",
+            name=_str(data.get("name")),
+            status=_req_str(data.get("status")),
+            search=MonitorSearch._from_json(_dict(data.get("search")) or {}),
+            schedule=MonitorSchedule._from_json(schedule) if schedule else None,
+            output_schema=_dict(data.get("output_schema")),
+            webhook=MonitorWebhook._from_json(webhook) if webhook else None,
+            metadata=_str_map(data.get("metadata")),
+            last_run_at=_str(data.get("last_run_at")),
+            next_run_at=_str(data.get("next_run_at")),
+            upcoming_runs=_strs(data.get("upcoming_runs")) or [],
+            created_at=_req_str(data.get("created_at")),
+            updated_at=_req_str(data.get("updated_at")),
+            agent_run_id=data.get("agent_run_id"),
+            backfill=data.get("backfill"),
+            memory_scope=data.get("memory_scope"),
+            estimated_cost_usd=_float(data.get("estimated_cost_usd")),
+            cost_this_month_usd=_float(data.get("cost_this_month_usd")),
+            raw=data,
+            request_id=request_id,
+        )
+
+
+@dataclass
+class MonitorResultChange:
+    """How a page that came back changed since the version the monitor sent."""
+
+    previous_at: str | None = None
+    previous_title: str | None = None
+    previous_sent: bool | None = None
+    ratio: float | None = None
+    """The share of the new text that was not in the old one, 0 to 1."""
+    added: list[str] | None = None
+    removed: list[str] | None = None
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> MonitorResultChange:
+        return cls(
+            previous_at=_str(data.get("previous_at")),
+            previous_title=_str(data.get("previous_title")),
+            previous_sent=_bool(data.get("previous_sent")),
+            ratio=_float(data.get("ratio")),
+            added=_strs(data.get("added")),
+            removed=_strs(data.get("removed")),
+        )
+
+
+@dataclass
+class MonitorResult:
+    """A page a monitor found: in a run, a webhook event or :meth:`Monitors.pages`."""
+
+    url: str
+    title: str | None = None
+    author: str | None = None
+    published_at: str | None = None
+    acquired_at: str | None = None
+    image: str | None = None
+    favicon: str | None = None
+    """Always None for now."""
+    highlights: Any = None
+    """Always None for now."""
+    matched_at: str | None = None
+    """When the monitor accepted the page."""
+    published_at_source: str | None = None
+    """``"declared"``, ``"url"``, ``"x"`` or ``"text"``: where the date comes
+    from."""
+    summary: str | None = None
+    """One line on what the page reports."""
+    importance: int | None = None
+    """1 to 5 for the monitor's topic; pages under 3 are not sent."""
+    kind: str | None = None
+    source_type: str | None = None
+    """``"original"`` or ``"rewrite"``."""
+    score: float | None = None
+    """Uncalibrated relevance, only for ordering one monitor's pages."""
+    text: str | None = None
+    """The page's text, when the monitor's search asks for it."""
+    change: MonitorResultChange | None = None
+    """Set on a ``monitor.update``: how the page changed."""
+    id: str | None = None
+    """Set by :meth:`Monitors.pages`: identifies the match, and is the cursor
+    of the page of results it ends."""
+    same_story: int | None = None
+    """Set by :meth:`Monitors.pages`: how many more pages reported the same
+    story and were left out."""
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> MonitorResult:
+        change = _dict(data.get("change"))
+        return cls(
+            url=_req_str(data.get("url")),
+            title=_str(data.get("title")),
+            author=_str(data.get("author")),
+            published_at=_str(data.get("published_at")),
+            acquired_at=_str(data.get("acquired_at")),
+            image=_str(data.get("image")),
+            favicon=_str(data.get("favicon")),
+            highlights=data.get("highlights"),
+            matched_at=_str(data.get("matched_at")),
+            published_at_source=_str(data.get("published_at_source")),
+            summary=_str(data.get("summary")),
+            importance=_int(data.get("importance")),
+            kind=_str(data.get("kind")),
+            source_type=_str(data.get("source_type")),
+            score=_float(data.get("score")),
+            text=_str(data.get("text")),
+            change=MonitorResultChange._from_json(change) if change else None,
+            id=_str(data.get("id")),
+            same_story=_int(data.get("same_story")),
+            raw=data,
+        )
+
+
+@dataclass
+class MonitorRunError:
+    """Why a run failed."""
+
+    code: str
+    message: str
+
+
+@dataclass
+class MonitorRunOutput:
+    """A run's digest, when the monitor has an ``output_schema``."""
+
+    structured: Any = None
+    """The output in the monitor's schema."""
+    text: str | None = None
+    grounding: list[Any] = field(default_factory=list)
+
+
+@dataclass
+class MonitorRun:
+    """One run of a monitor."""
+
+    id: str
+    object: str
+    monitor_id: str
+    status: str
+    """``"queued"``, ``"running"``, ``"completed"``, ``"failed"`` or
+    ``"cancelled"``."""
+    results: list[MonitorResult] | None
+    """New pages; ``[]`` when none; None until the run completes."""
+    output: MonitorRunOutput | None
+    error: MonitorRunError | None
+    created_at: str | None
+    started_at: str | None
+    ended_at: str | None
+    changes: Any = None
+    """Always None for now."""
+    usage: Any = None
+    """None until monitors are priced."""
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+    request_id: str | None = None
+
+    @classmethod
+    def _from_json(
+        cls, data: dict[str, Any], request_id: str | None = None
+    ) -> MonitorRun:
+        results = data.get("results")
+        output = _dict(data.get("output"))
+        error = _dict(data.get("error"))
+        grounding = output.get("grounding") if output else None
+        return cls(
+            id=_req_str(data.get("id")),
+            object=_req_str(data.get("object")) or "monitor_run",
+            monitor_id=_req_str(data.get("monitor_id")),
+            status=_req_str(data.get("status")),
+            results=[MonitorResult._from_json(r) for r in _objects(results)]
+            if isinstance(results, list)
+            else None,
+            output=MonitorRunOutput(
+                structured=output.get("structured"),
+                text=_str(output.get("text")),
+                grounding=grounding if isinstance(grounding, list) else [],
+            )
+            if output is not None
+            else None,
+            error=MonitorRunError(
+                code=_req_str(error.get("code")), message=_req_str(error.get("message"))
+            )
+            if error is not None
+            else None,
+            created_at=_str(data.get("created_at")),
+            started_at=_str(data.get("started_at")),
+            ended_at=_str(data.get("ended_at")),
+            changes=data.get("changes"),
+            usage=data.get("usage"),
+            raw=data,
+            request_id=request_id,
+        )
+
+
+@dataclass
+class MonitorDelivery:
+    """One webhook event and its delivery attempts."""
+
+    id: str
+    type: str
+    url: str
+    created_at: str
+    attempts: int
+    delivered_at: str | None = None
+    last_error: str | None = None
+    next_attempt_at: str | None = None
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> MonitorDelivery:
+        return cls(
+            id=_req_str(data.get("id")),
+            type=_req_str(data.get("type")),
+            url=_req_str(data.get("url")),
+            created_at=_req_str(data.get("created_at")),
+            attempts=_int(data.get("attempts")) or 0,
+            delivered_at=_str(data.get("delivered_at")),
+            last_error=_str(data.get("last_error")),
+            next_attempt_at=_str(data.get("next_attempt_at")),
+            raw=data,
+        )
+
+
+@dataclass
+class MonitorStats:
+    """How many monitors there are, by status and by kind of schedule."""
+
+    total: int
+    by_status: dict[str, int]
+    by_schedule: dict[str, int]
+    """Keys ``"cron"``, ``"interval"``, ``"once"`` and ``"manual"``."""
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+    request_id: str | None = None
+
+    @classmethod
+    def _from_json(
+        cls, data: dict[str, Any], request_id: str | None = None
+    ) -> MonitorStats:
+        return cls(
+            total=_int(data.get("total")) or 0,
+            by_status=_int_map(data.get("by_status")),
+            by_schedule=_int_map(data.get("by_schedule")),
+            raw=data,
+            request_id=request_id,
+        )
+
+
+@dataclass
+class BulkResult:
+    """What :meth:`Monitors.bulk` changed, or would change on a dry run."""
+
+    action: str
+    affected: int
+    ids: list[str]
+    dry_run: bool
+    has_more: bool
+    """More monitors matched than ``limit``; send the call again for them."""
+    not_found: list[str]
+    """Of the ids sent, those that are not monitors of this key."""
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+    request_id: str | None = None
+
+    @classmethod
+    def _from_json(
+        cls, data: dict[str, Any], request_id: str | None = None
+    ) -> BulkResult:
+        return cls(
+            action=_req_str(data.get("action")),
+            affected=_int(data.get("affected")) or 0,
+            ids=_strs(data.get("ids")) or [],
+            dry_run=data.get("dry_run") is True,
+            has_more=data.get("has_more") is True,
+            not_found=_strs(data.get("not_found")) or [],
+            raw=data,
+            request_id=request_id,
+        )
+
+
+T = TypeVar("T")
+
+
+@dataclass
+class ListPage(Generic[T]):
+    """One page of a list: ``data``, and ``next_cursor`` for the next page."""
+
+    data: list[T]
+    has_more: bool
+    next_cursor: str | None
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+    request_id: str | None = None
+
+    def __iter__(self) -> Iterator[T]:
+        return iter(self.data)
+
+    def __len__(self) -> int:
+        return len(self.data)
+
+
+MonitorList = ListPage[Monitor]
+RunList = ListPage[MonitorRun]
+PageList = ListPage[MonitorResult]
+DeliveryList = ListPage[MonitorDelivery]
+
+
+def _list(data: dict[str, Any], request_id: str | None, item: Any) -> ListPage[Any]:
+    return ListPage(
+        data=[item(x) for x in _objects(data.get("data"))],
+        has_more=data.get("has_more") is True,
+        next_cursor=_str(data.get("next_cursor")) or None,
+        raw=data,
+        request_id=request_id,
+    )
+
+
+def _monitor_list(data: dict[str, Any], request_id: str | None) -> MonitorList:
+    return _list(data, request_id, Monitor._from_json)
+
+
+def _run_list(data: dict[str, Any], request_id: str | None) -> RunList:
+    return _list(data, request_id, MonitorRun._from_json)
+
+
+def _page_list(data: dict[str, Any], request_id: str | None) -> PageList:
+    return _list(data, request_id, MonitorResult._from_json)
+
+
+def _delivery_list(data: dict[str, Any], request_id: str | None) -> DeliveryList:
+    return _list(data, request_id, MonitorDelivery._from_json)
+
+
+@dataclass
+class _Call:
+    """One monitors request, built once for the sync and async clients."""
+
+    method: str
+    path: str
+    params: dict[str, str] | None = None
+    json: dict[str, Any] | None = None
+    headers: dict[str, str] | None = None
+    safe: bool = True
+
+
+def _segment(name: str, value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise KeenableInvalidRequestError(f"{name} must be a non-empty string")
+    return quote(value, safe="")
+
+
+def _path(*parts: str) -> str:
+    return "monitors" + "".join(f"/{p}" for p in parts)
+
+
+def _query(**values: Any) -> dict[str, str]:
+    params: dict[str, str] = {}
+    for key, value in values.items():
+        if value is None or value == "":
+            continue
+        if isinstance(value, bool):
+            params[key] = "true" if value else "false"
+        else:
+            params[key] = str(value)
+    return params
+
+
+def _metadata_query(metadata: Mapping[str, str] | None) -> dict[str, str]:
+    if not metadata:
+        return {}
+    return {f"metadata[{k}]": v for k, v in metadata.items()}
+
+
+def _check_search(search: Any, required: bool) -> dict[str, Any]:
+    if not isinstance(search, Mapping):
+        raise KeenableInvalidRequestError(
+            "search must be a mapping such as "
+            "{'query': 'new open-weights LLM releases'}"
+        )
+    body = {
+        k: (list(v) if k.endswith("_domains") and v is not None else v)
+        for k, v in search.items()
+    }
+    query = body.get("query")
+    if (required or "query" in body) and (
+        not isinstance(query, str) or not query.strip()
+    ):
+        raise KeenableInvalidRequestError("search needs a non-empty query string")
+    return body
+
+
+def _webhook_body(webhook: Mapping[str, Any]) -> dict[str, Any]:
+    body = dict(webhook)
+    if body.get("events") is not None:
+        body["events"] = list(body["events"])
+    return body
+
+
+def _create_call(
+    search: Any,
+    name: str | None,
+    schedule: Mapping[str, Any] | None,
+    output_schema: Mapping[str, Any] | None,
+    webhook: Mapping[str, Any] | None,
+    metadata: Mapping[str, str] | None,
+    idempotency_key: str | None,
+) -> _Call:
+    body: dict[str, Any] = {"search": _check_search(search, True)}
+    if name is not None:
+        body["name"] = name
+    if schedule is not None:
+        body["schedule"] = dict(schedule)
+    if output_schema is not None:
+        body["output_schema"] = dict(output_schema)
+    if webhook is not None:
+        body["webhook"] = _webhook_body(webhook)
+    if metadata is not None:
+        body["metadata"] = dict(metadata)
+    key = idempotency_key if idempotency_key else str(uuid.uuid4())
+    return _Call("POST", _path(), json=body, headers={"Idempotency-Key": key})
+
+
+def _update_call(monitor_id: str, fields: dict[str, Any]) -> _Call:
+    body: dict[str, Any] = {}
+    for key, value in fields.items():
+        if value is NOT_GIVEN:
+            continue
+        if value is None:
+            body[key] = None
+        elif key == "search":
+            body[key] = _check_search(value, False)
+        elif key == "webhook":
+            body[key] = _webhook_body(value)
+        elif isinstance(value, Mapping):
+            body[key] = dict(value)
+        else:
+            body[key] = value
+    return _Call(
+        "PATCH", _path(_segment("monitor_id", monitor_id)), json=body, safe=False
+    )
+
+
+def _bulk_call(
+    action: str,
+    ids: Sequence[str] | None,
+    filter: Mapping[str, Any] | None,
+    limit: int | None,
+    dry_run: bool,
+) -> _Call:
+    if action not in _BULK_ACTIONS:
+        raise KeenableInvalidRequestError(
+            f"action must be one of {', '.join(_BULK_ACTIONS)}, got {action!r}"
+        )
+    if isinstance(ids, str):
+        raise KeenableInvalidRequestError("ids must be a list of monitor ids")
+    if not ids and not filter:
+        raise KeenableInvalidRequestError("bulk() needs ids or a filter")
+    if not isinstance(dry_run, bool):
+        raise KeenableInvalidRequestError("dry_run must be True or False")
+    body: dict[str, Any] = {"action": action, "dry_run": dry_run}
+    if ids:
+        body["ids"] = list(ids)
+    if filter:
+        body["filter"] = dict(filter)
+    if limit is not None:
+        body["limit"] = limit
+    return _Call("POST", _path("bulk"), json=body, safe=False)
+
+
+Timeout = Union[float, httpx.Timeout, None]
+
+
+class Monitors:
+    """``keenable.monitors``: create, read and manage monitors.
+
+    Every call takes ``timeout``, ``max_retries`` and ``extra_headers`` as
+    :meth:`Keenable.search` does. Reads and deletes are retried like a search.
+    :meth:`create` sends an ``Idempotency-Key`` (yours, or a new one for each
+    call), so retrying it cannot make a second monitor. :meth:`update`,
+    :meth:`trigger` and :meth:`bulk` are retried only on a 429, which the API
+    sends before it does anything.
+    """
+
+    def __init__(self, client: Keenable) -> None:
+        self._client = client
+
+    def _send(
+        self,
+        call: _Call,
+        timeout: Timeout,
+        max_retries: int | None,
+        extra_headers: Mapping[str, str] | None,
+    ) -> tuple[dict[str, Any], str | None]:
+        return self._client._monitors_request(
+            call,
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+        )
+
+    def create(
+        self,
+        *,
+        search: MonitorSearchParams,
+        name: str | None = None,
+        schedule: MonitorScheduleParams | None = None,
+        output_schema: Mapping[str, Any] | None = None,
+        webhook: MonitorWebhookParams | None = None,
+        metadata: Mapping[str, str] | None = None,
+        idempotency_key: str | None = None,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> Monitor:
+        """Create a monitor. Takes a few seconds: it is calibrated against the
+        last week of the web.
+
+        Args:
+            search: What to watch for: ``query`` (required), ``max_results``
+                (1 to 100, default 10), ``include_domains``,
+                ``exclude_domains`` and ``content`` (``{"text": True}``
+                returns each page's text).
+            name: A name for the monitor, up to 200 characters.
+            schedule: When runs happen: ``{"type": "cron", "value": "0 9 * *
+                1-5", "timezone": "Europe/Paris"}``, ``{"type": "interval",
+                "value": "6h"}`` or ``{"type": "once", "value": "2h"}``.
+                Without one, runs happen only on :meth:`trigger`.
+            output_schema: JSON Schema of each run's ``output.structured``.
+            webhook: ``{"url": "https://...", "events": [...]}``. The default
+                events are the ``monitor.*`` and ``monitor.run.*`` ones; add
+                ``"monitor.hit"`` to get each new page as soon as it is found.
+            metadata: Your own tags, at most 50, echoed in every webhook.
+            idempotency_key: Makes a retry safe: the same key with the same
+                body returns the monitor the first call created, for 24 hours.
+                A new key is made for each call when you leave it out.
+
+        Returns:
+            The :class:`Monitor`. ``webhook.secret`` is set here and nowhere
+            else: keep it to verify deliveries.
+        """
+        call = _create_call(
+            search, name, schedule, output_schema, webhook, metadata, idempotency_key
+        )
+        data, request_id = self._send(call, timeout, max_retries, extra_headers)
+        return Monitor._from_json(data, request_id)
+
+    def list(
+        self,
+        *,
+        status: MonitorStatus | None = None,
+        name: str | None = None,
+        metadata: Mapping[str, str] | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> MonitorList:
+        """One page of monitors, newest first.
+
+        Args:
+            status: Only monitors in this status.
+            name: Only monitors whose name contains this.
+            metadata: Only monitors with these metadata values.
+            limit: Monitors per page (the API's default is 50).
+            cursor: The previous page's ``next_cursor``.
+        """
+        params = _query(status=status, name=name, limit=limit, cursor=cursor)
+        params.update(_metadata_query(metadata))
+        data, request_id = self._send(
+            _Call("GET", _path(), params=params), timeout, max_retries, extra_headers
+        )
+        return _monitor_list(data, request_id)
+
+    def list_all(
+        self,
+        *,
+        status: MonitorStatus | None = None,
+        name: str | None = None,
+        metadata: Mapping[str, str] | None = None,
+        limit: int | None = None,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> Iterator[Monitor]:
+        """Every monitor, newest first, fetching pages of ``limit`` as needed."""
+        cursor: str | None = None
+        while True:
+            page = self.list(
+                status=status,
+                name=name,
+                metadata=metadata,
+                limit=limit,
+                cursor=cursor,
+                timeout=timeout,
+                max_retries=max_retries,
+                extra_headers=extra_headers,
+            )
+            yield from page.data
+            if not page.has_more or not page.next_cursor:
+                return
+            cursor = page.next_cursor
+
+    def get(
+        self,
+        monitor_id: str,
+        *,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> Monitor:
+        """One monitor."""
+        call = _Call("GET", _path(_segment("monitor_id", monitor_id)))
+        data, request_id = self._send(call, timeout, max_retries, extra_headers)
+        return Monitor._from_json(data, request_id)
+
+    def update(
+        self,
+        monitor_id: str,
+        *,
+        name: str | None | _NotGiven = NOT_GIVEN,
+        status: Literal["active", "paused"] | _NotGiven = NOT_GIVEN,
+        search: MonitorSearchParams | _NotGiven = NOT_GIVEN,
+        schedule: MonitorScheduleParams | None | _NotGiven = NOT_GIVEN,
+        output_schema: Mapping[str, Any] | None | _NotGiven = NOT_GIVEN,
+        webhook: MonitorWebhookParams | None | _NotGiven = NOT_GIVEN,
+        metadata: Mapping[str, str] | None | _NotGiven = NOT_GIVEN,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> Monitor:
+        """Change a monitor. Only the arguments you pass are sent.
+
+        ``search`` and ``webhook`` are merged into the stored ones. ``None``
+        removes the schedule, the webhook or the output schema. ``status`` is
+        ``"active"`` or ``"paused"``; active also re-enables a disabled
+        monitor. Not retried on a 5xx.
+        """
+        call = _update_call(
+            monitor_id,
+            {
+                "name": name,
+                "status": status,
+                "search": search,
+                "schedule": schedule,
+                "output_schema": output_schema,
+                "webhook": webhook,
+                "metadata": metadata,
+            },
+        )
+        data, request_id = self._send(call, timeout, max_retries, extra_headers)
+        return Monitor._from_json(data, request_id)
+
+    def pause(
+        self,
+        monitor_id: str,
+        *,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> Monitor:
+        """Pause a monitor: ``update(monitor_id, status="paused")``."""
+        return self.update(
+            monitor_id,
+            status="paused",
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+        )
+
+    def resume(
+        self,
+        monitor_id: str,
+        *,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> Monitor:
+        """Resume a paused or disabled monitor.
+
+        The same as ``update(monitor_id, status="active")``.
+        """
+        return self.update(
+            monitor_id,
+            status="active",
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+        )
+
+    def delete(
+        self,
+        monitor_id: str,
+        *,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> Monitor:
+        """Delete a monitor and the pages it found, for good. Returns it as it was."""
+        call = _Call("DELETE", _path(_segment("monitor_id", monitor_id)))
+        data, request_id = self._send(call, timeout, max_retries, extra_headers)
+        return Monitor._from_json(data, request_id)
+
+    def trigger(
+        self,
+        monitor_id: str,
+        *,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> MonitorRun:
+        """Start a run now and return it queued. Read it with :meth:`run`, or
+        wait for ``monitor.run.completed``. Not retried on a 5xx."""
+        call = _Call(
+            "POST",
+            _path(_segment("monitor_id", monitor_id), "trigger"),
+            safe=False,
+        )
+        data, request_id = self._send(call, timeout, max_retries, extra_headers)
+        return MonitorRun._from_json(data, request_id)
+
+    def runs(
+        self,
+        monitor_id: str,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> RunList:
+        """One page of a monitor's runs, newest first."""
+        call = _Call(
+            "GET",
+            _path(_segment("monitor_id", monitor_id), "runs"),
+            params=_query(limit=limit, cursor=cursor),
+        )
+        data, request_id = self._send(call, timeout, max_retries, extra_headers)
+        return _run_list(data, request_id)
+
+    def run(
+        self,
+        monitor_id: str,
+        run_id: str,
+        *,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> MonitorRun:
+        """One run."""
+        call = _Call(
+            "GET",
+            _path(
+                _segment("monitor_id", monitor_id),
+                "runs",
+                _segment("run_id", run_id),
+            ),
+        )
+        data, request_id = self._send(call, timeout, max_retries, extra_headers)
+        return MonitorRun._from_json(data, request_id)
+
+    def pages(
+        self,
+        monitor_id: str,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+        min_importance: int | None = None,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> PageList:
+        """The pages a monitor accepted, newest first, one per story.
+
+        The way to read a monitor without a webhook or a schedule: poll, and
+        stop at the first ``id`` already seen. ``min_importance=4`` keeps the
+        pages a reader would not want to miss.
+        """
+        call = _Call(
+            "GET",
+            _path(_segment("monitor_id", monitor_id), "hits"),
+            params=_query(limit=limit, cursor=cursor, min_importance=min_importance),
+        )
+        data, request_id = self._send(call, timeout, max_retries, extra_headers)
+        return _page_list(data, request_id)
+
+    def deliveries(
+        self,
+        monitor_id: str,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> DeliveryList:
+        """The monitor's webhook events of the last 7 days, with attempts and
+        the last error, newest first."""
+        call = _Call(
+            "GET",
+            _path(_segment("monitor_id", monitor_id), "deliveries"),
+            params=_query(limit=limit, cursor=cursor),
+        )
+        data, request_id = self._send(call, timeout, max_retries, extra_headers)
+        return _delivery_list(data, request_id)
+
+    def stats(
+        self,
+        *,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> MonitorStats:
+        """Counts of monitors by status and by kind of schedule."""
+        data, request_id = self._send(
+            _Call("GET", _path("stats")), timeout, max_retries, extra_headers
+        )
+        return MonitorStats._from_json(data, request_id)
+
+    def bulk(
+        self,
+        action: BulkAction,
+        *,
+        ids: Sequence[str] | None = None,
+        filter: BulkFilterParams | None = None,
+        limit: int | None = None,
+        dry_run: bool = True,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> BulkResult:
+        """Pause, resume or delete many monitors, by ``ids`` or by ``filter``
+        (``status``, ``name``, ``metadata``).
+
+        ``dry_run`` is True unless you pass False: the result then lists what
+        would change and nothing changes. Not retried on a 5xx.
+        """
+        call = _bulk_call(action, ids, filter, limit, dry_run)
+        data, request_id = self._send(call, timeout, max_retries, extra_headers)
+        return BulkResult._from_json(data, request_id)
+
+
+class AsyncMonitors:
+    """``AsyncKeenable.monitors``: :class:`Monitors` with awaitable methods."""
+
+    def __init__(self, client: AsyncKeenable) -> None:
+        self._client = client
+
+    async def _send(
+        self,
+        call: _Call,
+        timeout: Timeout,
+        max_retries: int | None,
+        extra_headers: Mapping[str, str] | None,
+    ) -> tuple[dict[str, Any], str | None]:
+        return await self._client._monitors_request(
+            call,
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+        )
+
+    async def create(
+        self,
+        *,
+        search: MonitorSearchParams,
+        name: str | None = None,
+        schedule: MonitorScheduleParams | None = None,
+        output_schema: Mapping[str, Any] | None = None,
+        webhook: MonitorWebhookParams | None = None,
+        metadata: Mapping[str, str] | None = None,
+        idempotency_key: str | None = None,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> Monitor:
+        """Create a monitor. See :meth:`Monitors.create`."""
+        call = _create_call(
+            search, name, schedule, output_schema, webhook, metadata, idempotency_key
+        )
+        data, request_id = await self._send(call, timeout, max_retries, extra_headers)
+        return Monitor._from_json(data, request_id)
+
+    async def list(
+        self,
+        *,
+        status: MonitorStatus | None = None,
+        name: str | None = None,
+        metadata: Mapping[str, str] | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> MonitorList:
+        """One page of monitors. See :meth:`Monitors.list`."""
+        params = _query(status=status, name=name, limit=limit, cursor=cursor)
+        params.update(_metadata_query(metadata))
+        data, request_id = await self._send(
+            _Call("GET", _path(), params=params), timeout, max_retries, extra_headers
+        )
+        return _monitor_list(data, request_id)
+
+    async def list_all(
+        self,
+        *,
+        status: MonitorStatus | None = None,
+        name: str | None = None,
+        metadata: Mapping[str, str] | None = None,
+        limit: int | None = None,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> AsyncIterator[Monitor]:
+        """Every monitor, newest first: ``async for monitor in ...``."""
+        cursor: str | None = None
+        while True:
+            page = await self.list(
+                status=status,
+                name=name,
+                metadata=metadata,
+                limit=limit,
+                cursor=cursor,
+                timeout=timeout,
+                max_retries=max_retries,
+                extra_headers=extra_headers,
+            )
+            for monitor in page.data:
+                yield monitor
+            if not page.has_more or not page.next_cursor:
+                return
+            cursor = page.next_cursor
+
+    async def get(
+        self,
+        monitor_id: str,
+        *,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> Monitor:
+        """One monitor."""
+        call = _Call("GET", _path(_segment("monitor_id", monitor_id)))
+        data, request_id = await self._send(call, timeout, max_retries, extra_headers)
+        return Monitor._from_json(data, request_id)
+
+    async def update(
+        self,
+        monitor_id: str,
+        *,
+        name: str | None | _NotGiven = NOT_GIVEN,
+        status: Literal["active", "paused"] | _NotGiven = NOT_GIVEN,
+        search: MonitorSearchParams | _NotGiven = NOT_GIVEN,
+        schedule: MonitorScheduleParams | None | _NotGiven = NOT_GIVEN,
+        output_schema: Mapping[str, Any] | None | _NotGiven = NOT_GIVEN,
+        webhook: MonitorWebhookParams | None | _NotGiven = NOT_GIVEN,
+        metadata: Mapping[str, str] | None | _NotGiven = NOT_GIVEN,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> Monitor:
+        """Change a monitor. See :meth:`Monitors.update`."""
+        call = _update_call(
+            monitor_id,
+            {
+                "name": name,
+                "status": status,
+                "search": search,
+                "schedule": schedule,
+                "output_schema": output_schema,
+                "webhook": webhook,
+                "metadata": metadata,
+            },
+        )
+        data, request_id = await self._send(call, timeout, max_retries, extra_headers)
+        return Monitor._from_json(data, request_id)
+
+    async def pause(
+        self,
+        monitor_id: str,
+        *,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> Monitor:
+        """Pause a monitor."""
+        return await self.update(
+            monitor_id,
+            status="paused",
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+        )
+
+    async def resume(
+        self,
+        monitor_id: str,
+        *,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> Monitor:
+        """Resume a paused or disabled monitor."""
+        return await self.update(
+            monitor_id,
+            status="active",
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+        )
+
+    async def delete(
+        self,
+        monitor_id: str,
+        *,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> Monitor:
+        """Delete a monitor for good. Returns it as it was."""
+        call = _Call("DELETE", _path(_segment("monitor_id", monitor_id)))
+        data, request_id = await self._send(call, timeout, max_retries, extra_headers)
+        return Monitor._from_json(data, request_id)
+
+    async def trigger(
+        self,
+        monitor_id: str,
+        *,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> MonitorRun:
+        """Start a run now. See :meth:`Monitors.trigger`."""
+        call = _Call(
+            "POST",
+            _path(_segment("monitor_id", monitor_id), "trigger"),
+            safe=False,
+        )
+        data, request_id = await self._send(call, timeout, max_retries, extra_headers)
+        return MonitorRun._from_json(data, request_id)
+
+    async def runs(
+        self,
+        monitor_id: str,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> RunList:
+        """One page of a monitor's runs, newest first."""
+        call = _Call(
+            "GET",
+            _path(_segment("monitor_id", monitor_id), "runs"),
+            params=_query(limit=limit, cursor=cursor),
+        )
+        data, request_id = await self._send(call, timeout, max_retries, extra_headers)
+        return _run_list(data, request_id)
+
+    async def run(
+        self,
+        monitor_id: str,
+        run_id: str,
+        *,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> MonitorRun:
+        """One run."""
+        call = _Call(
+            "GET",
+            _path(
+                _segment("monitor_id", monitor_id),
+                "runs",
+                _segment("run_id", run_id),
+            ),
+        )
+        data, request_id = await self._send(call, timeout, max_retries, extra_headers)
+        return MonitorRun._from_json(data, request_id)
+
+    async def pages(
+        self,
+        monitor_id: str,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+        min_importance: int | None = None,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> PageList:
+        """The pages a monitor accepted. See :meth:`Monitors.pages`."""
+        call = _Call(
+            "GET",
+            _path(_segment("monitor_id", monitor_id), "hits"),
+            params=_query(limit=limit, cursor=cursor, min_importance=min_importance),
+        )
+        data, request_id = await self._send(call, timeout, max_retries, extra_headers)
+        return _page_list(data, request_id)
+
+    async def deliveries(
+        self,
+        monitor_id: str,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> DeliveryList:
+        """The monitor's webhook events of the last 7 days."""
+        call = _Call(
+            "GET",
+            _path(_segment("monitor_id", monitor_id), "deliveries"),
+            params=_query(limit=limit, cursor=cursor),
+        )
+        data, request_id = await self._send(call, timeout, max_retries, extra_headers)
+        return _delivery_list(data, request_id)
+
+    async def stats(
+        self,
+        *,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> MonitorStats:
+        """Counts of monitors by status and by kind of schedule."""
+        data, request_id = await self._send(
+            _Call("GET", _path("stats")), timeout, max_retries, extra_headers
+        )
+        return MonitorStats._from_json(data, request_id)
+
+    async def bulk(
+        self,
+        action: BulkAction,
+        *,
+        ids: Sequence[str] | None = None,
+        filter: BulkFilterParams | None = None,
+        limit: int | None = None,
+        dry_run: bool = True,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> BulkResult:
+        """Pause, resume or delete many monitors. See :meth:`Monitors.bulk`."""
+        call = _bulk_call(action, ids, filter, limit, dry_run)
+        data, request_id = await self._send(call, timeout, max_retries, extra_headers)
+        return BulkResult._from_json(data, request_id)

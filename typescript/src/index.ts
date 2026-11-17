@@ -31,6 +31,7 @@ export {
   KeenableInvalidRequestError,
   KeenableRateLimitError,
   KeenableTimeoutError,
+  WebhookVerificationError,
 } from "./errors.js";
 export type { KeenableAPIErrorDetails, KeenableErrorType, RateLimitInfo } from "./errors.js";
 export { FETCH_TOOL, SEARCH_TOOL, TOOLS, runToolCall } from "./tools.js";
@@ -43,3 +44,43 @@ export type {
   SearchResult,
   ToContextOptions,
 } from "./types.js";
+export { Monitors } from "./monitors.js";
+export type {
+  BulkAction,
+  BulkFilter,
+  BulkResult,
+  DeliveryList,
+  ListPage,
+  Monitor,
+  MonitorBulkParams,
+  MonitorCreateParams,
+  MonitorDelivery,
+  MonitorEvent,
+  MonitorList,
+  MonitorListParams,
+  MonitorPageParams,
+  MonitorPagesParams,
+  MonitorResult,
+  MonitorResultChange,
+  MonitorRun,
+  MonitorRunOutput,
+  MonitorRunStatus,
+  MonitorSchedule,
+  MonitorScheduleParams,
+  MonitorSearch,
+  MonitorSearchParams,
+  MonitorStats,
+  MonitorStatus,
+  MonitorUpdateParams,
+  MonitorWebhook,
+  MonitorWebhookParams,
+  PageList,
+  RunList,
+} from "./monitors.js";
+export { DEFAULT_WEBHOOK_TOLERANCE_SECONDS, verifyWebhook } from "./webhooks.js";
+export type {
+  VerifyWebhookOptions,
+  WebhookEvent,
+  WebhookEventData,
+  WebhookHeaders,
+} from "./webhooks.js";

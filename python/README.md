@@ -200,6 +200,69 @@ async def main():
 asyncio.run(main())
 ```
 
+## Monitors
+
+A monitor is a standing search: it watches the web for a topic and hands over
+every new page that matches, by webhook, in scheduled runs, or when you poll
+it. Monitors need an API key (`KEENABLE_API_KEY`); without one, every call
+raises `KeenableAuthError` with `code == "missing_api_key"` and sends nothing.
+An organization can have 100 active monitors.
+
+```python
+from keenable import Keenable
+
+keenable = Keenable()
+monitor = keenable.monitors.create(
+    search={"query": "new open-weights LLM releases", "max_results": 20},
+    schedule={"type": "cron", "value": "0 9 * * 1-5", "timezone": "Europe/Paris"},
+    webhook={"url": "https://example.com/keenable", "events": ["monitor.hit"]},
+    metadata={"team": "research"},
+)
+secret = monitor.webhook.secret  # whsec_..., returned by create() only
+
+for page in keenable.monitors.pages(monitor.id, min_importance=4):
+    print(page.importance, page.title, page.url)
+```
+
+| Method | What it does |
+|---|---|
+| `create(*, search, name, schedule, output_schema, webhook, metadata, idempotency_key)` | Make a monitor (`POST /v1/monitors`) |
+| `list(*, status, name, metadata, limit, cursor)` / `list_all(...)` | One page of monitors / an iterator over all of them |
+| `get(id)`, `update(id, **fields)`, `delete(id)` | Read, change (only the fields passed; `None` removes the schedule, webhook or output schema), delete |
+| `pause(id)`, `resume(id)` | `update(id, status="paused" / "active")` |
+| `trigger(id)` | Start a run now; returns the queued `MonitorRun` |
+| `runs(id, *, limit, cursor)`, `run(id, run_id)` | A monitor's runs |
+| `pages(id, *, limit, cursor, min_importance)` | The pages it accepted, newest first, one per story |
+| `deliveries(id, *, limit, cursor)` | Webhook events of the last 7 days, with attempts and errors |
+| `stats()` | Counts by status and by kind of schedule |
+| `bulk(action, *, ids, filter, limit, dry_run=True)` | Pause, resume or delete many; a dry run unless `dry_run=False` |
+
+`AsyncKeenable().monitors` has the same methods, awaitable (`list_all` is an
+async iterator). Every call also takes `timeout`, `max_retries` and
+`extra_headers`. Reads and deletes are retried like a search; `create()` sends
+an `Idempotency-Key` (yours, or a new one per call), so its retries cannot make
+a second monitor; `update()`, `trigger()` and `bulk()` are retried only on a 429.
+
+### Verify webhooks
+
+Deliveries are signed as [Standard Webhooks](https://www.standardwebhooks.com).
+Verify the raw body before trusting it:
+
+```python
+from keenable import WebhookVerificationError, verify_webhook
+
+try:
+    event = verify_webhook(raw_body, request.headers, secret)
+except WebhookVerificationError:
+    ...  # answer 400
+if event.type == "monitor.hit":
+    print(event.data.result.url)
+```
+
+`verify_webhook` checks the HMAC-SHA256 signature in constant time and refuses
+a timestamp more than 5 minutes from now (`tolerance=` changes it). Drop
+repeats by `event.id`, which stays the same across retries.
+
 ## Errors
 
 All errors subclass `KeenableError`:
