@@ -152,7 +152,8 @@ def test_tool_schema_offers_objective() -> None:
     from keenable import TOOLS
 
     search = next(t for t in TOOLS if t["function"]["name"] == "keenable_search")
-    assert search["function"]["parameters"]["properties"]["objective"]["type"] == "string"
+    properties = search["function"]["parameters"]["properties"]
+    assert properties["objective"]["type"] == "string"
 
 
 @pytest.mark.parametrize(
