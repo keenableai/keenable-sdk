@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Changed:** `max_results` now documents the API's new range, 1 to 100 (was 1 to 50). The SDK does not check the range; the API does.
+
 ## 0.1.0
 
 First release of the Rust SDK, with the same surface as the Python,

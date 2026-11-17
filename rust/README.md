@@ -99,7 +99,7 @@ for result in &results {
 | `published_after` / `published_before` | Filter by publication date (`YYYY-MM-DD`) |
 | `acquired_after` / `acquired_before` | Filter by when Keenable indexed the page |
 | `snippet_max_length` | Cap the page text returned per result, 180 to 10000 characters |
-| `max_results` | How many results to return, 1 to 50. The API default is 10 |
+| `max_results` | How many results to return, 1 to 100. The API default is 10 |
 | `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price |
 | `disable_cards` | `true` returns ordinary web pages in place of Keenable's cards |

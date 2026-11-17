@@ -128,7 +128,7 @@ pub struct SearchOptions {
     pub acquired_before: Option<String>,
     /// Caps the characters of page text per result, from 180 to 10000.
     pub snippet_max_length: Option<u32>,
-    /// How many results to return, 1 to 50. The API default is 10.
+    /// How many results to return, 1 to 100. The API default is 10.
     pub max_results: Option<u32>,
     /// Searches the index as it stood at this moment; pages newer than it are
     /// excluded. It sets no lower bound, so it is not a recency filter: use

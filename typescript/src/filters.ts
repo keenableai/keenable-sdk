@@ -71,7 +71,7 @@ export const SEARCH_FILTERS: readonly Filter[] = [
   {
     wire: "max_results",
     option: "maxResults",
-    description: "Optional. How many results to return, 1 to 50. The API default is 10.",
+    description: "Optional. How many results to return, 1 to 100. The API default is 10.",
     jsonType: "integer",
   },
   {

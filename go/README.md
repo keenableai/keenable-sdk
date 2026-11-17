@@ -72,7 +72,7 @@ results, err := client.Search(context.Background(), "post-training quantization 
 | `PublishedAfter` / `PublishedBefore` | Filter by publication date (`YYYY-MM-DD`) |
 | `AcquiredAfter` / `AcquiredBefore` | Filter by when Keenable indexed the page |
 | `SnippetMaxLength` | Cap the page text returned per result. Nil means unset; a pointer to zero is sent |
-| `MaxResults` | How many results to return, 1 to 50. Zero means the API default of 10 |
+| `MaxResults` | How many results to return, 1 to 100. Zero means the API default of 10 |
 | `QueryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `Objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price. Not sent when empty |
 | `Mode` | Search mode: `"pro"` does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops. Empty means `"pro"` |
