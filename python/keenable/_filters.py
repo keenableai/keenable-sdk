@@ -87,7 +87,8 @@ SEARCH_FILTERS: tuple[Filter, ...] = (
         "steps; and what is still unknown. Every sentence must be self-contained: "
         "name the entities, places, dates and figures explicitly, and never refer "
         "to 'the task', 'the clue', 'the question', 'above' or earlier results. "
-        "Do not paste the conversation. At most 1,000 characters.",
+        "Do not paste the conversation, and do not include personal, "
+        "confidential or sensitive information. At most 1,000 characters.",
         tool_exposed=True,
     ),
     Filter(

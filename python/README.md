@@ -48,6 +48,7 @@ results = keenable.search(
 | `snippet_max_length` | Cap the page text returned per result |
 | `max_results` | How many results to return, 1 to 50 (default 10) |
 | `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
+| `objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price. Not sent when empty |
 | `mode` | Search mode: `"pro"` (default) does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops |
 | `disable_cards` | `True` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). Default `False`, which is not sent; any other value raises `KeenableInvalidRequestError`. In the next release after 0.1.3 |
 
