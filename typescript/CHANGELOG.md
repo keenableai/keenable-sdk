@@ -5,6 +5,8 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- **Added:** `objective` option on `search()`: what the search is for, in two or three natural sentences, up to 1,000 characters. Left out of the request when unset or empty. The API validates and logs it; it does not change results or price. The search tool offers it to a model.
+
 - **Security fix:** `baseUrl` and `KEENABLE_API_URL` are refused when the part
   before the path has a backslash or a user name or password (`@`).
   `http://evil.example\@localhost` passed the "plain http only to localhost"

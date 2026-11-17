@@ -66,6 +66,11 @@ var searchFilters = []filter{
 			"datetime, YYYY-MM-DD, or an offset back from now such as '7d'.",
 	},
 	{
+		wire:        "objective",
+		description: "Optional. Two or three natural sentences, with no field labels and no line breaks, that cover: the exact facts, entities, numbers, dates or names a useful page must contain; task context the query does not state (who, where, when, eligibility, date window); which kinds of sources count or must be excluded; what is already established from earlier steps; and what is still unknown. Every sentence must be self-contained: name the entities, places, dates and figures explicitly, and never refer to 'the task', 'the clue', 'the question', 'above' or earlier results. Do not paste the conversation, and do not include personal, confidential or sensitive information. At most 1,000 characters.",
+		toolExposed: true,
+	},
+	{
 		wire: "disable_cards",
 		description: "Optional. true returns ordinary web pages in place of Keenable's cards " +
 			"(results Keenable writes for prices, exchange rates or company facts, " +
@@ -136,6 +141,11 @@ func (f filter) value(opts *SearchOptions) (any, bool) {
 			return nil, false
 		}
 		return opts.QueryTime, true
+	case "objective":
+		if opts.Objective == "" {
+			return nil, false
+		}
+		return opts.Objective, true
 	case "disable_cards":
 		if !opts.DisableCards {
 			return nil, false
@@ -273,6 +283,10 @@ func assignFilter(opts *SearchOptions, wire string, v any) {
 			return
 		}
 		opts.SnippetMaxLength = &n
+	case "objective":
+		if s, ok := v.(string); ok {
+			opts.Objective = s
+		}
 	}
 }
 

@@ -1364,6 +1364,7 @@ class Keenable(_BaseClient):
         snippet_max_length: int | None = None,
         max_results: int | None = None,
         query_time: str | None = None,
+        objective: str | None = None,
         disable_cards: bool | None = None,
         timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
@@ -1395,6 +1396,12 @@ class Keenable(_BaseClient):
                 not a recency filter: use ``published_after`` for that.
                 Accepts an ISO 8601 datetime, ``YYYY-MM-DD``, or an offset
                 back from now such as ``"7d"`` (as of 7 days ago).
+            objective: What the search is for, in two or three natural
+                sentences: the facts a useful page must contain, the task
+                context the query leaves out, the sources to prefer or
+                exclude, and what is already known. Up to 1,000 characters.
+                The API validates and logs it; it does not change results or
+                price yet.
             disable_cards: ``True`` returns ordinary web pages in place of
                 Keenable's cards, results Keenable writes for queries such as
                 prices, exchange rates or company facts (their URLs expire
@@ -1421,6 +1428,7 @@ class Keenable(_BaseClient):
             snippet_max_length=snippet_max_length,
             max_results=max_results,
             query_time=query_time,
+            objective=objective,
             disable_cards=disable_cards,
         )
         body, request_id = self._request(
@@ -1581,6 +1589,7 @@ class AsyncKeenable(_BaseClient):
         snippet_max_length: int | None = None,
         max_results: int | None = None,
         query_time: str | None = None,
+        objective: str | None = None,
         disable_cards: bool | None = None,
         timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
@@ -1599,6 +1608,7 @@ class AsyncKeenable(_BaseClient):
             snippet_max_length=snippet_max_length,
             max_results=max_results,
             query_time=query_time,
+            objective=objective,
             disable_cards=disable_cards,
         )
         body, request_id = await self._request(
