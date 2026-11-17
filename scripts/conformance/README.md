@@ -1,6 +1,6 @@
 # SDK conformance cases
 
-The Python, TypeScript and Go SDKs must behave the same. The cases in
+The Python, TypeScript, Go and Rust SDKs must behave the same. The cases in
 `cases/*.json` pin that behaviour down as input and expected outcome, and
 `sync.ts` copies them, in one explicit form, to each SDK's tests:
 
@@ -8,9 +8,10 @@ The Python, TypeScript and Go SDKs must behave the same. The cases in
 - `python/tests/fixtures/conformance.json`, run by `python/tests/test_conformance.py`
   (on both `Keenable` and `AsyncKeenable`)
 - `typescript/test/fixtures/conformance.json`, run by `typescript/test/conformance.test.ts`
+- `rust/tests/fixtures/conformance.json`, run by `rust/src/tests/conformance.rs`
 
 To change a behaviour, edit a case file, run `node scripts/conformance/sync.ts`
-(Node 22.18+), and make all three SDKs pass. CI runs
+(Node 22.18+), and make all four SDKs pass. CI runs
 `node scripts/conformance/sync.ts --check`, which fails when a copy is out of
 date. A case an SDK cannot express (a `NaN` for Go's `time.Duration`) names that
 SDK in `skip`, with the reason.

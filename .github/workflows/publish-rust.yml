@@ -1,0 +1,233 @@
+name: Publish Rust to crates.io
+
+# Packages the `keenable` Rust crate and ships it two ways:
+#   - GitHub Release assets: the build job's `keenable-<version>.crate` is
+#     attached to the `rust-v<version>` release. Cargo also installs straight
+#     from the tag, with no crates.io involved:
+#       cargo add keenable --git https://github.com/keenableai/keenable-sdk --tag rust-v<version>
+#   - crates.io, via Trusted Publishing (OIDC): no API token stored anywhere.
+#     `cargo publish` packages the same tag again; the publish job first checks
+#     that this package is byte-identical to the build job's `.crate`, so both
+#     channels carry the same file.
+# The two ship jobs are independent: crates.io failing (for example before the
+# Trusted Publisher is registered) does not stop the GitHub assets, and
+# re-running the failed job finishes crates.io later.
+#
+# No third-party action runs here. The publish job holds `id-token: write`, so
+# any code it runs could mint a crates.io token; it uses only actions/* and the
+# runner's own rustup and curl. The token exchange is done inline, as
+# rust-lang/crates-io-auth-action does it: the job's OIDC token (audience
+# `crates.io`) is POSTed to https://crates.io/api/v1/trusted_publishing/tokens
+# for a short-lived publish token, which is revoked (DELETE) when the step
+# ends, whether the publish worked or not.
+#
+# Runs when a GitHub Release whose tag starts with `rust-v` is published, or
+# when cut-sdk-release.yml dispatches it on the `rust-v<version>` tag. The tag
+# must match the version in rust/Cargo.toml.
+#
+# One-time setup (PUBLISH.md -> Rust has the steps). crates.io Trusted
+# Publishing works only for a crate that already exists, so 0.1.0 is published
+# once by hand with a short-lived token scoped to `publish-new`, revoked right
+# after. Then, as an owner of the `keenable` crate: Settings -> Trusted
+# Publishing -> Add, repository `keenableai/keenable-sdk`, workflow
+# `publish-rust.yml`, environment `crates-io`.
+#
+# A manual dispatch must be on a `rust-v*` tag whose commit is on main, so a
+# branch named like a release cannot reach the OIDC publish. Adding a required
+# reviewer to the `crates-io` environment (Settings -> Environments) puts a
+# human approval in front of every publish.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    name: Package crate
+    # Release-triggered runs are gated on the tag so another SDK's release does
+    # not try to publish the crate.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref_type == 'tag' && startsWith(github.ref_name, 'rust-v')) ||
+      startsWith(github.event.release.tag_name, 'rust-v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+          fetch-depth: 0 # history to check the tag is on main
+
+      - name: Release commit is on main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::$(git rev-parse --short HEAD) is not on main; only merged release commits are published"
+            exit 1
+          fi
+
+      - name: Tag matches Cargo.toml
+        env:
+          TAG: ${{ github.event.release.tag_name || github.ref_name }}
+        run: |
+          set -euo pipefail
+          ver=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)
+          if [ "$TAG" != "rust-v$ver" ]; then
+            echo "::error::tag $TAG does not match Cargo.toml version $ver (expected rust-v$ver)"
+            exit 1
+          fi
+
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+
+      # Builds the packaged sources on their own, as crates.io will, and runs
+      # the tests once more on the exact commit being released.
+      - name: Test
+        run: cargo test --locked
+      - name: Package
+        run: cargo package --locked
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: crate
+          path: rust/target/package/*.crate
+
+  github-assets:
+    name: Attach to the GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # upload release assets
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: crate
+          path: crate/
+      - name: Upload the .crate to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Fail, don't skip: a run that "succeeds" without the asset would be
+          # taken for done, and a re-run once the release exists attaches it.
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::no GitHub Release for $TAG to attach the file to; create it, then re-run this job"
+            exit 1
+          fi
+          gh release upload "$TAG" crate/*.crate --repo "$GITHUB_REPOSITORY" --clobber
+
+  publish:
+    name: Publish to crates.io
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: crates-io
+      url: https://crates.io/crates/keenable
+    permissions:
+      contents: read
+      id-token: write # required for Trusted Publishing (OIDC)
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+      # Reads the crates.io sparse index (no token, no API rate limit):
+      #   - this version is already there -> nothing to do, and the run is
+      #     green, so a re-run, or a release whose first version was published
+      #     by hand, finishes cleanly instead of failing on "already exists";
+      #   - the crate is not there at all -> stop with the reason. Trusted
+      #     Publishing cannot create a crate; PUBLISH.md -> Rust step 1 is the
+      #     one manual publish, after which every release is automatic.
+      - name: Check crates.io
+        id: check
+        run: |
+          set -euo pipefail
+          ver=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)
+          code=$(curl -sS -o index.jsonl -w '%{http_code}' https://index.crates.io/ke/en/keenable)
+          if [ "$code" = "404" ]; then
+            echo "::error::keenable is not on crates.io yet. Trusted Publishing works only for a crate that exists: publish the first version by hand (PUBLISH.md -> Rust, step 1), add the Trusted Publisher, then re-run this job."
+            exit 1
+          fi
+          if [ "$code" != "200" ]; then
+            echo "::error::could not read the crates.io index (HTTP $code); re-run this job"
+            exit 1
+          fi
+          if jq -e --arg v "$ver" 'select(.vers == $v)' index.jsonl >/dev/null; then
+            echo "keenable $ver is already on crates.io; nothing to publish"
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+          rm -f index.jsonl
+      - name: Download the build job's .crate
+        if: steps.check.outputs.published == 'false'
+        uses: actions/download-artifact@v8
+        with:
+          name: crate
+          path: rust/built/
+      - name: Install Rust
+        if: steps.check.outputs.published == 'false'
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      # What cargo publish uploads is this package; it must be the file the
+      # GitHub Release got.
+      - name: Same package as the build job
+        if: steps.check.outputs.published == 'false'
+        run: |
+          set -euo pipefail
+          cargo package --locked --no-verify
+          ours=$(sha256sum target/package/keenable-*.crate | cut -d' ' -f1)
+          theirs=$(sha256sum built/keenable-*.crate | cut -d' ' -f1)
+          if [ "$ours" != "$theirs" ]; then
+            echo "::error::the package built here ($ours) differs from the build job's ($theirs); not publishing"
+            exit 1
+          fi
+      - name: Publish to crates.io (Trusted Publishing)
+        if: steps.check.outputs.published == 'false'
+        env:
+          UA: keenable-sdk-release (github.com/keenableai/keenable-sdk)
+        run: |
+          set -euo pipefail
+          endpoint=https://crates.io/api/v1/trusted_publishing/tokens
+          # The job's OIDC token for crates.io. The request URL and its bearer
+          # token come from id-token: write.
+          jwt=$(curl -sSf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=crates.io" | jq -r .value)
+          echo "::add-mask::$jwt"
+          token=$(jq -n --arg jwt "$jwt" '{jwt: $jwt}' |
+            curl -sSf -X POST -H "Content-Type: application/json" -H "User-Agent: $UA" \
+              --data @- "$endpoint" | jq -r .token)
+          if [ -z "$token" ] || [ "$token" = "null" ]; then
+            echo "::error::crates.io returned no token. Check the Trusted Publisher on crates.io (repo, publish-rust.yml, environment crates-io)."
+            exit 1
+          fi
+          echo "::add-mask::$token"
+          # Revoke the token when this step ends, whether the publish worked or
+          # not. Revocation counts only on a 2xx, as in crates-io-auth-action's
+          # cleanup; a failed revocation fails the step even after a good
+          # publish, and a failed publish keeps its own exit status.
+          revoke() {
+            status=$?
+            code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
+              -H "Authorization: Bearer $token" -H "User-Agent: $UA" "$endpoint" || true)
+            if [ "${code:0:1}" = "2" ]; then
+              echo "crates.io token revoked (HTTP $code)"
+            else
+              echo "::error::could not revoke the crates.io token (HTTP $code); it stays valid until it expires"
+              [ "$status" -ne 0 ] || status=1
+            fi
+            exit "$status"
+          }
+          trap revoke EXIT
+          CARGO_REGISTRY_TOKEN="$token" cargo publish --locked

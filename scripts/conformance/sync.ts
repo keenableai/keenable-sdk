@@ -25,6 +25,7 @@ export const FIXTURE_PATHS = [
   "go/testdata/conformance.json",
   "python/tests/fixtures/conformance.json",
   "typescript/test/fixtures/conformance.json",
+  "rust/tests/fixtures/conformance.json",
 ].map((path) => fileURLToPath(new URL(path, ROOT)));
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };

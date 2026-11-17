@@ -3,7 +3,7 @@ name: Cut SDK release
 # Includes the SDK and version so scripts/release.ts can find the run it dispatched.
 run-name: Cut SDK release ${{ inputs.sdk }} ${{ inputs.bump }}
 
-# Automates PUBLISH.md, with the default GITHUB_TOKEN only (no PAT). The three
+# Automates PUBLISH.md, with the default GITHUB_TOKEN only (no PAT). The four
 # SDKs version independently.
 #   1. Run this workflow (Actions -> Cut SDK release, on main) with an SDK and a
 #      bump. It pushes a release/<sdk>-vX.Y.Z branch that bumps that SDK's
@@ -17,6 +17,8 @@ run-name: Cut SDK release ${{ inputs.sdk }} ${{ inputs.bump }}
 #        typescript  -> GitHub Release ts-v<version> + publish-typescript.yml
 #                       (npm, Trusted Publishing)
 #        go          -> tag go/v<version>; the module proxy picks it up.
+#        rust        -> GitHub Release rust-v<version> + publish-rust.yml
+#                       (crates.io, Trusted Publishing)
 #
 # Why the workflow doesn't open the PR: main requires an approval, which the
 # Qodo bridge (auto-approve.yml) gives as github-actions[bot]. A PR authored by
@@ -34,8 +36,8 @@ run-name: Cut SDK release ${{ inputs.sdk }} ${{ inputs.bump }}
 # and dispatches a publish workflow only when none succeeded or is running for
 # the tag.
 #
-# One-time registry setup: Trusted Publishers on PyPI (see publish-python.yml)
-# and on npm (see publish-typescript.yml).
+# One-time registry setup: Trusted Publishers on PyPI (see publish-python.yml),
+# npm (see publish-typescript.yml) and crates.io (see publish-rust.yml).
 
 on:
   workflow_dispatch:
@@ -44,7 +46,7 @@ on:
         description: SDK to release
         type: choice
         required: true
-        options: [python, typescript, go, all]
+        options: [python, typescript, go, rust, all]
       bump:
         description: "patch, minor, major, or an exact version like 0.2.0. Only pushes a release branch: prefer scripts/release.ts, which also opens and merges the PR"
         required: true
@@ -56,6 +58,7 @@ on:
       - python/keenable/_version.py
       - typescript/package.json
       - go/version.go
+      - rust/Cargo.toml
 
 permissions:
   contents: read
@@ -91,7 +94,7 @@ jobs:
           # `all` releases every SDK at one shared version, taken from the
           # highest current one.
           case "$SDK" in
-            all) sdks="python typescript go" ;;
+            all) sdks="python typescript go rust" ;;
             *) sdks="$SDK" ;;
           esac
           version_of() {
@@ -99,6 +102,7 @@ jobs:
               python)     sed -n 's/^version = "\(.*\)"$/\1/p' python/pyproject.toml | head -1 ;;
               typescript) jq -r .version typescript/package.json ;;
               go)         sed -n 's/^const Version = "\(.*\)"$/\1/p' go/version.go ;;
+              rust)       sed -n 's/^version = "\(.*\)"$/\1/p' rust/Cargo.toml | head -1 ;;
             esac
           }
           prefix_of() {
@@ -106,6 +110,7 @@ jobs:
               python) echo python-v ;;
               typescript) echo ts-v ;;
               go) echo go/v ;;
+              rust) echo rust-v ;;
             esac
           }
           cur=""
@@ -162,6 +167,12 @@ jobs:
               go)
                 perl -0pi -e 's/^const Version = ".*"$/const Version = "$ENV{NEXT}"/m' go/version.go
                 ;;
+              rust)
+                # The [package] version is the first line that starts with
+                # `version =`; the lockfile carries the crate's own entry too.
+                perl -0pi -e 's/^version = ".*"$/version = "$ENV{NEXT}"/m' rust/Cargo.toml
+                perl -0pi -e 's/(\[\[package\]\]\nname = "keenable"\nversion = )".*"/$1"$ENV{NEXT}"/' rust/Cargo.lock
+                ;;
             esac
             # Unreleased stays (empty) above; its entries now sit under the new version.
             perl -0pi -e 's/^## Unreleased\n/## Unreleased\n\n## $ENV{NEXT}\n/m' "$s/CHANGELOG.md"
@@ -190,6 +201,7 @@ jobs:
               python)     p='python/(pyproject\.toml|keenable/_version\.py|CHANGELOG\.md)' ;;
               typescript) p='typescript/(package\.json|package-lock\.json|CHANGELOG\.md)' ;;
               go)         p='go/(version\.go|CHANGELOG\.md)' ;;
+              rust)       p='rust/(Cargo\.toml|Cargo\.lock|CHANGELOG\.md)' ;;
             esac
             parts="${parts:+$parts|}$p"
           done
@@ -285,6 +297,7 @@ jobs:
               case "$1" in
                 python-v*) cmd="pip install $base/keenable-$4-py3-none-any.whl" ;;
                 ts-v*)     cmd="npm install $base/keenable-$4.tgz" ;;
+                rust-v*)   cmd="cargo add keenable --git https://github.com/$GITHUB_REPOSITORY --tag $1" ;;
                 *)         cmd="" ;;
               esac
               if [ -n "$cmd" ]; then
@@ -310,10 +323,12 @@ jobs:
           fi
           ts=$(jq -r .version typescript/package.json)
           go=$(go_ver < go/version.go)
+          rs=$(py_ver < rust/Cargo.toml)
 
           py_prev=$(at_before python/pyproject.toml | py_ver || true)
           ts_prev=$(at_before typescript/package.json | jq -r .version 2>/dev/null || true)
           go_prev=$(at_before go/version.go | go_ver || true)
+          rs_prev=$(at_before rust/Cargo.toml | py_ver || true)
 
           # These files also change for dependency and metadata edits; only a
           # version change is a release.
@@ -322,6 +337,9 @@ jobs:
           fi
           if [ "$ts" != "$ts_prev" ]; then
             publish "ts-v$ts" "keenable (TypeScript) $ts" typescript/CHANGELOG.md "$ts" publish-typescript.yml
+          fi
+          if [ "$rs" != "$rs_prev" ]; then
+            publish "rust-v$rs" "keenable (Rust) $rs" rust/CHANGELOG.md "$rs" publish-rust.yml
           fi
           if [ "$go" != "$go_prev" ]; then
             check_tag "go/v$go"
