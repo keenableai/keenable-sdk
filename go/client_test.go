@@ -237,6 +237,26 @@ func TestSearchSendsEveryFilter(t *testing.T) {
 	}
 }
 
+func TestSearchSendsObjectiveOnlyWhenSet(t *testing.T) {
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, searchBody), nil)
+	if _, err := c.Search(context.Background(), "q", &keenable.SearchOptions{Objective: "Find the 2024 CBP count for NAICS 812112."}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Search(context.Background(), "q", &keenable.SearchOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	requests := *seen
+	if len(requests) != 2 {
+		t.Fatalf("got %d requests", len(requests))
+	}
+	if got := payloadOf(t, requests[0])["objective"]; got != "Find the 2024 CBP count for NAICS 812112." {
+		t.Fatalf("objective not sent: %#v", got)
+	}
+	if _, ok := payloadOf(t, requests[1])["objective"]; ok {
+		t.Fatal("sent an unset objective")
+	}
+}
+
 func TestSearchRawKeepsWarning(t *testing.T) {
 	body := map[string]any{
 		"query":   "q",

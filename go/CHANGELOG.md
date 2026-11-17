@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Added:** `SearchOptions.Objective`: what the search is for, in two or three natural sentences, up to 5,000 characters. Not sent when empty. The API validates and logs it and only accepts it for organizations with the `quality_params` flag. It is not offered to a model in the tool schema.
+
 - **Security fix:** `Fetch` refuses loopback and private hosts spelled with
   Unicode compatibility characters, which a browser or Node folds to plain
   ones: `①②⑦.0.0.1`, `𝟏𝟐𝟕.0.0.1`, `ℓocalhost`. Hosts are now NFKC-normalized

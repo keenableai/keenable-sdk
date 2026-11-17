@@ -78,6 +78,14 @@ SEARCH_FILTERS: tuple[Filter, ...] = (
         "such as '7d'.",
     ),
     Filter(
+        "objective",
+        "Optional. Two or three natural sentences on what this search is for: "
+        "the exact facts, figures, dates or names a useful page must contain; "
+        "task context the query does not state; which sources count or must be "
+        "excluded; what is already established and what is still unknown. "
+        "Do not paste the conversation. Up to 5,000 characters.",
+    ),
+    Filter(
         "disable_cards",
         "Optional. true returns ordinary web pages in place of Keenable's cards "
         "(results Keenable writes for prices, exchange rates or company facts, "

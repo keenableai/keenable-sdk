@@ -136,6 +136,25 @@ def test_search_sends_max_results_and_query_time() -> None:
     assert payload["query_time"] == "2026-05-01"
 
 
+def test_search_sends_objective_and_leaves_it_out_when_unset() -> None:
+    keenable, seen = _client(_ok(SEARCH_BODY))
+    keenable.search("q", objective="Find the 2024 CBP count for NAICS 812112.")
+    keenable.search("q", objective="")
+    keenable.search("q")
+
+    sent = [json.loads(request.content) for request in seen]
+    assert sent[0]["objective"] == "Find the 2024 CBP count for NAICS 812112."
+    assert "objective" not in sent[1]
+    assert "objective" not in sent[2]
+
+
+def test_tool_schema_keeps_objective_out() -> None:
+    from keenable import TOOLS
+
+    search = next(t for t in TOOLS if t["function"]["name"] == "keenable_search")
+    assert "objective" not in search["function"]["parameters"]["properties"]
+
+
 @pytest.mark.parametrize(
     "make",
     [

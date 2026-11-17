@@ -83,6 +83,15 @@ export const SEARCH_FILTERS: readonly Filter[] = [
       "datetime, YYYY-MM-DD, or an offset back from now such as '7d'.",
   },
   {
+    wire: "objective",
+    option: "objective",
+    description:
+      "Optional. Two or three natural sentences on what this search is for: the exact " +
+      "facts, figures, dates or names a useful page must contain; task context the query " +
+      "does not state; which sources count or must be excluded; what is already " +
+      "established and what is still unknown. Do not paste the conversation. Up to 5,000 characters.",
+  },
+  {
     wire: "disable_cards",
     option: "disableCards",
     description:

@@ -66,6 +66,13 @@ var searchFilters = []filter{
 			"datetime, YYYY-MM-DD, or an offset back from now such as '7d'.",
 	},
 	{
+		wire: "objective",
+		description: "Optional. Two or three natural sentences on what this search is for: the exact " +
+			"facts, figures, dates or names a useful page must contain; task context the query " +
+			"does not state; which sources count or must be excluded; what is already " +
+			"established and what is still unknown. Do not paste the conversation. Up to 5,000 characters.",
+	},
+	{
 		wire: "disable_cards",
 		description: "Optional. true returns ordinary web pages in place of Keenable's cards " +
 			"(results Keenable writes for prices, exchange rates or company facts, " +
@@ -136,6 +143,11 @@ func (f filter) value(opts *SearchOptions) (any, bool) {
 			return nil, false
 		}
 		return opts.QueryTime, true
+	case "objective":
+		if opts.Objective == "" {
+			return nil, false
+		}
+		return opts.Objective, true
 	case "disable_cards":
 		if !opts.DisableCards {
 			return nil, false

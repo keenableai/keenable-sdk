@@ -129,6 +129,18 @@ describe("search", () => {
     expect(payload.query_time).toBe("2026-05-01");
   });
 
+  it("sends objective only when it is set", async () => {
+    const { client, seen } = mockClient(() => json(SEARCH_BODY));
+    await client.search("q", { objective: "Find the 2024 CBP count for NAICS 812112." });
+    await client.search("q", { objective: "" });
+    await client.search("q");
+
+    const sent = seen.map((call) => JSON.parse(String(call.init.body)));
+    expect(sent[0].objective).toBe("Find the 2024 CBP count for NAICS 812112.");
+    expect(sent[1]).not.toHaveProperty("objective");
+    expect(sent[2]).not.toHaveProperty("objective");
+  });
+
   it("keeps the API's filter warning in raw", async () => {
     const body = { ...SEARCH_BODY, warning: "3 results were removed by your domain filter" };
     const { client } = mockClient(() => json(body));
