@@ -52,6 +52,7 @@ export const FIXTURE_PATHS = [
   "go/testdata/error_contract.json",
   "python/tests/fixtures/error_contract.json",
   "typescript/test/fixtures/error_contract.json",
+  "rust/tests/fixtures/error_contract.json",
 ].map((path) => fileURLToPath(new URL(path, ROOT)));
 
 // The fields every SDK parses, in the order the spec lists them. Anything else

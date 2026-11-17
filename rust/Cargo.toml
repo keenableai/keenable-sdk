@@ -1,0 +1,39 @@
+[package]
+name = "keenable"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+description = "Official Rust SDK for Keenable, the web search API built for AI agents: search, fetch, citable context and tool calling."
+license = "MIT"
+repository = "https://github.com/keenableai/keenable-sdk"
+homepage = "https://keenable.ai"
+documentation = "https://docs.rs/keenable"
+readme = "README.md"
+keywords = ["search", "web-search", "llm", "ai-agents", "keenable"]
+categories = ["api-bindings", "web-programming::http-client"]
+include = ["src/**/*.rs", "examples/**/*.rs", "Cargo.toml", "README.md", "CHANGELOG.md", "LICENSE"]
+
+[features]
+default = ["rustls-tls"]
+# TLS through rustls with the Mozilla root certificates. No system library needed.
+rustls-tls = ["reqwest/rustls-tls"]
+# TLS through the platform's library (OpenSSL, Secure Transport or SChannel).
+native-tls = ["reqwest/native-tls"]
+
+[dependencies]
+regex = "1.10"
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["http2"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.38", features = ["time"] }
+url = "2.5"
+
+[dev-dependencies]
+tokio = { version = "1.38", features = ["macros", "rt-multi-thread", "net", "io-util", "time"] }
+
+[[example]]
+name = "hello"
+
+[package.metadata.docs.rs]
+all-features = false

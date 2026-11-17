@@ -4647,7 +4647,9 @@
       "scope": "client",
       "value": -1,
       "valid": false,
-      "skip": {}
+      "skip": {
+        "rust": "an Option<u32>"
+      }
     },
     {
       "name": "max_retries a fraction",
@@ -4656,7 +4658,8 @@
       "value": 1.5,
       "valid": false,
       "skip": {
-        "go": "an int"
+        "go": "an int",
+        "rust": "an Option<u32>"
       }
     },
     {
@@ -4668,7 +4671,8 @@
       },
       "valid": false,
       "skip": {
-        "go": "an int"
+        "go": "an int",
+        "rust": "an Option<u32>"
       }
     },
     {
@@ -4678,7 +4682,8 @@
       "value": "2",
       "valid": false,
       "skip": {
-        "go": "an int"
+        "go": "an int",
+        "rust": "an Option<u32>"
       }
     },
     {
@@ -4688,7 +4693,8 @@
       "value": true,
       "valid": false,
       "skip": {
-        "go": "an int"
+        "go": "an int",
+        "rust": "an Option<u32>"
       }
     },
     {
@@ -4713,7 +4719,9 @@
       "scope": "call",
       "value": -1,
       "valid": false,
-      "skip": {}
+      "skip": {
+        "rust": "an Option<u32>"
+      }
     },
     {
       "name": "call max_retries a fraction",
@@ -4722,7 +4730,8 @@
       "value": 0.5,
       "valid": false,
       "skip": {
-        "go": "an int"
+        "go": "an int",
+        "rust": "an Option<u32>"
       }
     },
     {
@@ -4734,7 +4743,8 @@
       },
       "valid": false,
       "skip": {
-        "go": "an int"
+        "go": "an int",
+        "rust": "an Option<u32>"
       }
     },
     {
@@ -4744,7 +4754,8 @@
       "value": "1",
       "valid": false,
       "skip": {
-        "go": "an int"
+        "go": "an int",
+        "rust": "an Option<u32>"
       }
     },
     {
@@ -4787,7 +4798,9 @@
       "scope": "client",
       "value": -1,
       "valid": false,
-      "skip": {}
+      "skip": {
+        "rust": "an Option<Duration>"
+      }
     },
     {
       "name": "timeout NaN",
@@ -4798,7 +4811,8 @@
       },
       "valid": false,
       "skip": {
-        "go": "a time.Duration"
+        "go": "a time.Duration",
+        "rust": "an Option<Duration>"
       }
     },
     {
@@ -4810,7 +4824,8 @@
       },
       "valid": false,
       "skip": {
-        "go": "a time.Duration"
+        "go": "a time.Duration",
+        "rust": "an Option<Duration>"
       }
     },
     {
@@ -4820,7 +4835,8 @@
       "value": "5",
       "valid": false,
       "skip": {
-        "go": "a time.Duration"
+        "go": "a time.Duration",
+        "rust": "an Option<Duration>"
       }
     },
     {
@@ -4830,7 +4846,8 @@
       "value": true,
       "valid": false,
       "skip": {
-        "go": "a time.Duration"
+        "go": "a time.Duration",
+        "rust": "an Option<Duration>"
       }
     },
     {
@@ -4864,7 +4881,8 @@
       "value": 1e+300,
       "valid": true,
       "skip": {
-        "go": "a time.Duration"
+        "go": "a time.Duration",
+        "rust": "an Option<Duration>, which holds about 584 billion years at most"
       }
     },
     {
@@ -4889,7 +4907,9 @@
       "scope": "call",
       "value": -1,
       "valid": false,
-      "skip": {}
+      "skip": {
+        "rust": "an Option<Duration>"
+      }
     },
     {
       "name": "call timeout NaN",
@@ -4900,7 +4920,8 @@
       },
       "valid": false,
       "skip": {
-        "go": "a time.Duration"
+        "go": "a time.Duration",
+        "rust": "an Option<Duration>"
       }
     },
     {
@@ -4912,7 +4933,8 @@
       },
       "valid": false,
       "skip": {
-        "go": "a time.Duration"
+        "go": "a time.Duration",
+        "rust": "an Option<Duration>"
       }
     },
     {
@@ -4922,7 +4944,8 @@
       "value": "5",
       "valid": false,
       "skip": {
-        "go": "a time.Duration"
+        "go": "a time.Duration",
+        "rust": "an Option<Duration>"
       }
     },
     {
@@ -4932,7 +4955,8 @@
       "value": true,
       "valid": false,
       "skip": {
-        "go": "a time.Duration"
+        "go": "a time.Duration",
+        "rust": "an Option<Duration>"
       }
     },
     {
@@ -5086,7 +5110,8 @@
       "value": 5,
       "valid": false,
       "skip": {
-        "go": "a string"
+        "go": "a string",
+        "rust": "a &str"
       }
     },
     {
@@ -5096,7 +5121,8 @@
       "value": null,
       "valid": false,
       "skip": {
-        "go": "a string"
+        "go": "a string",
+        "rust": "a &str"
       }
     },
     {
@@ -5106,7 +5132,8 @@
       "value": 5,
       "valid": false,
       "skip": {
-        "go": "a string"
+        "go": "a string",
+        "rust": "a &str"
       }
     },
     {
@@ -5116,7 +5143,8 @@
       "value": null,
       "valid": false,
       "skip": {
-        "go": "a string"
+        "go": "a string",
+        "rust": "a &str"
       }
     },
     {
@@ -5150,7 +5178,8 @@
       "value": "true",
       "valid": false,
       "skip": {
-        "go": "a bool"
+        "go": "a bool",
+        "rust": "a bool"
       }
     },
     {
@@ -5160,7 +5189,8 @@
       "value": 1,
       "valid": false,
       "skip": {
-        "go": "a bool"
+        "go": "a bool",
+        "rust": "a bool"
       }
     },
     {
@@ -5172,7 +5202,8 @@
       },
       "valid": false,
       "skip": {
-        "go": "a bool"
+        "go": "a bool",
+        "rust": "a bool"
       }
     }
   ],
@@ -5365,7 +5396,8 @@
         ]
       },
       "skip": {
-        "go": "SearchOptions.ExcludeDomains is a []string"
+        "go": "SearchOptions.ExcludeDomains is a []string",
+        "rust": "SearchOptions::exclude_domains is an Option<Vec<String>>"
       }
     },
     {
@@ -5382,7 +5414,8 @@
         ]
       },
       "skip": {
-        "go": "SearchOptions.ExcludeDomains is a []string"
+        "go": "SearchOptions.ExcludeDomains is a []string",
+        "rust": "SearchOptions::exclude_domains is an Option<Vec<String>>"
       }
     },
     {

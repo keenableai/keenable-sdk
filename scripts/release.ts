@@ -1,9 +1,9 @@
 /**
  * One-command SDK release.
  *
- *   node scripts/release.ts <python|typescript|go|all> [patch|minor|major|X.Y.Z] [--yes] [--dry-run]
+ *   node scripts/release.ts <python|typescript|go|rust|all> [patch|minor|major|X.Y.Z] [--yes] [--dry-run]
  *
- * `all` releases the three SDKs together at one shared version (the highest
+ * `all` releases the four SDKs together at one shared version (the highest
  * current one, bumped), in one PR.
  *
  * Runs on your own `gh` login, so the release PR is authored by you and the
@@ -14,7 +14,7 @@
  *   2. opens the PR as you, waits for the tests and approval, squash-merges the
  *      exact commit the tests ran on
  *   3. waits for the tag job and each publish workflow (PyPI / npm + GitHub
- *      Release assets) or the go/v<version> tag, and prints where each landed
+ *      Release assets, crates.io) or the go/v<version> tag, and prints where each landed
  * Nothing is built or pushed from this machine. Needs Node 22.18+ (it runs this
  * file as TypeScript) and `gh`.
  */
@@ -22,9 +22,9 @@ import { execFileSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 
 const REPO = "keenableai/keenable-sdk";
-type Sdk = "python" | "typescript" | "go";
+type Sdk = "python" | "typescript" | "go" | "rust";
 type Target = Sdk | "all";
-const ALL: Sdk[] = ["python", "typescript", "go"];
+const ALL: Sdk[] = ["python", "typescript", "go", "rust"];
 
 interface SdkConfig {
   file: string;
@@ -58,6 +58,14 @@ const SDKS: Record<Sdk, SdkConfig> = {
     read: (t) => /^const Version = "(.*)"$/m.exec(t)?.[1] ?? "",
     tag: "go/v",
     url: (v) => `go get github.com/keenableai/keenable-sdk/go@v${v}`,
+  },
+  rust: {
+    allowed: /^rust\/(Cargo\.toml|Cargo\.lock|CHANGELOG\.md)$/,
+    file: "rust/Cargo.toml",
+    read: (t) => /^version = "(.*)"$/m.exec(t)?.[1] ?? "",
+    tag: "rust-v",
+    publish: "publish-rust.yml",
+    url: (v) => `https://crates.io/crates/keenable/${v}`,
   },
 };
 
@@ -199,12 +207,12 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const flags = new Set(args.filter((a) => a.startsWith("-")));
   const [targetArg, bumpArg = "patch"] = args.filter((a) => !a.startsWith("-"));
-  const usage = "usage: node scripts/release.ts <python|typescript|go|all> [patch|minor|major|X.Y.Z] [--yes] [--dry-run]";
+  const usage = "usage: node scripts/release.ts <python|typescript|go|rust|all> [patch|minor|major|X.Y.Z] [--yes] [--dry-run]";
   if (flags.has("--help") || flags.has("-h") || !targetArg) {
     console.log(usage);
     process.exit(targetArg ? 0 : 1);
   }
-  if (targetArg !== "all" && !(targetArg in SDKS)) die(`sdk must be python, typescript, go or all (got ${targetArg})`);
+  if (targetArg !== "all" && !(targetArg in SDKS)) die(`sdk must be python, typescript, go, rust or all (got ${targetArg})`);
   const target = targetArg as Target;
   const sdks: Sdk[] = target === "all" ? ALL : [target];
   if (ghTry(["auth", "status"]) === undefined) die("run: gh auth login");
