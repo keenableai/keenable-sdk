@@ -79,7 +79,7 @@ export interface SearchOptions extends RequestOptions {
   /**
    * What the search is for, in two or three natural sentences: the facts a
    * useful page must contain, the task context the query leaves out, the
-   * sources to prefer or exclude, and what is already known. Up to 5,000
+   * sources to prefer or exclude, and what is already known. Up to 1,000
    * characters. The API validates and logs it; it does not change results or
    * price yet.
    */

@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Added:** `SearchOptions.Objective`: what the search is for, in two or three natural sentences, up to 5,000 characters. Not sent when empty. The API validates and logs it; it does not change results or price. The search tool offers it to a model.
+- **Added:** `SearchOptions.Objective`: what the search is for, in two or three natural sentences, up to 1,000 characters. Not sent when empty. The API validates and logs it; it does not change results or price. The search tool offers it to a model.
 
 - **Security fix:** `Fetch` refuses loopback and private hosts spelled with
   Unicode compatibility characters, which a browser or Node folds to plain

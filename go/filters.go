@@ -66,11 +66,8 @@ var searchFilters = []filter{
 			"datetime, YYYY-MM-DD, or an offset back from now such as '7d'.",
 	},
 	{
-		wire: "objective",
-		description: "Optional. Two or three natural sentences on what this search is for: the exact " +
-			"facts, figures, dates or names a useful page must contain; task context the query " +
-			"does not state; which sources count or must be excluded; what is already " +
-			"established and what is still unknown. Do not paste the conversation. Up to 5,000 characters.",
+		wire:        "objective",
+		description: "Optional. Two or three natural sentences, with no field labels and no line breaks, that cover: the exact facts, entities, numbers, dates or names a useful page must contain; task context the query does not state (who, where, when, eligibility, date window); which kinds of sources count or must be excluded; what is already established from earlier steps; and what is still unknown. Every sentence must be self-contained: name the entities, places, dates and figures explicitly, and never refer to 'the task', 'the clue', 'the question', 'above' or earlier results. Do not paste the conversation. At most 1,000 characters.",
 		toolExposed: true,
 	},
 	{

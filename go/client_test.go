@@ -294,7 +294,7 @@ func TestToolSchemaOffersObjectiveAsAString(t *testing.T) {
 	if prop["type"] != "string" {
 		t.Fatalf("objective should be a string: %#v", prop)
 	}
-	if desc, _ := prop["description"].(string); !strings.Contains(desc, "what this search is for") {
+	if desc, _ := prop["description"].(string); !strings.Contains(desc, "self-contained") {
 		t.Fatalf("objective description: %#v", prop)
 	}
 }

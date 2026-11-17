@@ -5,7 +5,7 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
-- **Added:** `objective` on `search()` (sync and async): what the search is for, in two or three natural sentences, up to 5,000 characters. Left out of the request when unset or empty. The API validates and logs it; it does not change results or price. The search tool offers it to a model.
+- **Added:** `objective` on `search()` (sync and async): what the search is for, in two or three natural sentences, up to 1,000 characters. Left out of the request when unset or empty. The API validates and logs it; it does not change results or price. The search tool offers it to a model.
 
 - **Changed:** a numeric `timeout` is now the deadline for the whole attempt,
   as in the TypeScript and Go SDKs, not only for each httpx phase. Before, a

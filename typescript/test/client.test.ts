@@ -473,7 +473,7 @@ describe("runToolCall", () => {
       { type: string; description: string }
     >;
     expect(properties.objective?.type).toBe("string");
-    expect(properties.objective?.description).toContain("what this search is for");
+    expect(properties.objective?.description).toContain("self-contained");
   });
 
   it("sends disableCards only as true", async () => {
