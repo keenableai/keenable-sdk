@@ -213,6 +213,21 @@ jobs:
             exit 1
           fi
           echo "::add-mask::$token"
-          # Revoke the token when this step ends, whether the publish worked or not.
-          trap 'curl -sS -X DELETE -H "Authorization: Bearer $token" -H "User-Agent: $UA" "$endpoint" -o /dev/null -w "token revoked: HTTP %{http_code}\n"' EXIT
+          # Revoke the token when this step ends, whether the publish worked or
+          # not. Revocation counts only on a 2xx, as in crates-io-auth-action's
+          # cleanup; a failed revocation fails the step even after a good
+          # publish, and a failed publish keeps its own exit status.
+          revoke() {
+            status=$?
+            code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
+              -H "Authorization: Bearer $token" -H "User-Agent: $UA" "$endpoint" || true)
+            if [ "${code:0:1}" = "2" ]; then
+              echo "crates.io token revoked (HTTP $code)"
+            else
+              echo "::error::could not revoke the crates.io token (HTTP $code); it stays valid until it expires"
+              [ "$status" -ne 0 ] || status=1
+            fi
+            exit "$status"
+          }
+          trap revoke EXIT
           CARGO_REGISTRY_TOKEN="$token" cargo publish --locked
