@@ -83,8 +83,12 @@ One-time setup, in this order, because crates.io Trusted Publishing works only
 for a crate that already exists:
 
 1. Publish 0.1.0 by hand. On crates.io, create a token with only the
-   `publish-new` scope and a short expiry, run `cargo publish` in `rust/`
-   from a clean checkout of main, then revoke the token at once.
+   `publish-new` scope and a short expiry, run `cargo publish --locked` in
+   `rust/` from a clean checkout of the commit that adds the crate, then revoke
+   the token at once. Merging that commit tags `rust-v0.1.0` and runs
+   `publish-rust.yml`, which finds 0.1.0 already on crates.io and finishes
+   green. If the merge lands first, that run stops with "keenable is not on
+   crates.io yet"; publish by hand, then re-run the job.
 2. On crates.io, crate `keenable` -> Settings -> Trusted Publishing -> Add:
    repository `keenableai/keenable-sdk`, workflow `publish-rust.yml`,
    environment `crates-io`.
@@ -93,7 +97,12 @@ for a crate that already exists:
    same as the `pypi` and `npm` environments.
 4. Add the second owner: `cargo owner --add <github-login>` in `rust/`.
 
-To release after that:
+After that, every release publishes itself: `node scripts/release.ts rust
+patch` (or `all`) bumps the version, and merging the release PR tags
+`rust-v<version>`, which runs `publish-rust.yml` through OIDC. A re-run of a
+version that is already on crates.io does nothing and passes.
+
+To release by hand instead:
 
 1. Bump `version` in `rust/Cargo.toml` and the `keenable` entry in
    `rust/Cargo.lock` (the release workflow does both). `VERSION` and the
