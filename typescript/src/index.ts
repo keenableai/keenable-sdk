@@ -22,15 +22,16 @@ export {
   SearchResponse,
 } from "./client.js";
 export type {
+  Citation,
+  FetchContent,
   FetchError,
   FetchImage,
   FetchLink,
+  FetchNotice,
+  FetchOutput,
   FetchResponse,
   FetchResult,
-  FetchStream,
-  FetchStreamItem,
-  FetchStreamSummary,
-  FetchWarning,
+  Grounding,
 } from "./client.js";
 export {
   KeenableAPIError,
@@ -48,8 +49,10 @@ export { FETCH_TOOL, SEARCH_TOOL, TOOLS, runToolCall } from "./tools.js";
 export type { ToolDefinition } from "./tools.js";
 export type {
   KeenableOptions,
+  FetchContentOptions,
   FetchManyOptions,
-  FetchSection,
+  FetchOutputOptions,
+  FetchRetrievalOptions,
   FetchOptions,
   RequestOptions,
   SearchOptions,

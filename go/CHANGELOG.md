@@ -2,31 +2,23 @@
 
 ## Unreleased
 
-`FetchManyOptions.IncludeSections`, `ExcludeSections` and `Verbosity` pick
-which parts of each page the text holds ("banner", "header", "navigation",
-"metadata", "body", "sidebar", "footer"). Both section lists together return an
-`*InvalidRequestError` before sending.
+`Client.FetchMany(ctx, urls, opts)` reads up to 100 pages in one call with
+`POST /v1/fetch` (keyless calls take up to 20). `FetchManyOptions` mirrors the
+API's groups: `Content *FetchContentOptions` (`MaxChars`, default 50,000 and
+`keenable.Ptr(0)` for metadata only; `Objective`; `Schema`; `Links`; `Images`),
+`Retrieval *FetchRetrievalOptions` (`MaxAgeHours`, 0 to 720 with fractions,
+`keenable.Ptr(0.0)` always live, nil takes the stored copy; or `AsOf`, "P0D"
+for stored copies only) and `Output *FetchOutputOptions` (`Prompt`, `Schema`;
+an empty group asks for a prose answer), plus `DeadlineMS` and `SessionID`. A
+non-nil group is sent even when empty. `Results[i]` is the entry for `urls[i]`,
+with the page in `Content` (`Text`, `TotalChars`, `Answer`, `Links`, `Images`)
+and `RetrievedFrom`; a failed page has its `Error` set, not an error. The
+answer across pages is `Output` (`Text`, `Structured`, `BasedOn`, `Grounding`
+with verified citations). Preview: it works once `POST /v1/fetch` is enabled
+for your organization. `Fetch` and `FetchWithOptions` keep working on
+`GET /v1/fetch`; they are deprecated in favour of `FetchMany` and will be
+removed after the API retires `GET /v1/fetch` (announced with 90 days' notice).
 
-`FetchManyOptions.CacheOnly` returns only stored copies and never contacts the
-site; a page with no stored copy gets the error `not_cached` and is not billed.
-`CacheOnly` with `MaxAge` "0s" returns an `*InvalidRequestError` before
-sending. `Subpages` now goes up to 100 per URL.
-
-`Client.FetchMany` reads up to 100 pages in one call with `POST /v1/fetch`:
-per-page text (`MaxChars` and `Offset` for paging), a `Summary` with an
-optional `OutputSchema` for JSON in your shape, `Highlights`, `Links` and
-`Images`, `MaxAge` and `PageTimeout`, plus `SessionID` and `EndUserID`. `Results[i]`
-is the entry for `urls[i]`; a failed page has its `Error` set, not an error. Keyless calls
-take up to 20 URLs. Preview: it works once `POST /v1/fetch` is enabled for your
-organization. `Fetch` and `FetchWithOptions` keep working on `GET /v1/fetch`;
-they are deprecated in favour of `FetchMany` and will be removed after the API
-retires `GET /v1/fetch` (announced with 90 days' notice).
-
-`FetchManyOptions` gains `Subpages` and `SubpagesTarget` to also read same-site
-pages linked from each URL; each `FetchResult` has `Subpages`.
-`Client.FetchManyStream` returns a `FetchStream` that hands over each page as
-soon as it is read (`Next`, `Item`, `Err`, `Summary`, `Close`), over
-`Accept: application/x-ndjson`.
 - **Added:** `SearchOptions.Objective`: what the search is for, in two or three natural sentences, up to 1,000 characters. Not sent when empty. The API validates and logs it; it does not change results or price. The search tool offers it to a model.
 
 - **Security fix:** `Fetch` refuses loopback and private hosts spelled with

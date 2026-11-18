@@ -1,52 +1,837 @@
 {
-  "_comment": "fetch_many(urls, options): the JSON body sent to POST /v1/fetch (\"body\" cases) and what a success body becomes (\"responses\" cases). Options are named as the SDK arguments (urls, text, max_chars, offset, summary, output_schema, highlights, highlights_query, highlights_max_chars, links, images, subpages, subpages_target, max_age, page_timeout, session_id, end_user_id); each SDK maps them to its own spelling. Body rules: urls are sent as given (a lone string is wrapped in a list); content.text is true unless text is false, or {max_chars, offset} with the ones set; summary is {instructions} plus output_schema when given, and output_schema alone is sent as {output_schema} for the API to reject; highlights is true, or {query, max_chars} with the ones set, sent when highlights is true or either detail is set; links and images are sent as given numbers; subpages is {max, target} with the ones set, sent when subpages or subpages_target is set (target as given: a string or a list), and subpages_target alone is sent as {target} for the API to reject; max_age, page_timeout (as \"timeout\"), session_id and end_user_id are sent as given, an empty string meaning unset. `sent` is the whole body, compared as JSON. Response rules: results and warnings are lists of objects (anything else is []), non-object entries skipped. A result's url is the string sent or \"\"; title, published_at, image, favicon and text are a non-blank string or null; next_offset an integer from 0 to 2^53 - 1 or null (total_chars is not read); summary is a non-blank string, an object, or null; highlights the strings in the list; links [{url, text}] and images [{url, alt}] with url \"\" and text/alt null for anything else; subpages the result objects in the list, read by these same rules ([] otherwise). A result's error is null unless it is an object; then its code and message are strings (\"\" otherwise), retryable a boolean (false otherwise), http_status an integer or null. A warning's code, path and message are strings (\"\" otherwise). request_id is the body's non-blank string, else the trimmed X-Request-Id header, else null; latency_ms an integer from 0 or null; session_id a non-blank string or null. `skip` names an SDK whose types cannot express the case, with why. Stream cases (fetch_many_stream, Accept: application/x-ndjson): the reply is the NDJSON text in `chunks`, delivered chunk by chunk, so a line can be split across chunks. Each non-blank line is a JSON object (a trailing \\r is ignored). A line without done: true is an item: its index (an integer from 0, else the item is skipped) and its other fields read as a result by the rules above. The line with done: true ends the stream: its request_id (else the trimmed X-Request-Id header), latency_ms, session_id and warnings read as above, and usage is the object as sent or null. If that line has an error object, the stream raises the API error with its code, message and retryable after yielding every item before it. A stream that ends without a done line, or a line that is not a JSON object, raises the connection error (kind \\\"connection\\\") or the API error (kind \\\"api\\\").",
+  "_comment": "fetch_many(urls, options): the JSON body sent to POST /v1/fetch (\"body\" cases) and what a success body becomes (\"responses\" cases). Options mirror the request groups: content {max_chars, objective, schema, links, images}, retrieval {max_age_hours, as_of}, output {prompt, schema}, plus deadline_ms and session_id; each SDK maps the names to its own spelling (Python keeps them, TypeScript uses camelCase, Go and Rust use struct fields). Body rules: urls are sent as given (a lone string is wrapped in a list). A group is sent when it is given, holding only the fields set; an empty string means unset, and there are no sentinel values: max_chars 0 (metadata only) and max_age_hours 0 (always live) are sent. max_age_hours is a number, fractions allowed. Fields the API rejects together (max_age_hours with as_of) are sent for the API to reject. output given, even empty, is sent ({} asks for a prose answer). deadline_ms and session_id are sent as given. `sent` is the whole body, compared as JSON. Response rules: results, notices and warnings are lists of objects (anything else is []), non-object entries skipped. request_id is the body's non-blank string, else the trimmed X-Request-Id header, else null. status is a string or null. summary has integer requested, succeeded and failed (0 otherwise). resolved keeps the string values of an object ({} otherwise). A result's index is an integer from 0 (else its position in the list); requested_url, url and status are strings (\"\" otherwise); title, published_at, acquired_at, image, favicon and retrieved_from a non-blank string or null. Its content (from the content object, {} otherwise): text a string or null; total_chars an integer from 0 or null; answer an object or null; links [{url, text}] and images [{url, alt}] (url \"\" and text/alt null for anything else), or null when not a list. error is null unless it is an object; then type, code, message are strings (\"\" otherwise), fix a string or null, retryable a boolean (false otherwise), upstream_status details.upstream_status as an integer or null. output is null unless an object; then text a string (\"\" otherwise), structured an object or null, based_on the integers from 0 in the list, grounding the objects in the list, each with field a string (\"\" otherwise), confidence a string or null, reasoning a string or null and citations the objects in the list, each with index an integer (0 otherwise), excerpts the strings in the list and verified a boolean (false otherwise). A notice or warning has code and message strings (\"\" otherwise) and path a string or null (details kept raw, not compared). usage is the object as sent, or null, and is not compared; neither are details on notices, warnings and errors. latency_ms an integer from 0 or null; session_id a non-blank string or null. `skip` names an SDK whose types cannot express the case, with why.",
   "body": [
-    {"name": "one url, no options", "urls": ["https://example.com/"], "options": {}, "sent": {"urls": ["https://example.com/"], "content": {"text": true}}},
-    {"name": "several urls in order", "urls": ["https://a.example/", "https://b.example/x", "https://a.example/"], "options": {}, "sent": {"urls": ["https://a.example/", "https://b.example/x", "https://a.example/"], "content": {"text": true}}},
-    {"name": "a lone url string is wrapped", "urls": "https://example.com/", "options": {}, "sent": {"urls": ["https://example.com/"], "content": {"text": true}}, "skip": {"go": "FetchMany takes a []string"}},
-    {"name": "text limits", "urls": ["https://example.com/"], "options": {"max_chars": 20000, "offset": 20000}, "sent": {"urls": ["https://example.com/"], "content": {"text": {"max_chars": 20000, "offset": 20000}}}},
-    {"name": "max_chars alone", "urls": ["https://example.com/"], "options": {"max_chars": 500}, "sent": {"urls": ["https://example.com/"], "content": {"text": {"max_chars": 500}}}},
-    {"name": "text off with a summary", "urls": ["https://example.com/"], "options": {"text": false, "summary": "List the prices"}, "sent": {"urls": ["https://example.com/"], "content": {"summary": {"instructions": "List the prices"}}}},
-    {"name": "text and a summary together", "urls": ["https://example.com/"], "options": {"summary": "List the prices"}, "sent": {"urls": ["https://example.com/"], "content": {"text": true, "summary": {"instructions": "List the prices"}}}},
-    {"name": "a summary with an output schema", "urls": ["https://example.com/"], "options": {"text": false, "summary": "Card fees", "output_schema": {"type": "object", "properties": {"pct": {"type": "number"}}}}, "sent": {"urls": ["https://example.com/"], "content": {"summary": {"instructions": "Card fees", "output_schema": {"type": "object", "properties": {"pct": {"type": "number"}}}}}}},
-    {"name": "an output schema alone is sent for the API to reject", "urls": ["https://example.com/"], "options": {"text": false, "output_schema": {"type": "object"}}, "sent": {"urls": ["https://example.com/"], "content": {"summary": {"output_schema": {"type": "object"}}}}},
-    {"name": "highlights with defaults", "urls": ["https://example.com/"], "options": {"text": false, "highlights": true}, "sent": {"urls": ["https://example.com/"], "content": {"highlights": true}}},
-    {"name": "highlights with a query and a budget", "urls": ["https://example.com/"], "options": {"text": false, "highlights_query": "pricing", "highlights_max_chars": 3000}, "sent": {"urls": ["https://example.com/"], "content": {"highlights": {"query": "pricing", "max_chars": 3000}}}},
-    {"name": "links and images", "urls": ["https://example.com/"], "options": {"links": 50, "images": 5}, "sent": {"urls": ["https://example.com/"], "content": {"text": true, "links": 50, "images": 5}}},
-    {"name": "freshness and timeout", "urls": ["https://example.com/"], "options": {"max_age": "1d", "page_timeout": "15s"}, "sent": {"urls": ["https://example.com/"], "content": {"text": true}, "max_age": "1d", "timeout": "15s"}},
-    {"name": "always live", "urls": ["https://example.com/"], "options": {"max_age": "0s"}, "sent": {"urls": ["https://example.com/"], "content": {"text": true}, "max_age": "0s"}},
-    {"name": "session and end user", "urls": ["https://example.com/"], "options": {"session_id": "chat-42", "end_user_id": "user_7"}, "sent": {"urls": ["https://example.com/"], "content": {"text": true}, "session_id": "chat-42", "end_user_id": "user_7"}},
-    {"name": "empty strings are unset", "urls": ["https://example.com/"], "options": {"summary": "", "highlights_query": "", "max_age": "", "page_timeout": "", "session_id": "", "end_user_id": ""}, "sent": {"urls": ["https://example.com/"], "content": {"text": true}}},
-    {"name": "zero links is sent", "urls": ["https://example.com/"], "options": {"links": 0}, "sent": {"urls": ["https://example.com/"], "content": {"text": true, "links": 0}}, "skip": {"go": "FetchManyOptions.Links is an int whose zero means unset"}},
-    {"name": "every option", "urls": ["https://example.com/"], "options": {"max_chars": 1000, "offset": 10, "summary": "S", "output_schema": {"type": "object"}, "highlights_query": "q", "highlights_max_chars": 200, "links": 3, "images": 2, "max_age": "2h", "page_timeout": "30s", "session_id": "s", "end_user_id": "u"}, "sent": {"urls": ["https://example.com/"], "content": {"text": {"max_chars": 1000, "offset": 10}, "summary": {"instructions": "S", "output_schema": {"type": "object"}}, "highlights": {"query": "q", "max_chars": 200}, "links": 3, "images": 2}, "max_age": "2h", "timeout": "30s", "session_id": "s", "end_user_id": "u"}},
-    {"name": "subpages with a count", "urls": ["https://example.com/"], "options": {"subpages": 5}, "sent": {"urls": ["https://example.com/"], "content": {"text": true}, "subpages": {"max": 5}}},
-    {"name": "subpages with target words", "urls": ["https://example.com/"], "options": {"subpages": 3, "subpages_target": ["pricing", "docs"]}, "sent": {"urls": ["https://example.com/"], "content": {"text": true}, "subpages": {"max": 3, "target": ["pricing", "docs"]}}},
-    {"name": "subpages with one target word", "urls": ["https://example.com/"], "options": {"subpages": 3, "subpages_target": "pricing"}, "sent": {"urls": ["https://example.com/"], "content": {"text": true}, "subpages": {"max": 3, "target": "pricing"}}, "skip": {"go": "SubpagesTarget is a []string"}},
-    {"name": "subpages target alone is sent for the API to reject", "urls": ["https://example.com/"], "options": {"subpages_target": ["pricing"]}, "sent": {"urls": ["https://example.com/"], "content": {"text": true}, "subpages": {"target": ["pricing"]}}},
-    {"name": "stored copies only", "urls": ["https://example.com/"], "options": {"cache_only": true}, "sent": {"urls": ["https://example.com/"], "content": {"text": true}, "cache_only": true}},
-    {"name": "stored copies only, no older than a day", "urls": ["https://example.com/"], "options": {"cache_only": true, "max_age": "1d"}, "sent": {"urls": ["https://example.com/"], "content": {"text": true}, "max_age": "1d", "cache_only": true}},
-    {"name": "subpages up to 100", "urls": ["https://example.com/"], "options": {"subpages": 100}, "sent": {"urls": ["https://example.com/"], "content": {"text": true}, "subpages": {"max": 100}}},
-    {"name": "only the navigation and the body", "urls": ["https://example.com/"], "options": {"include_sections": ["navigation", "body"]}, "sent": {"urls": ["https://example.com/"], "content": {"text": {"include_sections": ["navigation", "body"]}}}},
-    {"name": "the whole page but its footer", "urls": ["https://example.com/"], "options": {"exclude_sections": ["footer"], "verbosity": "full", "max_chars": 5000}, "sent": {"urls": ["https://example.com/"], "content": {"text": {"max_chars": 5000, "exclude_sections": ["footer"], "verbosity": "full"}}}}
+    {
+      "name": "one url, no options",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {},
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ]
+      }
+    },
+    {
+      "name": "several urls in order",
+      "urls": [
+        "https://e.com/a",
+        "https://e.com/b"
+      ],
+      "options": {},
+      "sent": {
+        "urls": [
+          "https://e.com/a",
+          "https://e.com/b"
+        ]
+      }
+    },
+    {
+      "name": "a lone url string is wrapped",
+      "urls": "https://example.com/",
+      "options": {},
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ]
+      },
+      "skip": {
+        "go": "FetchMany takes a []string",
+        "rust": "fetch_many takes a list of URLs"
+      }
+    },
+    {
+      "name": "max_chars",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "content": {
+          "max_chars": 20000
+        }
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "max_chars": 20000
+        }
+      }
+    },
+    {
+      "name": "max_chars 0 is sent: metadata only",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "content": {
+          "max_chars": 0
+        }
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "max_chars": 0
+        }
+      }
+    },
+    {
+      "name": "an objective",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "content": {
+          "objective": "the pricing tiers"
+        }
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "objective": "the pricing tiers"
+        }
+      }
+    },
+    {
+      "name": "a schema with an objective",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "content": {
+          "objective": "Card fees",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "pct": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "objective": "Card fees",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "pct": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "links and images",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "content": {
+          "links": 50,
+          "images": 5
+        }
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "links": 50,
+          "images": 5
+        }
+      }
+    },
+    {
+      "name": "a stored copy no older than a day",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "retrieval": {
+          "max_age_hours": 24
+        }
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "retrieval": {
+          "max_age_hours": 24
+        }
+      }
+    },
+    {
+      "name": "fractional hours",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "retrieval": {
+          "max_age_hours": 0.25
+        }
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "retrieval": {
+          "max_age_hours": 0.25
+        }
+      }
+    },
+    {
+      "name": "max_age_hours 0 is sent: always live",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "retrieval": {
+          "max_age_hours": 0
+        }
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "retrieval": {
+          "max_age_hours": 0
+        }
+      }
+    },
+    {
+      "name": "stored copies only",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "retrieval": {
+          "as_of": "P0D"
+        }
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "retrieval": {
+          "as_of": "P0D"
+        }
+      }
+    },
+    {
+      "name": "max_age_hours with as_of is sent for the API to reject",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "retrieval": {
+          "max_age_hours": 1,
+          "as_of": "P0D"
+        }
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "retrieval": {
+          "max_age_hours": 1,
+          "as_of": "P0D"
+        }
+      }
+    },
+    {
+      "name": "a prose answer across the pages",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "output": {}
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "output": {}
+      }
+    },
+    {
+      "name": "an answer to a prompt",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "output": {
+          "prompt": "Which plan is cheapest?"
+        }
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "output": {
+          "prompt": "Which plan is cheapest?"
+        }
+      }
+    },
+    {
+      "name": "a typed answer",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "output": {
+          "prompt": "Prices",
+          "schema": {
+            "type": "object"
+          }
+        }
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "output": {
+          "prompt": "Prices",
+          "schema": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    {
+      "name": "deadline and session",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "deadline_ms": 20000,
+        "session_id": "chat-42"
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "deadline_ms": 20000,
+        "session_id": "chat-42"
+      }
+    },
+    {
+      "name": "empty strings are unset",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "content": {
+          "objective": ""
+        },
+        "retrieval": {
+          "as_of": ""
+        },
+        "output": {
+          "prompt": ""
+        },
+        "session_id": ""
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {},
+        "retrieval": {},
+        "output": {}
+      }
+    },
+    {
+      "name": "every option",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "content": {
+          "max_chars": 1000,
+          "objective": "o",
+          "schema": {
+            "type": "object"
+          },
+          "links": 3,
+          "images": 2
+        },
+        "retrieval": {
+          "max_age_hours": 1.5
+        },
+        "output": {
+          "prompt": "p",
+          "schema": {
+            "type": "object"
+          }
+        },
+        "deadline_ms": 30000,
+        "session_id": "s"
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {
+          "max_chars": 1000,
+          "objective": "o",
+          "schema": {
+            "type": "object"
+          },
+          "links": 3,
+          "images": 2
+        },
+        "retrieval": {
+          "max_age_hours": 1.5
+        },
+        "output": {
+          "prompt": "p",
+          "schema": {
+            "type": "object"
+          }
+        },
+        "deadline_ms": 30000,
+        "session_id": "s"
+      }
+    },
+    {
+      "name": "an empty content group is sent as {}",
+      "urls": [
+        "https://example.com/"
+      ],
+      "options": {
+        "content": {}
+      },
+      "sent": {
+        "urls": [
+          "https://example.com/"
+        ],
+        "content": {}
+      }
+    }
   ],
   "responses": [
-    {"name": "a full response", "urls": ["https://e.com/a", "https://e.com/b"], "json": {"request_id": "rid", "latency_ms": 840, "session_id": "s1", "results": [{"url": "https://e.com/a", "title": "A", "published_at": "2024-01-01T00:00:00Z", "image": "https://e.com/i.png", "favicon": "https://e.com/f.ico", "text": "hello", "total_chars": 11, "next_offset": 5, "highlights": ["h1", "h2"], "links": [{"url": "https://e.com/x", "text": "X"}], "images": [{"url": "https://e.com/i.png", "alt": "I"}]}, {"url": "https://e.com/b", "error": {"code": "page_not_found", "message": "404", "retryable": false, "http_status": 404}}], "warnings": [{"code": "duplicate_url", "path": "/urls/2", "message": "dup"}]}, "expect": {"request_id": "rid", "latency_ms": 840, "session_id": "s1", "results": [{"url": "https://e.com/a", "title": "A", "published_at": "2024-01-01T00:00:00Z", "image": "https://e.com/i.png", "favicon": "https://e.com/f.ico", "text": "hello", "next_offset": 5, "summary": null, "highlights": ["h1", "h2"], "links": [{"url": "https://e.com/x", "text": "X"}], "images": [{"url": "https://e.com/i.png", "alt": "I"}], "error": null, "subpages": []}, {"url": "https://e.com/b", "title": null, "published_at": null, "image": null, "favicon": null, "text": null, "next_offset": null, "summary": null, "highlights": [], "links": [], "images": [], "error": {"code": "page_not_found", "message": "404", "retryable": false, "http_status": 404}, "subpages": []}], "warnings": [{"code": "duplicate_url", "path": "/urls/2", "message": "dup"}]}},
-    {"name": "an empty object", "urls": ["https://e.com/a"], "json": {}, "expect": {"request_id": null, "latency_ms": null, "session_id": null, "results": [], "warnings": []}},
-    {"name": "a text summary", "urls": ["https://e.com/a"], "json": {"results": [{"url": "https://e.com/a", "summary": "Two tiers"}]}, "expect": {"request_id": null, "latency_ms": null, "session_id": null, "results": [{"url": "https://e.com/a", "title": null, "published_at": null, "image": null, "favicon": null, "text": null, "next_offset": null, "summary": "Two tiers", "highlights": [], "links": [], "images": [], "error": null, "subpages": []}], "warnings": []}},
-    {"name": "a structured summary", "urls": ["https://e.com/a"], "json": {"results": [{"url": "https://e.com/a", "summary": {"pct": 2.9, "fixed": 0.3}}]}, "expect": {"request_id": null, "latency_ms": null, "session_id": null, "results": [{"url": "https://e.com/a", "title": null, "published_at": null, "image": null, "favicon": null, "text": null, "next_offset": null, "summary": {"pct": 2.9, "fixed": 0.3}, "highlights": [], "links": [], "images": [], "error": null, "subpages": []}], "warnings": []}},
-    {"name": "mistyped fields", "urls": ["https://e.com/a"], "json": {"latency_ms": -1, "session_id": " ", "results": [1, {"url": 5, "title": 3, "text": ["x"], "total_chars": 1.5, "next_offset": "5", "summary": 7, "highlights": ["ok", 3, null], "links": [{"url": 1, "text": 2}, "x"], "images": [{"url": "u"}], "error": {"code": 4, "retryable": "yes", "http_status": "404"}}, {"url": "https://e.com/c", "error": "x"}], "warnings": "none"}, "expect": {"request_id": null, "latency_ms": null, "session_id": null, "results": [{"url": "", "title": null, "published_at": null, "image": null, "favicon": null, "text": null, "next_offset": null, "summary": null, "highlights": ["ok"], "links": [{"url": "", "text": null}], "images": [{"url": "u", "alt": null}], "error": {"code": "", "message": "", "retryable": false, "http_status": null}, "subpages": []}, {"url": "https://e.com/c", "title": null, "published_at": null, "image": null, "favicon": null, "text": null, "next_offset": null, "summary": null, "highlights": [], "links": [], "images": [], "error": null, "subpages": []}], "warnings": []}},
-    {"name": "the header's request id", "urls": ["https://e.com/a"], "headers": {"X-Request-Id": " hdr "}, "json": {}, "expect": {"request_id": "hdr", "latency_ms": null, "session_id": null, "results": [], "warnings": []}},
-    {"name": "subpages, with a failed one", "urls": ["https://e.com/a"], "json": {"results": [{"url": "https://e.com/a", "text": "root", "subpages": [{"url": "https://e.com/a/p", "title": "P", "text": "sub"}, {"url": "https://e.com/a/q", "error": {"code": "target_timeout", "message": "slow", "retryable": true}}, 7]}]}, "expect": {"request_id": null, "latency_ms": null, "session_id": null, "results": [{"url": "https://e.com/a", "title": null, "published_at": null, "image": null, "favicon": null, "text": "root", "next_offset": null, "summary": null, "highlights": [], "links": [], "images": [], "error": null, "subpages": [{"url": "https://e.com/a/p", "title": "P", "published_at": null, "image": null, "favicon": null, "text": "sub", "next_offset": null, "summary": null, "highlights": [], "links": [], "images": [], "error": null, "subpages": []}, {"url": "https://e.com/a/q", "title": null, "published_at": null, "image": null, "favicon": null, "text": null, "next_offset": null, "summary": null, "highlights": [], "links": [], "images": [], "error": {"code": "target_timeout", "message": "slow", "retryable": true, "http_status": null}, "subpages": []}]}], "warnings": []}},
-    {"name": "subpages that are not a list", "urls": ["https://e.com/a"], "json": {"results": [{"url": "https://e.com/a", "subpages": {"url": "x"}}]}, "expect": {"request_id": null, "latency_ms": null, "session_id": null, "results": [{"url": "https://e.com/a", "title": null, "published_at": null, "image": null, "favicon": null, "text": null, "next_offset": null, "summary": null, "highlights": [], "links": [], "images": [], "error": null, "subpages": []}], "warnings": []}}
-  ],
-  "stream": [
-    {"name": "lines in arrival order, then the summary", "urls": ["https://e.com/a", "https://e.com/b"], "chunks": ["{\"index\": 1, \"url\": \"https://e.com/b\", \"error\": {\"code\": \"page_not_found\", \"message\": \"404\", \"retryable\": false, \"http_status\": 404}}\n{\"index\": 0, \"url\": \"https://e.com/a\", \"title\": \"A\", \"text\": \"hello\", \"next_offset\": 5}\n", "{\"done\": true, \"request_id\": \"rid\", \"latency_ms\": 900, \"session_id\": \"s1\", \"warnings\": [{\"code\": \"duplicate_url\", \"path\": \"/urls/2\", \"message\": \"dup\"}], \"usage\": {\"cost_usd\": 0.001, \"billed_from\": \"balance\"}}\n"], "expect": {"items": [{"index": 1, "result": {"url": "https://e.com/b", "title": null, "published_at": null, "image": null, "favicon": null, "text": null, "next_offset": null, "summary": null, "highlights": [], "links": [], "images": [], "error": {"code": "page_not_found", "message": "404", "retryable": false, "http_status": 404}, "subpages": []}}, {"index": 0, "result": {"url": "https://e.com/a", "title": "A", "published_at": null, "image": null, "favicon": null, "text": "hello", "next_offset": 5, "summary": null, "highlights": [], "links": [], "images": [], "error": null, "subpages": []}}], "summary": {"request_id": "rid", "latency_ms": 900, "session_id": "s1", "warnings": [{"code": "duplicate_url", "path": "/urls/2", "message": "dup"}], "usage": {"cost_usd": 0.001, "billed_from": "balance"}}}},
-    {"name": "a line split across chunks", "urls": ["https://e.com/a", "https://e.com/b"], "chunks": ["{\"index", "\": 0, \"url\": \"https://e.com/a\", \"title\": \"A\", \"text\": \"hello\", \"next_offset\": 5}\n{\"index\": 1, \"url\": ", "\"https://e.com/b\", \"error\": {\"code\": \"page_not_found\", \"message\": \"404\", \"retryable\": false, \"http_status\": 404}}\n{\"d", "one\": true, \"request_id\": \"rid\", \"latency_ms\": 900, \"session_id\": \"s1\", \"warnings\": [{\"code\": \"duplicate_url\", \"path\": \"/urls/2\", \"message\": \"dup\"}], \"usage\": {\"cost_usd\": 0.001, \"billed_from\": \"balance\"}}\n"], "expect": {"items": [{"index": 0, "result": {"url": "https://e.com/a", "title": "A", "published_at": null, "image": null, "favicon": null, "text": "hello", "next_offset": 5, "summary": null, "highlights": [], "links": [], "images": [], "error": null, "subpages": []}}, {"index": 1, "result": {"url": "https://e.com/b", "title": null, "published_at": null, "image": null, "favicon": null, "text": null, "next_offset": null, "summary": null, "highlights": [], "links": [], "images": [], "error": {"code": "page_not_found", "message": "404", "retryable": false, "http_status": 404}, "subpages": []}}], "summary": {"request_id": "rid", "latency_ms": 900, "session_id": "s1", "warnings": [{"code": "duplicate_url", "path": "/urls/2", "message": "dup"}], "usage": {"cost_usd": 0.001, "billed_from": "balance"}}}},
-    {"name": "blank lines and CRLF are ignored, no trailing newline", "urls": ["https://e.com/a"], "chunks": ["\n{\"index\": 0, \"url\": \"https://e.com/a\", \"title\": \"A\", \"text\": \"hello\", \"next_offset\": 5}\r\n\r\n", "{\"done\": true, \"request_id\": \"rid\", \"latency_ms\": 900, \"session_id\": \"s1\", \"warnings\": [{\"code\": \"duplicate_url\", \"path\": \"/urls/2\", \"message\": \"dup\"}], \"usage\": {\"cost_usd\": 0.001, \"billed_from\": \"balance\"}}"], "expect": {"items": [{"index": 0, "result": {"url": "https://e.com/a", "title": "A", "published_at": null, "image": null, "favicon": null, "text": "hello", "next_offset": 5, "summary": null, "highlights": [], "links": [], "images": [], "error": null, "subpages": []}}], "summary": {"request_id": "rid", "latency_ms": 900, "session_id": "s1", "warnings": [{"code": "duplicate_url", "path": "/urls/2", "message": "dup"}], "usage": {"cost_usd": 0.001, "billed_from": "balance"}}}},
-    {"name": "a minimal final line takes the header's request id", "urls": ["https://e.com/a"], "headers": {"X-Request-Id": " hdr "}, "chunks": ["{\"index\": 0, \"url\": \"https://e.com/a\", \"title\": \"A\", \"text\": \"hello\", \"next_offset\": 5}\n", "{\"done\": true}\n"], "expect": {"items": [{"index": 0, "result": {"url": "https://e.com/a", "title": "A", "published_at": null, "image": null, "favicon": null, "text": "hello", "next_offset": 5, "summary": null, "highlights": [], "links": [], "images": [], "error": null, "subpages": []}}], "summary": {"request_id": "hdr", "latency_ms": null, "session_id": null, "warnings": [], "usage": null}}},
-    {"name": "an item without an integer index is skipped", "urls": ["https://e.com/a"], "chunks": ["{\"index\": \"0\", \"url\": \"https://e.com/a\"}\n{\"url\": \"https://e.com/a\"}\n{\"index\": 0, \"url\": \"https://e.com/a\", \"title\": \"A\", \"text\": \"hello\", \"next_offset\": 5}\n{\"done\": true, \"request_id\": \"rid\", \"latency_ms\": 900, \"session_id\": \"s1\", \"warnings\": [{\"code\": \"duplicate_url\", \"path\": \"/urls/2\", \"message\": \"dup\"}], \"usage\": {\"cost_usd\": 0.001, \"billed_from\": \"balance\"}}\n"], "expect": {"items": [{"index": 0, "result": {"url": "https://e.com/a", "title": "A", "published_at": null, "image": null, "favicon": null, "text": "hello", "next_offset": 5, "summary": null, "highlights": [], "links": [], "images": [], "error": null, "subpages": []}}], "summary": {"request_id": "rid", "latency_ms": 900, "session_id": "s1", "warnings": [{"code": "duplicate_url", "path": "/urls/2", "message": "dup"}], "usage": {"cost_usd": 0.001, "billed_from": "balance"}}}},
-    {"name": "a final line with an error raises after the items", "urls": ["https://e.com/a", "https://e.com/b"], "chunks": ["{\"index\": 0, \"url\": \"https://e.com/a\", \"title\": \"A\", \"text\": \"hello\", \"next_offset\": 5}\n", "{\"done\": true, \"request_id\": \"rid\", \"error\": {\"code\": \"insufficient_credits\", \"message\": \"Out of credits\", \"retryable\": false}, \"latency_ms\": 10}\n"], "expect": {"items": [{"index": 0, "result": {"url": "https://e.com/a", "title": "A", "published_at": null, "image": null, "favicon": null, "text": "hello", "next_offset": 5, "summary": null, "highlights": [], "links": [], "images": [], "error": null, "subpages": []}}], "error": {"kind": "api", "code": "insufficient_credits", "message": "Out of credits", "retryable": false, "request_id": "rid"}}},
-    {"name": "a stream that ends without the final line", "urls": ["https://e.com/a", "https://e.com/b"], "chunks": ["{\"index\": 0, \"url\": \"https://e.com/a\", \"title\": \"A\", \"text\": \"hello\", \"next_offset\": 5}\n"], "expect": {"items": [{"index": 0, "result": {"url": "https://e.com/a", "title": "A", "published_at": null, "image": null, "favicon": null, "text": "hello", "next_offset": 5, "summary": null, "highlights": [], "links": [], "images": [], "error": null, "subpages": []}}], "error": {"kind": "connection"}}},
-    {"name": "a line that is not JSON", "urls": ["https://e.com/a"], "chunks": ["{\"index\": 0, \"url\": \"https://e.com/a\", \"title\": \"A\", \"text\": \"hello\", \"next_offset\": 5}\n", "<html>\n"], "expect": {"items": [{"index": 0, "result": {"url": "https://e.com/a", "title": "A", "published_at": null, "image": null, "favicon": null, "text": "hello", "next_offset": 5, "summary": null, "highlights": [], "links": [], "images": [], "error": null, "subpages": []}}], "error": {"kind": "api"}}}
+    {
+      "name": "a full response",
+      "urls": [
+        "https://e.com/a",
+        "https://e.com/b"
+      ],
+      "json": {
+        "request_id": "req_1",
+        "object": "fetch",
+        "status": "partial",
+        "summary": {
+          "requested": 2,
+          "succeeded": 1,
+          "failed": 1
+        },
+        "resolved": {
+          "/retrieval/as_of": "2026-11-08T09:00:00Z"
+        },
+        "results": [
+          {
+            "index": 0,
+            "requested_url": "https://e.com/a",
+            "url": "https://e.com/a/",
+            "status": "ok",
+            "title": "A",
+            "published_at": "2024-01-01T00:00:00Z",
+            "acquired_at": "2026-11-01T00:00:00Z",
+            "image": "https://e.com/i.png",
+            "favicon": "https://e.com/f.ico",
+            "retrieved_from": "live",
+            "content": {
+              "text": "hello",
+              "total_chars": 11,
+              "answer": {
+                "pct": 2.9
+              },
+              "links": [
+                {
+                  "url": "https://e.com/x",
+                  "text": "X"
+                }
+              ],
+              "images": [
+                {
+                  "url": "https://e.com/i.png",
+                  "alt": "I"
+                }
+              ]
+            }
+          },
+          {
+            "index": 1,
+            "requested_url": "https://e.com/b",
+            "url": "https://e.com/b",
+            "status": "error",
+            "error": {
+              "type": "target_error",
+              "code": "page_not_found",
+              "message": "404",
+              "path": "/urls/1",
+              "fix": "Check the URL.",
+              "retryable": false,
+              "retry_after_ms": null,
+              "doc_url": null,
+              "details": {
+                "upstream_status": 404
+              }
+            }
+          }
+        ],
+        "output": {
+          "text": "Pro is cheapest.",
+          "structured": {
+            "plan": "Pro"
+          },
+          "based_on": [
+            0
+          ],
+          "grounding": [
+            {
+              "field": "/plan",
+              "citations": [
+                {
+                  "index": 0,
+                  "excerpts": [
+                    "Pro"
+                  ],
+                  "verified": true
+                }
+              ],
+              "reasoning": null,
+              "confidence": "medium"
+            }
+          ]
+        },
+        "notices": [
+          {
+            "code": "content_unavailable",
+            "path": "/results/0/content/answer",
+            "message": "m",
+            "details": null
+          }
+        ],
+        "warnings": [
+          {
+            "code": "value_normalized",
+            "path": "/urls/0",
+            "message": "w",
+            "details": {
+              "from": "a",
+              "to": "b"
+            }
+          }
+        ],
+        "usage": {
+          "cost_usd": 0.004,
+          "billed_from": "balance"
+        },
+        "session_id": "s1",
+        "latency_ms": 840
+      },
+      "expect": {
+        "request_id": "req_1",
+        "status": "partial",
+        "summary": {
+          "requested": 2,
+          "succeeded": 1,
+          "failed": 1
+        },
+        "resolved": {
+          "/retrieval/as_of": "2026-11-08T09:00:00Z"
+        },
+        "results": [
+          {
+            "index": 0,
+            "requested_url": "https://e.com/a",
+            "url": "https://e.com/a/",
+            "status": "ok",
+            "title": "A",
+            "published_at": "2024-01-01T00:00:00Z",
+            "acquired_at": "2026-11-01T00:00:00Z",
+            "image": "https://e.com/i.png",
+            "favicon": "https://e.com/f.ico",
+            "retrieved_from": "live",
+            "error": null,
+            "content": {
+              "text": "hello",
+              "total_chars": 11,
+              "answer": {
+                "pct": 2.9
+              },
+              "links": [
+                {
+                  "url": "https://e.com/x",
+                  "text": "X"
+                }
+              ],
+              "images": [
+                {
+                  "url": "https://e.com/i.png",
+                  "alt": "I"
+                }
+              ]
+            }
+          },
+          {
+            "index": 1,
+            "requested_url": "https://e.com/b",
+            "url": "https://e.com/b",
+            "status": "error",
+            "title": null,
+            "published_at": null,
+            "acquired_at": null,
+            "image": null,
+            "favicon": null,
+            "retrieved_from": null,
+            "error": {
+              "type": "target_error",
+              "code": "page_not_found",
+              "message": "404",
+              "fix": "Check the URL.",
+              "retryable": false,
+              "upstream_status": 404
+            },
+            "content": {
+              "text": null,
+              "total_chars": null,
+              "answer": null,
+              "links": null,
+              "images": null
+            }
+          }
+        ],
+        "output": {
+          "text": "Pro is cheapest.",
+          "structured": {
+            "plan": "Pro"
+          },
+          "based_on": [
+            0
+          ],
+          "grounding": [
+            {
+              "field": "/plan",
+              "citations": [
+                {
+                  "index": 0,
+                  "excerpts": [
+                    "Pro"
+                  ],
+                  "verified": true
+                }
+              ],
+              "reasoning": null,
+              "confidence": "medium"
+            }
+          ]
+        },
+        "notices": [
+          {
+            "code": "content_unavailable",
+            "path": "/results/0/content/answer",
+            "message": "m"
+          }
+        ],
+        "warnings": [
+          {
+            "code": "value_normalized",
+            "path": "/urls/0",
+            "message": "w"
+          }
+        ],
+        "session_id": "s1",
+        "latency_ms": 840
+      }
+    },
+    {
+      "name": "an empty object",
+      "urls": [
+        "https://example.com/"
+      ],
+      "json": {},
+      "expect": {
+        "request_id": null,
+        "status": null,
+        "summary": {
+          "requested": 0,
+          "succeeded": 0,
+          "failed": 0
+        },
+        "resolved": {},
+        "results": [],
+        "output": null,
+        "notices": [],
+        "warnings": [],
+        "session_id": null,
+        "latency_ms": null
+      }
+    },
+    {
+      "name": "mistyped fields",
+      "urls": [
+        "https://example.com/"
+      ],
+      "json": {
+        "request_id": "  ",
+        "status": 7,
+        "summary": "x",
+        "resolved": {
+          "a": "b",
+          "c": 3
+        },
+        "results": [
+          {
+            "index": "0",
+            "requested_url": 5,
+            "url": null,
+            "status": true,
+            "title": " ",
+            "content": {
+              "text": 5,
+              "total_chars": -1,
+              "answer": "str",
+              "links": "no",
+              "images": [
+                {
+                  "url": 3,
+                  "alt": 4
+                },
+                "x"
+              ]
+            },
+            "error": "oops"
+          },
+          "skip"
+        ],
+        "output": {
+          "text": 3,
+          "structured": [
+            1
+          ],
+          "based_on": [
+            0,
+            "1",
+            -2,
+            3
+          ]
+        },
+        "notices": [
+          {
+            "code": 1,
+            "path": 2,
+            "message": 3
+          },
+          "x"
+        ],
+        "warnings": "no",
+        "usage": {
+          "cost_usd": "0.1"
+        },
+        "session_id": "",
+        "latency_ms": -5
+      },
+      "expect": {
+        "request_id": null,
+        "status": null,
+        "summary": {
+          "requested": 0,
+          "succeeded": 0,
+          "failed": 0
+        },
+        "resolved": {
+          "a": "b"
+        },
+        "results": [
+          {
+            "index": 0,
+            "requested_url": "",
+            "url": "",
+            "status": "",
+            "title": null,
+            "published_at": null,
+            "acquired_at": null,
+            "image": null,
+            "favicon": null,
+            "retrieved_from": null,
+            "error": null,
+            "content": {
+              "text": null,
+              "total_chars": null,
+              "answer": null,
+              "links": null,
+              "images": [
+                {
+                  "url": "",
+                  "alt": null
+                }
+              ]
+            }
+          }
+        ],
+        "output": {
+          "text": "",
+          "structured": null,
+          "based_on": [
+            0,
+            3
+          ],
+          "grounding": []
+        },
+        "notices": [
+          {
+            "code": "",
+            "path": null,
+            "message": ""
+          }
+        ],
+        "warnings": [],
+        "session_id": null,
+        "latency_ms": null
+      }
+    },
+    {
+      "name": "the header's request id",
+      "urls": [
+        "https://example.com/"
+      ],
+      "headers": {
+        "X-Request-Id": "  req_h  "
+      },
+      "json": {
+        "results": []
+      },
+      "expect": {
+        "request_id": "req_h",
+        "status": null,
+        "summary": {
+          "requested": 0,
+          "succeeded": 0,
+          "failed": 0
+        },
+        "resolved": {},
+        "results": [],
+        "output": null,
+        "notices": [],
+        "warnings": [],
+        "session_id": null,
+        "latency_ms": null
+      }
+    }
   ]
 }

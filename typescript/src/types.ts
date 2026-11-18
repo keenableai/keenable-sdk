@@ -114,63 +114,61 @@ export interface FetchOptions extends RequestOptions {
   prompt?: string;
 }
 
-/** A part of a page for `includeSections` / `excludeSections`. */
-export type FetchSection = "banner" | "header" | "navigation" | "metadata" | "body" | "sidebar" | "footer";
-
-/** Options for `fetchMany()`: what to return for each page and how fresh. */
-export interface FetchManyOptions extends RequestOptions {
-  /** Return each page as markdown. Default `true`. */
-  text?: boolean;
-  /** Characters of text per page. */
+/** What each `fetchMany()` result carries (`content`). Fields left out are not sent. */
+export interface FetchContentOptions {
+  /** The most characters of text per page, 50,000 by default; `0` leaves the text out (metadata only). */
   maxChars?: number;
-  /** Where in the page text to start, to read a long page in parts. */
-  offset?: number;
   /**
-   * Only these parts of each page: `"banner"`, `"header"`, `"navigation"`, `"metadata"`,
-   * `"body"` (the main content), `"sidebar"`, `"footer"`. Anything beyond the body is a live
-   * read (billed as `fetch.live`) and needs an API key; when it isn't possible the page keeps
-   * its main content and the response has a `sections_unavailable` warning.
+   * What you are after on the pages, up to 1,000 characters. Each page's text becomes the
+   * passages about it; with `schema` it also steers the record. Needs an API key.
    */
-  includeSections?: readonly FetchSection[];
-  /** Every part except these (from `verbosity`, or the whole page). Not with `includeSections`. */
-  excludeSections?: readonly FetchSection[];
-  /** `"compact"` (main content, the default), `"standard"` (plus metadata and sidebar) or `"full"`. */
-  verbosity?: "compact" | "standard" | "full";
-  /** An instruction; each result's `summary` is the model's answer. Needs an API key. */
-  summary?: string;
-  /** A JSON Schema (`type: "object"`); the summary is then an object in that shape. */
-  outputSchema?: Record<string, unknown>;
-  /** Return the passages most relevant to `highlightsQuery`. */
-  highlights?: boolean;
-  /** What the highlights should be about. */
-  highlightsQuery?: string;
-  /** Characters of highlights per page. */
-  highlightsMaxChars?: number;
-  /** How many links per page to return, with their text. */
+  objective?: string;
+  /** A JSON Schema (`type: "object"`): each result's `content.answer` is a record matching it. Needs an API key. */
+  schema?: Record<string, unknown>;
+  /** The most links per page to return, with their text (1 to 1,000). */
   links?: number;
-  /** How many images per page to return, with their alt text. */
+  /** The most images per page to return, with their alt text (1 to 1,000). */
   images?: number;
+}
+
+/** Where `fetchMany()` page content comes from (`retrieval`). Give one of the two. */
+export interface FetchRetrievalOptions {
   /**
-   * Also read up to this many same-site pages linked from each URL (1 to 100),
-   * with the same content options. Each is billed like a URL. Needs an API key.
+   * Use a stored copy only if it is younger than this many hours, from 0 to 720 (fractions
+   * allowed: `0.25` is 15 minutes). `0` always reads live. Left out, a stored copy of any age
+   * is used when there is one.
    */
-  subpages?: number;
-  /** Words that pick which links to read first (a string or a list). */
-  subpagesTarget?: string | readonly string[];
-  /** Oldest copy accepted, such as `"1d"`; `"0s"` always reads the page live. */
-  maxAge?: string;
+  maxAgeHours?: number;
   /**
-   * Never contact the site: return only stored copies. A page with no stored
-   * copy (or none newer than `maxAge`) gets the error `not_cached` and is not
-   * billed. Can't be combined with `maxAge: "0s"`.
+   * Stored data as it stood at this instant, never live: an RFC 3339 date or date-time, or a
+   * duration back from now. `"P0D"` is the latest stored copy.
    */
-  cacheOnly?: boolean;
-  /** How long to wait for each live read, such as `"15s"`. */
-  pageTimeout?: string;
+  asOf?: string;
+}
+
+/** One answer across all the pages (`output`). `{}` asks for a prose answer. Needs an API key. */
+export interface FetchOutputOptions {
+  /** The question to answer across the pages, up to 2,000 characters. */
+  prompt?: string;
+  /** A JSON Schema (`type: "object"`) for a typed answer in `output.structured`. */
+  schema?: Record<string, unknown>;
+}
+
+/** Options for `fetchMany()` (POST /v1/fetch). Each group is sent when given. */
+export interface FetchManyOptions extends RequestOptions {
+  /** What each result carries. Left out: each page's text up to 50,000 characters. */
+  content?: FetchContentOptions;
+  /** Where content comes from. Left out: a stored copy of any age when there is one, else a live read. */
+  retrieval?: FetchRetrievalOptions;
+  /** One answer across the pages, in `response.output`. */
+  output?: FetchOutputOptions;
+  /**
+   * For the whole call, 1,000 to 55,000 ms (30,000 without a key); 15,000 by default. Pages not
+   * read by then fail with `fetch_timeout`.
+   */
+  deadlineMs?: number;
   /** Your id for the agent session these calls belong to. */
   sessionId?: string;
-  /** Your opaque id for the person the agent serves (no personal data). */
-  endUserId?: string;
 }
 
 /** Options for rendering results into a prompt block. */

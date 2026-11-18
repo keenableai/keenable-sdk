@@ -617,205 +617,330 @@ class FetchImage:
     alt: str | None = None
 
 
+def _links(value: Any) -> list[FetchLink] | None:
+    if not isinstance(value, list):
+        return None
+    return [
+        FetchLink(
+            url=_str_or_empty(item.get("url")), text=_str_or_none(item.get("text"))
+        )
+        for item in _objects(value)
+    ]
+
+
+def _images(value: Any) -> list[FetchImage] | None:
+    if not isinstance(value, list):
+        return None
+    return [
+        FetchImage(
+            url=_str_or_empty(item.get("url")), alt=_str_or_none(item.get("alt"))
+        )
+        for item in _objects(value)
+    ]
+
+
+def _object_or_none(value: Any) -> dict[str, Any] | None:
+    return value if isinstance(value, dict) else None
+
+
+def _str_kept_or_none(value: Any) -> str | None:
+    """A string as sent (even empty), or None for anything else."""
+    return value if isinstance(value, str) else None
+
+
 @dataclass
 class FetchError:
-    """Why something asked for is missing for one URL. The call itself succeeded."""
+    """Why one URL failed. The call itself succeeded; the URL is not billed."""
+
+    type: str
+    """The broad case, ``target_error`` for a URL that failed."""
 
     code: str
-    """Why, such as ``page_not_found`` or ``target_timeout``."""
+    """The exact case, such as ``page_not_found`` or ``fetch_timeout``."""
 
     message: str
-    retryable: bool = False
-    """Whether trying this URL again can help."""
+    fix: str | None = None
+    """One sentence on what to do next, when the API has one."""
 
-    http_status: int | None = None
+    retryable: bool = False
+    """Whether trying this URL again unchanged can help."""
+
+    upstream_status: int | None = None
     """What the site answered, such as 404, when it answered."""
+
+    details: dict[str, Any] | None = field(default=None, repr=False)
 
     @classmethod
     def _from_json(cls, data: Any) -> FetchError | None:
         if not isinstance(data, dict):
             return None
-        status = data.get("http_status")
+        details = _object_or_none(data.get("details"))
+        status = details.get("upstream_status") if details else None
         return cls(
+            type=_str_or_empty(data.get("type")),
             code=_str_or_empty(data.get("code")),
             message=_str_or_empty(data.get("message")),
+            fix=_str_kept_or_none(data.get("fix")),
             retryable=data.get("retryable") is True,
-            http_status=status
+            upstream_status=status
             if isinstance(status, int) and not isinstance(status, bool)
             else None,
+            details=details,
+        )
+
+
+@dataclass
+class FetchContent:
+    """What one page carries: only the parts asked for are filled.
+
+    A part asked for that could not be made is None, with a
+    ``content_unavailable`` notice.
+    """
+
+    text: str | None = None
+    """The page as markdown, cut to ``max_chars``; with ``objective``, the
+    passages about it."""
+
+    total_chars: int | None = None
+    """The length of the whole page, so you can tell whether ``text`` was cut."""
+
+    answer: dict[str, Any] | None = None
+    """The record for ``content["schema"]``, an object matching it."""
+
+    links: list[FetchLink] | None = None
+    images: list[FetchImage] | None = None
+
+    @classmethod
+    def _from_json(cls, data: Any) -> FetchContent:
+        data = data if isinstance(data, dict) else {}
+        return cls(
+            text=_str_kept_or_none(data.get("text")),
+            total_chars=_count_or_none(data.get("total_chars")),
+            answer=_object_or_none(data.get("answer")),
+            links=_links(data.get("links")),
+            images=_images(data.get("images")),
         )
 
 
 @dataclass
 class FetchResult:
-    """The entry for one URL :meth:`Keenable.fetch_many` was given.
+    """The result for one URL given to :meth:`Keenable.fetch_many`.
 
-    ``results[i]`` is the entry for ``urls[i]``. Only what was asked for is
-    filled: ``text`` with ``content.text``, ``summary`` with a summary,
-    ``highlights``, ``links`` and ``images`` with those options. Unknown
-    metadata is None. ``error`` is set when something asked for is missing;
-    when the page could not be read, it is the only field besides ``url``.
+    ``results[i]`` answers ``urls[i]``. ``status`` is ``"ok"`` with the page,
+    or ``"error"`` with ``error`` set and no page.
     """
 
+    index: int
+    requested_url: str
+    """The URL exactly as sent."""
+
     url: str
+    """The final address after redirects (the last one reached, on an error)."""
+
+    status: str
     title: str | None = None
     published_at: str | None = None
-    """When the page says it was written, as ISO 8601. An estimate; None when
-    unknown."""
+    acquired_at: str | None = None
+    """When Keenable read this copy of the page."""
 
     image: str | None = None
     favicon: str | None = None
-    text: str | None = None
-    """The page as markdown, from ``offset`` up to ``max_chars``."""
+    retrieved_from: str | None = None
+    """``"index"`` (our stored copy), ``"live"`` or ``"cache_fallback"``."""
 
-    next_offset: int | None = None
-    """Set only when the page has more text: send the same URL again with
-    ``offset`` set to it. None when the text reaches the end."""
-
-    summary: str | dict[str, Any] | None = None
-    """The model's answer: a string, or an object matching ``output_schema``."""
-
-    highlights: list[str] = field(default_factory=list)
-    links: list[FetchLink] = field(default_factory=list)
-    images: list[FetchImage] = field(default_factory=list)
     error: FetchError | None = None
-    """Why something asked for is missing; None when everything worked."""
-
-    subpages: list[FetchResult] = field(default_factory=list)
-    """With ``subpages``: the same-site pages read from this page's links,
-    best match first, each an entry like this one (a failed one has
-    ``error``)."""
-
+    content: FetchContent = field(default_factory=FetchContent)
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
-    def _from_json(cls, data: dict[str, Any]) -> FetchResult:
-        summary = data.get("summary")
+    def _from_json(cls, data: dict[str, Any], position: int) -> FetchResult:
+        index = _count_or_none(data.get("index"))
         return cls(
+            index=position if index is None else index,
+            requested_url=_str_or_empty(data.get("requested_url")),
             url=_str_or_empty(data.get("url")),
+            status=_str_or_empty(data.get("status")),
             title=_str_or_none(data.get("title")),
             published_at=_str_or_none(data.get("published_at")),
+            acquired_at=_str_or_none(data.get("acquired_at")),
             image=_str_or_none(data.get("image")),
             favicon=_str_or_none(data.get("favicon")),
-            text=_str_or_none(data.get("text")),
-            next_offset=_int_from_zero_or_none(data.get("next_offset")),
-            summary=summary if isinstance(summary, dict) else _str_or_none(summary),
-            highlights=[
-                item for item in data.get("highlights") or [] if isinstance(item, str)
-            ]
-            if isinstance(data.get("highlights"), list)
-            else [],
-            links=[
-                FetchLink(
-                    url=_str_or_empty(item.get("url")),
-                    text=_str_or_none(item.get("text")),
-                )
-                for item in _objects(data.get("links"))
-            ],
-            images=[
-                FetchImage(
-                    url=_str_or_empty(item.get("url")),
-                    alt=_str_or_none(item.get("alt")),
-                )
-                for item in _objects(data.get("images"))
-            ],
+            retrieved_from=_str_or_none(data.get("retrieved_from")),
             error=FetchError._from_json(data.get("error")),
-            subpages=[
-                FetchResult._from_json(item) for item in _objects(data.get("subpages"))
-            ],
+            content=FetchContent._from_json(data.get("content")),
             raw=data,
         )
 
 
 @dataclass
-class FetchWarning:
-    """Something that did not fail the call, such as a duplicate URL."""
+class FetchNotice:
+    """A notice (for the model) or a warning (for the developer)."""
 
     code: str
-    path: str
+    path: str | None
+    """A JSON Pointer into the response (notices) or the request (warnings)."""
+
     message: str
+    details: dict[str, Any] | None = field(default=None, repr=False)
 
     @classmethod
-    def _from_json(cls, data: dict[str, Any]) -> FetchWarning:
+    def _from_json(cls, data: dict[str, Any]) -> FetchNotice:
         return cls(
             code=_str_or_empty(data.get("code")),
-            path=_str_or_empty(data.get("path")),
+            path=_str_kept_or_none(data.get("path")),
             message=_str_or_empty(data.get("message")),
+            details=_object_or_none(data.get("details")),
         )
 
 
 @dataclass
-class FetchResponse:
-    """What :meth:`Keenable.fetch_many` returns: one entry per URL, in order."""
+class Citation:
+    """Where an answer field comes from: excerpts of ``results[index]``."""
 
-    results: list[FetchResult] = field(default_factory=list)
-    warnings: list[FetchWarning] = field(default_factory=list)
+    index: int
+    excerpts: list[str]
+    verified: bool
+    """True when every excerpt appears word for word in the page text the API
+    read. Checked by the server, not the model."""
+
+
+@dataclass
+class Grounding:
+    """The support for one field of the answer."""
+
+    field: str
+    """A JSON Pointer into ``structured``, or ``/text``."""
+
+    citations: list[Citation]
+    reasoning: str | None
+    confidence: str | None
+
+
+def _int_or_zero(value: Any) -> int:
+    count = _count_or_none(value)
+    return 0 if count is None else count
+
+
+@dataclass
+class FetchOutput:
+    """One answer across all the pages."""
+
+    text: str
+    """The answer in prose; with a schema, a short summary of it."""
+
+    structured: dict[str, Any] | None
+    """Matches ``output["schema"]``; None without one."""
+
+    based_on: list[int]
+    """Indexes of the results the answer used."""
+
+    grounding: list[Grounding]
+
+    @classmethod
+    def _from_json(cls, data: Any) -> FetchOutput | None:
+        if not isinstance(data, dict):
+            return None
+        based_on = data.get("based_on")
+        return cls(
+            text=_str_or_empty(data.get("text")),
+            structured=_object_or_none(data.get("structured")),
+            based_on=[
+                n for n in (_count_or_none(item) for item in based_on) if n is not None
+            ]
+            if isinstance(based_on, list)
+            else [],
+            grounding=[
+                Grounding(
+                    field=_str_or_empty(item.get("field")),
+                    citations=[
+                        Citation(
+                            index=_int_or_zero(cite.get("index")),
+                            excerpts=[
+                                e
+                                for e in cite.get("excerpts") or []
+                                if isinstance(e, str)
+                            ]
+                            if isinstance(cite.get("excerpts"), list)
+                            else [],
+                            verified=cite.get("verified") is True,
+                        )
+                        for cite in _objects(item.get("citations"))
+                    ],
+                    reasoning=_str_kept_or_none(item.get("reasoning")),
+                    confidence=_str_kept_or_none(item.get("confidence")),
+                )
+                for item in _objects(data.get("grounding"))
+            ],
+        )
+
+
+@dataclass
+class FetchSummary:
+    """How many URLs were asked for, read and failed."""
+
+    requested: int = 0
+    succeeded: int = 0
+    failed: int = 0
+
+
+@dataclass
+class FetchResponse:
+    """What :meth:`Keenable.fetch_many` returns: one result per URL, in order."""
+
     request_id: str | None = None
     """The API's id for this request. Quote it when reporting a problem."""
 
-    latency_ms: int | None = None
+    status: str | None = None
+    """``"ok"`` (every URL read), ``"partial"`` or ``"failed"``."""
+
+    summary: FetchSummary = field(default_factory=FetchSummary)
+    resolved: dict[str, str] = field(default_factory=dict)
+    """Each relative or date-only instant in the request, as the exact time
+    used, keyed by its JSON Pointer."""
+
+    results: list[FetchResult] = field(default_factory=list)
+    output: FetchOutput | None = None
+    notices: list[FetchNotice] = field(default_factory=list)
+    """For the model: how the results were produced."""
+
+    warnings: list[FetchNotice] = field(default_factory=list)
+    """For the developer: request hygiene; never changes results."""
+
     session_id: str | None = None
+    latency_ms: int | None = None
+    usage: dict[str, Any] | None = field(default=None, repr=False)
+    """What the call cost, as the API sent it."""
+
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
     def _from_json(
         cls, data: dict[str, Any], request_id: str | None = None
     ) -> FetchResponse:
+        summary = _object_or_none(data.get("summary")) or {}
+        resolved = _object_or_none(data.get("resolved")) or {}
         return cls(
+            request_id=_str_or_none(data.get("request_id")) or request_id,
+            status=_str_kept_or_none(data.get("status")),
+            summary=FetchSummary(
+                requested=_int_or_zero(summary.get("requested")),
+                succeeded=_int_or_zero(summary.get("succeeded")),
+                failed=_int_or_zero(summary.get("failed")),
+            ),
+            resolved={k: v for k, v in resolved.items() if isinstance(v, str)},
             results=[
-                FetchResult._from_json(item) for item in _objects(data.get("results"))
+                FetchResult._from_json(item, position)
+                for position, item in enumerate(_objects(data.get("results")))
+            ],
+            output=FetchOutput._from_json(data.get("output")),
+            notices=[
+                FetchNotice._from_json(item) for item in _objects(data.get("notices"))
             ],
             warnings=[
-                FetchWarning._from_json(item) for item in _objects(data.get("warnings"))
+                FetchNotice._from_json(item) for item in _objects(data.get("warnings"))
             ],
-            request_id=_str_or_none(data.get("request_id")) or request_id,
-            latency_ms=_int_from_zero_or_none(data.get("latency_ms")),
             session_id=_str_or_none(data.get("session_id")),
-            raw=data,
-        )
-
-
-@dataclass
-class FetchStreamItem:
-    """One page from :meth:`Keenable.fetch_many_stream`, as soon as it is read.
-
-    ``index`` is its position in the ``urls`` given, so ``result`` is the
-    entry for ``urls[index]``. Items arrive in the order pages finish, not in
-    list order.
-    """
-
-    index: int
-    result: FetchResult
-
-
-@dataclass
-class FetchStreamSummary:
-    """The stream's final line: what a whole :meth:`Keenable.fetch_many` call
-    returns besides its results."""
-
-    warnings: list[FetchWarning] = field(default_factory=list)
-    request_id: str | None = None
-    """The API's id for this request. Quote it when reporting a problem."""
-
-    latency_ms: int | None = None
-    session_id: str | None = None
-    usage: dict[str, Any] | None = None
-    """What the call cost, as the API sent it; None without a key."""
-
-    raw: dict[str, Any] = field(default_factory=dict, repr=False)
-
-    @classmethod
-    def _from_json(
-        cls, data: dict[str, Any], request_id: str | None = None
-    ) -> FetchStreamSummary:
-        usage = data.get("usage")
-        return cls(
-            warnings=[
-                FetchWarning._from_json(item) for item in _objects(data.get("warnings"))
-            ],
-            request_id=_str_or_none(data.get("request_id")) or request_id,
-            latency_ms=_int_from_zero_or_none(data.get("latency_ms")),
-            session_id=_str_or_none(data.get("session_id")),
-            usage=usage if isinstance(usage, dict) else None,
+            latency_ms=_count_or_none(data.get("latency_ms")),
+            usage=_object_or_none(data.get("usage")),
             raw=data,
         )

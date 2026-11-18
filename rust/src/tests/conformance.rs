@@ -12,7 +12,10 @@ use super::server::{deadline_server, start, Reply, Script, Server};
 use super::*;
 use crate::retry::retry_after_at;
 use crate::test_hooks::{start_recording, take_waits};
-use crate::{Error, FetchOptions, Options, RequestOptions, SearchOptions};
+use crate::{
+    Error, FetchContentOptions, FetchManyOptions, FetchOptions, FetchOutputOptions,
+    FetchRetrievalOptions, Options, RequestOptions, SearchOptions,
+};
 
 fn fixture() -> Value {
     load_fixture("conformance.json")
@@ -634,4 +637,137 @@ async fn deadline() {
         }
     }
     report("deadline", failures);
+}
+
+fn fetch_many_group<T: Default>(
+    v: &Value,
+    case: &str,
+    failures: &mut Vec<String>,
+    mut set: impl FnMut(&mut T, &str, &Value) -> bool,
+) -> Option<T> {
+    let fields = v.as_object()?;
+    let mut group = T::default();
+    for (wire, value) in fields {
+        if !set(&mut group, wire, value) {
+            failures.push(format!("{case}: no Rust mapping for {wire}"));
+        }
+    }
+    Some(group)
+}
+
+fn fetch_many_options(case: &Value, failures: &mut Vec<String>) -> FetchManyOptions {
+    let n = name(case);
+    let mut opts = FetchManyOptions::default();
+    let u32_of = |v: &Value| v.as_u64().map(|n| n as u32);
+    let schema = |v: &Value| v.as_object().cloned();
+    for (wire, v) in case["options"].as_object().unwrap() {
+        match wire.as_str() {
+            "content" => {
+                opts.content =
+                    fetch_many_group(v, &n, failures, |g: &mut FetchContentOptions, k, v| {
+                        match k {
+                            "max_chars" => g.max_chars = u32_of(v),
+                            "objective" => g.objective = opt_string(v),
+                            "schema" => g.schema = schema(v),
+                            "links" => g.links = u32_of(v),
+                            "images" => g.images = u32_of(v),
+                            _ => return false,
+                        }
+                        true
+                    })
+            }
+            "retrieval" => {
+                opts.retrieval =
+                    fetch_many_group(v, &n, failures, |g: &mut FetchRetrievalOptions, k, v| {
+                        match k {
+                            "max_age_hours" => g.max_age_hours = v.as_f64(),
+                            "as_of" => g.as_of = opt_string(v),
+                            _ => return false,
+                        }
+                        true
+                    })
+            }
+            "output" => {
+                opts.output =
+                    fetch_many_group(v, &n, failures, |g: &mut FetchOutputOptions, k, v| {
+                        match k {
+                            "prompt" => g.prompt = opt_string(v),
+                            "schema" => g.schema = schema(v),
+                            _ => return false,
+                        }
+                        true
+                    })
+            }
+            "deadline_ms" => opts.deadline_ms = u32_of(v),
+            "session_id" => opts.session_id = opt_string(v),
+            other => failures.push(format!("{n}: no Rust mapping for {other}")),
+        }
+    }
+    opts
+}
+
+fn url_list(case: &Value) -> Vec<String> {
+    serde_json::from_value(case["urls"].clone()).unwrap()
+}
+
+#[tokio::test]
+async fn fetch_many_body() {
+    let fixture = fixture();
+    let mut failures = Vec::new();
+    for case in cases(&fixture, "fetch_many_body") {
+        if skipped(case).is_some() {
+            continue;
+        }
+        let opts = fetch_many_options(case, &mut failures);
+        let server = start(Script::Replies(vec![Reply::new(200, r#"{"results":[]}"#)])).await;
+        let got = keyed(&server).fetch_many_with(&url_list(case), &opts).await;
+        let seen = server.requests();
+        if let [one] = seen.as_slice() {
+            if one.path != "/v1/fetch" {
+                failures.push(format!("{}: path {}", name(case), one.path));
+            }
+        }
+        let sent = only_body(&server);
+        if got.is_err() || sent != case["sent"] {
+            failures.push(format!("{}: {:?} sent {sent}", name(case), got.err()));
+        }
+    }
+    report("fetch_many_body", failures);
+}
+
+#[tokio::test]
+async fn fetch_many_responses() {
+    let fixture = fixture();
+    let mut failures = Vec::new();
+    for case in cases(&fixture, "fetch_many_responses") {
+        if skipped(case).is_some() {
+            continue;
+        }
+        let server = start(Script::Replies(vec![reply_for(case)])).await;
+        match keyed(&server).fetch_many(&url_list(case)).await {
+            Ok(r) => {
+                let got = serde_json::to_value(&r).unwrap();
+                if got != case["expect"] {
+                    failures.push(format!(
+                        "{}: got {got}, want {}",
+                        name(case),
+                        case["expect"]
+                    ));
+                }
+            }
+            Err(e) => failures.push(format!("{}: {e:?}", name(case))),
+        }
+    }
+    report("fetch_many_responses", failures);
+}
+
+#[tokio::test]
+async fn fetch_many_refuses_a_private_url_and_an_empty_list() {
+    let server = start(Script::Replies(vec![Reply::new(200, "{}")])).await;
+    let client = keyed(&server);
+    let none: [&str; 0] = [];
+    assert!(is_invalid(&client.fetch_many(&none).await));
+    let mixed = ["https://example.com/", "http://127.0.0.1/"];
+    assert!(client.fetch_many(&mixed).await.is_err());
+    assert_eq!(server.count(), 0);
 }

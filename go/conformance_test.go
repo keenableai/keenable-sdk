@@ -138,18 +138,6 @@ type conformance struct {
 		Expect  map[string]any    `json:"expect"`
 		Skip    map[string]string `json:"skip"`
 	} `json:"fetch_many_responses"`
-	FetchManyStream []struct {
-		Name    string            `json:"name"`
-		URLs    any               `json:"urls"`
-		Headers map[string]string `json:"headers"`
-		Chunks  []string          `json:"chunks"`
-		Expect  struct {
-			Items   []any          `json:"items"`
-			Summary map[string]any `json:"summary"`
-			Error   map[string]any `json:"error"`
-		} `json:"expect"`
-		Skip map[string]string `json:"skip"`
-	} `json:"fetch_many_stream"`
 	Deadline struct {
 		Slack float64 `json:"slack"`
 		Cases []struct {
@@ -766,6 +754,68 @@ func stringList(t *testing.T, v any) []string {
 	return out
 }
 
+// fetchManyOptions maps a case's option groups onto FetchManyOptions.
+func fetchManyOptions(t *testing.T, options map[string]any) *keenable.FetchManyOptions {
+	t.Helper()
+	opts := &keenable.FetchManyOptions{}
+	for name, v := range options {
+		switch name {
+		case "content":
+			c := &keenable.FetchContentOptions{}
+			for field, value := range v.(map[string]any) {
+				switch field {
+				case "max_chars":
+					c.MaxChars = keenable.Ptr(int(value.(float64)))
+				case "objective":
+					c.Objective = value.(string)
+				case "schema":
+					c.Schema = value.(map[string]any)
+				case "links":
+					c.Links = int(value.(float64))
+				case "images":
+					c.Images = int(value.(float64))
+				default:
+					t.Fatalf("no Go mapping for content.%s", field)
+				}
+			}
+			opts.Content = c
+		case "retrieval":
+			r := &keenable.FetchRetrievalOptions{}
+			for field, value := range v.(map[string]any) {
+				switch field {
+				case "max_age_hours":
+					r.MaxAgeHours = keenable.Ptr(value.(float64))
+				case "as_of":
+					r.AsOf = value.(string)
+				default:
+					t.Fatalf("no Go mapping for retrieval.%s", field)
+				}
+			}
+			opts.Retrieval = r
+		case "output":
+			o := &keenable.FetchOutputOptions{}
+			for field, value := range v.(map[string]any) {
+				switch field {
+				case "prompt":
+					o.Prompt = value.(string)
+				case "schema":
+					o.Schema = value.(map[string]any)
+				default:
+					t.Fatalf("no Go mapping for output.%s", field)
+				}
+			}
+			opts.Output = o
+		case "deadline_ms":
+			opts.DeadlineMS = int(v.(float64))
+		case "session_id":
+			opts.SessionID = v.(string)
+		default:
+			t.Fatalf("no Go mapping for %q", name)
+		}
+	}
+	return opts
+}
+
 func TestConformanceFetchManyBody(t *testing.T) {
 	for _, tc := range loadConformance(t).FetchManyBody {
 		t.Run(tc.Name, func(t *testing.T) {
@@ -773,57 +823,9 @@ func TestConformanceFetchManyBody(t *testing.T) {
 			if why, ok := tc.Skip["go"]; ok {
 				t.Skip(why)
 			}
-			opts := &keenable.FetchManyOptions{}
-			for name, v := range tc.Options {
-				str, _ := v.(string)
-				switch name {
-				case "text":
-					opts.NoText = !v.(bool)
-				case "max_chars":
-					opts.MaxChars = int(v.(float64))
-				case "offset":
-					opts.Offset = int(v.(float64))
-				case "include_sections":
-					opts.IncludeSections = stringList(t, v)
-				case "exclude_sections":
-					opts.ExcludeSections = stringList(t, v)
-				case "verbosity":
-					opts.Verbosity = str
-				case "summary":
-					opts.Summary = str
-				case "output_schema":
-					opts.OutputSchema = v.(map[string]any)
-				case "highlights":
-					opts.Highlights = v.(bool)
-				case "highlights_query":
-					opts.HighlightsQuery = str
-				case "highlights_max_chars":
-					opts.HighlightsMaxChars = int(v.(float64))
-				case "links":
-					opts.Links = int(v.(float64))
-				case "images":
-					opts.Images = int(v.(float64))
-				case "subpages":
-					opts.Subpages = int(v.(float64))
-				case "subpages_target":
-					opts.SubpagesTarget = stringList(t, v)
-				case "max_age":
-					opts.MaxAge = str
-				case "cache_only":
-					opts.CacheOnly = v.(bool)
-				case "page_timeout":
-					opts.PageTimeout = str
-				case "session_id":
-					opts.SessionID = str
-				case "end_user_id":
-					opts.EndUserID = str
-				default:
-					t.Fatalf("no Go mapping for %q", name)
-				}
-			}
 			key := "k"
 			c, seen := start(t, okBoth, &keenable.Options{APIKey: &key})
-			if _, err := c.FetchMany(context.Background(), stringList(t, tc.URLs), opts); err != nil {
+			if _, err := c.FetchMany(context.Background(), stringList(t, tc.URLs), fetchManyOptions(t, tc.Options)); err != nil {
 				t.Fatal(err)
 			}
 			got := one(t, seen)
@@ -855,6 +857,13 @@ func emptyToNil(s string) any {
 	return s
 }
 
+func mapOrNil(m map[string]any) any {
+	if m == nil {
+		return nil
+	}
+	return m
+}
+
 func TestConformanceFetchManyResponses(t *testing.T) {
 	for _, tc := range loadConformance(t).FetchManyResponses {
 		t.Run(tc.Name, func(t *testing.T) {
@@ -870,26 +879,40 @@ func TestConformanceFetchManyResponses(t *testing.T) {
 			for _, r := range resp.Results {
 				results = append(results, plainFetchResult(r))
 			}
-			warnings := []any{}
-			for _, w := range resp.Warnings {
-				warnings = append(warnings, map[string]any{"code": w.Code, "path": w.Path, "message": w.Message})
+			notices := func(list []keenable.FetchNotice) []any {
+				out := []any{}
+				for _, w := range list {
+					out = append(out, map[string]any{"code": w.Code, "path": ptrOrNil(w.Path), "message": w.Message})
+				}
+				return out
+			}
+			var output any
+			if o := resp.Output; o != nil {
+				grounding := []any{}
+				for _, g := range o.Grounding {
+					grounding = append(grounding, map[string]any{
+						"field": g.Field, "citations": g.Citations,
+						"reasoning": ptrOrNil(g.Reasoning), "confidence": ptrOrNil(g.Confidence),
+					})
+				}
+				output = map[string]any{
+					"text": o.Text, "structured": mapOrNil(o.Structured),
+					"based_on": o.BasedOn, "grounding": grounding,
+				}
 			}
 			got := map[string]any{
 				"request_id": emptyToNil(resp.RequestID),
-				"latency_ms": ptrOrNil(resp.LatencyMS),
-				"session_id": ptrOrNil(resp.SessionID),
+				"status":     ptrOrNil(resp.Status),
+				"summary":    resp.Summary,
+				"resolved":   resp.Resolved,
 				"results":    results,
-				"warnings":   warnings,
+				"output":     output,
+				"notices":    notices(resp.Notices),
+				"warnings":   notices(resp.Warnings),
+				"session_id": ptrOrNil(resp.SessionID),
+				"latency_ms": ptrOrNil(resp.LatencyMS),
 			}
-			encoded, err := json.Marshal(got)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var normalized map[string]any
-			if err := json.Unmarshal(encoded, &normalized); err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(normalized, tc.Expect) {
+			if normalized := normalize(t, got); !reflect.DeepEqual(normalized, normalize(t, tc.Expect)) {
 				t.Fatalf("got %v, want %v", normalized, tc.Expect)
 			}
 		})
@@ -899,39 +922,47 @@ func TestConformanceFetchManyResponses(t *testing.T) {
 // plainFetchResult is a result in the fixture's shape, before JSON
 // normalisation.
 func plainFetchResult(r keenable.FetchResult) map[string]any {
-	links := []any{}
-	for _, l := range r.Links {
-		links = append(links, map[string]any{"url": l.URL, "text": ptrOrNil(l.Text)})
+	var links, images any
+	if r.Content.Links != nil {
+		list := []any{}
+		for _, l := range r.Content.Links {
+			list = append(list, map[string]any{"url": l.URL, "text": ptrOrNil(l.Text)})
+		}
+		links = list
 	}
-	images := []any{}
-	for _, i := range r.Images {
-		images = append(images, map[string]any{"url": i.URL, "alt": ptrOrNil(i.Alt)})
+	if r.Content.Images != nil {
+		list := []any{}
+		for _, i := range r.Content.Images {
+			list = append(list, map[string]any{"url": i.URL, "alt": ptrOrNil(i.Alt)})
+		}
+		images = list
 	}
 	var resultErr any
-	if r.Error != nil {
+	if e := r.Error; e != nil {
 		resultErr = map[string]any{
-			"code": r.Error.Code, "message": r.Error.Message,
-			"retryable": r.Error.Retryable, "http_status": ptrOrNil(r.Error.HTTPStatus),
+			"type": e.Type, "code": e.Code, "message": e.Message, "fix": ptrOrNil(e.Fix),
+			"retryable": e.Retryable, "upstream_status": ptrOrNil(e.UpstreamStatus),
 		}
 	}
-	subpages := []any{}
-	for _, sub := range r.Subpages {
-		subpages = append(subpages, plainFetchResult(sub))
-	}
 	return map[string]any{
-		"url":          r.URL,
-		"title":        ptrOrNil(r.Title),
-		"published_at": ptrOrNil(r.PublishedAt),
-		"image":        ptrOrNil(r.Image),
-		"favicon":      ptrOrNil(r.Favicon),
-		"text":         ptrOrNil(r.Text),
-		"next_offset":  ptrOrNil(r.NextOffset),
-		"summary":      r.Summary,
-		"highlights":   r.Highlights,
-		"links":        links,
-		"images":       images,
-		"error":        resultErr,
-		"subpages":     subpages,
+		"index":          r.Index,
+		"requested_url":  r.RequestedURL,
+		"url":            r.URL,
+		"status":         r.Status,
+		"title":          ptrOrNil(r.Title),
+		"published_at":   ptrOrNil(r.PublishedAt),
+		"acquired_at":    ptrOrNil(r.AcquiredAt),
+		"image":          ptrOrNil(r.Image),
+		"favicon":        ptrOrNil(r.Favicon),
+		"retrieved_from": ptrOrNil(r.RetrievedFrom),
+		"error":          resultErr,
+		"content": map[string]any{
+			"text":        ptrOrNil(r.Content.Text),
+			"total_chars": ptrOrNil(r.Content.TotalChars),
+			"answer":      mapOrNil(r.Content.Answer),
+			"links":       links,
+			"images":      images,
+		},
 	}
 }
 
@@ -949,151 +980,6 @@ func normalize(t *testing.T, v any) any {
 	return out
 }
 
-// chunks answers with an NDJSON body written in the given pieces, flushed one
-// by one, and records the request's Accept header.
-func chunks(pieces []string, header map[string]string, accept *atomic.Value) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		accept.Store(r.Header.Get("Accept"))
-		for k, v := range header {
-			w.Header().Set(k, v)
-		}
-		w.Header().Set("Content-Type", "application/x-ndjson")
-		w.WriteHeader(200)
-		for _, p := range pieces {
-			_, _ = w.Write([]byte(p))
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
-	}
-}
-
-func TestConformanceFetchManyStream(t *testing.T) {
-	for _, tc := range loadConformance(t).FetchManyStream {
-		t.Run(tc.Name, func(t *testing.T) {
-			if why, ok := tc.Skip["go"]; ok {
-				t.Skip(why)
-			}
-			var accept atomic.Value
-			c, n := counted(t, nil, chunks(tc.Chunks, tc.Headers, &accept))
-			stream, err := c.FetchManyStream(context.Background(), stringList(t, tc.URLs), nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer stream.Close()
-			items := []any{}
-			for stream.Next() {
-				item := stream.Item()
-				items = append(items, map[string]any{"index": item.Index, "result": plainFetchResult(item.Result)})
-			}
-			if n.Load() != 1 || accept.Load() != "application/x-ndjson" {
-				t.Fatalf("requests=%d accept=%v", n.Load(), accept.Load())
-			}
-			if got := normalize(t, items); !reflect.DeepEqual(got, normalize(t, tc.Expect.Items)) {
-				t.Fatalf("items %v, want %v", got, tc.Expect.Items)
-			}
-			if tc.Expect.Summary != nil {
-				if stream.Err() != nil {
-					t.Fatal(stream.Err())
-				}
-				s := stream.Summary()
-				warnings := []any{}
-				for _, w := range s.Warnings {
-					warnings = append(warnings, map[string]any{"code": w.Code, "path": w.Path, "message": w.Message})
-				}
-				var usage any
-				if s.Usage != nil {
-					usage = s.Usage
-				}
-				got := normalize(t, map[string]any{
-					"request_id": emptyToNil(s.RequestID),
-					"latency_ms": ptrOrNil(s.LatencyMS),
-					"session_id": ptrOrNil(s.SessionID),
-					"warnings":   warnings,
-					"usage":      usage,
-				})
-				if !reflect.DeepEqual(got, normalize(t, tc.Expect.Summary)) {
-					t.Fatalf("summary %v, want %v", got, tc.Expect.Summary)
-				}
-				return
-			}
-			want := tc.Expect.Error
-			if stream.Summary() != nil {
-				t.Fatal("a failed stream has a summary")
-			}
-			if want["kind"] == "connection" {
-				var conn *keenable.ConnectionError
-				if !errors.As(stream.Err(), &conn) {
-					t.Fatalf("err %v, want a ConnectionError", stream.Err())
-				}
-				return
-			}
-			var api *keenable.APIError
-			if !errors.As(stream.Err(), &api) {
-				t.Fatalf("err %v, want an APIError", stream.Err())
-			}
-			if code, ok := want["code"]; ok && api.APICode != code {
-				t.Fatalf("code %q, want %v", api.APICode, code)
-			}
-			if r, ok := want["retryable"]; ok && (api.Retryable == nil || *api.Retryable != r) {
-				t.Fatalf("retryable %v, want %v", api.Retryable, r)
-			}
-			if id, ok := want["request_id"]; ok && api.RequestID != id {
-				t.Fatalf("request id %q, want %v", api.RequestID, id)
-			}
-			if msg, ok := want["message"].(string); ok && !strings.Contains(api.Error(), msg) {
-				t.Fatalf("message %q, want it to contain %q", api.Error(), msg)
-			}
-		})
-	}
-}
-
-func TestFetchManyStreamReturnsAnErrorStatusBeforeAnyLine(t *testing.T) {
-	c, _ := counted(t, nil, raw(402, `{"code":"insufficient_credits","error":"Insufficient credits"}`))
-	stream, err := c.FetchManyStream(context.Background(), []string{"https://e.com/a"}, nil)
-	var credits *keenable.InsufficientCreditsError
-	if stream != nil || !errors.As(err, &credits) {
-		t.Fatalf("stream=%v err=%v, want an InsufficientCreditsError", stream, err)
-	}
-}
-
-func TestFetchManyStreamRetriesA429BeforeTheStreamOpens(t *testing.T) {
-	var calls atomic.Int32
-	var accept atomic.Value
-	ok := chunks([]string{"{\"index\":0,\"url\":\"https://e.com/a\"}\n{\"done\":true}\n"}, nil, &accept)
-	one := 1
-	c, _ := counted(t, &keenable.Options{MaxRetries: &one}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if calls.Add(1) == 1 {
-			raw(429, `{"code":"x"}`, "Retry-After", "0")(w, r)
-			return
-		}
-		ok(w, r)
-	}))
-	stream, err := c.FetchManyStream(context.Background(), []string{"https://e.com/a"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer stream.Close()
-	got := []int{}
-	for stream.Next() {
-		got = append(got, stream.Item().Index)
-	}
-	if stream.Err() != nil || !reflect.DeepEqual(got, []int{0}) || calls.Load() != 2 {
-		t.Fatalf("items=%v err=%v calls=%d", got, stream.Err(), calls.Load())
-	}
-}
-
-func TestFetchManyStreamRefusesAPrivateURLBeforeSending(t *testing.T) {
-	key := "k"
-	c, seen := start(t, okBoth, &keenable.Options{APIKey: &key})
-	if _, err := c.FetchManyStream(context.Background(), []string{"http://127.0.0.1/"}, nil); !isInvalid(err) {
-		t.Fatalf("err %v, want an InvalidRequestError", err)
-	}
-	if len(*seen) != 0 {
-		t.Fatalf("sent %d requests, want none", len(*seen))
-	}
-}
-
 func TestFetchManyRefusesAPrivateURLAndAnEmptyList(t *testing.T) {
 	key := "k"
 	c, seen := start(t, okBoth, &keenable.Options{APIKey: &key})
@@ -1102,17 +988,6 @@ func TestFetchManyRefusesAPrivateURLAndAnEmptyList(t *testing.T) {
 	}
 	if _, err := c.FetchMany(context.Background(), nil, nil); err == nil {
 		t.Fatal("an empty list was not refused")
-	}
-	both := &keenable.FetchManyOptions{IncludeSections: []string{"body"}, ExcludeSections: []string{"footer"}}
-	if _, err := c.FetchMany(context.Background(), []string{"https://example.com/"}, both); err == nil {
-		t.Fatal("IncludeSections with ExcludeSections was not refused")
-	}
-	cacheOnly := &keenable.FetchManyOptions{CacheOnly: true, MaxAge: "0s"}
-	if _, err := c.FetchMany(context.Background(), []string{"https://example.com/"}, cacheOnly); err == nil {
-		t.Fatal("CacheOnly with MaxAge 0s was not refused")
-	}
-	if _, err := c.FetchManyStream(context.Background(), []string{"https://example.com/"}, cacheOnly); err == nil {
-		t.Fatal("FetchManyStream: CacheOnly with MaxAge 0s was not refused")
 	}
 	if len(*seen) != 0 {
 		t.Fatalf("sent %d requests, want none", len(*seen))

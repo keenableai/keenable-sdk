@@ -228,34 +228,25 @@ function fetchParams(): Obj[] {
   });
 }
 
-const FETCH_MANY_OPTIONS = new Set([
-  "text",
-  "max_chars",
-  "offset",
-  "include_sections",
-  "exclude_sections",
-  "verbosity",
-  "summary",
-  "output_schema",
-  "highlights",
-  "highlights_query",
-  "highlights_max_chars",
-  "links",
-  "images",
-  "subpages",
-  "subpages_target",
-  "max_age",
-  "cache_only",
-  "page_timeout",
-  "session_id",
-  "end_user_id",
-]);
+const FETCH_MANY_OPTIONS: Record<string, Set<string> | null> = {
+  content: new Set(["max_chars", "objective", "schema", "links", "images"]),
+  retrieval: new Set(["max_age_hours", "as_of"]),
+  output: new Set(["prompt", "schema"]),
+  deadline_ms: null,
+  session_id: null,
+};
 
 function fetchManyBodies(): Obj[] {
   return (load("fetch-many.json").body as Obj[]).map((item) => {
     const name = item.name as string;
-    for (const key of Object.keys(item.options as Obj)) {
-      if (!FETCH_MANY_OPTIONS.has(key)) fail(`fetch-many body ${name}: unknown option ${key}`);
+    for (const [key, value] of Object.entries(item.options as Obj)) {
+      if (!(key in FETCH_MANY_OPTIONS)) fail(`fetch-many body ${name}: unknown option ${key}`);
+      const fields = FETCH_MANY_OPTIONS[key] as Set<string> | null;
+      if (fields === null) continue;
+      if (typeof value !== "object" || value === null || Array.isArray(value)) fail(`fetch-many body ${name}: ${key} must be an object`);
+      for (const field of Object.keys(value as Obj)) {
+        if (!fields.has(field)) fail(`fetch-many body ${name}: unknown option ${key}.${field}`);
+      }
     }
     return {
       name,
@@ -277,26 +268,6 @@ function fetchManyResponses(): Obj[] {
       headers: headers(item),
       body: bodyText(item, `fetch-many responses ${name}`),
       expect: item.expect as Obj,
-      skip: (item.skip as Obj | undefined) ?? {},
-    };
-  });
-}
-
-function fetchManyStreams(): Obj[] {
-  return (load("fetch-many.json").stream as Obj[]).map((item) => {
-    const name = item.name as string;
-    const chunks = item.chunks as Json;
-    if (!Array.isArray(chunks) || chunks.length === 0 || !chunks.every((chunk) => typeof chunk === "string")) {
-      fail(`fetch-many stream ${name}: "chunks" must be a non-empty list of strings`);
-    }
-    const expect = item.expect as Obj;
-    if (("summary" in expect) === ("error" in expect)) fail(`fetch-many stream ${name}: expect exactly one of "summary" and "error"`);
-    return {
-      name,
-      urls: item.urls as Json,
-      headers: headers(item),
-      chunks,
-      expect,
       skip: (item.skip as Obj | undefined) ?? {},
     };
   });
@@ -360,7 +331,6 @@ export function buildConformance(): string {
     tool_call: toolCalls(),
     fetch_many_body: fetchManyBodies(),
     fetch_many_responses: fetchManyResponses(),
-    fetch_many_stream: fetchManyStreams(),
     deadline: deadline(),
   };
   for (const [section, cases] of Object.entries(fixture)) {

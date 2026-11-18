@@ -22,6 +22,7 @@
 mod client;
 mod context_clean;
 mod error;
+mod fetch_many;
 mod guard;
 mod json;
 mod models;
@@ -40,6 +41,11 @@ pub use client::{
 pub use error::{
     codes, types, ApiError, ConnectionError, Error, InvalidRequestError, RateLimitError,
     RateLimitInfo, Result,
+};
+pub use fetch_many::{
+    Citation, FetchContent, FetchContentOptions, FetchError, FetchImage, FetchLink,
+    FetchManyOptions, FetchNotice, FetchOutput, FetchOutputOptions, FetchResponse, FetchResult,
+    FetchRetrievalOptions, FetchSummary, Grounding,
 };
 pub use models::{
     ContextOptions, Page, SearchResponse, SearchResult, DEFAULT_CONTEXT_MAX_CHARS,

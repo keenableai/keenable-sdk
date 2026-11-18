@@ -213,15 +213,12 @@ nothing.
 `fetch_many(urls, options)` sends one JSON body to `POST /v1/fetch`
 (`/v1/fetch/public` without a key). Every URL is checked against the fetch()
 target rules above before anything is sent; one refused URL refuses the call.
-An empty list is refused. The body and the success-body rules are in
+An empty list is refused. The options are the API's groups, `content`,
+`retrieval` and `output`, plus `deadline_ms` and `session_id`, each in the
+SDK's own naming style. A group that is given is sent, even when empty
+(`output: {}` asks for a prose answer); an unset field is not sent; an empty
+string is unset; `0` is sent where it is a value (`max_chars`,
+`max_age_hours`). The SDK sends conflicting options (`max_age_hours` with
+`as_of`) for the API to reject. The success-body rules are in
 `cases/fetch-many.json`'s `_comment`. A page that failed is its own entry,
 with `error` set, never an exception.
-
-## fetch_many_stream() (`fetch_many_stream`)
-
-`fetch_many_stream(urls, options)` sends the same body with
-`Accept: application/x-ndjson` and yields `(index, result)` items as the API
-sends their lines, then exposes the final line as a summary. A final line with
-an `error` raises the API error after the items before it; a stream that ends
-without a final line raises the connection error. The rules are in
-`cases/fetch-many.json`'s `_comment`.

@@ -5,32 +5,27 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
-- `fetch_many()` and `fetch_many_stream()` take `include_sections`,
-  `exclude_sections` and `verbosity` to pick which parts of each page the text
-  holds (`banner`, `header`, `navigation`, `metadata`, `body`, `sidebar`,
-  `footer`). Sending both `include_sections` and `exclude_sections` raises
-  `KeenableInvalidRequestError` before sending.
-- `fetch_many()` and `fetch_many_stream()` take `cache_only=True` to return
-  only stored copies and never contact the site; a page with no stored copy
-  gets the error `not_cached` and is not billed. `cache_only=True` with
-  `max_age="0s"` raises `KeenableInvalidRequestError` before sending.
-  `subpages` now goes up to 100 per URL.
-- `fetch_many()` (sync and async) reads up to 100 pages in one call with
-  `POST /v1/fetch`: per-page `text` (with `max_chars` and `offset` for paging),
-  a `summary` with an optional `output_schema` for JSON in your shape,
-  `highlights`, `links` and `images`, `max_age` and `page_timeout`, plus
-  `session_id` and `end_user_id`. `results[i]` is the entry
-  for `urls[i]`; a failed page has its `error` set, not an exception. Keyless calls take up to 20 URLs.
+- `fetch_many(urls, *, content=None, retrieval=None, output=None,
+  deadline_ms=None, session_id=None)` (sync and async) reads up to 100 pages
+  in one call with `POST /v1/fetch` (keyless calls take up to 20). The option
+  groups mirror the API:
+  - `content`: `max_chars` (default 50,000; `0` returns metadata only),
+    `objective` (up to 1,000 characters), `schema` (filled per page into
+    `result.content.answer`), `links`, `images`.
+  - `retrieval`: `max_age_hours` (0 to 720, fractions allowed; `0` always
+    fetches live; leave it out to take the stored copy), or `as_of` (`"P0D"`
+    for stored copies only).
+  - `output`: `prompt` and `schema` for one answer across the pages; `{}`
+    asks for a prose answer. It comes back in `response.output` (`text`,
+    `structured`, `based_on`, `grounding` with verified citations).
+  `results[i]` is the entry for `urls[i]`, with the page in `result.content`
+  (`text`, `total_chars`, `answer`, `links`, `images`) and `retrieved_from`; a
+  failed page has its `error` set, not an exception. An unset option is not
+  sent, an empty string is unset, and `0` is sent where it is a value.
   Preview: it works once `POST /v1/fetch` is enabled for your organization.
 - `fetch()` keeps working and still calls `GET /v1/fetch`; it is deprecated in
   favour of `fetch_many()` and will be removed after the API retires
   `GET /v1/fetch` (announced with 90 days' notice).
-- `fetch_many()` takes `subpages` and `subpages_target` to also read
-  same-site pages linked from each URL; each result has `subpages`.
-- `fetch_many_stream()` (sync and async) yields each page as a
-  `FetchStreamItem(index, result)` as soon as it is read, over
-  `Accept: application/x-ndjson`; `stream.summary` holds the request id,
-  warnings, usage and latency after the last item.
 - **Added:** `objective` on `search()` (sync and async): what the search is for, in two or three natural sentences, up to 1,000 characters. Left out of the request when unset or empty. The API validates and logs it; it does not change results or price. The search tool offers it to a model.
 
 - **Changed:** a numeric `timeout` is now the deadline for the whole attempt,

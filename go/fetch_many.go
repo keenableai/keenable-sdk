@@ -4,70 +4,77 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"strings"
 )
 
-// FetchManyOptions are the options for [Client.FetchMany]. Zero values are
-// unset.
+// Ptr returns a pointer to v, for the options where zero is a value, such as
+// FetchContentOptions.MaxChars (0 asks for metadata only) and
+// FetchRetrievalOptions.MaxAgeHours (0 asks for a live read).
+func Ptr[T any](v T) *T { return &v }
+
+// FetchContentOptions is what each [Client.FetchMany] result carries. Unset fields
+// are not sent.
+type FetchContentOptions struct {
+	// MaxChars is the most characters of text per page; nil is the API's
+	// default of 50000, and Ptr(0) leaves the text out (metadata only).
+	MaxChars *int
+	// Objective is what you are after on the pages, up to 1,000 characters.
+	// Each page's text becomes the passages about it; with Schema it also
+	// steers the record. Needs an API key. Empty means unset.
+	Objective string
+	// Schema is a JSON Schema (type "object"): each result's Content.Answer
+	// is a record matching it. Needs an API key.
+	Schema map[string]any
+	// Links is the most links per page to return, with their text (1 to
+	// 1000). Zero means unset.
+	Links int
+	// Images is the most images per page to return, with their alt text (1
+	// to 1000). Zero means unset.
+	Images int
+}
+
+// FetchRetrievalOptions says where [Client.FetchMany] page content comes from. Give
+// one of the two.
+type FetchRetrievalOptions struct {
+	// MaxAgeHours uses a stored copy only if it is younger than this many
+	// hours, from 0 to 720 (fractions allowed: 0.25 is 15 minutes). Ptr(0.0)
+	// always reads live. Nil uses a stored copy of any age when there is one.
+	MaxAgeHours *float64
+	// AsOf reads stored data as it stood at this instant, never live: an RFC
+	// 3339 date or date-time, or a duration back from now. "P0D" is the
+	// latest stored copy. Empty means unset.
+	AsOf string
+}
+
+// FetchOutputOptions asks [Client.FetchMany] for one answer across all the pages.
+// An empty FetchOutputOptions asks for a prose answer. Needs an API key.
+type FetchOutputOptions struct {
+	// Prompt is the question to answer across the pages, up to 2,000
+	// characters. Empty means unset.
+	Prompt string
+	// Schema is a JSON Schema (type "object") for a typed answer in
+	// FetchResponse.Output.Structured.
+	Schema map[string]any
+}
+
+// FetchManyOptions are the options for [Client.FetchMany]. Each group is sent
+// when it is not nil.
 type FetchManyOptions struct {
 	// RequestOptions holds this call's timeout, retry budget and headers.
 	RequestOptions
-	// NoText leaves the page text out, for a call that only wants a summary,
-	// highlights, links or images. Text is returned by default.
-	NoText bool
-	// MaxChars is the characters of text per page.
-	MaxChars int
-	// Offset is where in the page text to start, to read a long page in parts
-	// (see FetchResult.NextOffset).
-	Offset int
-	// IncludeSections returns only these parts of each page: "banner",
-	// "header", "navigation", "metadata", "body" (the main content), "sidebar",
-	// "footer". Anything beyond the body is a live read (billed as fetch.live)
-	// and needs an API key; when it isn't possible the page keeps its main
-	// content and the response has a "sections_unavailable" warning.
-	IncludeSections []string
-	// ExcludeSections returns every part except these (from Verbosity, or the
-	// whole page). Not together with IncludeSections.
-	ExcludeSections []string
-	// Verbosity is "compact" (main content, the default), "standard" (plus
-	// metadata and sidebar) or "full" (the whole page).
-	Verbosity string
-	// Summary is an instruction; each result's Summary is the model's answer
-	// for its page. Needs an API key.
-	Summary string
-	// OutputSchema is a JSON Schema (type "object"); the summary is then an
-	// object in that shape.
-	OutputSchema map[string]any
-	// Highlights returns the passages most relevant to HighlightsQuery.
-	Highlights bool
-	// HighlightsQuery is what the highlights should be about.
-	HighlightsQuery string
-	// HighlightsMaxChars is the characters of highlights per page.
-	HighlightsMaxChars int
-	// Links is how many links per page to return, with their text.
-	Links int
-	// Images is how many images per page to return, with their alt text.
-	Images int
-	// Subpages also reads up to this many same-site pages linked from each
-	// URL (1 to 100), with the same content options. Each is billed like a
-	// URL. Needs an API key.
-	Subpages int
-	// SubpagesTarget is words that pick which links to read first.
-	SubpagesTarget []string
-	// MaxAge is the oldest copy accepted, such as "1d"; "0s" always reads the
-	// page live.
-	MaxAge string
-	// CacheOnly never contacts the site: only stored copies are returned. A
-	// page with no stored copy (or none newer than MaxAge) gets the error
-	// not_cached and is not billed. Can't be combined with MaxAge "0s".
-	CacheOnly bool
-	// PageTimeout is how long to wait for each live read, such as "15s".
-	PageTimeout string
+	// Content is what each result carries. Nil: each page's text up to 50,000
+	// characters.
+	Content *FetchContentOptions
+	// Retrieval is where content comes from. Nil: a stored copy of any age
+	// when there is one, else a live read.
+	Retrieval *FetchRetrievalOptions
+	// Output asks for one answer across the pages, in FetchResponse.Output.
+	Output *FetchOutputOptions
+	// DeadlineMS is for the whole call, 1000 to 55000 (30000 without a key);
+	// zero is the API's default of 15000. Pages not read by then fail with
+	// fetch_timeout.
+	DeadlineMS int
 	// SessionID is your id for the agent session these calls belong to.
 	SessionID string
-	// EndUserID is your opaque id for the person the agent serves (no
-	// personal data).
-	EndUserID string
 }
 
 // FetchLink is a link on a fetched page, with the words it was written as.
@@ -82,80 +89,145 @@ type FetchImage struct {
 	Alt *string `json:"alt,omitempty"`
 }
 
-// FetchResult is the entry for one URL given to [Client.FetchMany]:
-// Results[i] is for urls[i]. Only what was asked for is filled; unknown
-// metadata is nil. Error is set when something asked for is missing; when the
-// page could not be read, it is the only field besides URL.
-type FetchResult struct {
-	URL   string  `json:"url"`
-	Title *string `json:"title,omitempty"`
-	// PublishedAt is when the page says it was written, as ISO 8601. An
-	// estimate.
-	PublishedAt *string `json:"published_at,omitempty"`
-	Image       *string `json:"image,omitempty"`
-	Favicon     *string `json:"favicon,omitempty"`
-	// Text is the page as markdown, from Offset up to MaxChars.
+// FetchContent is what one page carries: only the parts asked for. A
+// part asked for but unavailable is nil, with a content_unavailable notice.
+type FetchContent struct {
+	// Text is the page as markdown, cut to MaxChars; with Objective, the
+	// passages about it.
 	Text *string `json:"text,omitempty"`
-	// NextOffset is set only when the page has more text: call again with
-	// Offset set to it. Nil when the text reaches the end.
-	NextOffset *int `json:"next_offset,omitempty"`
-	// Summary is the model's answer: a string, or a map matching
-	// OutputSchema. Nil when none was asked for.
-	Summary    any          `json:"summary,omitempty"`
-	Highlights []string     `json:"highlights"`
-	Links      []FetchLink  `json:"links"`
-	Images     []FetchImage `json:"images"`
-	// Error says why something asked for is missing; nil when everything
-	// worked.
-	Error *FetchError `json:"error,omitempty"`
-	// Subpages, with FetchManyOptions.Subpages: the same-site pages read from
-	// this page's links, best match first, each an entry like this one (a
-	// failed one has Error).
-	Subpages []FetchResult  `json:"subpages"`
-	Raw      map[string]any `json:"-"`
+	// TotalChars is the length of the whole page, so you can tell whether
+	// Text was cut.
+	TotalChars *int `json:"total_chars,omitempty"`
+	// Answer is the record for FetchContentOptions.Schema, a map matching it.
+	Answer map[string]any `json:"answer,omitempty"`
+	Links  []FetchLink    `json:"links,omitempty"`
+	Images []FetchImage   `json:"images,omitempty"`
 }
 
-// FetchError says why something asked for is missing for one URL. The call
-// itself succeeded.
+// FetchError says why one URL failed. The call itself succeeded; the URL is
+// not billed.
 type FetchError struct {
-	// Code says why, such as "page_not_found" or "target_timeout".
+	// Type is the broad case, "target_error" for a URL that failed.
+	Type string `json:"type"`
+	// Code is the exact case, such as "page_not_found" or "fetch_timeout".
 	Code    string `json:"code"`
 	Message string `json:"message"`
-	// Retryable is whether trying this URL again can help.
+	// Fix is one sentence on what to do next, when the API has one.
+	Fix *string `json:"fix,omitempty"`
+	// Retryable is whether trying this URL again unchanged can help.
 	Retryable bool `json:"retryable"`
-	// HTTPStatus is what the site answered, such as 404, when it answered.
-	HTTPStatus *int `json:"http_status,omitempty"`
+	// UpstreamStatus is what the site answered, such as 404, when it
+	// answered.
+	UpstreamStatus *int           `json:"upstream_status,omitempty"`
+	Details        map[string]any `json:"-"`
 }
 
-// FetchWarning is something that did not fail the call, such as a duplicate
-// URL.
-type FetchWarning struct {
-	Code    string `json:"code"`
-	Path    string `json:"path"`
-	Message string `json:"message"`
+// FetchResult is the result for one URL given to [Client.FetchMany]:
+// Results[i] answers urls[i]. Status is "ok" with the page, or "error" with
+// Error set and no page.
+type FetchResult struct {
+	Index int `json:"index"`
+	// RequestedURL is the URL exactly as sent.
+	RequestedURL string `json:"requested_url"`
+	// URL is the final address after redirects (the last one reached, on an
+	// error).
+	URL         string  `json:"url"`
+	Status      string  `json:"status"`
+	Title       *string `json:"title,omitempty"`
+	PublishedAt *string `json:"published_at,omitempty"`
+	// AcquiredAt is when Keenable read this copy of the page.
+	AcquiredAt *string `json:"acquired_at,omitempty"`
+	Image      *string `json:"image,omitempty"`
+	Favicon    *string `json:"favicon,omitempty"`
+	// RetrievedFrom is "index" (our stored copy), "live" or
+	// "cache_fallback".
+	RetrievedFrom *string        `json:"retrieved_from,omitempty"`
+	Error         *FetchError    `json:"error,omitempty"`
+	Content       FetchContent   `json:"content"`
+	Raw           map[string]any `json:"-"`
 }
 
-// FetchResponse is what [Client.FetchMany] returns: one entry per URL, in
+// FetchNotice is a notice (for the model) or a warning (for the developer).
+type FetchNotice struct {
+	Code string `json:"code"`
+	// Path is a JSON Pointer into the response (notices) or the request
+	// (warnings).
+	Path    *string        `json:"path,omitempty"`
+	Message string         `json:"message"`
+	Details map[string]any `json:"-"`
+}
+
+// Citation says where an answer field comes from: excerpts of
+// Results[Index].
+type Citation struct {
+	Index    int      `json:"index"`
+	Excerpts []string `json:"excerpts"`
+	// Verified is true when every excerpt appears word for word in the page
+	// text the API read. Checked by the server, not the model.
+	Verified bool `json:"verified"`
+}
+
+// Grounding is the support for one field of the answer.
+type Grounding struct {
+	// Field is a JSON Pointer into Structured, or "/text".
+	Field      string     `json:"field"`
+	Citations  []Citation `json:"citations"`
+	Reasoning  *string    `json:"reasoning,omitempty"`
+	Confidence *string    `json:"confidence,omitempty"`
+}
+
+// FetchOutput is one answer across all the pages.
+type FetchOutput struct {
+	// Text is the answer in prose; with a schema, a short summary of it.
+	Text string `json:"text"`
+	// Structured matches FetchOutputOptions.Schema; nil without one.
+	Structured map[string]any `json:"structured,omitempty"`
+	// BasedOn is the indexes of the results the answer used.
+	BasedOn   []int       `json:"based_on"`
+	Grounding []Grounding `json:"grounding"`
+}
+
+// FetchSummary counts the URLs asked for, read and failed.
+type FetchSummary struct {
+	Requested int `json:"requested"`
+	Succeeded int `json:"succeeded"`
+	Failed    int `json:"failed"`
+}
+
+// FetchResponse is what [Client.FetchMany] returns: one result per URL, in
 // the order given.
 type FetchResponse struct {
-	Results  []FetchResult  `json:"results"`
-	Warnings []FetchWarning `json:"warnings"`
 	// RequestID is the API's id for this request. Quote it when reporting a
 	// problem.
-	RequestID string         `json:"request_id,omitempty"`
-	LatencyMS *int           `json:"latency_ms,omitempty"`
-	SessionID *string        `json:"session_id,omitempty"`
-	Raw       map[string]any `json:"-"`
+	RequestID string `json:"request_id,omitempty"`
+	// Status is "ok" (every URL read), "partial" or "failed".
+	Status  *string      `json:"status,omitempty"`
+	Summary FetchSummary `json:"summary"`
+	// Resolved is each relative or date-only instant in the request, as the
+	// exact time used, keyed by its JSON Pointer.
+	Resolved map[string]string `json:"resolved"`
+	Results  []FetchResult     `json:"results"`
+	Output   *FetchOutput      `json:"output,omitempty"`
+	// Notices are for the model: how the results were produced.
+	Notices []FetchNotice `json:"notices"`
+	// Warnings are for the developer: request hygiene; they never change
+	// results.
+	Warnings  []FetchNotice `json:"warnings"`
+	SessionID *string       `json:"session_id,omitempty"`
+	LatencyMS *int          `json:"latency_ms,omitempty"`
+	// Usage is what the call cost, as the API sent it.
+	Usage map[string]any `json:"-"`
+	Raw   map[string]any `json:"-"`
 }
 
 // FetchMany reads up to 100 pages in one call with POST /v1/fetch.
 //
-// Pages are read in parallel. Results[i] is the entry for urls[i]. A page
-// that fails has its Error set instead of returning an error, and is not
-// billed; FetchMany returns an
-// error only when the call fails as a whole. Internal hosts and private
-// addresses are refused here, before a request is sent. Keyless calls take up
-// to 20 URLs. opts may be nil.
+// Pages are read in parallel. Results[i] answers urls[i]: its Status is "ok"
+// with the page, or "error" with Error set. A failed URL is not billed and
+// is not returned as an error; FetchMany returns an error only when the call
+// fails as a whole. Internal hosts and private addresses are refused here,
+// before a request is sent. Keyless calls take up to 20 URLs. opts may be
+// nil.
 func (c *Client) FetchMany(ctx context.Context, urls []string, opts *FetchManyOptions) (*FetchResponse, error) {
 	if err := requireClient(c); err != nil {
 		return nil, err
@@ -170,9 +242,6 @@ func (c *Client) FetchMany(ctx context.Context, urls []string, opts *FetchManyOp
 		if err := rejectPrivateFetchTarget(u); err != nil {
 			return nil, err
 		}
-	}
-	if err := checkCacheOnly(opts); err != nil {
-		return nil, err
 	}
 	body, err := json.Marshal(fetchManyPayload(urls, opts))
 	if err != nil {
@@ -191,98 +260,58 @@ func (c *Client) FetchMany(ctx context.Context, urls []string, opts *FetchManyOp
 	return resp, nil
 }
 
-// checkCacheOnly refuses CacheOnly with MaxAge "0s", which asks for a live
-// read, and IncludeSections together with ExcludeSections.
-func checkCacheOnly(o *FetchManyOptions) error {
-	if o != nil && o.CacheOnly && strings.TrimSpace(o.MaxAge) == "0s" {
-		return &InvalidRequestError{msg: `CacheOnly never reads a page live, so it cannot be combined with MaxAge "0s"`}
-	}
-	if o != nil && o.IncludeSections != nil && o.ExcludeSections != nil {
-		return &InvalidRequestError{msg: "FetchMany() takes IncludeSections or ExcludeSections, not both"}
-	}
-	return nil
-}
-
-// fetchManyPayload is the JSON body POST /v1/fetch takes.
+// fetchManyPayload is the JSON body POST /v1/fetch takes: each group that is
+// not nil, holding the fields set. Zero is sent where it is a value
+// (MaxChars, MaxAgeHours).
 func fetchManyPayload(urls []string, o *FetchManyOptions) map[string]any {
+	payload := map[string]any{"urls": urls}
 	if o == nil {
-		o = &FetchManyOptions{}
+		return payload
 	}
-	content := map[string]any{}
-	if !o.NoText {
-		limits := map[string]any{}
-		if o.MaxChars != 0 {
-			limits["max_chars"] = o.MaxChars
+	if c := o.Content; c != nil {
+		content := map[string]any{}
+		if c.MaxChars != nil {
+			content["max_chars"] = *c.MaxChars
 		}
-		if o.Offset != 0 {
-			limits["offset"] = o.Offset
+		if c.Objective != "" {
+			content["objective"] = c.Objective
 		}
-		if o.IncludeSections != nil {
-			limits["include_sections"] = o.IncludeSections
+		if c.Schema != nil {
+			content["schema"] = c.Schema
 		}
-		if o.ExcludeSections != nil {
-			limits["exclude_sections"] = o.ExcludeSections
+		if c.Links != 0 {
+			content["links"] = c.Links
 		}
-		if o.Verbosity != "" {
-			limits["verbosity"] = o.Verbosity
+		if c.Images != 0 {
+			content["images"] = c.Images
 		}
-		if len(limits) > 0 {
-			content["text"] = limits
-		} else {
-			content["text"] = true
+		payload["content"] = content
+	}
+	if r := o.Retrieval; r != nil {
+		retrieval := map[string]any{}
+		if r.MaxAgeHours != nil {
+			retrieval["max_age_hours"] = *r.MaxAgeHours
 		}
-	}
-	summary := map[string]any{}
-	if o.Summary != "" {
-		summary["instructions"] = o.Summary
-	}
-	if o.OutputSchema != nil {
-		summary["output_schema"] = o.OutputSchema
-	}
-	if len(summary) > 0 {
-		content["summary"] = summary
-	}
-	detail := map[string]any{}
-	if o.HighlightsQuery != "" {
-		detail["query"] = o.HighlightsQuery
-	}
-	if o.HighlightsMaxChars != 0 {
-		detail["max_chars"] = o.HighlightsMaxChars
-	}
-	if len(detail) > 0 {
-		content["highlights"] = detail
-	} else if o.Highlights {
-		content["highlights"] = true
-	}
-	if o.Links != 0 {
-		content["links"] = o.Links
-	}
-	if o.Images != 0 {
-		content["images"] = o.Images
-	}
-	payload := map[string]any{"urls": urls, "content": content}
-	pages := map[string]any{}
-	if o.Subpages != 0 {
-		pages["max"] = o.Subpages
-	}
-	if o.SubpagesTarget != nil {
-		pages["target"] = o.SubpagesTarget
-	}
-	if len(pages) > 0 {
-		payload["subpages"] = pages
-	}
-	if o.CacheOnly {
-		payload["cache_only"] = true
-	}
-	for key, value := range map[string]string{
-		"max_age":     o.MaxAge,
-		"timeout":     o.PageTimeout,
-		"session_id":  o.SessionID,
-		"end_user_id": o.EndUserID,
-	} {
-		if value != "" {
-			payload[key] = value
+		if r.AsOf != "" {
+			retrieval["as_of"] = r.AsOf
 		}
+		payload["retrieval"] = retrieval
+	}
+	if out := o.Output; out != nil {
+		output := map[string]any{}
+		if out.Prompt != "" {
+			output["prompt"] = out.Prompt
+		}
+		if out.Schema != nil {
+			output["schema"] = out.Schema
+		}
+		payload["output"] = output
+	}
+	if o.DeadlineMS != 0 {
+		payload["deadline_ms"] = o.DeadlineMS
+	}
+	if o.SessionID != "" {
+		payload["session_id"] = o.SessionID
 	}
 	return payload
 }
@@ -302,74 +331,167 @@ func objects(v any) []map[string]any {
 	return out
 }
 
-func fetchResultFromJSON(data map[string]any) FetchResult {
+// stringOrNil is a string as sent (even empty), or nil for anything else.
+func stringOrNil(v any) *string {
+	if s, ok := v.(string); ok {
+		return &s
+	}
+	return nil
+}
+
+// objectOrNil is a JSON object, or nil for anything else.
+func objectOrNil(v any) map[string]any {
+	m, _ := v.(map[string]any)
+	return m
+}
+
+func intOrZero(v any) int {
+	if n := count(v); n != nil {
+		return *n
+	}
+	return 0
+}
+
+func fetchErrorFromJSON(v any) *FetchError {
+	item, ok := v.(map[string]any)
+	if !ok {
+		return nil
+	}
+	details := objectOrNil(item["details"])
+	e := &FetchError{
+		Type:      asString(item["type"]),
+		Code:      asString(item["code"]),
+		Message:   asString(item["message"]),
+		Fix:       stringOrNil(item["fix"]),
+		Retryable: item["retryable"] == true,
+		Details:   details,
+	}
+	if f, ok := details["upstream_status"].(float64); ok && f == float64(int(f)) {
+		n := int(f)
+		e.UpstreamStatus = &n
+	}
+	return e
+}
+
+func fetchResultFromJSON(data map[string]any, position int) FetchResult {
 	r := FetchResult{
-		URL:         asString(data["url"]),
-		Title:       nonEmptyString(data["title"]),
-		PublishedAt: nonEmptyString(data["published_at"]),
-		Image:       nonEmptyString(data["image"]),
-		Favicon:     nonEmptyString(data["favicon"]),
-		Text:        nonEmptyString(data["text"]),
-		NextOffset:  count(data["next_offset"]),
-		Highlights:  []string{},
-		Links:       []FetchLink{},
-		Images:      []FetchImage{},
-		Subpages:    []FetchResult{},
-		Raw:         data,
+		Index:         position,
+		RequestedURL:  asString(data["requested_url"]),
+		URL:           asString(data["url"]),
+		Status:        asString(data["status"]),
+		Title:         nonEmptyString(data["title"]),
+		PublishedAt:   nonEmptyString(data["published_at"]),
+		AcquiredAt:    nonEmptyString(data["acquired_at"]),
+		Image:         nonEmptyString(data["image"]),
+		Favicon:       nonEmptyString(data["favicon"]),
+		RetrievedFrom: nonEmptyString(data["retrieved_from"]),
+		Error:         fetchErrorFromJSON(data["error"]),
+		Raw:           data,
 	}
-	if m, ok := data["summary"].(map[string]any); ok {
-		r.Summary = m
-	} else if s := nonEmptyString(data["summary"]); s != nil {
-		r.Summary = *s
+	if n := count(data["index"]); n != nil {
+		r.Index = *n
 	}
-	if list, ok := data["highlights"].([]any); ok {
-		for _, item := range list {
-			if s, ok := item.(string); ok {
-				r.Highlights = append(r.Highlights, s)
-			}
+	content := objectOrNil(data["content"])
+	r.Content = FetchContent{
+		Text:       stringOrNil(content["text"]),
+		TotalChars: count(content["total_chars"]),
+		Answer:     objectOrNil(content["answer"]),
+	}
+	if _, ok := content["links"].([]any); ok {
+		r.Content.Links = []FetchLink{}
+		for _, item := range objects(content["links"]) {
+			r.Content.Links = append(r.Content.Links, FetchLink{URL: asString(item["url"]), Text: nonEmptyString(item["text"])})
 		}
 	}
-	for _, item := range objects(data["links"]) {
-		r.Links = append(r.Links, FetchLink{URL: asString(item["url"]), Text: nonEmptyString(item["text"])})
-	}
-	for _, item := range objects(data["images"]) {
-		r.Images = append(r.Images, FetchImage{URL: asString(item["url"]), Alt: nonEmptyString(item["alt"])})
-	}
-	if item, ok := data["error"].(map[string]any); ok {
-		e := &FetchError{
-			Code:      asString(item["code"]),
-			Message:   asString(item["message"]),
-			Retryable: item["retryable"] == true,
+	if _, ok := content["images"].([]any); ok {
+		r.Content.Images = []FetchImage{}
+		for _, item := range objects(content["images"]) {
+			r.Content.Images = append(r.Content.Images, FetchImage{URL: asString(item["url"]), Alt: nonEmptyString(item["alt"])})
 		}
-		if f, ok := item["http_status"].(float64); ok && f == float64(int(f)) {
-			n := int(f)
-			e.HTTPStatus = &n
-		}
-		r.Error = e
-	}
-	for _, item := range objects(data["subpages"]) {
-		r.Subpages = append(r.Subpages, fetchResultFromJSON(item))
 	}
 	return r
 }
 
+func fetchNoticesFromJSON(v any) []FetchNotice {
+	out := []FetchNotice{}
+	for _, item := range objects(v) {
+		out = append(out, FetchNotice{
+			Code:    asString(item["code"]),
+			Path:    stringOrNil(item["path"]),
+			Message: asString(item["message"]),
+			Details: objectOrNil(item["details"]),
+		})
+	}
+	return out
+}
+
+func fetchOutputFromJSON(v any) *FetchOutput {
+	data, ok := v.(map[string]any)
+	if !ok {
+		return nil
+	}
+	a := &FetchOutput{
+		Text:       asString(data["text"]),
+		Structured: objectOrNil(data["structured"]),
+		BasedOn:    []int{},
+		Grounding:  []Grounding{},
+	}
+	if list, ok := data["based_on"].([]any); ok {
+		for _, item := range list {
+			if n := count(item); n != nil {
+				a.BasedOn = append(a.BasedOn, *n)
+			}
+		}
+	}
+	for _, item := range objects(data["grounding"]) {
+		g := Grounding{
+			Field:      asString(item["field"]),
+			Citations:  []Citation{},
+			Reasoning:  stringOrNil(item["reasoning"]),
+			Confidence: stringOrNil(item["confidence"]),
+		}
+		for _, cite := range objects(item["citations"]) {
+			c := Citation{Index: intOrZero(cite["index"]), Excerpts: []string{}, Verified: cite["verified"] == true}
+			if list, ok := cite["excerpts"].([]any); ok {
+				for _, e := range list {
+					if s, ok := e.(string); ok {
+						c.Excerpts = append(c.Excerpts, s)
+					}
+				}
+			}
+			g.Citations = append(g.Citations, c)
+		}
+		a.Grounding = append(a.Grounding, g)
+	}
+	return a
+}
+
 func fetchResponseFromJSON(data map[string]any) *FetchResponse {
+	summary := objectOrNil(data["summary"])
 	resp := &FetchResponse{
+		Status: stringOrNil(data["status"]),
+		Summary: FetchSummary{
+			Requested: intOrZero(summary["requested"]),
+			Succeeded: intOrZero(summary["succeeded"]),
+			Failed:    intOrZero(summary["failed"]),
+		},
+		Resolved:  map[string]string{},
 		Results:   []FetchResult{},
-		Warnings:  []FetchWarning{},
-		LatencyMS: count(data["latency_ms"]),
+		Output:    fetchOutputFromJSON(data["output"]),
+		Notices:   fetchNoticesFromJSON(data["notices"]),
+		Warnings:  fetchNoticesFromJSON(data["warnings"]),
 		SessionID: nonEmptyString(data["session_id"]),
+		LatencyMS: count(data["latency_ms"]),
+		Usage:     objectOrNil(data["usage"]),
 		Raw:       data,
 	}
-	for _, item := range objects(data["results"]) {
-		resp.Results = append(resp.Results, fetchResultFromJSON(item))
+	for key, value := range objectOrNil(data["resolved"]) {
+		if s, ok := value.(string); ok {
+			resp.Resolved[key] = s
+		}
 	}
-	for _, item := range objects(data["warnings"]) {
-		resp.Warnings = append(resp.Warnings, FetchWarning{
-			Code:    asString(item["code"]),
-			Path:    asString(item["path"]),
-			Message: asString(item["message"]),
-		})
+	for position, item := range objects(data["results"]) {
+		resp.Results = append(resp.Results, fetchResultFromJSON(item, position))
 	}
 	return resp
 }

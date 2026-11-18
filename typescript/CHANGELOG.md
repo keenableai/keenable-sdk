@@ -5,32 +5,26 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
-- `fetchMany()` and `fetchManyStream()` take `includeSections`,
-  `excludeSections` and `verbosity` to pick which parts of each page the text
-  holds (`FetchSection`: `banner`, `header`, `navigation`, `metadata`, `body`,
-  `sidebar`, `footer`). Sending both section lists throws
-  `KeenableInvalidRequestError` before sending.
-- `fetchMany()` and `fetchManyStream()` take `cacheOnly: true` to return only
-  stored copies and never contact the site; a page with no stored copy gets
-  the error `not_cached` and is not billed. `cacheOnly` with `maxAge: "0s"`
-  throws `KeenableInvalidRequestError` before sending. `subpages` now goes up
-  to 100 per URL.
-- `fetchMany()` reads up to 100 pages in one call with `POST /v1/fetch`:
-  per-page `text` (with `maxChars` and `offset` for paging), a `summary` with
-  an optional `outputSchema` for JSON in your shape, `highlights`, `links` and
-  `images`, `maxAge` and `pageTimeout`, plus `sessionId` and `endUserId`. `results[i]`
-  is the entry for `urls[i]`; a failed page has its `error` set, not a thrown
-  error.
-  Keyless calls take up to 20 URLs. Preview: it works once `POST /v1/fetch` is
-  enabled for your organization.
+- `fetchMany(urls, { content, retrieval, output, deadlineMs, sessionId })`
+  reads up to 100 pages in one call with `POST /v1/fetch` (keyless calls take
+  up to 20). The option groups mirror the API, in camelCase:
+  - `content`: `maxChars` (default 50,000; `0` returns metadata only),
+    `objective` (up to 1,000 characters), `schema` (filled per page into
+    `result.content.answer`), `links`, `images`.
+  - `retrieval`: `maxAgeHours` (0 to 720, fractions allowed; `0` always
+    fetches live; leave it out to take the stored copy), or `asOf` (`"P0D"`
+    for stored copies only).
+  - `output`: `prompt` and `schema` for one answer across the pages; `{}`
+    asks for a prose answer. It comes back in `response.output` (`text`,
+    `structured`, `basedOn`, `grounding` with verified citations).
+  `results[i]` is the entry for `urls[i]`, with the page in `result.content`
+  (`text`, `totalChars`, `answer`, `links`, `images`) and `retrievedFrom`; a
+  failed page has its `error` set, not a thrown error. An unset option is not
+  sent, an empty string is unset, and `0` is sent where it is a value.
+  Preview: it works once `POST /v1/fetch` is enabled for your organization.
 - `fetch()` keeps working and still calls `GET /v1/fetch`; it is deprecated in
   favour of `fetchMany()` and will be removed after the API retires
   `GET /v1/fetch` (announced with 90 days' notice).
-- `fetchMany()` takes `subpages` and `subpagesTarget` to also read same-site
-  pages linked from each URL; each result has `subpages`.
-- `fetchManyStream()` yields each page as `{ index, result }` as soon as it is
-  read (`for await`), over `Accept: application/x-ndjson`; `stream.summary`
-  holds the request id, warnings, usage and latency after the last item.
 - **Added:** `objective` option on `search()`: what the search is for, in two or three natural sentences, up to 1,000 characters. Left out of the request when unset or empty. The API validates and logs it; it does not change results or price. The search tool offers it to a model.
 
 - **Security fix:** `baseUrl` and `KEENABLE_API_URL` are refused when the part
