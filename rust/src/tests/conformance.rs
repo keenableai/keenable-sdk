@@ -13,8 +13,8 @@ use super::*;
 use crate::retry::retry_after_at;
 use crate::test_hooks::{start_recording, take_waits};
 use crate::{
-    Error, FetchContentOptions, FetchManyOptions, FetchOptions, FetchOutputOptions,
-    FetchRetrievalOptions, Options, RequestOptions, SearchOptions,
+    Error, FetchContentOptions, FetchManyOptions, FetchOptions, FetchRetrievalOptions, Options,
+    RequestOptions, SearchOptions,
 };
 
 fn fixture() -> Value {
@@ -682,17 +682,6 @@ fn fetch_many_options(case: &Value, failures: &mut Vec<String>) -> FetchManyOpti
                         match k {
                             "max_age_hours" => g.max_age_hours = v.as_f64(),
                             "as_of" => g.as_of = opt_string(v),
-                            _ => return false,
-                        }
-                        true
-                    })
-            }
-            "output" => {
-                opts.output =
-                    fetch_many_group(v, &n, failures, |g: &mut FetchOutputOptions, k, v| {
-                        match k {
-                            "prompt" => g.prompt = opt_string(v),
-                            "schema" => g.schema = schema(v),
                             _ => return false,
                         }
                         true

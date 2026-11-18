@@ -5,7 +5,7 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
-- `fetchMany(urls, { content, retrieval, output, deadlineMs, sessionId })`
+- `fetchMany(urls, { content, retrieval, deadlineMs, sessionId })`
   reads up to 20 pages in one call with `POST /v1/fetch`. The option groups mirror the API, in camelCase:
   - `content`: `maxChars` (default 50,000; `0` returns metadata only),
     `objective` (up to 1,000 characters), `schema` (filled per page into
@@ -13,9 +13,6 @@ All notable changes to the `keenable` npm package. Versions follow
   - `retrieval`: `maxAgeHours` (0 to 720, fractions allowed; `0` always
     fetches live; leave it out to take the stored copy), or `asOf` (`"P0D"`
     for stored copies only).
-  - `output`: `prompt` and `schema` for one answer across the pages; `{}`
-    asks for a prose answer. It comes back in `response.output` (`text`,
-    `structured`, `basedOn`, `grounding` with verified citations).
   `results[i]` is the entry for `urls[i]`, with the page in `result.content`
   (`text`, `totalChars`, `answer`, `links`, `images`) and `retrievedFrom`; a
   failed page has its `error` set, not a thrown error. An unset option is not

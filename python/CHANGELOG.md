@@ -5,8 +5,8 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
-- `fetch_many(urls, *, content=None, retrieval=None, output=None,
-  deadline_ms=None, session_id=None)` (sync and async) reads up to 20 pages
+- `fetch_many(urls, *, content=None, retrieval=None, deadline_ms=None,
+  session_id=None)` (sync and async) reads up to 20 pages
   in one call with `POST /v1/fetch`. The option
   groups mirror the API:
   - `content`: `max_chars` (default 50,000; `0` returns metadata only),
@@ -15,9 +15,6 @@ All notable changes to the `keenable` Python package. Versions follow
   - `retrieval`: `max_age_hours` (0 to 720, fractions allowed; `0` always
     fetches live; leave it out to take the stored copy), or `as_of` (`"P0D"`
     for stored copies only).
-  - `output`: `prompt` and `schema` for one answer across the pages; `{}`
-    asks for a prose answer. It comes back in `response.output` (`text`,
-    `structured`, `based_on`, `grounding` with verified citations).
   `results[i]` is the entry for `urls[i]`, with the page in `result.content`
   (`text`, `total_chars`, `answer`, `links`, `images`) and `retrieved_from`; a
   failed page has its `error` set, not an exception. An unset option is not

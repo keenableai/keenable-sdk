@@ -231,7 +231,6 @@ function fetchParams(): Obj[] {
 const FETCH_MANY_OPTIONS: Record<string, Set<string> | null> = {
   content: new Set(["max_chars", "objective", "schema", "links", "images"]),
   retrieval: new Set(["max_age_hours", "as_of"]),
-  output: new Set(["prompt", "schema"]),
   deadline_ms: null,
   session_id: null,
 };

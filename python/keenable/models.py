@@ -793,85 +793,9 @@ class FetchNotice:
         )
 
 
-@dataclass
-class Citation:
-    """Where an answer field comes from: excerpts of ``results[index]``."""
-
-    index: int
-    excerpts: list[str]
-    verified: bool
-    """True when every excerpt appears word for word in the page text the API
-    read. Checked by the server, not the model."""
-
-
-@dataclass
-class Grounding:
-    """The support for one field of the answer."""
-
-    field: str
-    """A JSON Pointer into ``structured``, or ``/text``."""
-
-    citations: list[Citation]
-    reasoning: str | None
-    confidence: str | None
-
-
 def _int_or_zero(value: Any) -> int:
     count = _count_or_none(value)
     return 0 if count is None else count
-
-
-@dataclass
-class FetchOutput:
-    """One answer across all the pages."""
-
-    text: str
-    """The answer in prose; with a schema, a short summary of it."""
-
-    structured: dict[str, Any] | None
-    """Matches ``output["schema"]``; None without one."""
-
-    based_on: list[int]
-    """Indexes of the results the answer used."""
-
-    grounding: list[Grounding]
-
-    @classmethod
-    def _from_json(cls, data: Any) -> FetchOutput | None:
-        if not isinstance(data, dict):
-            return None
-        based_on = data.get("based_on")
-        return cls(
-            text=_str_or_empty(data.get("text")),
-            structured=_object_or_none(data.get("structured")),
-            based_on=[
-                n for n in (_count_or_none(item) for item in based_on) if n is not None
-            ]
-            if isinstance(based_on, list)
-            else [],
-            grounding=[
-                Grounding(
-                    field=_str_or_empty(item.get("field")),
-                    citations=[
-                        Citation(
-                            index=_int_or_zero(cite.get("index")),
-                            excerpts=[
-                                e
-                                for e in cite.get("excerpts") or []
-                                if isinstance(e, str)
-                            ]
-                            if isinstance(cite.get("excerpts"), list)
-                            else [],
-                            verified=cite.get("verified") is True,
-                        )
-                        for cite in _objects(item.get("citations"))
-                    ],
-                    reasoning=_str_kept_or_none(item.get("reasoning")),
-                    confidence=_str_kept_or_none(item.get("confidence")),
-                )
-                for item in _objects(data.get("grounding"))
-            ],
-        )
 
 
 @dataclass
@@ -899,7 +823,6 @@ class FetchResponse:
     used, keyed by its JSON Pointer."""
 
     results: list[FetchResult] = field(default_factory=list)
-    output: FetchOutput | None = None
     notices: list[FetchNotice] = field(default_factory=list)
     """For the model: how the results were produced."""
 
@@ -932,7 +855,6 @@ class FetchResponse:
                 FetchResult._from_json(item, position)
                 for position, item in enumerate(_objects(data.get("results")))
             ],
-            output=FetchOutput._from_json(data.get("output")),
             notices=[
                 FetchNotice._from_json(item) for item in _objects(data.get("notices"))
             ],

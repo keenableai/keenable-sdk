@@ -1,5 +1,5 @@
 {
-  "_comment": "fetch_many(urls, options): the JSON body sent to POST /v1/fetch (\"body\" cases) and what a success body becomes (\"responses\" cases). Options mirror the request groups: content {max_chars, objective, schema, links, images}, retrieval {max_age_hours, as_of}, output {prompt, schema}, plus deadline_ms and session_id; each SDK maps the names to its own spelling (Python keeps them, TypeScript uses camelCase, Go and Rust use struct fields). Body rules: urls are sent as given (a lone string is wrapped in a list). A group is sent when it is given, holding only the fields set; an empty string means unset, and there are no sentinel values: max_chars 0 (metadata only) and max_age_hours 0 (always live) are sent. max_age_hours is a number, fractions allowed. Fields the API rejects together (max_age_hours with as_of) are sent for the API to reject. output given, even empty, is sent ({} asks for a prose answer). deadline_ms and session_id are sent as given. `sent` is the whole body, compared as JSON. Response rules: results, notices and warnings are lists of objects (anything else is []), non-object entries skipped. request_id is the body's non-blank string, else the trimmed X-Request-Id header, else null. status is a string or null. summary has integer requested, succeeded and failed (0 otherwise). resolved keeps the string values of an object ({} otherwise). A result's index is an integer from 0 (else its position in the list); requested_url, url and status are strings (\"\" otherwise); title, published_at, acquired_at, image, favicon and retrieved_from a non-blank string or null. Its content (from the content object, {} otherwise): text a string or null; total_chars an integer from 0 or null; answer an object or null; links [{url, text}] and images [{url, alt}] (url \"\" and text/alt null for anything else), or null when not a list. error is null unless it is an object; then type, code, message are strings (\"\" otherwise), fix a string or null, retryable a boolean (false otherwise), upstream_status details.upstream_status as an integer or null. output is null unless an object; then text a string (\"\" otherwise), structured an object or null, based_on the integers from 0 in the list, grounding the objects in the list, each with field a string (\"\" otherwise), confidence a string or null, reasoning a string or null and citations the objects in the list, each with index an integer (0 otherwise), excerpts the strings in the list and verified a boolean (false otherwise). A notice or warning has code and message strings (\"\" otherwise) and path a string or null (details kept raw, not compared). usage is the object as sent, or null, and is not compared; neither are details on notices, warnings and errors. latency_ms an integer from 0 or null; session_id a non-blank string or null. `skip` names an SDK whose types cannot express the case, with why.",
+  "_comment": "fetch_many(urls, options): the JSON body sent to POST /v1/fetch (\"body\" cases) and what a success body becomes (\"responses\" cases). Options mirror the request groups: content {max_chars, objective, schema, links, images}, retrieval {max_age_hours, as_of}, plus deadline_ms and session_id; each SDK maps the names to its own spelling (Python keeps them, TypeScript uses camelCase, Go and Rust use struct fields). Body rules: urls are sent as given (a lone string is wrapped in a list). A group is sent when it is given, holding only the fields set; an empty string means unset, and there are no sentinel values: max_chars 0 (metadata only) and max_age_hours 0 (always live) are sent. max_age_hours is a number, fractions allowed. Fields the API rejects together (max_age_hours with as_of) are sent for the API to reject. deadline_ms and session_id are sent as given. `sent` is the whole body, compared as JSON. Response rules: results, notices and warnings are lists of objects (anything else is []), non-object entries skipped. request_id is the body's non-blank string, else the trimmed X-Request-Id header, else null. status is a string or null. summary has integer requested, succeeded and failed (0 otherwise). resolved keeps the string values of an object ({} otherwise). A result's index is an integer from 0 (else its position in the list); requested_url, url and status are strings (\"\" otherwise); title, published_at, acquired_at, image, favicon and retrieved_from a non-blank string or null. Its content (from the content object, {} otherwise): text a string or null; total_chars an integer from 0 or null; answer an object or null; links [{url, text}] and images [{url, alt}] (url \"\" and text/alt null for anything else), or null when not a list. error is null unless it is an object; then type, code, message are strings (\"\" otherwise), fix a string or null, retryable a boolean (false otherwise), upstream_status details.upstream_status as an integer or null. A notice or warning has code and message strings (\"\" otherwise) and path a string or null (details kept raw, not compared). usage is the object as sent, or null, and is not compared; neither are details on notices, warnings and errors. latency_ms an integer from 0 or null; session_id a non-blank string or null. `skip` names an SDK whose types cannot express the case, with why.",
   "body": [
     {
       "name": "one url, no options",
@@ -252,65 +252,6 @@
       }
     },
     {
-      "name": "a prose answer across the pages",
-      "urls": [
-        "https://example.com/"
-      ],
-      "options": {
-        "output": {}
-      },
-      "sent": {
-        "urls": [
-          "https://example.com/"
-        ],
-        "output": {}
-      }
-    },
-    {
-      "name": "an answer to a prompt",
-      "urls": [
-        "https://example.com/"
-      ],
-      "options": {
-        "output": {
-          "prompt": "Which plan is cheapest?"
-        }
-      },
-      "sent": {
-        "urls": [
-          "https://example.com/"
-        ],
-        "output": {
-          "prompt": "Which plan is cheapest?"
-        }
-      }
-    },
-    {
-      "name": "a typed answer",
-      "urls": [
-        "https://example.com/"
-      ],
-      "options": {
-        "output": {
-          "prompt": "Prices",
-          "schema": {
-            "type": "object"
-          }
-        }
-      },
-      "sent": {
-        "urls": [
-          "https://example.com/"
-        ],
-        "output": {
-          "prompt": "Prices",
-          "schema": {
-            "type": "object"
-          }
-        }
-      }
-    },
-    {
       "name": "deadline and session",
       "urls": [
         "https://example.com/"
@@ -339,9 +280,6 @@
         "retrieval": {
           "as_of": ""
         },
-        "output": {
-          "prompt": ""
-        },
         "session_id": ""
       },
       "sent": {
@@ -349,8 +287,7 @@
           "https://example.com/"
         ],
         "content": {},
-        "retrieval": {},
-        "output": {}
+        "retrieval": {}
       }
     },
     {
@@ -371,12 +308,6 @@
         "retrieval": {
           "max_age_hours": 1.5
         },
-        "output": {
-          "prompt": "p",
-          "schema": {
-            "type": "object"
-          }
-        },
         "deadline_ms": 30000,
         "session_id": "s"
       },
@@ -395,12 +326,6 @@
         },
         "retrieval": {
           "max_age_hours": 1.5
-        },
-        "output": {
-          "prompt": "p",
-          "schema": {
-            "type": "object"
-          }
         },
         "deadline_ms": 30000,
         "session_id": "s"
@@ -493,31 +418,6 @@
             }
           }
         ],
-        "output": {
-          "text": "Pro is cheapest.",
-          "structured": {
-            "plan": "Pro"
-          },
-          "based_on": [
-            0
-          ],
-          "grounding": [
-            {
-              "field": "/plan",
-              "citations": [
-                {
-                  "index": 0,
-                  "excerpts": [
-                    "Pro"
-                  ],
-                  "verified": true
-                }
-              ],
-              "reasoning": null,
-              "confidence": "medium"
-            }
-          ]
-        },
         "notices": [
           {
             "code": "content_unavailable",
@@ -616,31 +516,6 @@
             }
           }
         ],
-        "output": {
-          "text": "Pro is cheapest.",
-          "structured": {
-            "plan": "Pro"
-          },
-          "based_on": [
-            0
-          ],
-          "grounding": [
-            {
-              "field": "/plan",
-              "citations": [
-                {
-                  "index": 0,
-                  "excerpts": [
-                    "Pro"
-                  ],
-                  "verified": true
-                }
-              ],
-              "reasoning": null,
-              "confidence": "medium"
-            }
-          ]
-        },
         "notices": [
           {
             "code": "content_unavailable",
@@ -675,7 +550,6 @@
         },
         "resolved": {},
         "results": [],
-        "output": null,
         "notices": [],
         "warnings": [],
         "session_id": null,
@@ -719,18 +593,6 @@
           },
           "skip"
         ],
-        "output": {
-          "text": 3,
-          "structured": [
-            1
-          ],
-          "based_on": [
-            0,
-            "1",
-            -2,
-            3
-          ]
-        },
         "notices": [
           {
             "code": 1,
@@ -784,15 +646,6 @@
             }
           }
         ],
-        "output": {
-          "text": "",
-          "structured": null,
-          "based_on": [
-            0,
-            3
-          ],
-          "grounding": []
-        },
         "notices": [
           {
             "code": "",
@@ -826,7 +679,6 @@
         },
         "resolved": {},
         "results": [],
-        "output": null,
         "notices": [],
         "warnings": [],
         "session_id": null,

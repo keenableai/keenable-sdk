@@ -22,16 +22,13 @@ export {
   SearchResponse,
 } from "./client.js";
 export type {
-  Citation,
   FetchContent,
   FetchError,
   FetchImage,
   FetchLink,
   FetchNotice,
-  FetchOutput,
   FetchResponse,
   FetchResult,
-  Grounding,
 } from "./client.js";
 export {
   KeenableAPIError,
@@ -51,7 +48,6 @@ export type {
   KeenableOptions,
   FetchContentOptions,
   FetchManyOptions,
-  FetchOutputOptions,
   FetchRetrievalOptions,
   FetchOptions,
   RequestOptions,

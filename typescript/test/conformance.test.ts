@@ -457,12 +457,10 @@ const FETCH_MANY_FIELDS: Record<string, string> = {
   images: "images",
   max_age_hours: "maxAgeHours",
   as_of: "asOf",
-  prompt: "prompt",
 };
 const FETCH_MANY_TOP: Record<string, string> = {
   content: "content",
   retrieval: "retrieval",
-  output: "output",
   deadline_ms: "deadlineMs",
   session_id: "sessionId",
 };
@@ -528,19 +526,6 @@ function plainResponse(r: FetchResponse): Record<string, unknown> {
     summary: r.summary,
     resolved: r.resolved,
     results: r.results.map(plainResult),
-    output: r.output
-      ? {
-          text: r.output.text,
-          structured: orNull(r.output.structured),
-          based_on: r.output.basedOn,
-          grounding: r.output.grounding.map((g) => ({
-            field: g.field,
-            citations: g.citations,
-            reasoning: orNull(g.reasoning),
-            confidence: orNull(g.confidence),
-          })),
-        }
-      : null,
     notices: r.notices.map((n) => ({ code: n.code, path: orNull(n.path), message: n.message })),
     warnings: r.warnings.map((n) => ({ code: n.code, path: orNull(n.path), message: n.message })),
     session_id: orNull(r.sessionId),

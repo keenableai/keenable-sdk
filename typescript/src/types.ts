@@ -146,22 +146,12 @@ export interface FetchRetrievalOptions {
   asOf?: string;
 }
 
-/** One answer across all the pages (`output`). `{}` asks for a prose answer. Needs an API key. */
-export interface FetchOutputOptions {
-  /** The question to answer across the pages, up to 2,000 characters. */
-  prompt?: string;
-  /** A JSON Schema (`type: "object"`) for a typed answer in `output.structured`. */
-  schema?: Record<string, unknown>;
-}
-
 /** Options for `fetchMany()` (POST /v1/fetch). Each group is sent when given. */
 export interface FetchManyOptions extends RequestOptions {
   /** What each result carries. Left out: each page's text up to 50,000 characters. */
   content?: FetchContentOptions;
   /** Where content comes from. Left out: a stored copy of any age when there is one, else a live read. */
   retrieval?: FetchRetrievalOptions;
-  /** One answer across the pages, in `response.output`. */
-  output?: FetchOutputOptions;
   /**
    * For the whole call, 1,000 to 55,000 ms (30,000 without a key); 15,000 by default. Pages not
    * read by then fail with `fetch_timeout`.

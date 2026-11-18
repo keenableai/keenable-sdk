@@ -792,19 +792,6 @@ func fetchManyOptions(t *testing.T, options map[string]any) *keenable.FetchManyO
 				}
 			}
 			opts.Retrieval = r
-		case "output":
-			o := &keenable.FetchOutputOptions{}
-			for field, value := range v.(map[string]any) {
-				switch field {
-				case "prompt":
-					o.Prompt = value.(string)
-				case "schema":
-					o.Schema = value.(map[string]any)
-				default:
-					t.Fatalf("no Go mapping for output.%s", field)
-				}
-			}
-			opts.Output = o
 		case "deadline_ms":
 			opts.DeadlineMS = int(v.(float64))
 		case "session_id":
@@ -886,27 +873,12 @@ func TestConformanceFetchManyResponses(t *testing.T) {
 				}
 				return out
 			}
-			var output any
-			if o := resp.Output; o != nil {
-				grounding := []any{}
-				for _, g := range o.Grounding {
-					grounding = append(grounding, map[string]any{
-						"field": g.Field, "citations": g.Citations,
-						"reasoning": ptrOrNil(g.Reasoning), "confidence": ptrOrNil(g.Confidence),
-					})
-				}
-				output = map[string]any{
-					"text": o.Text, "structured": mapOrNil(o.Structured),
-					"based_on": o.BasedOn, "grounding": grounding,
-				}
-			}
 			got := map[string]any{
 				"request_id": emptyToNil(resp.RequestID),
 				"status":     ptrOrNil(resp.Status),
 				"summary":    resp.Summary,
 				"resolved":   resp.Resolved,
 				"results":    results,
-				"output":     output,
 				"notices":    notices(resp.Notices),
 				"warnings":   notices(resp.Warnings),
 				"session_id": ptrOrNil(resp.SessionID),

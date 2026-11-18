@@ -43,9 +43,8 @@ pub use error::{
     RateLimitInfo, Result,
 };
 pub use fetch_many::{
-    Citation, FetchContent, FetchContentOptions, FetchError, FetchImage, FetchLink,
-    FetchManyOptions, FetchNotice, FetchOutput, FetchOutputOptions, FetchResponse, FetchResult,
-    FetchRetrievalOptions, FetchSummary, Grounding,
+    FetchContent, FetchContentOptions, FetchError, FetchImage, FetchLink, FetchManyOptions,
+    FetchNotice, FetchResponse, FetchResult, FetchRetrievalOptions, FetchSummary,
 };
 pub use models::{
     ContextOptions, Page, SearchResponse, SearchResult, DEFAULT_CONTEXT_MAX_CHARS,

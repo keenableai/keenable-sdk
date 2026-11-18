@@ -1,5 +1,4 @@
-//! `fetch_many`: several URLs in one POST /v1/fetch call, with an optional
-//! answer across them.
+//! `fetch_many`: several URLs in one POST /v1/fetch call, one result per URL.
 
 use std::collections::BTreeMap;
 
@@ -41,17 +40,6 @@ pub struct FetchRetrievalOptions {
     pub as_of: Option<String>,
 }
 
-/// An answer across the pages. Sent as the request's `output` group; an
-/// empty group asks for a prose answer.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct FetchOutputOptions {
-    /// The question to answer from the pages. An empty prompt is unset.
-    pub prompt: Option<String>,
-    /// A JSON Schema the answer must match; the result is
-    /// [`FetchOutput::structured`].
-    pub schema: Option<Map<String, Value>>,
-}
-
 /// The optional arguments to [`Client::fetch_many_with`]. A group that is
 /// `Some` is sent, even when empty; an unset field is not sent.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -60,8 +48,6 @@ pub struct FetchManyOptions {
     pub content: Option<FetchContentOptions>,
     /// How fresh each page must be.
     pub retrieval: Option<FetchRetrievalOptions>,
-    /// An answer across the pages.
-    pub output: Option<FetchOutputOptions>,
     /// The whole call's time budget in milliseconds, up to 55,000. Pages not
     /// ready by then come back as errors.
     pub deadline_ms: Option<u32>,
@@ -178,46 +164,6 @@ pub struct FetchNotice {
     pub details: Option<Map<String, Value>>,
 }
 
-/// A page passage an answer field rests on.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[non_exhaustive]
-pub struct Citation {
-    /// The [`FetchResult::index`] of the page.
-    pub index: u64,
-    /// The quoted passages.
-    pub excerpts: Vec<String>,
-    /// Whether the API found the excerpts on the page.
-    pub verified: bool,
-}
-
-/// The sources of one answer field.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[non_exhaustive]
-pub struct Grounding {
-    /// The JSON pointer of the field in [`FetchOutput::structured`].
-    pub field: String,
-    /// The passages it rests on.
-    pub citations: Vec<Citation>,
-    /// How the value was derived, when the API says.
-    pub reasoning: Option<String>,
-    /// `low`, `medium` or `high`.
-    pub confidence: Option<String>,
-}
-
-/// The answer across the pages.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[non_exhaustive]
-pub struct FetchOutput {
-    /// The answer as prose.
-    pub text: String,
-    /// The answer filled into [`FetchOutputOptions::schema`].
-    pub structured: Option<Map<String, Value>>,
-    /// The indexes of the pages the answer used.
-    pub based_on: Vec<u64>,
-    /// The sources of each structured field.
-    pub grounding: Vec<Grounding>,
-}
-
 /// How many URLs succeeded and failed.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
@@ -245,8 +191,6 @@ pub struct FetchResponse {
     pub resolved: BTreeMap<String, String>,
     /// One result per requested URL, in request order.
     pub results: Vec<FetchResult>,
-    /// The answer across the pages, when `output` was sent.
-    pub output: Option<FetchOutput>,
     /// Notes about the request.
     pub notices: Vec<FetchNotice>,
     /// Warnings about the request, such as a normalized value.
@@ -274,11 +218,11 @@ impl Client {
             .await
     }
 
-    /// [`Client::fetch_many`] with content, freshness and answer options.
+    /// [`Client::fetch_many`] with content and freshness options.
     ///
     /// ```no_run
     /// # async fn run() -> Result<(), keenable::Error> {
-    /// use keenable::{FetchContentOptions, FetchManyOptions, FetchOutputOptions, FetchRetrievalOptions};
+    /// use keenable::{FetchContentOptions, FetchManyOptions, FetchRetrievalOptions};
     /// let client = keenable::Client::new()?;
     /// let response = client
     ///     .fetch_many_with(
@@ -286,16 +230,12 @@ impl Client {
     ///         &FetchManyOptions {
     ///             content: Some(FetchContentOptions { max_chars: Some(20_000), ..Default::default() }),
     ///             retrieval: Some(FetchRetrievalOptions { max_age_hours: Some(24.0), ..Default::default() }),
-    ///             output: Some(FetchOutputOptions { prompt: Some("Which plan is cheapest?".into()), ..Default::default() }),
     ///             ..Default::default()
     ///         },
     ///     )
     ///     .await?;
     /// for result in &response.results {
     ///     println!("{} {}", result.url, result.status);
-    /// }
-    /// if let Some(output) = &response.output {
-    ///     println!("{}", output.text);
     /// }
     /// # Ok(())
     /// # }
@@ -388,14 +328,6 @@ fn fetch_many_payload<S: AsRef<str>>(
         }
         put_str(&mut g, "as_of", &r.as_of);
         payload.insert("retrieval".into(), Value::Object(g));
-    }
-    if let Some(out) = &o.output {
-        let mut g = Map::new();
-        put_str(&mut g, "prompt", &out.prompt);
-        if let Some(s) = &out.schema {
-            g.insert("schema".into(), Value::Object(s.clone()));
-        }
-        payload.insert("output".into(), Value::Object(g));
     }
     if let Some(n) = o.deadline_ms {
         payload.insert("deadline_ms".into(), Value::from(n));
@@ -497,44 +429,6 @@ fn fetch_notices_from_json(v: Option<&Value>) -> Vec<FetchNotice> {
         .collect()
 }
 
-fn fetch_output_from_json(v: Option<&Value>) -> Option<FetchOutput> {
-    let data = v?.as_object()?;
-    let based_on = data
-        .get("based_on")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|n| safe_count(Some(n)))
-        .collect();
-    let grounding = objects(data.get("grounding"))
-        .map(|item| Grounding {
-            field: string(item.get("field")),
-            citations: objects(item.get("citations"))
-                .map(|cite| Citation {
-                    index: safe_count(cite.get("index")).unwrap_or(0),
-                    excerpts: cite
-                        .get("excerpts")
-                        .and_then(Value::as_array)
-                        .into_iter()
-                        .flatten()
-                        .filter_map(Value::as_str)
-                        .map(str::to_string)
-                        .collect(),
-                    verified: cite.get("verified") == Some(&Value::Bool(true)),
-                })
-                .collect(),
-            reasoning: str_or_none(item.get("reasoning")),
-            confidence: str_or_none(item.get("confidence")),
-        })
-        .collect();
-    Some(FetchOutput {
-        text: string(data.get("text")),
-        structured: object(data.get("structured")),
-        based_on,
-        grounding,
-    })
-}
-
 pub(crate) fn fetch_response_from_json(
     data: Map<String, Value>,
     header_request_id: Option<String>,
@@ -563,7 +457,6 @@ pub(crate) fn fetch_response_from_json(
             .enumerate()
             .map(|(position, item)| fetch_result_from_json(item, position))
             .collect(),
-        output: fetch_output_from_json(data.get("output")),
         notices: fetch_notices_from_json(data.get("notices")),
         warnings: fetch_notices_from_json(data.get("warnings")),
         session_id: non_blank(data.get("session_id")),

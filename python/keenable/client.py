@@ -372,17 +372,6 @@ class FetchRetrievalOptions(TypedDict, total=False):
     date-time, or a duration back from now. ``"P0D"`` is the latest stored copy."""
 
 
-class FetchOutputOptions(TypedDict, total=False):
-    """One answer across all the pages (``output``). ``{}`` asks for prose."""
-
-    prompt: str
-    """The question to answer across the pages, up to 2,000 characters."""
-
-    schema: Mapping[str, Any]
-    """A JSON Schema (``type: object``) for a typed answer in
-    ``output.structured``."""
-
-
 def _fetch_many_group(
     name: str, value: Mapping[str, Any] | None
 ) -> dict[str, Any] | None:
@@ -408,7 +397,6 @@ def _fetch_many_payload(
     *,
     content: FetchContentOptions | Mapping[str, Any] | None,
     retrieval: FetchRetrievalOptions | Mapping[str, Any] | None,
-    output: FetchOutputOptions | Mapping[str, Any] | None,
     deadline_ms: int | None,
     session_id: str | None,
 ) -> dict[str, Any]:
@@ -422,7 +410,6 @@ def _fetch_many_payload(
     for name, value in (
         ("content", content),
         ("retrieval", retrieval),
-        ("output", output),
     ):
         group = _fetch_many_group(name, value)
         if group is not None:
@@ -1624,7 +1611,6 @@ class Keenable(_BaseClient):
         *,
         content: FetchContentOptions | Mapping[str, Any] | None = None,
         retrieval: FetchRetrievalOptions | Mapping[str, Any] | None = None,
-        output: FetchOutputOptions | Mapping[str, Any] | None = None,
         deadline_ms: int | None = None,
         session_id: str | None = None,
         timeout: float | httpx.Timeout | None = None,
@@ -1659,9 +1645,6 @@ class Keenable(_BaseClient):
                 live) or ``as_of`` (``"P0D"`` for stored copies only). See
                 :class:`FetchRetrievalOptions`. Left out: a stored copy of any
                 age when there is one, else a live read.
-            output: One answer across the pages, in ``response.output``:
-                ``{}`` for prose, or with ``prompt`` and ``schema``. Needs an
-                API key. See :class:`FetchOutputOptions`.
             deadline_ms: For the whole call, 1,000 to 55,000 (30,000 without a
                 key); 15,000 by default. Pages not read by then fail with
                 ``fetch_timeout``.
@@ -1675,7 +1658,6 @@ class Keenable(_BaseClient):
             urls,
             content=content,
             retrieval=retrieval,
-            output=output,
             deadline_ms=deadline_ms,
             session_id=session_id,
         )
@@ -1852,7 +1834,6 @@ class AsyncKeenable(_BaseClient):
         *,
         content: FetchContentOptions | Mapping[str, Any] | None = None,
         retrieval: FetchRetrievalOptions | Mapping[str, Any] | None = None,
-        output: FetchOutputOptions | Mapping[str, Any] | None = None,
         deadline_ms: int | None = None,
         session_id: str | None = None,
         timeout: float | httpx.Timeout | None = None,
@@ -1864,7 +1845,6 @@ class AsyncKeenable(_BaseClient):
             urls,
             content=content,
             retrieval=retrieval,
-            output=output,
             deadline_ms=deadline_ms,
             session_id=session_id,
         )

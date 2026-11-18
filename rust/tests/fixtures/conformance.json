@@ -6262,68 +6262,6 @@
       "skip": {}
     },
     {
-      "name": "a prose answer across the pages",
-      "urls": [
-        "https://example.com/"
-      ],
-      "options": {
-        "output": {}
-      },
-      "sent": {
-        "urls": [
-          "https://example.com/"
-        ],
-        "output": {}
-      },
-      "skip": {}
-    },
-    {
-      "name": "an answer to a prompt",
-      "urls": [
-        "https://example.com/"
-      ],
-      "options": {
-        "output": {
-          "prompt": "Which plan is cheapest?"
-        }
-      },
-      "sent": {
-        "urls": [
-          "https://example.com/"
-        ],
-        "output": {
-          "prompt": "Which plan is cheapest?"
-        }
-      },
-      "skip": {}
-    },
-    {
-      "name": "a typed answer",
-      "urls": [
-        "https://example.com/"
-      ],
-      "options": {
-        "output": {
-          "prompt": "Prices",
-          "schema": {
-            "type": "object"
-          }
-        }
-      },
-      "sent": {
-        "urls": [
-          "https://example.com/"
-        ],
-        "output": {
-          "prompt": "Prices",
-          "schema": {
-            "type": "object"
-          }
-        }
-      },
-      "skip": {}
-    },
-    {
       "name": "deadline and session",
       "urls": [
         "https://example.com/"
@@ -6353,9 +6291,6 @@
         "retrieval": {
           "as_of": ""
         },
-        "output": {
-          "prompt": ""
-        },
         "session_id": ""
       },
       "sent": {
@@ -6363,8 +6298,7 @@
           "https://example.com/"
         ],
         "content": {},
-        "retrieval": {},
-        "output": {}
+        "retrieval": {}
       },
       "skip": {}
     },
@@ -6386,12 +6320,6 @@
         "retrieval": {
           "max_age_hours": 1.5
         },
-        "output": {
-          "prompt": "p",
-          "schema": {
-            "type": "object"
-          }
-        },
         "deadline_ms": 30000,
         "session_id": "s"
       },
@@ -6410,12 +6338,6 @@
         },
         "retrieval": {
           "max_age_hours": 1.5
-        },
-        "output": {
-          "prompt": "p",
-          "schema": {
-            "type": "object"
-          }
         },
         "deadline_ms": 30000,
         "session_id": "s"
@@ -6448,7 +6370,7 @@
       ],
       "status": 200,
       "headers": {},
-      "body": "{\"request_id\":\"req_1\",\"object\":\"fetch\",\"status\":\"partial\",\"summary\":{\"requested\":2,\"succeeded\":1,\"failed\":1},\"resolved\":{\"/retrieval/as_of\":\"2026-11-08T09:00:00Z\"},\"results\":[{\"index\":0,\"requested_url\":\"https://e.com/a\",\"url\":\"https://e.com/a/\",\"status\":\"ok\",\"title\":\"A\",\"published_at\":\"2024-01-01T00:00:00Z\",\"acquired_at\":\"2026-11-01T00:00:00Z\",\"image\":\"https://e.com/i.png\",\"favicon\":\"https://e.com/f.ico\",\"retrieved_from\":\"live\",\"content\":{\"text\":\"hello\",\"total_chars\":11,\"answer\":{\"pct\":2.9},\"links\":[{\"url\":\"https://e.com/x\",\"text\":\"X\"}],\"images\":[{\"url\":\"https://e.com/i.png\",\"alt\":\"I\"}]}},{\"index\":1,\"requested_url\":\"https://e.com/b\",\"url\":\"https://e.com/b\",\"status\":\"error\",\"error\":{\"type\":\"target_error\",\"code\":\"page_not_found\",\"message\":\"404\",\"path\":\"/urls/1\",\"fix\":\"Check the URL.\",\"retryable\":false,\"retry_after_ms\":null,\"doc_url\":null,\"details\":{\"upstream_status\":404}}}],\"output\":{\"text\":\"Pro is cheapest.\",\"structured\":{\"plan\":\"Pro\"},\"based_on\":[0],\"grounding\":[{\"field\":\"/plan\",\"citations\":[{\"index\":0,\"excerpts\":[\"Pro\"],\"verified\":true}],\"reasoning\":null,\"confidence\":\"medium\"}]},\"notices\":[{\"code\":\"content_unavailable\",\"path\":\"/results/0/content/answer\",\"message\":\"m\",\"details\":null}],\"warnings\":[{\"code\":\"value_normalized\",\"path\":\"/urls/0\",\"message\":\"w\",\"details\":{\"from\":\"a\",\"to\":\"b\"}}],\"usage\":{\"cost_usd\":0.004,\"billed_from\":\"balance\"},\"session_id\":\"s1\",\"latency_ms\":840}",
+      "body": "{\"request_id\":\"req_1\",\"object\":\"fetch\",\"status\":\"partial\",\"summary\":{\"requested\":2,\"succeeded\":1,\"failed\":1},\"resolved\":{\"/retrieval/as_of\":\"2026-11-08T09:00:00Z\"},\"results\":[{\"index\":0,\"requested_url\":\"https://e.com/a\",\"url\":\"https://e.com/a/\",\"status\":\"ok\",\"title\":\"A\",\"published_at\":\"2024-01-01T00:00:00Z\",\"acquired_at\":\"2026-11-01T00:00:00Z\",\"image\":\"https://e.com/i.png\",\"favicon\":\"https://e.com/f.ico\",\"retrieved_from\":\"live\",\"content\":{\"text\":\"hello\",\"total_chars\":11,\"answer\":{\"pct\":2.9},\"links\":[{\"url\":\"https://e.com/x\",\"text\":\"X\"}],\"images\":[{\"url\":\"https://e.com/i.png\",\"alt\":\"I\"}]}},{\"index\":1,\"requested_url\":\"https://e.com/b\",\"url\":\"https://e.com/b\",\"status\":\"error\",\"error\":{\"type\":\"target_error\",\"code\":\"page_not_found\",\"message\":\"404\",\"path\":\"/urls/1\",\"fix\":\"Check the URL.\",\"retryable\":false,\"retry_after_ms\":null,\"doc_url\":null,\"details\":{\"upstream_status\":404}}}],\"notices\":[{\"code\":\"content_unavailable\",\"path\":\"/results/0/content/answer\",\"message\":\"m\",\"details\":null}],\"warnings\":[{\"code\":\"value_normalized\",\"path\":\"/urls/0\",\"message\":\"w\",\"details\":{\"from\":\"a\",\"to\":\"b\"}}],\"usage\":{\"cost_usd\":0.004,\"billed_from\":\"balance\"},\"session_id\":\"s1\",\"latency_ms\":840}",
       "expect": {
         "request_id": "req_1",
         "status": "partial",
@@ -6521,31 +6443,6 @@
             }
           }
         ],
-        "output": {
-          "text": "Pro is cheapest.",
-          "structured": {
-            "plan": "Pro"
-          },
-          "based_on": [
-            0
-          ],
-          "grounding": [
-            {
-              "field": "/plan",
-              "citations": [
-                {
-                  "index": 0,
-                  "excerpts": [
-                    "Pro"
-                  ],
-                  "verified": true
-                }
-              ],
-              "reasoning": null,
-              "confidence": "medium"
-            }
-          ]
-        },
         "notices": [
           {
             "code": "content_unavailable",
@@ -6583,7 +6480,6 @@
         },
         "resolved": {},
         "results": [],
-        "output": null,
         "notices": [],
         "warnings": [],
         "session_id": null,
@@ -6598,7 +6494,7 @@
       ],
       "status": 200,
       "headers": {},
-      "body": "{\"request_id\":\"  \",\"status\":7,\"summary\":\"x\",\"resolved\":{\"a\":\"b\",\"c\":3},\"results\":[{\"index\":\"0\",\"requested_url\":5,\"url\":null,\"status\":true,\"title\":\" \",\"content\":{\"text\":5,\"total_chars\":-1,\"answer\":\"str\",\"links\":\"no\",\"images\":[{\"url\":3,\"alt\":4},\"x\"]},\"error\":\"oops\"},\"skip\"],\"output\":{\"text\":3,\"structured\":[1],\"based_on\":[0,\"1\",-2,3]},\"notices\":[{\"code\":1,\"path\":2,\"message\":3},\"x\"],\"warnings\":\"no\",\"usage\":{\"cost_usd\":\"0.1\"},\"session_id\":\"\",\"latency_ms\":-5}",
+      "body": "{\"request_id\":\"  \",\"status\":7,\"summary\":\"x\",\"resolved\":{\"a\":\"b\",\"c\":3},\"results\":[{\"index\":\"0\",\"requested_url\":5,\"url\":null,\"status\":true,\"title\":\" \",\"content\":{\"text\":5,\"total_chars\":-1,\"answer\":\"str\",\"links\":\"no\",\"images\":[{\"url\":3,\"alt\":4},\"x\"]},\"error\":\"oops\"},\"skip\"],\"notices\":[{\"code\":1,\"path\":2,\"message\":3},\"x\"],\"warnings\":\"no\",\"usage\":{\"cost_usd\":\"0.1\"},\"session_id\":\"\",\"latency_ms\":-5}",
       "expect": {
         "request_id": null,
         "status": null,
@@ -6637,15 +6533,6 @@
             }
           }
         ],
-        "output": {
-          "text": "",
-          "structured": null,
-          "based_on": [
-            0,
-            3
-          ],
-          "grounding": []
-        },
         "notices": [
           {
             "code": "",
@@ -6679,7 +6566,6 @@
         },
         "resolved": {},
         "results": [],
-        "output": null,
         "notices": [],
         "warnings": [],
         "session_id": null,

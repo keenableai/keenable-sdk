@@ -45,17 +45,6 @@ type FetchRetrievalOptions struct {
 	AsOf string
 }
 
-// FetchOutputOptions asks [Client.FetchMany] for one answer across all the pages.
-// An empty FetchOutputOptions asks for a prose answer. Needs an API key.
-type FetchOutputOptions struct {
-	// Prompt is the question to answer across the pages, up to 2,000
-	// characters. Empty means unset.
-	Prompt string
-	// Schema is a JSON Schema (type "object") for a typed answer in
-	// FetchResponse.Output.Structured.
-	Schema map[string]any
-}
-
 // FetchManyOptions are the options for [Client.FetchMany]. Each group is sent
 // when it is not nil.
 type FetchManyOptions struct {
@@ -67,8 +56,6 @@ type FetchManyOptions struct {
 	// Retrieval is where content comes from. Nil: a stored copy of any age
 	// when there is one, else a live read.
 	Retrieval *FetchRetrievalOptions
-	// Output asks for one answer across the pages, in FetchResponse.Output.
-	Output *FetchOutputOptions
 	// DeadlineMS is for the whole call, 1000 to 55000 (30000 without a key);
 	// zero is the API's default of 15000. Pages not read by then fail with
 	// fetch_timeout.
@@ -157,36 +144,6 @@ type FetchNotice struct {
 	Details map[string]any `json:"-"`
 }
 
-// Citation says where an answer field comes from: excerpts of
-// Results[Index].
-type Citation struct {
-	Index    int      `json:"index"`
-	Excerpts []string `json:"excerpts"`
-	// Verified is true when every excerpt appears word for word in the page
-	// text the API read. Checked by the server, not the model.
-	Verified bool `json:"verified"`
-}
-
-// Grounding is the support for one field of the answer.
-type Grounding struct {
-	// Field is a JSON Pointer into Structured, or "/text".
-	Field      string     `json:"field"`
-	Citations  []Citation `json:"citations"`
-	Reasoning  *string    `json:"reasoning,omitempty"`
-	Confidence *string    `json:"confidence,omitempty"`
-}
-
-// FetchOutput is one answer across all the pages.
-type FetchOutput struct {
-	// Text is the answer in prose; with a schema, a short summary of it.
-	Text string `json:"text"`
-	// Structured matches FetchOutputOptions.Schema; nil without one.
-	Structured map[string]any `json:"structured,omitempty"`
-	// BasedOn is the indexes of the results the answer used.
-	BasedOn   []int       `json:"based_on"`
-	Grounding []Grounding `json:"grounding"`
-}
-
 // FetchSummary counts the URLs asked for, read and failed.
 type FetchSummary struct {
 	Requested int `json:"requested"`
@@ -207,7 +164,6 @@ type FetchResponse struct {
 	// exact time used, keyed by its JSON Pointer.
 	Resolved map[string]string `json:"resolved"`
 	Results  []FetchResult     `json:"results"`
-	Output   *FetchOutput      `json:"output,omitempty"`
 	// Notices are for the model: how the results were produced.
 	Notices []FetchNotice `json:"notices"`
 	// Warnings are for the developer: request hygiene; they never change
@@ -296,16 +252,6 @@ func fetchManyPayload(urls []string, o *FetchManyOptions) map[string]any {
 			retrieval["as_of"] = r.AsOf
 		}
 		payload["retrieval"] = retrieval
-	}
-	if out := o.Output; out != nil {
-		output := map[string]any{}
-		if out.Prompt != "" {
-			output["prompt"] = out.Prompt
-		}
-		if out.Schema != nil {
-			output["schema"] = out.Schema
-		}
-		payload["output"] = output
 	}
 	if o.DeadlineMS != 0 {
 		payload["deadline_ms"] = o.DeadlineMS
@@ -425,47 +371,6 @@ func fetchNoticesFromJSON(v any) []FetchNotice {
 	return out
 }
 
-func fetchOutputFromJSON(v any) *FetchOutput {
-	data, ok := v.(map[string]any)
-	if !ok {
-		return nil
-	}
-	a := &FetchOutput{
-		Text:       asString(data["text"]),
-		Structured: objectOrNil(data["structured"]),
-		BasedOn:    []int{},
-		Grounding:  []Grounding{},
-	}
-	if list, ok := data["based_on"].([]any); ok {
-		for _, item := range list {
-			if n := count(item); n != nil {
-				a.BasedOn = append(a.BasedOn, *n)
-			}
-		}
-	}
-	for _, item := range objects(data["grounding"]) {
-		g := Grounding{
-			Field:      asString(item["field"]),
-			Citations:  []Citation{},
-			Reasoning:  stringOrNil(item["reasoning"]),
-			Confidence: stringOrNil(item["confidence"]),
-		}
-		for _, cite := range objects(item["citations"]) {
-			c := Citation{Index: intOrZero(cite["index"]), Excerpts: []string{}, Verified: cite["verified"] == true}
-			if list, ok := cite["excerpts"].([]any); ok {
-				for _, e := range list {
-					if s, ok := e.(string); ok {
-						c.Excerpts = append(c.Excerpts, s)
-					}
-				}
-			}
-			g.Citations = append(g.Citations, c)
-		}
-		a.Grounding = append(a.Grounding, g)
-	}
-	return a
-}
-
 func fetchResponseFromJSON(data map[string]any) *FetchResponse {
 	summary := objectOrNil(data["summary"])
 	resp := &FetchResponse{
@@ -477,7 +382,6 @@ func fetchResponseFromJSON(data map[string]any) *FetchResponse {
 		},
 		Resolved:  map[string]string{},
 		Results:   []FetchResult{},
-		Output:    fetchOutputFromJSON(data["output"]),
 		Notices:   fetchNoticesFromJSON(data["notices"]),
 		Warnings:  fetchNoticesFromJSON(data["warnings"]),
 		SessionID: nonEmptyString(data["session_id"]),

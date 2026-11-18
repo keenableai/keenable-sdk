@@ -605,34 +605,6 @@ export interface FetchNotice {
   readonly details?: Record<string, unknown>;
 }
 
-/** Where an answer field comes from: excerpts of `results[index]`. */
-export interface Citation {
-  readonly index: number;
-  readonly excerpts: string[];
-  /** True when every excerpt appears word for word in the page text the API read. Checked by the server. */
-  readonly verified: boolean;
-}
-
-/** The support for one field of the answer. */
-export interface Grounding {
-  /** A JSON Pointer into `structured`, or `/text`. */
-  readonly field: string;
-  readonly citations: Citation[];
-  readonly reasoning?: string;
-  readonly confidence?: string;
-}
-
-/** One answer across all the pages. */
-export interface FetchOutput {
-  /** The answer in prose; with a schema, a short summary of it. */
-  readonly text: string;
-  /** Matches `output.schema`; undefined without one. */
-  readonly structured?: Record<string, unknown>;
-  /** Indexes of the results the answer used. */
-  readonly basedOn: number[];
-  readonly grounding: Grounding[];
-}
-
 /** What `fetchMany()` returns: one result per URL, in the order given. */
 export interface FetchResponse {
   /** The API's id for this request. Quote it when reporting a problem. */
@@ -643,7 +615,6 @@ export interface FetchResponse {
   /** Each relative or date-only instant in the request, as the exact time used, keyed by its JSON Pointer. */
   readonly resolved: Record<string, string>;
   readonly results: FetchResult[];
-  readonly output?: FetchOutput;
   /** For the model: how the results were produced. */
   readonly notices: FetchNotice[];
   /** For the developer: request hygiene; never changes results. */
@@ -724,29 +695,6 @@ function toFetchNotices(value: unknown): FetchNotice[] {
   }));
 }
 
-function toFetchOutput(value: unknown): FetchOutput | undefined {
-  if (!isRecord(value)) return undefined;
-  return {
-    text: text(value.text),
-    structured: record(value.structured),
-    basedOn: Array.isArray(value.based_on)
-      ? value.based_on.map(count).filter((n): n is number => n !== undefined)
-      : [],
-    grounding: objects(value.grounding).map((item) => ({
-      field: text(item.field),
-      citations: objects(item.citations).map((cite) => ({
-        index: count(cite.index) ?? 0,
-        excerpts: Array.isArray(cite.excerpts)
-          ? cite.excerpts.filter((e): e is string => typeof e === "string")
-          : [],
-        verified: cite.verified === true,
-      })),
-      reasoning: str(item.reasoning),
-      confidence: str(item.confidence),
-    })),
-  };
-}
-
 function toFetchResponse(data: Record<string, unknown>, requestId?: string): FetchResponse {
   const summary = record(data.summary) ?? {};
   const resolved = record(data.resolved) ?? {};
@@ -762,7 +710,6 @@ function toFetchResponse(data: Record<string, unknown>, requestId?: string): Fet
       Object.entries(resolved).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
     ),
     results: objects(data.results).map(toFetchResult),
-    output: toFetchOutput(data.output),
     notices: toFetchNotices(data.notices),
     warnings: toFetchNotices(data.warnings),
     sessionId: nonEmpty(data.session_id),
@@ -792,7 +739,7 @@ function fetchManyBody(urls: string | readonly string[], options: FetchManyOptio
   }
   for (const target of targets) rejectPrivateFetchTarget(target);
   const body: Record<string, unknown> = { urls: targets };
-  const { content, retrieval, output } = options;
+  const { content, retrieval } = options;
   if (content !== undefined) {
     body.content = group([
       ["max_chars", content.maxChars],
@@ -806,12 +753,6 @@ function fetchManyBody(urls: string | readonly string[], options: FetchManyOptio
     body.retrieval = group([
       ["max_age_hours", retrieval.maxAgeHours],
       ["as_of", retrieval.asOf],
-    ]);
-  }
-  if (output !== undefined) {
-    body.output = group([
-      ["prompt", output.prompt],
-      ["schema", output.schema],
     ]);
   }
   if (options.deadlineMs !== undefined) body.deadline_ms = options.deadlineMs;

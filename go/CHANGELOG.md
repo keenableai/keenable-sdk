@@ -8,13 +8,10 @@ API's groups: `Content *FetchContentOptions` (`MaxChars`, default 50,000 and
 `keenable.Ptr(0)` for metadata only; `Objective`; `Schema`; `Links`; `Images`),
 `Retrieval *FetchRetrievalOptions` (`MaxAgeHours`, 0 to 720 with fractions,
 `keenable.Ptr(0.0)` always live, nil takes the stored copy; or `AsOf`, "P0D"
-for stored copies only) and `Output *FetchOutputOptions` (`Prompt`, `Schema`;
-an empty group asks for a prose answer), plus `DeadlineMS` and `SessionID`. A
-non-nil group is sent even when empty. `Results[i]` is the entry for `urls[i]`,
+for stored copies only), plus `DeadlineMS` and `SessionID`. A non-nil group is
+sent even when empty. `Results[i]` is the entry for `urls[i]`,
 with the page in `Content` (`Text`, `TotalChars`, `Answer`, `Links`, `Images`)
-and `RetrievedFrom`; a failed page has its `Error` set, not an error. The
-answer across pages is `Output` (`Text`, `Structured`, `BasedOn`, `Grounding`
-with verified citations). Preview: it works once `POST /v1/fetch` is enabled
+and `RetrievedFrom`; a failed page has its `Error` set, not an error. Preview: it works once `POST /v1/fetch` is enabled
 for your organization. `Fetch` and `FetchWithOptions` keep working on
 `GET /v1/fetch`; they are deprecated in favour of `FetchMany` and will be
 removed after the API retires `GET /v1/fetch` (announced with 90 days' notice).
