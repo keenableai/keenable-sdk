@@ -128,7 +128,7 @@ def _plan(name: str, arguments: str | dict[str, Any]) -> _Call:
     if name == "keenable_search":
         query = _require_str(args.get("query"), "keenable_search needs a 'query'")
         return _Call(
-            "search",
+            "_search",
             (query,),
             tool_filter_kwargs(args),
             lambda response: response.to_context(),

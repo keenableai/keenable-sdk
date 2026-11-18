@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Added:** `SearchOptions::include_domains`: return results only from these hosts and their subdomains, up to 50 (100 entries as sent); `".gov"` or `"*.edu"` covers every host under the suffix. `Some(vec![])` is sent as `[]`. Sent as given for the API to validate like `exclude_domains`. The search tool offers it to a model.
+- **Deprecated:** `SearchOptions::site`, now `#[deprecated]`. The API removes it on 2027-02-15; use `include_domains: Some(vec!["example.com".into()])`. It still works, and the response's `warning` (in `raw`) says the same.
+
 ## 0.1.0
 
 First release of the Rust SDK, with the same surface as the Python,

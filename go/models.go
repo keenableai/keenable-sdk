@@ -22,7 +22,14 @@ type SearchOptions struct {
 	// agent loops. Empty means "pro".
 	Mode string
 	// Site restricts results to one domain, for example "arxiv.org".
+	// Responses to a request that sends it carry a warning in Raw.
+	//
+	// Deprecated: the API removes site on 2027-02-15. Use IncludeDomains.
 	Site string
+	// IncludeDomains keeps only results from these hosts and their
+	// subdomains, up to 50; ".gov" covers every host under the suffix.
+	// Nil is unset; a non-nil empty slice is sent as [].
+	IncludeDomains []string
 	// ExcludeDomains drops results from these hosts and their subdomains.
 	// Nil is unset; a non-nil empty slice is sent as [].
 	ExcludeDomains []string
@@ -57,6 +64,9 @@ type SearchOptions struct {
 	// and "realtime" modes. False, the API default, is not sent.
 	DisableCards bool
 
+	// includeDomainsJSON is a tool call's include_domains as the model sent
+	// it, which []string cannot always hold; the API judges it.
+	includeDomainsJSON json.RawMessage
 	// excludeDomainsJSON is a tool call's exclude_domains as the model sent
 	// it, which []string cannot always hold; the API judges it.
 	excludeDomainsJSON json.RawMessage

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Added:** `SearchOptions.IncludeDomains`: return results only from these hosts and their subdomains, up to 50 (100 entries as sent); `".gov"` or `"*.edu"` covers every host under the suffix. Nil is unset; a non-nil empty slice is sent as `[]`. Sent as given for the API to validate like `ExcludeDomains`. The search tool offers `include_domains` to a model.
+- **Deprecated:** `SearchOptions.Site`, now marked `Deprecated:`. The API removes it on 2027-02-15; use `IncludeDomains: []string{"example.com"}`. It still works, and the response's `warning` (in `Raw`) says the same.
 - **Added:** `SearchOptions.Objective`: what the search is for, in two or three natural sentences, up to 1,000 characters. Not sent when empty. The API validates and logs it; it does not change results or price. The search tool offers it to a model.
 
 - **Security fix:** `Fetch` refuses loopback and private hosts spelled with

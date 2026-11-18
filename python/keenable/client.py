@@ -14,6 +14,7 @@ import socket
 import threading
 import time
 import unicodedata
+import warnings
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -269,6 +270,18 @@ def _reject_private_fetch_target(url: Any) -> None:
             return  # A hostname; the backend's SSRF guard is the backstop.
     if _is_blocked_ip(ip):
         raise KeenableInvalidRequestError(f"refusing to fetch private address {host!r}")
+
+
+_SITE_DEPRECATION = (
+    "site is deprecated and will be removed on 2027-02-15; "
+    "use include_domains instead, e.g. include_domains=['example.com']"
+)
+
+
+def _warn_site(site: str | None) -> None:
+    """Warn the caller of search() that ``site`` is deprecated."""
+    if site is not None and site != "":
+        warnings.warn(_SITE_DEPRECATION, DeprecationWarning, stacklevel=3)
 
 
 def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, Any]:
@@ -1356,6 +1369,7 @@ class Keenable(_BaseClient):
         *,
         mode: Literal["pro", "realtime"] | None = None,
         site: str | None = None,
+        include_domains: Iterable[str] | None = None,
         exclude_domains: Iterable[str] | None = None,
         published_after: str | None = None,
         published_before: str | None = None,
@@ -1379,7 +1393,13 @@ class Keenable(_BaseClient):
             mode: Search mode. ``"pro"`` (the default) does deeper retrieval.
                 ``"realtime"`` gives the fastest response, for
                 latency-sensitive agent loops.
-            site: Restrict results to one domain, e.g. ``"arxiv.org"``.
+            site: Deprecated, removed on 2027-02-15: use ``include_domains``.
+                Restricts results to one domain, e.g. ``"arxiv.org"``. Passing
+                it raises a ``DeprecationWarning``, and the response carries a
+                ``warning`` (in ``SearchResponse.raw``).
+            include_domains: Return results only from these hosts and their
+                subdomains, up to 50. Any iterable of strings; a lone string
+                is one host. ``".gov"`` covers every host under the suffix.
             exclude_domains: Never return results from these hosts and their
                 subdomains. Any iterable of strings; a lone string is one host.
             published_after: Keep pages published on or after ``YYYY-MM-DD``.
@@ -1416,10 +1436,54 @@ class Keenable(_BaseClient):
             A :class:`SearchResponse`; iterate it for results or call
             :meth:`SearchResponse.to_context` to build a prompt block.
         """
+        _warn_site(site)
+        return self._search(
+            query,
+            mode=mode,
+            site=site,
+            include_domains=include_domains,
+            exclude_domains=exclude_domains,
+            published_after=published_after,
+            published_before=published_before,
+            acquired_after=acquired_after,
+            acquired_before=acquired_before,
+            snippet_max_length=snippet_max_length,
+            max_results=max_results,
+            query_time=query_time,
+            objective=objective,
+            disable_cards=disable_cards,
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+        )
+
+    def _search(
+        self,
+        query: str,
+        *,
+        mode: Literal["pro", "realtime"] | None = None,
+        site: str | None = None,
+        include_domains: Iterable[str] | None = None,
+        exclude_domains: Iterable[str] | None = None,
+        published_after: str | None = None,
+        published_before: str | None = None,
+        acquired_after: str | None = None,
+        acquired_before: str | None = None,
+        snippet_max_length: int | None = None,
+        max_results: int | None = None,
+        query_time: str | None = None,
+        objective: str | None = None,
+        disable_cards: bool | None = None,
+        timeout: float | httpx.Timeout | None = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> SearchResponse:
+        """Run search() without the site deprecation warning, for tool calls."""
         payload = _search_payload(
             query,
             mode,
             site=site,
+            include_domains=include_domains,
             exclude_domains=exclude_domains,
             published_after=published_after,
             published_before=published_before,
@@ -1581,6 +1645,7 @@ class AsyncKeenable(_BaseClient):
         *,
         mode: Literal["pro", "realtime"] | None = None,
         site: str | None = None,
+        include_domains: Iterable[str] | None = None,
         exclude_domains: Iterable[str] | None = None,
         published_after: str | None = None,
         published_before: str | None = None,
@@ -1596,10 +1661,54 @@ class AsyncKeenable(_BaseClient):
         extra_headers: Mapping[str, str] | None = None,
     ) -> SearchResponse:
         """Search the web. See :meth:`Keenable.search` for the arguments."""
+        _warn_site(site)
+        return await self._search(
+            query,
+            mode=mode,
+            site=site,
+            include_domains=include_domains,
+            exclude_domains=exclude_domains,
+            published_after=published_after,
+            published_before=published_before,
+            acquired_after=acquired_after,
+            acquired_before=acquired_before,
+            snippet_max_length=snippet_max_length,
+            max_results=max_results,
+            query_time=query_time,
+            objective=objective,
+            disable_cards=disable_cards,
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+        )
+
+    async def _search(
+        self,
+        query: str,
+        *,
+        mode: Literal["pro", "realtime"] | None = None,
+        site: str | None = None,
+        include_domains: Iterable[str] | None = None,
+        exclude_domains: Iterable[str] | None = None,
+        published_after: str | None = None,
+        published_before: str | None = None,
+        acquired_after: str | None = None,
+        acquired_before: str | None = None,
+        snippet_max_length: int | None = None,
+        max_results: int | None = None,
+        query_time: str | None = None,
+        objective: str | None = None,
+        disable_cards: bool | None = None,
+        timeout: float | httpx.Timeout | None = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> SearchResponse:
+        """Run search() without the site deprecation warning, for tool calls."""
         payload = _search_payload(
             query,
             mode,
             site=site,
+            include_domains=include_domains,
             exclude_domains=exclude_domains,
             published_after=published_after,
             published_before=published_before,

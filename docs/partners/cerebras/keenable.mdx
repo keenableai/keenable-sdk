@@ -122,19 +122,20 @@ keywords. Filters are optional and combine freely.
 
 | Filter | Best for |
 |---|---|
-| `site` | Restricting to one domain, e.g. `arxiv.org` |
+| `include_domains` | Searching only some hosts, e.g. `["arxiv.org"]`. Each entry covers its subdomains, and `.gov` covers every host under the suffix. Up to 50 hosts. Replaces the deprecated `site`, which the API removes on 2027-02-15 |
 | `exclude_domains` | Keeping hosts out, e.g. `["pinterest.com", "quora.com"]`. Each entry is a host, and its subdomains are excluded too. Paths, suffixes such as `.com` and wildcards are rejected with HTTP 400; a scheme, `www.` or trailing `/` is cleaned up for you. Up to 1,000 hosts |
 | `published_after` / `published_before` | Time-boxing by when the page was published |
 | `acquired_after` / `acquired_before` | Time-boxing by when Keenable indexed the page. Use this for "what is new since ..." queries, where publication dates are unreliable or missing |
 | `snippet_max_length` | Capping how much page text comes back per result, to control prompt size |
 
 Dates are `YYYY-MM-DD`. In Node the same filters are camelCase
-(`publishedAfter`, `acquiredAfter`, `snippetMaxLength`, `excludeDomains`).
+(`publishedAfter`, `acquiredAfter`, `snippetMaxLength`, `includeDomains`,
+`excludeDomains`).
 
 ```python Python theme={null}
 results = keenable.search(
     "post-training quantization results for mixture-of-experts models",
-    site="arxiv.org",
+    include_domains=["arxiv.org"],
     published_after="2026-01-01",
     snippet_max_length=500,
 )

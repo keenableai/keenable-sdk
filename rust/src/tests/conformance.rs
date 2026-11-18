@@ -474,7 +474,11 @@ async fn search_body() {
         for (wire, v) in case["options"].as_object().unwrap() {
             match wire.as_str() {
                 "mode" => opts.mode = opt_string(v),
+                #[allow(deprecated)]
                 "site" => opts.site = opt_string(v),
+                "include_domains" => {
+                    opts.include_domains = Some(serde_json::from_value(v.clone()).unwrap())
+                }
                 "exclude_domains" => {
                     opts.exclude_domains = Some(serde_json::from_value(v.clone()).unwrap())
                 }

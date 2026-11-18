@@ -59,7 +59,7 @@ pointer is used where zero or false is a real value:
 ```go
 snippetCap := 500
 results, err := client.Search(context.Background(), "post-training quantization results", &keenable.SearchOptions{
-	Site:             "arxiv.org",
+	IncludeDomains:   []string{"arxiv.org"},
 	PublishedAfter:   "2026-01-01",
 	SnippetMaxLength: &snippetCap,
 })
@@ -67,7 +67,7 @@ results, err := client.Search(context.Background(), "post-training quantization 
 
 | Field | What it does |
 |---|---|
-| `Site` | Restrict to one domain, e.g. `"arxiv.org"` |
+| `IncludeDomains` | Return results only from these hosts or their subdomains, up to 50; see below |
 | `ExcludeDomains` | Never return results from these hosts or their subdomains; see below |
 | `PublishedAfter` / `PublishedBefore` | Filter by publication date (`YYYY-MM-DD`) |
 | `AcquiredAfter` / `AcquiredBefore` | Filter by when Keenable indexed the page |
@@ -77,6 +77,33 @@ results, err := client.Search(context.Background(), "post-training quantization 
 | `Objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price. Not sent when empty |
 | `Mode` | Search mode: `"pro"` does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops. Empty means `"pro"` |
 | `DisableCards` | `true` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). False, the default, is not sent. In the next release after `v0.1.1` |
+| `Site` | **Deprecated**, removed from the API on 2027-02-15: use `IncludeDomains`. Restricts to one domain |
+
+### Restricting to domains
+
+`IncludeDomains` returns results only from the listed sites.
+
+```go
+results, err := client.Search(ctx, "post-training quantization results", &keenable.SearchOptions{
+	IncludeDomains: []string{"arxiv.org", "openreview.net"},
+})
+```
+
+Each entry is a host, which covers itself and every subdomain, so
+`"reddit.com"` also matches `old.reddit.com`. A public suffix written with a
+leading dot or `*.` (`".gov"`, `"*.edu"`) covers every host under it. Up to 50
+distinct hosts, and at most 100 entries as sent. Entries are cleaned up and
+validated like `ExcludeDomains` entries (below), and a rejected one returns the
+same `invalid_filter` error with `Param` set to `"include_domains"`. Results
+from outside the list are dropped, so fewer than `MaxResults` may come back.
+`ExcludeDomains` still applies within the list: `IncludeDomains: []string{"github.com"}`
+with `ExcludeDomains: []string{"gist.github.com"}` keeps github.com but not gists.
+Nil is unset; a non-nil empty slice is sent as `[]`.
+
+`Site` is deprecated (`// Deprecated:`) and the API removes it on 2027-02-15.
+It still works, and the response carries a `warning` string in
+`resp.Raw["warning"]`. Replace `Site: "example.com"` with
+`IncludeDomains: []string{"example.com"}`.
 
 ### Excluding domains
 
@@ -122,8 +149,9 @@ over-long entry's first 64 characters followed by `"..."`.
 
 If every match is excluded, the response can be empty. The SDK sends the list
 as given and leaves validation to the API; `RunToolCall` does the same with a
-model's `exclude_domains` argument. `Site` still works for a single domain,
-and the `keenable_search` tool offers the model `site` and `exclude_domains`.
+model's `include_domains` and `exclude_domains` arguments. The
+`keenable_search` tool offers the model `include_domains`, `exclude_domains`
+and the deprecated `site`.
 
 ## Ground a model in one line
 
@@ -216,8 +244,8 @@ tools render the same numbered, citable block, so the model can cite a fetched
 page the way it cites a search result. Arguments may be a JSON string,
 `[]byte`, `json.RawMessage`, or `map[string]any`.
 
-The model may set `site`, `exclude_domains`, `published_after` and
-`disable_cards` on search. The other filters stay on `Search` for you to set
+The model may set `include_domains`, `exclude_domains`, `published_after`,
+`objective`, `disable_cards` and the deprecated `site` on search. The other filters stay on `Search` for you to set
 yourself.
 
 ## Context and timeouts

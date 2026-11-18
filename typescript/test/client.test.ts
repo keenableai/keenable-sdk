@@ -162,6 +162,31 @@ describe("search", () => {
     expect(lone.exclude_domains).toEqual(["un.org"]);
   });
 
+  it("sends includeDomains as an array", async () => {
+    const { client, seen } = mockClient(() => json(SEARCH_BODY));
+    await client.search("q", { includeDomains: new Set(["arxiv.org", ".gov"]) });
+    await client.search("q", { includeDomains: "arxiv.org" });
+    await client.search("q", { includeDomains: [] });
+    await client.search("q", { includeDomains: ["github.com"], excludeDomains: ["gist.github.com"] });
+    await runToolCall(client, "keenable_search", { query: "q", include_domains: "a.com" });
+
+    const [fromSet, lone, empty, both, tool] = seen.map((s) => JSON.parse(String(s.init.body)));
+    expect(fromSet.include_domains).toEqual(["arxiv.org", ".gov"]);
+    expect(lone.include_domains).toEqual(["arxiv.org"]);
+    expect(empty.include_domains).toEqual([]);
+    expect(both).toMatchObject({ include_domains: ["github.com"], exclude_domains: ["gist.github.com"] });
+    expect(tool.include_domains).toEqual(["a.com"]);
+  });
+
+  it("still sends the deprecated site and keeps the API's warning in raw", async () => {
+    const body = { ...SEARCH_BODY, warning: "The site parameter is deprecated" };
+    const { client, seen } = mockClient(() => json(body));
+    const response = await client.search("q", { site: "arxiv.org" });
+
+    expect(JSON.parse(String(seen[0]?.init.body)).site).toBe("arxiv.org");
+    expect(response.raw.warning).toBe("The site parameter is deprecated");
+  });
+
   it("refuses an argument JSON cannot encode, sending nothing", async () => {
     const { client, seen } = mockClient(() => json(SEARCH_BODY));
     const list = [1n] as unknown as string[];
@@ -455,7 +480,12 @@ describe("runToolCall", () => {
       type: "array",
       items: { type: "string" },
     });
+    expect(properties.include_domains).toMatchObject({
+      type: "array",
+      items: { type: "string" },
+    });
     expect(properties.site?.type).toBe("string");
+    expect(properties.site?.description).toContain("Deprecated");
   });
 
   it("offers disable_cards in the search tool schema as a boolean", () => {

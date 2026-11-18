@@ -101,7 +101,7 @@ pub struct RequestOptions {
 ///
 /// ```
 /// let opts = keenable::SearchOptions {
-///     site: Some("arxiv.org".into()),
+///     include_domains: Some(vec!["arxiv.org".into()]),
 ///     max_results: Some(5),
 ///     ..Default::default()
 /// };
@@ -113,8 +113,13 @@ pub struct SearchOptions {
     /// "realtime" gives the fastest response, for latency-sensitive agent
     /// loops. Sent as given.
     pub mode: Option<String>,
-    /// Restricts results to one domain, for example "arxiv.org".
+    /// Restricts results to one domain, for example "arxiv.org". Responses
+    /// to a request that sends it carry a `warning` in `raw`.
+    #[deprecated(note = "the API removes site on 2027-02-15; use include_domains")]
     pub site: Option<String>,
+    /// Keeps only results from these hosts and their subdomains, up to 50;
+    /// ".gov" covers every host under the suffix. `Some(vec![])` is sent as `[]`.
+    pub include_domains: Option<Vec<String>>,
     /// Drops results from these hosts and their subdomains, up to 1,000.
     /// `Some(vec![])` is sent as `[]`.
     pub exclude_domains: Option<Vec<String>>,
@@ -305,7 +310,11 @@ impl Client {
                 payload.insert(key.to_string(), Value::String(s.to_string()));
             }
         };
+        #[allow(deprecated)]
         put(&mut payload, "site", &opts.site);
+        if let Some(hosts) = &opts.include_domains {
+            payload.insert("include_domains".into(), Value::from(hosts.clone()));
+        }
         if let Some(hosts) = &opts.exclude_domains {
             payload.insert("exclude_domains".into(), Value::from(hosts.clone()));
         }

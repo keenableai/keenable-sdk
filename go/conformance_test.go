@@ -603,6 +603,11 @@ func TestConformanceSearchBody(t *testing.T) {
 					opts.Mode = str
 				case "site":
 					opts.Site = str
+				case "include_domains":
+					opts.IncludeDomains = []string{}
+					for _, host := range v.([]any) {
+						opts.IncludeDomains = append(opts.IncludeDomains, host.(string))
+					}
 				case "exclude_domains":
 					opts.ExcludeDomains = []string{}
 					for _, host := range v.([]any) {

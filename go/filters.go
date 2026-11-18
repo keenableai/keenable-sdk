@@ -21,8 +21,18 @@ type filter struct {
 
 var searchFilters = []filter{
 	{
-		wire:        "site",
-		description: "Optional. Restrict results to one domain, e.g. 'arxiv.org'.",
+		wire: "site",
+		description: "Optional. Deprecated, removed on 2027-02-15: use include_domains. " +
+			"Restrict results to one domain, e.g. 'arxiv.org'.",
+		toolExposed: true,
+	},
+	{
+		wire: "include_domains",
+		description: "Optional. Return results only from these hosts or their subdomains, " +
+			"e.g. 'arxiv.org'. Hosts only, no paths. A public suffix written with " +
+			"a leading dot or '*.', such as '.gov' or '*.edu', covers every host " +
+			"under it; other wildcards are rejected. Up to 50.",
+		jsonType:    "array",
 		toolExposed: true,
 	},
 	{
@@ -98,6 +108,14 @@ func (f filter) value(opts *SearchOptions) (any, bool) {
 			return nil, false
 		}
 		return opts.Site, true
+	case "include_domains":
+		if opts.includeDomainsJSON != nil {
+			return opts.includeDomainsJSON, true
+		}
+		if opts.IncludeDomains == nil {
+			return nil, false
+		}
+		return opts.IncludeDomains, true
 	case "exclude_domains":
 		if opts.excludeDomainsJSON != nil {
 			return opts.excludeDomainsJSON, true
@@ -253,7 +271,10 @@ func isNilSlice(v any) bool {
 }
 
 func assignList(opts *SearchOptions, wire string, raw json.RawMessage) {
-	if wire == "exclude_domains" {
+	switch wire {
+	case "include_domains":
+		opts.includeDomainsJSON = raw
+	case "exclude_domains":
 		opts.excludeDomainsJSON = raw
 	}
 }
