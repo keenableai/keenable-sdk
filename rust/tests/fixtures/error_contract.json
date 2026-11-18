@@ -2892,8 +2892,8 @@
         "error": "Monitor run in progress",
         "type": "invalid_request_error",
         "code": "run_in_progress",
-        "message": "The monitor is already running, so a triggered run was not started.",
-        "fix": "The monitor is already running. Wait for its current run to finish (GET /v1/monitors/{id}/runs shows it), then trigger it again. Retrying while it runs returns the same 409.",
+        "message": "The monitor is already running, so the request was not applied: a triggered run was not started, or a new page.url was not saved.",
+        "fix": "The monitor is already running. Wait for its current run to finish (GET /v1/monitors/{id}/runs shows it), then send the same request again: trigger it again, or resend the update with the new page.url. Retrying while it runs returns the same 409.",
         "docs_url": "https://docs.keenable.ai/errors#run-in-progress",
         "request_id": "req-run_in_progress",
         "retryable": false
@@ -2907,9 +2907,9 @@
         "retry_after_seconds": null,
         "request_id": "req-run_in_progress",
         "param": null,
-        "fix": "The monitor is already running. Wait for its current run to finish (GET /v1/monitors/{id}/runs shows it), then trigger it again. Retrying while it runs returns the same 409.",
+        "fix": "The monitor is already running. Wait for its current run to finish (GET /v1/monitors/{id}/runs shows it), then send the same request again: trigger it again, or resend the update with the new page.url. Retrying while it runs returns the same 409.",
         "limit": null,
-        "message_contains": "The monitor is already running, so a triggered run was not started.",
+        "message_contains": "The monitor is already running, so the request was not applied: a triggered run was not started, or a new page.url was not saved.",
         "absent": [
           "https://docs.keenable.ai/errors#run-in-progress"
         ]

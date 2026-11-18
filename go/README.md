@@ -325,7 +325,7 @@ retried only on a 429.
 
 A `Monitor` has `Type` ("search" or "page"), `Search` (nil for a page monitor),
 `Page` (nil for a search monitor), `DisabledReason` (`Code` `runs_failed`,
-`webhook_unreachable` or `insufficient_credits`, while it is disabled),
+`webhook_unreachable`, `insufficient_credits` or `data_policy` (a page monitor whose organization turned on zero data retention), while it is disabled),
 and `CostThisMonthUSD`. A completed `MonitorRun` has `Usage`
 (`Runs`, `Credits`, `CostUSD`) and, for a page monitor, `Changes` (`Changed`,
 `Notified`, `Baseline`, `Version`, `Source`, `Summary`, `Items`, `Diff`). With
