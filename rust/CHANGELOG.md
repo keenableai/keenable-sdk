@@ -2,8 +2,6 @@
 
 ## Unreleased
 
-## 0.3.0
-
 - **Added:** page monitors. `MonitorCreateParams { monitor_type: Some("page".into()), page: Some(MonitorPageTarget::new(url)), .. }` (`monitor_type` is sent as `type`) watches one page and reports the changes worth telling; `MonitorUpdateParams::page` merges into the stored page (a new `url` starts a new baseline, `watch_for: Some(String::new())` clears it). `create` refuses before sending a `monitor_type` other than "search" or "page", a page monitor without `page.url` or with `search`, and a search monitor with `page`.
 - **Added:** `monitors().versions(id, &MonitorVersionsParams { limit, cursor })` reads a page monitor's history (`GET /v1/monitors/{id}/versions`) as a `VersionList` of `MonitorVersion`.
 - **Added:** `Monitor::monitor_type` (`type`), `Monitor::page` (`Option<MonitorPageTarget>`) and `Monitor::disabled_reason` (`Option<MonitorDisabledReason>`: `code` `runs_failed`, `webhook_unreachable` or `insufficient_credits`, and `message`).

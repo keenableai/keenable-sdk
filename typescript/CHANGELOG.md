@@ -5,8 +5,6 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
-## 0.3.0
-
 - **Added:** page monitors. `monitors.create({ type: "page", page: { url, watchFor, sensitivity }, schedule })` watches one page and reports the changes worth telling; `update(id, { page: { ... } })` merges into the stored page (a new `url` starts a new baseline, `watchFor: null` clears it). `create()` rejects before sending a `type` other than `"search"` or `"page"`, a page monitor without `page.url` or with `search`, and a search monitor with `page`. `MonitorCreateParams.search` is now optional: it is required unless `type` is `"page"`. New types `MonitorType`, `MonitorPageTargetParams`, `MonitorPageSensitivity`.
 - **Added:** `monitors.versions(id, { limit, cursor })` reads a page monitor's history (`GET /v1/monitors/{id}/versions`) as a `VersionList` of `MonitorVersion` (`version`, `fetchedAt`, `title`, `source`, `notified`, `summary`, `items`, `diff`). Its params type is `MonitorVersionsParams`.
 - **Added:** `Monitor.type`, `Monitor.page` (`MonitorPageTarget`: `url`, `watchFor`, `sensitivity`) and `Monitor.disabledReason` (`MonitorDisabledReason`: `code` `runs_failed`, `webhook_unreachable` or `insufficient_credits`, and `message`).

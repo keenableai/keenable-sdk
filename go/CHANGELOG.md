@@ -2,8 +2,6 @@
 
 ## Unreleased
 
-## 0.3.0
-
 - **Added:** page monitors. `client.Monitors.Create(ctx, &keenable.MonitorCreateParams{Type: "page", Page: &keenable.MonitorPageTarget{URL: ..., WatchFor: ..., Sensitivity: ...}})` watches one page and reports the changes worth telling. `MonitorUpdateParams.Page` merges into the stored page (a new `URL` starts a new baseline) and `RemovePageWatchFor` clears `watch_for`. `Create` refuses before sending a `Type` other than `"search"` or `"page"`, a page monitor without `Page.URL` or with `Search`, and a search monitor with `Page`.
 - **Added:** `client.Monitors.Versions(ctx, id, &keenable.MonitorVersionsParams{Limit: ..., Cursor: ...})` reads a page monitor's history (`GET /v1/monitors/{id}/versions`) as a `*VersionList` of `MonitorVersion`.
 - **Added:** `Monitor.Type`, `Monitor.Page` (`*MonitorPageTarget`) and `Monitor.DisabledReason` (`*MonitorDisabledReason`: `Code` `runs_failed`, `webhook_unreachable` or `insufficient_credits`, and `Message`).

@@ -5,8 +5,6 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
-## 0.3.0
-
 - **Added:** page monitors. `monitors.create(type="page", page={"url": ..., "watch_for": ..., "sensitivity": "meaningful" | "any"}, schedule=...)` watches one page and reports the changes worth telling; `update(..., page={...})` merges into the stored page (a new `url` starts a new baseline, `watch_for=None` clears it). `create()` refuses before sending a `type` other than `"search"` or `"page"`, a page monitor without `page["url"]` or with `search`, and a search monitor with `page`. `search` is no longer a required argument of `create()`: it is required unless `type="page"`. Both `Monitors` and `AsyncMonitors`.
 - **Added:** `monitors.versions(monitor_id, limit=..., cursor=...)` reads a page monitor's history (`GET /v1/monitors/{id}/versions`) as a `VersionList` of `MonitorVersion` (`version`, `fetched_at`, `title`, `source`, `notified`, `summary`, `items`, `diff`).
 - **Added:** `Monitor.type` (`"search"` or `"page"`), `Monitor.page` (`MonitorPageTarget`: `url`, `watch_for`, `sensitivity`) and `Monitor.disabled_reason` (`MonitorDisabledReason`: `code` `runs_failed`, `webhook_unreachable` or `insufficient_credits`, and `message`).
