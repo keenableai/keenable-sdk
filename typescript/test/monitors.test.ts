@@ -5,6 +5,7 @@ import {
   KeenableAPIError,
   KeenableAuthError,
   KeenableInvalidRequestError,
+  type MonitorCreateParams,
   verifyWebhook,
   WebhookVerificationError,
 } from "../src/index.js";
@@ -28,7 +29,6 @@ const MONITOR = {
   webhook: { url: "https://hooks.example.com/k", events: ["monitor.hit"], secret: "whsec_abc" },
   metadata: { team: "research" },
   memory_scope: null,
-  estimated_cost_usd: null,
   cost_this_month_usd: null,
   last_run_at: null,
   next_run_at: "2026-11-18T08:00:00Z",
@@ -124,7 +124,7 @@ describe("monitors", () => {
     expect(monitor.search?.excludeDomains).toEqual(["example.com"]);
     expect(monitor.webhook?.secret).toBe("whsec_abc");
     expect(monitor.upcomingRuns).toEqual(["2026-11-18T08:00:00Z"]);
-    expect(monitor.estimatedCostUsd).toBeNull();
+    expect(monitor.costThisMonthUsd).toBeNull();
   });
 
   it("retries a create with the same idempotency key", async () => {
@@ -369,7 +369,6 @@ const PAGE_MONITOR = {
   page: { url: "https://example.com/pricing", watch_for: "plan prices", sensitivity: "meaningful" },
   webhook: null,
   status: "disabled",
-  estimated_cost_usd: 0.24,
   cost_this_month_usd: 0.004,
   disabled_reason: { code: "insufficient_credits", message: "The organization is out of credits." },
 };
@@ -439,7 +438,6 @@ describe("page monitors", () => {
       watchFor: "plan prices",
       sensitivity: "meaningful",
     });
-    expect(monitor.estimatedCostUsd).toBe(0.24);
     expect(monitor.costThisMonthUsd).toBe(0.004);
     expect(monitor.disabledReason).toEqual({
       code: "insufficient_credits",
@@ -473,9 +471,28 @@ describe("page monitors", () => {
       {},
     ];
     for (const params of bad) {
-      await expect(keenable.monitors.create(params as never)).rejects.toBeInstanceOf(KeenableInvalidRequestError);
+      const untyped = params as unknown as MonitorCreateParams;
+      await expect(keenable.monitors.create(untyped)).rejects.toBeInstanceOf(KeenableInvalidRequestError);
     }
     expect(seen).toHaveLength(0);
+  });
+
+  it("types a create as a search monitor or a page monitor", () => {
+    const ok: MonitorCreateParams[] = [
+      { search: { query: "q" } },
+      { type: "search", search: { query: "q" } },
+      { type: "page", page: { url: "https://example.com" } },
+    ];
+    expect(ok).toHaveLength(3);
+    // @ts-expect-error a page monitor needs page
+    const noPage: MonitorCreateParams = { type: "page" };
+    // @ts-expect-error a page monitor takes no search
+    const pageAndSearch: MonitorCreateParams = { type: "page", page: { url: "https://example.com" }, search: { query: "q" } };
+    // @ts-expect-error a search monitor takes no page
+    const searchAndPage: MonitorCreateParams = { search: { query: "q" }, page: { url: "https://example.com" } };
+    // @ts-expect-error a search monitor needs search
+    const empty: MonitorCreateParams = {};
+    expect([noPage, pageAndSearch, searchAndPage, empty]).toHaveLength(4);
   });
 
   it("updates a page, null clears watchFor", async () => {

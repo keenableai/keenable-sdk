@@ -85,13 +85,8 @@ export interface MonitorWebhookParams {
   events?: MonitorEvent[] | null;
 }
 
-export interface MonitorCreateParams extends RequestOptions {
-  /** search (the API's default) or page. */
-  type?: MonitorType;
-  /** What a search monitor watches for. Required unless `type` is "page". */
-  search?: MonitorSearchParams;
-  /** The page a page monitor watches. Only with `type: "page"`. */
-  page?: MonitorPageTargetParams;
+/** What every create takes, whichever kind of monitor it makes. */
+export interface MonitorCreateCommonParams extends RequestOptions {
   /** Up to 200 characters. */
   name?: string;
   /** Without one, a search monitor runs only on `trigger()` and a page monitor every hour. */
@@ -108,6 +103,26 @@ export interface MonitorCreateParams extends RequestOptions {
    */
   idempotencyKey?: string;
 }
+
+/** A search monitor: new pages about a topic. */
+export interface MonitorSearchCreateParams extends MonitorCreateCommonParams {
+  /** "search", the API's default. */
+  type?: "search";
+  /** What the monitor watches for. */
+  search: MonitorSearchParams;
+  page?: never;
+}
+
+/** A page monitor: changes to one page. */
+export interface MonitorPageCreateParams extends MonitorCreateCommonParams {
+  type: "page";
+  /** The page the monitor watches. */
+  page: MonitorPageTargetParams;
+  search?: never;
+}
+
+/** `{ search: { query } }` for a search monitor, or `{ type: "page", page: { url } }` for a page monitor. */
+export type MonitorCreateParams = MonitorSearchCreateParams | MonitorPageCreateParams;
 
 /** Only the fields you set are sent; `null` removes the schedule, webhook or output schema. */
 export interface MonitorUpdateParams extends RequestOptions {
@@ -230,8 +245,6 @@ export interface Monitor {
   backfill: unknown;
   /** Not available yet: always null. */
   memoryScope: unknown;
-  /** The runs the schedule gives in the next 30 days times the price of a run; 0 unless active. */
-  estimatedCostUsd: number | null;
   /** The completed runs this calendar month (UTC) times the price of a run. */
   costThisMonthUsd: number | null;
   requestId?: string;
@@ -524,7 +537,6 @@ export function toMonitor(data: Json, requestId?: string): Monitor {
     agentRunId: data.agent_run_id ?? null,
     backfill: data.backfill ?? null,
     memoryScope: data.memory_scope ?? null,
-    estimatedCostUsd: num(data.estimated_cost_usd),
     costThisMonthUsd: num(data.cost_this_month_usd),
     requestId,
     raw: data,
@@ -794,21 +806,22 @@ export class Monitors {
     if (typeof params !== "object" || params === null || Array.isArray(params)) {
       throw new KeenableInvalidRequestError("create() needs { search: { query } } or { type: \"page\", page: { url } }");
     }
-    const type: unknown = params.type;
+    const type: unknown = (params as { type?: unknown }).type;
     if (type !== undefined && type !== "search" && type !== "page") {
       throw new KeenableInvalidRequestError(`type must be "search" or "page", got ${JSON.stringify(type)}`);
     }
     const body: Json = {};
+    const sent = params as { search?: unknown; page?: unknown };
     if (type === "page") {
-      if (params.search !== undefined) throw new KeenableInvalidRequestError("a page monitor takes page, not search");
+      if (sent.search !== undefined) throw new KeenableInvalidRequestError("a page monitor takes page, not search");
       body.type = "page";
-      body.page = pageBody(params.page as MonitorPageTargetParams, true);
+      body.page = pageBody(sent.page as MonitorPageTargetParams, true);
     } else {
-      if (params.page !== undefined) {
+      if (sent.page !== undefined) {
         throw new KeenableInvalidRequestError('page is only for type: "page"; a search monitor takes search');
       }
       if (type !== undefined) body.type = type;
-      body.search = searchBody(params.search as MonitorSearchParams, true);
+      body.search = searchBody(sent.search as MonitorSearchParams, true);
     }
     if (params.name !== undefined) body.name = params.name;
     if (params.schedule !== undefined) body.schedule = scheduleBody(params.schedule);

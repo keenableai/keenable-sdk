@@ -326,7 +326,7 @@ retried only on a 429.
 A `Monitor` has `Type` ("search" or "page"), `Search` (nil for a page monitor),
 `Page` (nil for a search monitor), `DisabledReason` (`Code` `runs_failed`,
 `webhook_unreachable` or `insufficient_credits`, while it is disabled),
-`EstimatedCostUSD` and `CostThisMonthUSD`. A completed `MonitorRun` has `Usage`
+and `CostThisMonthUSD`. A completed `MonitorRun` has `Usage`
 (`Runs`, `Credits`, `CostUSD`) and, for a page monitor, `Changes` (`Changed`,
 `Notified`, `Baseline`, `Version`, `Source`, `Summary`, `Items`, `Diff`). With
 an output schema, `Output` has `Structured`, `Fresh` and `Error`.
@@ -346,9 +346,13 @@ func hook(w http.ResponseWriter, r *http.Request) {
 	}
 	switch event.Type {
 	case "monitor.hit":
-		fmt.Println(event.Data.Result.URL)
+		if event.Data.Result != nil {
+			fmt.Println(event.Data.Result.URL)
+		}
 	case "monitor.change": // a page monitor's change worth telling
-		fmt.Println(*event.Data.Run.Changes.Summary)
+		if run := event.Data.Run; run != nil && run.Changes != nil && run.Changes.Summary != nil {
+			fmt.Println(*run.Changes.Summary)
+		}
 	}
 }
 ```

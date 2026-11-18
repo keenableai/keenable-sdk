@@ -10,8 +10,10 @@ All notable changes to the `keenable` npm package. Versions follow
 - **Added:** `Monitor.type`, `Monitor.page` (`MonitorPageTarget`: `url`, `watchFor`, `sensitivity`) and `Monitor.disabledReason` (`MonitorDisabledReason`: `code` `runs_failed`, `webhook_unreachable` or `insufficient_credits`, and `message`).
 - **Added:** typed run fields: `MonitorRun.changes` is a `MonitorRunChanges` (`changed`, `notified`, `baseline`, `version`, `source`, `summary`, `items`, `diff` as a `MonitorDiff`), `MonitorRun.usage` a `MonitorRunUsage` (`runs`, `credits`, `costUsd`), and `MonitorRunOutput` gains `fresh` and `error` (`MonitorRunOutputError`: `code` `output_failed` or `output_invalid`, and `message`).
 - **Added:** `"monitor.change"` in `MonitorEvent` (a page monitor's run, in `event.data.run`, with its `changes`); `WebhookEvent.type` is typed as `MonitorEvent` (any other string still type-checks).
+- **Changed (may break code):** `MonitorCreateParams` is a union of `MonitorSearchCreateParams` (`search` required, `type` optional `"search"`) and `MonitorPageCreateParams` (`type: "page"` and `page` required): a create with neither, or with both `search` and `page`, no longer compiles. The SDK still checks the same at run time.
 - **Changed (may break code):** `Monitor.search` is now `MonitorSearch | null`: it is null for a page monitor. Code that reads `monitor.search.query` stops compiling under `strictNullChecks`, and fails at run time on a page monitor; check `monitor.type` or use `monitor.search?.query`.
-- **Changed:** `Monitor.estimatedCostUsd` and `costThisMonthUsd` are filled now that runs are priced ($0.002 a run); the schedule docs give the API's limits: interval `10m` to `90d`, cron runs at least 10 minutes apart. The SDK does not check schedules itself.
+- **Removed (breaking):** `Monitor.estimatedCostUsd` (`estimated_cost_usd`; always null; a run costs $0.002, see `costThisMonthUsd` and run `usage`).
+- **Changed:** `Monitor.costThisMonthUsd` is filled now that runs are priced ($0.002 a run); the schedule docs give the API's limits: interval `10m` to `90d`, cron runs at least 10 minutes apart. The SDK does not check schedules itself.
 - **Changed:** the error contract fixtures follow the backend's current catalog: `monitor_limit_reached` (403) now points to contact sales for a higher limit.
 
 ## 0.2.0

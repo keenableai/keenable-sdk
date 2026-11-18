@@ -386,9 +386,6 @@ pub struct Monitor {
     pub backfill: Option<Value>,
     /// Not available yet: always `None`.
     pub memory_scope: Option<Value>,
-    /// The runs the schedule gives in the next 30 days times the price of a
-    /// run; 0 unless the monitor is active.
-    pub estimated_cost_usd: Option<f64>,
     /// The completed runs this calendar month (UTC) times the price of a run.
     pub cost_this_month_usd: Option<f64>,
     /// The API's id for this request.

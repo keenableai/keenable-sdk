@@ -8,7 +8,8 @@
 - **Added:** typed run fields: `MonitorRun::changes` is an `Option<MonitorRunChanges>` (with `diff: Option<MonitorDiff>`), `MonitorRun::usage` an `Option<MonitorRunUsage>` (`runs`, `credits`, `cost_usd`), and `MonitorRunOutput` gains `fresh` and `error` (`Option<MonitorRunOutputError>`: `code` `output_failed` or `output_invalid`, and `message`).
 - **Added:** the `monitor.change` webhook event (a page monitor's run, in `WebhookEventData::run`, with its `changes`) is documented on `WebhookEventData::run`.
 - **Changed (breaking):** `Monitor::search` is now `Option<MonitorSearch>`, `None` for a page monitor; `MonitorRun::changes` and `MonitorRun::usage` change from `Option<Value>` to typed options. Code that reads `monitor.search.query` no longer compiles. Before this, a page monitor's `"search": null` failed to parse.
-- **Changed:** `Monitor::estimated_cost_usd` and `cost_this_month_usd` are filled now that runs are priced ($0.002 a run); the schedule docs give the API's limits: interval `10m` to `90d`, cron runs at least 10 minutes apart. The SDK does not check schedules itself.
+- **Removed (breaking):** `Monitor::estimated_cost_usd` (`estimated_cost_usd`; always null; a run costs $0.002, see `cost_this_month_usd` and run `usage`).
+- **Changed:** `Monitor::cost_this_month_usd` is filled now that runs are priced ($0.002 a run); the schedule docs give the API's limits: interval `10m` to `90d`, cron runs at least 10 minutes apart. The SDK does not check schedules itself.
 - **Changed:** the error contract fixtures follow the backend's current catalog: `monitor_limit_reached` (403) now points to contact sales for a higher limit.
 
 ## 0.2.0

@@ -46,7 +46,6 @@ MONITOR: dict[str, Any] = {
     },
     "metadata": {"team": "research"},
     "memory_scope": None,
-    "estimated_cost_usd": None,
     "cost_this_month_usd": None,
     "last_run_at": None,
     "next_run_at": "2026-11-18T08:00:00Z",
@@ -155,7 +154,7 @@ def test_create_sends_the_body_and_an_idempotency_key() -> None:
     assert monitor.webhook is not None and monitor.webhook.secret == "whsec_abc"
     assert monitor.metadata == {"team": "research"}
     assert monitor.upcoming_runs[0] == "2026-11-18T08:00:00Z"
-    assert monitor.estimated_cost_usd is None
+    assert monitor.cost_this_month_usd is None
 
 
 def test_create_retries_with_the_same_idempotency_key() -> None:
@@ -523,7 +522,6 @@ PAGE_MONITOR: dict[str, Any] = dict(
         "sensitivity": "meaningful",
     },
     webhook=None,
-    estimated_cost_usd=0.24,
     cost_this_month_usd=0.004,
     status="disabled",
     disabled_reason={
@@ -591,7 +589,6 @@ def test_create_a_page_monitor() -> None:
     assert monitor.page.url == "https://example.com/pricing"
     assert monitor.page.watch_for == "plan prices"
     assert monitor.page.sensitivity == "meaningful"
-    assert monitor.estimated_cost_usd == 0.24
     assert monitor.cost_this_month_usd == 0.004
     assert monitor.disabled_reason is not None
     assert monitor.disabled_reason.code == "insufficient_credits"

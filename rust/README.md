@@ -284,7 +284,7 @@ call), so its retries cannot make a second monitor; `update`, `trigger` and
 A `Monitor` has `monitor_type` ("search" or "page"), `search` (`None` for a
 page monitor), `page` (`None` for a search monitor), `disabled_reason` (`code`
 `runs_failed`, `webhook_unreachable` or `insufficient_credits`, while it is
-disabled), `estimated_cost_usd` and `cost_this_month_usd`. A completed
+disabled) and `cost_this_month_usd`. A completed
 `MonitorRun` has `usage` (`runs`, `credits`, `cost_usd`) and, for a page
 monitor, `changes` (`changed`, `notified`, `baseline`, `version`, `source`,
 `summary`, `items`, `diff`). With an output schema, `output` has `structured`,

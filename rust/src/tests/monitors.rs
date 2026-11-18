@@ -23,7 +23,7 @@ fn monitor() -> Value {
         "output_schema": null,
         "webhook": {"url": "https://hooks.example.com/k", "events": ["monitor.hit"], "secret": "whsec_abc"},
         "metadata": {"team": "research"}, "memory_scope": null,
-        "estimated_cost_usd": null, "cost_this_month_usd": null,
+        "cost_this_month_usd": null,
         "last_run_at": null, "next_run_at": "2026-11-18T08:00:00Z",
         "upcoming_runs": ["2026-11-18T08:00:00Z"],
         "created_at": "2026-11-17T10:00:00Z", "updated_at": "2026-11-17T10:00:00Z"
@@ -115,7 +115,7 @@ async fn create_sends_the_body_and_an_idempotency_key() {
         Some("Europe/Paris")
     );
     assert_eq!(m.metadata.unwrap()["team"], "research");
-    assert_eq!(m.estimated_cost_usd, None);
+    assert_eq!(m.cost_this_month_usd, None);
     assert_eq!(m.raw["id"], json!("mon_1"));
 }
 
@@ -524,7 +524,6 @@ fn page_monitor() -> Value {
     m["page"] = json!({"url": "https://example.com/pricing", "watch_for": "plan prices", "sensitivity": "meaningful"});
     m["webhook"] = Value::Null;
     m["status"] = json!("disabled");
-    m["estimated_cost_usd"] = json!(0.24);
     m["cost_this_month_usd"] = json!(0.004);
     m["disabled_reason"] =
         json!({"code": "insufficient_credits", "message": "The organization is out of credits."});
@@ -603,7 +602,6 @@ async fn create_a_page_monitor() {
             sensitivity: Some("meaningful".into()),
         })
     );
-    assert_eq!(m.estimated_cost_usd, Some(0.24));
     assert_eq!(m.cost_this_month_usd, Some(0.004));
     assert_eq!(m.disabled_reason.unwrap().code, "insufficient_credits");
 }

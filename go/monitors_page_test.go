@@ -27,7 +27,6 @@ func pageMonitorBody() map[string]any {
 	out["page"] = map[string]any{"url": "https://example.com/pricing", "watch_for": "plan prices", "sensitivity": "meaningful"}
 	out["webhook"] = nil
 	out["status"] = "disabled"
-	out["estimated_cost_usd"] = 0.24
 	out["cost_this_month_usd"] = 0.004
 	out["disabled_reason"] = map[string]any{"code": "insufficient_credits", "message": "The organization is out of credits."}
 	return out
@@ -86,8 +85,8 @@ func TestMonitorsCreatePage(t *testing.T) {
 	if *m.Page != (keenable.MonitorPageTarget{URL: "https://example.com/pricing", WatchFor: "plan prices", Sensitivity: "meaningful"}) {
 		t.Fatalf("page %+v", m.Page)
 	}
-	if m.EstimatedCostUSD == nil || *m.EstimatedCostUSD != 0.24 || m.CostThisMonthUSD == nil || *m.CostThisMonthUSD != 0.004 {
-		t.Fatalf("costs %v %v", m.EstimatedCostUSD, m.CostThisMonthUSD)
+	if m.CostThisMonthUSD == nil || *m.CostThisMonthUSD != 0.004 {
+		t.Fatalf("cost %v", m.CostThisMonthUSD)
 	}
 	if m.DisabledReason == nil || m.DisabledReason.Code != "insufficient_credits" {
 		t.Fatalf("disabled reason %+v", m.DisabledReason)
@@ -252,5 +251,42 @@ func TestVerifyWebhookMonitorChange(t *testing.T) {
 	}
 	if *event.Data.Run.Changes.Summary != "The Pro plan went from $25 to $30 a month." {
 		t.Fatalf("summary %q", *event.Data.Run.Changes.Summary)
+	}
+}
+
+func TestMonitorTypeDefaultsToSearch(t *testing.T) {
+	body := map[string]any{}
+	for k, v := range monitorBody {
+		body[k] = v
+	}
+	delete(body, "type")
+	c, _ := monitorServer(t, "k", mreply{200, body})
+	m, err := c.Monitors.Get(context.Background(), "mon_1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Type != "search" {
+		t.Fatalf("type %q, want search when the response leaves it out", m.Type)
+	}
+	if _, ok := m.Raw["type"]; ok {
+		t.Fatalf("raw %v should stay as sent", m.Raw)
+	}
+	var list keenable.List[keenable.Monitor]
+	if err := json.Unmarshal([]byte(`{"data":[{"id":"a"},{"id":"b","type":null},{"id":"c","type":"page"}]}`), &list); err != nil {
+		t.Fatal(err)
+	}
+	if got := []string{list.Data[0].Type, list.Data[1].Type, list.Data[2].Type}; !reflect.DeepEqual(got, []string{"search", "search", "page"}) {
+		t.Fatalf("types %v", got)
+	}
+}
+
+func TestMonitorTypeKeepsPage(t *testing.T) {
+	c, _ := monitorServer(t, "k", mreply{200, pageMonitorBody()})
+	m, err := c.Monitors.Get(context.Background(), "mon_p", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Type != "page" {
+		t.Fatalf("type %q, want page", m.Type)
 	}
 }

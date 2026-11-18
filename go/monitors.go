@@ -317,7 +317,8 @@ type Monitor struct {
 	ID     string  `json:"id"`
 	Object string  `json:"object"`
 	Name   *string `json:"name"`
-	// Type is search (new pages about a topic) or page (changes to one page).
+	// Type is search (new pages about a topic) or page (changes to one page);
+	// search when the response leaves it out.
 	Type string `json:"type"`
 	// Status is active, paused, disabled or completed.
 	Status string `json:"status"`
@@ -341,9 +342,6 @@ type Monitor struct {
 	AgentRunID  any `json:"agent_run_id"`
 	Backfill    any `json:"backfill"`
 	MemoryScope any `json:"memory_scope"`
-	// EstimatedCostUSD is the runs the schedule gives in the next 30 days
-	// times the price of a run; 0 unless the monitor is active.
-	EstimatedCostUSD *float64 `json:"estimated_cost_usd"`
 	// CostThisMonthUSD is the completed runs this calendar month (UTC) times
 	// the price of a run.
 	CostThisMonthUSD *float64 `json:"cost_this_month_usd"`
@@ -351,6 +349,21 @@ type Monitor struct {
 	RequestID string `json:"-"`
 	// Raw is the unmodified JSON object.
 	Raw map[string]any `json:"-"`
+}
+
+// UnmarshalJSON reads a missing, null or empty type as search, the API's
+// default, as the other SDKs do.
+func (m *Monitor) UnmarshalJSON(raw []byte) error {
+	type plain Monitor
+	var wire plain
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return err
+	}
+	if wire.Type == "" {
+		wire.Type = "search"
+	}
+	*m = Monitor(wire)
+	return nil
 }
 
 // MonitorResultChange is how a page that came back changed since the version

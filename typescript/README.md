@@ -269,7 +269,7 @@ and deletes are retried like a search; `create()` sends an `Idempotency-Key`
 A `Monitor` has `type` (`"search"` or `"page"`), `search` (null for a page
 monitor), `page` (null for a search monitor), `disabledReason` (`code`
 `runs_failed`, `webhook_unreachable` or `insufficient_credits`, while it is
-disabled), `estimatedCostUsd` and `costThisMonthUsd`. A completed `MonitorRun`
+disabled) and `costThisMonthUsd`. A completed `MonitorRun`
 has `usage` (`runs`, `credits`, `costUsd`) and, for a page monitor, `changes`
 (`changed`, `notified`, `baseline`, `version`, `source`, `summary`, `items`,
 `diff`). With an output schema, `output` has `structured`, `fresh` and `error`.

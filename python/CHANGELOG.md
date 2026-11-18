@@ -11,7 +11,8 @@ All notable changes to the `keenable` Python package. Versions follow
 - **Added:** typed run fields: `MonitorRun.changes` is a `MonitorRunChanges` (`changed`, `notified`, `baseline`, `version`, `source`, `summary`, `items`, `diff` as a `MonitorDiff`), `MonitorRun.usage` a `MonitorRunUsage` (`runs`, `credits`, `cost_usd`), and `MonitorRunOutput` gains `fresh` and `error` (`MonitorRunOutputError`: `code` `output_failed` or `output_invalid`, and `message`).
 - **Added:** the `monitor.change` webhook event (a page monitor's run, in `event.data.run`, with its `changes`) is documented on `verify_webhook` and `WebhookEventData.run`.
 - **Changed (may break code):** `Monitor.search` is now `MonitorSearch | None`: it is None for a page monitor. Code that reads `monitor.search.query` unchecked fails on a page monitor; check `monitor.type` or `monitor.search is not None` first.
-- **Changed:** `Monitor.estimated_cost_usd` and `cost_this_month_usd` are filled now that runs are priced ($0.002 a run); the schedule docstrings give the API's limits: interval `10m` to `90d`, cron runs at least 10 minutes apart. The SDK does not check schedules itself.
+- **Removed (breaking):** `Monitor.estimated_cost_usd` (`estimated_cost_usd`; always null; a run costs $0.002, see `cost_this_month_usd` and run `usage`).
+- **Changed:** `Monitor.cost_this_month_usd` is filled now that runs are priced ($0.002 a run); the schedule docstrings give the API's limits: interval `10m` to `90d`, cron runs at least 10 minutes apart. The SDK does not check schedules itself.
 - **Changed:** the error contract fixtures follow the backend's current catalog: `monitor_limit_reached` (403) now points to contact sales for a higher limit.
 
 ## 0.2.0

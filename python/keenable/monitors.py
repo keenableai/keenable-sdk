@@ -346,9 +346,6 @@ class Monitor:
     """Not available yet: always None."""
     memory_scope: Any = None
     """Not available yet: always None."""
-    estimated_cost_usd: float | None = None
-    """The runs the schedule gives in the next 30 days times the price of a
-    run; 0 unless the monitor is active."""
     cost_this_month_usd: float | None = None
     """The completed runs this calendar month (UTC) times the price of a run."""
     type: str = "search"
@@ -386,7 +383,6 @@ class Monitor:
             agent_run_id=data.get("agent_run_id"),
             backfill=data.get("backfill"),
             memory_scope=data.get("memory_scope"),
-            estimated_cost_usd=_float(data.get("estimated_cost_usd")),
             cost_this_month_usd=_float(data.get("cost_this_month_usd")),
             type=_str(data.get("type")) or "search",
             page=MonitorPageTarget._from_json(page) if page is not None else None,

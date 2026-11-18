@@ -31,7 +31,7 @@ var monitorBody = map[string]any{
 	"output_schema": nil,
 	"webhook":       map[string]any{"url": "https://hooks.example.com/k", "events": []string{"monitor.hit"}, "secret": "whsec_abc"},
 	"metadata":      map[string]any{"team": "research"},
-	"memory_scope":  nil, "estimated_cost_usd": nil, "cost_this_month_usd": nil,
+	"memory_scope":  nil, "cost_this_month_usd": nil,
 	"last_run_at": nil, "next_run_at": "2026-11-18T08:00:00Z",
 	"upcoming_runs": []string{"2026-11-18T08:00:00Z"},
 	"created_at":    "2026-11-17T10:00:00Z", "updated_at": "2026-11-17T10:00:00Z",
@@ -137,7 +137,7 @@ func TestMonitorsCreate(t *testing.T) {
 	if m.Schedule == nil || *m.Schedule.Timezone != "Europe/Paris" || m.Metadata["team"] != "research" {
 		t.Fatalf("monitor %+v", m)
 	}
-	if m.EstimatedCostUSD != nil || len(m.UpcomingRuns) != 1 || m.Raw["id"] != "mon_1" {
+	if m.CostThisMonthUSD != nil || len(m.UpcomingRuns) != 1 || m.Raw["id"] != "mon_1" {
 		t.Fatalf("monitor %+v", m)
 	}
 }
