@@ -1437,6 +1437,48 @@ class Keenable(_BaseClient):
             :meth:`SearchResponse.to_context` to build a prompt block.
         """
         _warn_site(site)
+        return self._search(
+            query,
+            mode=mode,
+            site=site,
+            include_domains=include_domains,
+            exclude_domains=exclude_domains,
+            published_after=published_after,
+            published_before=published_before,
+            acquired_after=acquired_after,
+            acquired_before=acquired_before,
+            snippet_max_length=snippet_max_length,
+            max_results=max_results,
+            query_time=query_time,
+            objective=objective,
+            disable_cards=disable_cards,
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+        )
+
+    def _search(
+        self,
+        query: str,
+        *,
+        mode: Literal["pro", "realtime"] | None = None,
+        site: str | None = None,
+        include_domains: Iterable[str] | None = None,
+        exclude_domains: Iterable[str] | None = None,
+        published_after: str | None = None,
+        published_before: str | None = None,
+        acquired_after: str | None = None,
+        acquired_before: str | None = None,
+        snippet_max_length: int | None = None,
+        max_results: int | None = None,
+        query_time: str | None = None,
+        objective: str | None = None,
+        disable_cards: bool | None = None,
+        timeout: float | httpx.Timeout | None = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> SearchResponse:
+        """Run search() without the site deprecation warning, for tool calls."""
         payload = _search_payload(
             query,
             mode,
@@ -1620,6 +1662,48 @@ class AsyncKeenable(_BaseClient):
     ) -> SearchResponse:
         """Search the web. See :meth:`Keenable.search` for the arguments."""
         _warn_site(site)
+        return await self._search(
+            query,
+            mode=mode,
+            site=site,
+            include_domains=include_domains,
+            exclude_domains=exclude_domains,
+            published_after=published_after,
+            published_before=published_before,
+            acquired_after=acquired_after,
+            acquired_before=acquired_before,
+            snippet_max_length=snippet_max_length,
+            max_results=max_results,
+            query_time=query_time,
+            objective=objective,
+            disable_cards=disable_cards,
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+        )
+
+    async def _search(
+        self,
+        query: str,
+        *,
+        mode: Literal["pro", "realtime"] | None = None,
+        site: str | None = None,
+        include_domains: Iterable[str] | None = None,
+        exclude_domains: Iterable[str] | None = None,
+        published_after: str | None = None,
+        published_before: str | None = None,
+        acquired_after: str | None = None,
+        acquired_before: str | None = None,
+        snippet_max_length: int | None = None,
+        max_results: int | None = None,
+        query_time: str | None = None,
+        objective: str | None = None,
+        disable_cards: bool | None = None,
+        timeout: float | httpx.Timeout | None = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> SearchResponse:
+        """Run search() without the site deprecation warning, for tool calls."""
         payload = _search_payload(
             query,
             mode,

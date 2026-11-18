@@ -318,6 +318,27 @@ async def test_async_site_is_deprecated_but_still_sent() -> None:
     assert payload["include_domains"] == ["a.com"]
 
 
+def test_tool_call_with_site_does_not_warn() -> None:
+    keenable, seen = _client(_routed)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        run_tool_call(keenable, "keenable_search", {"query": "q", "site": "arxiv.org"})
+
+    assert json.loads(seen[0].content)["site"] == "arxiv.org"
+
+
+async def test_async_tool_call_with_site_does_not_warn() -> None:
+    keenable, seen = _aclient(_routed)
+    async with keenable:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            await arun_tool_call(
+                keenable, "keenable_search", {"query": "q", "site": "arxiv.org"}
+            )
+
+    assert json.loads(seen[0].content)["site"] == "arxiv.org"
+
+
 def test_keyless_client_uses_public_endpoint_and_identifies_itself() -> None:
     keenable, seen = _client(_ok(SEARCH_BODY))
     keenable.search("hello")

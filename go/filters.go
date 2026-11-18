@@ -29,7 +29,9 @@ var searchFilters = []filter{
 	{
 		wire: "include_domains",
 		description: "Optional. Return results only from these hosts or their subdomains, " +
-			"e.g. 'arxiv.org'. Hosts only, no paths or wildcards. Up to 50.",
+			"e.g. 'arxiv.org'. Hosts only, no paths. A public suffix written with " +
+			"a leading dot or '*.', such as '.gov' or '*.edu', covers every host " +
+			"under it; other wildcards are rejected. Up to 50.",
 		jsonType:    "array",
 		toolExposed: true,
 	},
