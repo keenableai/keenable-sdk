@@ -306,8 +306,9 @@ type MonitorWebhook struct {
 // MonitorDisabledReason is why Keenable disabled a monitor.
 type MonitorDisabledReason struct {
 	// Code is runs_failed (10 failed runs in a row), webhook_unreachable (no
-	// delivery succeeded for 3 days) or insufficient_credits (a scheduled
-	// run found the organization out of credits).
+	// delivery succeeded for 3 days), insufficient_credits (a scheduled
+	// run found the organization out of credits) or data_policy (a page
+	// monitor of an organization that turned on zero data retention).
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }

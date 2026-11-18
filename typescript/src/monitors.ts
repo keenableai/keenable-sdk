@@ -198,7 +198,7 @@ export interface MonitorPageTarget {
 
 /** Why Keenable disabled a monitor. */
 export interface MonitorDisabledReason {
-  /** runs_failed, webhook_unreachable or insufficient_credits. */
+  /** runs_failed, webhook_unreachable, insufficient_credits or data_policy. */
   code: string;
   message: string;
 }
