@@ -984,6 +984,18 @@
     "since": "2026-11"
   },
   {
+    "code": "run_in_progress",
+    "type": "invalid_request_error",
+    "status": 409,
+    "title": "Monitor run in progress",
+    "summary": "The monitor is already running, so a triggered run was not started.",
+    "fix": "The monitor is already running. Wait for its current run to finish (GET /v1/monitors/{id}/runs shows it), then trigger it again. Retrying while it runs returns the same 409.",
+    "retryable": false,
+    "docs_anchor": "run-in-progress",
+    "docs_url": "https://docs.keenable.ai/errors#run-in-progress",
+    "since": "2026-11"
+  },
+  {
     "code": "search_failed_upstream",
     "type": "api_error",
     "status": 422,

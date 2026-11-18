@@ -2882,6 +2882,40 @@
       }
     },
     {
+      "name": "run_in_progress",
+      "source": "keenable-backend-ts docs/error-catalog.json#run_in_progress",
+      "status": 409,
+      "headers": {
+        "X-Request-Id": "req-run_in_progress"
+      },
+      "body": {
+        "error": "Monitor run in progress",
+        "type": "invalid_request_error",
+        "code": "run_in_progress",
+        "message": "The monitor is already running, so a triggered run was not started.",
+        "fix": "The monitor is already running. Wait for its current run to finish (GET /v1/monitors/{id}/runs shows it), then trigger it again. Retrying while it runs returns the same 409.",
+        "docs_url": "https://docs.keenable.ai/errors#run-in-progress",
+        "request_id": "req-run_in_progress",
+        "retryable": false
+      },
+      "expect": {
+        "kind": "api",
+        "code": "run_in_progress",
+        "type": "invalid_request_error",
+        "derived_type": "invalid_request_error",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-run_in_progress",
+        "param": null,
+        "fix": "The monitor is already running. Wait for its current run to finish (GET /v1/monitors/{id}/runs shows it), then trigger it again. Retrying while it runs returns the same 409.",
+        "limit": null,
+        "message_contains": "The monitor is already running, so a triggered run was not started.",
+        "absent": [
+          "https://docs.keenable.ai/errors#run-in-progress"
+        ]
+      }
+    },
+    {
       "name": "search_failed_upstream",
       "source": "keenable-backend-ts docs/error-catalog.json#search_failed_upstream",
       "status": 422,
