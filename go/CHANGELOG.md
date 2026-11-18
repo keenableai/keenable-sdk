@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.0
+
 - **Added:** Keenable Monitors. `client.Monitors` calls `https://api.keenable.ai/v1/monitors` (or `KEENABLE_API_URL`): `Create`, `List`, `ListAll` (a `*MonitorIterator`), `Get`, `Update`, `Delete`, `Pause`, `Resume`, `Trigger`, `Runs`, `Run`, `Pages`, `Deliveries`, `Stats` and `Bulk`, with typed results (`Monitor`, `MonitorRun`, `MonitorResult`, `MonitorDelivery`, `MonitorStats`, `BulkResult`, `List[T]`). Monitors need an API key: without one a call returns an `*AuthError` (`APICode` `missing_api_key`) and sends nothing. `Create` sends an `Idempotency-Key` (`IdempotencyKey`, or a new UUID per call), so it is retried safely; `Update`, `Trigger` and `Bulk` are retried only on a 429. In `MonitorUpdateParams`, `RemoveName`, `RemoveSchedule`, `RemoveOutputSchema`, `RemoveWebhook` and `RemoveMetadata` send null and win over the value. Monitor ids `.` and `..` are refused before sending, since they would change the request's path.
 - **Added:** `VerifyWebhook(payload, headers, secret, *WebhookOptions)` checks a Monitors webhook (Standard Webhooks: HMAC-SHA256, `whsec_` secret, several signatures, 5-minute tolerance) and returns a `*WebhookEvent`; a failure is the new `*WebhookVerificationError` (`Code()` `webhook_verification`), also for a timestamp of more than 12 digits and a secret with no key after `whsec_`.
 - **Changed:** the error contract fixtures follow the backend's current catalog, including the Monitors codes `monitors_not_enabled`, `monitor_limit_reached` (403, `*AuthError`), `monitor_option_not_supported`, `idempotency_conflict` (`*APIError`) and `monitors_unavailable` (503, retryable).
