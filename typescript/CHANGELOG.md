@@ -6,8 +6,7 @@ All notable changes to the `keenable` npm package. Versions follow
 ## Unreleased
 
 - `fetchMany(urls, { content, retrieval, output, deadlineMs, sessionId })`
-  reads up to 100 pages in one call with `POST /v1/fetch` (keyless calls take
-  up to 20). The option groups mirror the API, in camelCase:
+  reads up to 20 pages in one call with `POST /v1/fetch`. The option groups mirror the API, in camelCase:
   - `content`: `maxChars` (default 50,000; `0` returns metadata only),
     `objective` (up to 1,000 characters), `schema` (filled per page into
     `result.content.answer`), `links`, `images`.

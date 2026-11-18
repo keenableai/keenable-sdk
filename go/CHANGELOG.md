@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-`Client.FetchMany(ctx, urls, opts)` reads up to 100 pages in one call with
-`POST /v1/fetch` (keyless calls take up to 20). `FetchManyOptions` mirrors the
+`Client.FetchMany(ctx, urls, opts)` reads up to 20 pages in one call with
+`POST /v1/fetch`. `FetchManyOptions` mirrors the
 API's groups: `Content *FetchContentOptions` (`MaxChars`, default 50,000 and
 `keenable.Ptr(0)` for metadata only; `Objective`; `Schema`; `Links`; `Images`),
 `Retrieval *FetchRetrievalOptions` (`MaxAgeHours`, 0 to 720 with fractions,

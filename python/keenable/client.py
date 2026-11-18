@@ -1608,7 +1608,7 @@ class Keenable(_BaseClient):
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
     ) -> FetchResponse:
-        """Read up to 100 pages in one call with ``POST /v1/fetch``.
+        """Read up to 20 pages in one call with ``POST /v1/fetch``.
 
         Pages are read in parallel. ``results[i]`` answers ``urls[i]``: its
         ``status`` is ``"ok"`` with the page, or ``"error"`` with ``error`` set.
@@ -1836,7 +1836,7 @@ class AsyncKeenable(_BaseClient):
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
     ) -> FetchResponse:
-        """Read up to 100 pages in one call. See :meth:`Keenable.fetch_many`."""
+        """Read up to 20 pages in one call. See :meth:`Keenable.fetch_many`."""
         payload = _fetch_many_payload(
             urls,
             content=content,

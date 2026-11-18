@@ -220,7 +220,7 @@ type FetchResponse struct {
 	Raw   map[string]any `json:"-"`
 }
 
-// FetchMany reads up to 100 pages in one call with POST /v1/fetch.
+// FetchMany reads up to 20 pages in one call with POST /v1/fetch.
 //
 // Pages are read in parallel. Results[i] answers urls[i]: its Status is "ok"
 // with the page, or "error" with Error set. A failed URL is not billed and

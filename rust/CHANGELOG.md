@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-- `Client::fetch_many` / `fetch_many_with` read up to 100 pages in one call
-  with `POST /v1/fetch` (keyless calls take up to 20). `FetchManyOptions`
+- `Client::fetch_many` / `fetch_many_with` read up to 20 pages in one call
+  with `POST /v1/fetch`. `FetchManyOptions`
   mirrors the API's groups: `content: Option<FetchContentOptions>`
   (`max_chars`, default 50,000 and `Some(0)` for metadata only; `objective`;
   `schema`; `links`; `images`), `retrieval: Option<FetchRetrievalOptions>`

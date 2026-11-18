@@ -6,8 +6,8 @@ All notable changes to the `keenable` Python package. Versions follow
 ## Unreleased
 
 - `fetch_many(urls, *, content=None, retrieval=None, output=None,
-  deadline_ms=None, session_id=None)` (sync and async) reads up to 100 pages
-  in one call with `POST /v1/fetch` (keyless calls take up to 20). The option
+  deadline_ms=None, session_id=None)` (sync and async) reads up to 20 pages
+  in one call with `POST /v1/fetch`. The option
   groups mirror the API:
   - `content`: `max_chars` (default 50,000; `0` returns metadata only),
     `objective` (up to 1,000 characters), `schema` (filled per page into

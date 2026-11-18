@@ -1087,7 +1087,7 @@ export class Keenable {
   }
 
   /**
-   * Read up to 100 pages in one call with `POST /v1/fetch`.
+   * Read up to 20 pages in one call with `POST /v1/fetch`.
    *
    * Pages are read in parallel. `results[i]` answers `urls[i]`: its `status`
    * is `"ok"` with the page, or `"error"` with `error` set. A failed URL is not
