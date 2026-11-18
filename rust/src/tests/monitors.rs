@@ -415,6 +415,18 @@ async fn bulk_checks_its_arguments() {
             .await,
         Err(Error::InvalidRequest(_))
     ));
+    let empty = MonitorBulkParams {
+        filter: Some(BulkFilter {
+            status: Some(String::new()),
+            name: Some(String::new()),
+            metadata: Some(Default::default()),
+        }),
+        ..Default::default()
+    };
+    assert!(matches!(
+        client.monitors().bulk("pause", &empty).await,
+        Err(Error::InvalidRequest(_))
+    ));
     assert_eq!(server.count(), 0);
 }
 

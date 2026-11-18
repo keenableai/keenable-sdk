@@ -972,8 +972,8 @@ impl<'a> Monitors<'a> {
         }
         let ids = params.ids.as_ref().filter(|ids| !ids.is_empty());
         let filter = params.filter.as_ref().filter(|f| {
-            f.status.is_some()
-                || f.name.is_some()
+            f.status.as_deref().is_some_and(|s| !s.is_empty())
+                || f.name.as_deref().is_some_and(|n| !n.is_empty())
                 || f.metadata.as_ref().is_some_and(|m| !m.is_empty())
         });
         if ids.is_none() && filter.is_none() {
