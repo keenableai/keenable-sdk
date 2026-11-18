@@ -35,7 +35,8 @@ pub struct WebhookEventData {
     pub monitor_id: String,
     /// On monitor.created, updated, deleted and disabled.
     pub monitor: Option<Monitor>,
-    /// On monitor.run.created, completed and failed.
+    /// On monitor.run.created, completed and failed, and on monitor.change (a
+    /// page monitor's run, with its `changes`).
     pub run: Option<MonitorRun>,
     /// On monitor.hit and monitor.update.
     pub result: Option<MonitorResult>,

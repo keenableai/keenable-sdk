@@ -15,6 +15,8 @@ HMAC-SHA256 of ``"<id>.<timestamp>.<body>"`` keyed by the monitor's
             return Response(status_code=400)
         if event.type == "monitor.hit":
             print(event.data.result.url)
+        elif event.type == "monitor.change":
+            print(event.data.run.changes.summary)
 """
 
 from __future__ import annotations
@@ -54,7 +56,8 @@ class WebhookEventData:
     monitor: Monitor | None = None
     """Set on ``monitor.created``, ``updated``, ``deleted`` and ``disabled``."""
     run: MonitorRun | None = None
-    """Set on ``monitor.run.created``, ``completed`` and ``failed``."""
+    """Set on ``monitor.run.created``, ``completed`` and ``failed``, and on
+    ``monitor.change`` (a page monitor's run, with its ``changes``)."""
     result: MonitorResult | None = None
     """Set on ``monitor.hit`` and ``monitor.update``."""
     reason: str | None = None

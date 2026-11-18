@@ -49,11 +49,12 @@ pub use models::{
 };
 pub use monitors::{
     BulkFilter, BulkResult, DeliveryList, List, Monitor, MonitorBulkParams, MonitorCreateParams,
-    MonitorDelivery, MonitorList, MonitorListParams, MonitorPageParams, MonitorPager,
-    MonitorPagesParams, MonitorResult, MonitorResultChange, MonitorRun, MonitorRunError,
-    MonitorRunOutput, MonitorSchedule, MonitorScheduleParams, MonitorSearch, MonitorSearchParams,
-    MonitorStats, MonitorUpdateParams, MonitorWebhook, MonitorWebhookParams, Monitors, PageList,
-    RunList,
+    MonitorDelivery, MonitorDiff, MonitorDisabledReason, MonitorList, MonitorListParams,
+    MonitorPageParams, MonitorPageTarget, MonitorPager, MonitorPagesParams, MonitorResult,
+    MonitorResultChange, MonitorRun, MonitorRunChanges, MonitorRunError, MonitorRunOutput,
+    MonitorRunOutputError, MonitorRunUsage, MonitorSchedule, MonitorScheduleParams, MonitorSearch,
+    MonitorSearchParams, MonitorStats, MonitorUpdateParams, MonitorVersion, MonitorVersionsParams,
+    MonitorWebhook, MonitorWebhookParams, Monitors, PageList, RunList, VersionList,
 };
 pub use tools::{
     fetch_tool, run_tool_call, search_tool, tools, ToolArguments, ToolDefinition, ToolFunction,

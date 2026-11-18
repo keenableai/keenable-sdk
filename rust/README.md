@@ -189,11 +189,15 @@ goes only to the configured host.
 
 ## Monitors
 
-A monitor is a standing search: it watches the web for a topic and hands over
-every new page that matches, by webhook, in scheduled runs, or when you poll
-it. Monitors need an API key (`KEENABLE_API_KEY`); without one, every call
-returns `Error::Auth` with code `missing_api_key` and sends nothing. An
-organization can have 100 active monitors.
+A search monitor is a standing search: it watches the web for a topic and
+hands over every new page that matches, by webhook, in scheduled runs, or when
+you poll it. A page monitor (`monitor_type: Some("page".into())`, sent as
+`type`) reads one page on a schedule and reports the changes worth telling.
+Monitors need an API key (`KEENABLE_API_KEY`); without one, every call returns
+`Error::Auth` with code `missing_api_key` and sends nothing. An organization
+can have 20 active monitors, search and page together, unless agreed
+otherwise; past that, a create or resume returns `Error::Auth` with code
+`monitor_limit_reached`. Every completed run costs $0.002.
 
 ```rust
 use keenable::{MonitorCreateParams, MonitorPagesParams, MonitorScheduleParams, MonitorSearchParams};
@@ -220,15 +224,53 @@ for page in pages.data {
 }
 ```
 
+A page monitor watches one page, here a pricing page every 6 hours:
+
+```rust
+use keenable::{MonitorPageTarget, MonitorVersionsParams};
+
+let pricing = client
+    .monitors()
+    .create(&MonitorCreateParams {
+        monitor_type: Some("page".into()),
+        page: Some(MonitorPageTarget {
+            watch_for: Some("plan prices and new plans".into()),
+            sensitivity: Some("meaningful".into()), // or "any": every change that is not cosmetic
+            ..MonitorPageTarget::new("https://example.com/pricing")
+        }),
+        schedule: Some(MonitorScheduleParams {
+            schedule_type: "interval".into(),
+            value: Some("6h".into()),
+            timezone: None,
+        }),
+        ..Default::default()
+    })
+    .await?;
+let versions = client
+    .monitors()
+    .versions(&pricing.id, &MonitorVersionsParams { limit: Some(10), ..Default::default() })
+    .await?;
+for v in versions.data {
+    println!("{} {:?}", v.version, v.diff.map(|d| d.added));
+}
+```
+
+Schedules: `cron` (runs at least 10 minutes apart, in `timezone`), `interval`
+("10m" to "90d") or `once`. Without one, a search monitor runs only on
+`trigger` and a page monitor every hour. The API checks the schedule and the
+`output_schema`: one that breaks a rule returns `Error::Api` with status 400,
+code `invalid_request` and a message that names the rule.
+
 | Method on `client.monitors()` | What it does |
 |---|---|
-| `create(&MonitorCreateParams)` | Make a monitor (`POST /v1/monitors`) |
+| `create(&MonitorCreateParams)` | Make a search monitor (`search`) or a page monitor (`monitor_type` "page", `page`) (`POST /v1/monitors`) |
 | `list(&MonitorListParams)` / `list_all(&MonitorListParams)` | One page of monitors / a `MonitorPager` over all of them |
-| `get(id)`, `update(id, &MonitorUpdateParams)`, `delete(id)` | Read, change (only what is set; `Some(None)` removes the name, schedule, webhook, output schema or metadata), delete |
+| `get(id)`, `update(id, &MonitorUpdateParams)`, `delete(id)` | Read, change (only what is set; `search`, `page` and `webhook` are merged; `Some(None)` removes the name, schedule, webhook, output schema or metadata), delete |
 | `pause(id)`, `resume(id)` | Update with status "paused" / "active" |
 | `trigger(id)` | Start a run now; returns the queued `MonitorRun` |
 | `runs(id, &MonitorPageParams)`, `run(id, run_id)` | A monitor's runs |
-| `pages(id, &MonitorPagesParams)` | The pages it accepted, newest first, one per story |
+| `pages(id, &MonitorPagesParams)` | The pages a search monitor accepted, newest first, one per story |
+| `versions(id, &MonitorVersionsParams)` | A page monitor's history, newest first: each version whose text changed, with its `diff` |
 | `deliveries(id, &MonitorPageParams)` | Webhook events of the last 7 days, with attempts and errors |
 | `stats()` | Counts by status and by kind of schedule |
 | `bulk(action, &MonitorBulkParams)` | Pause, resume or delete many; a dry run unless `dry_run: Some(false)` |
@@ -238,6 +280,15 @@ budget or headers for the calls made through it. Reads and deletes are retried
 like a search; `create` sends an `Idempotency-Key` (yours, or a new one per
 call), so its retries cannot make a second monitor; `update`, `trigger` and
 `bulk` are retried only on a 429.
+
+A `Monitor` has `monitor_type` ("search" or "page"), `search` (`None` for a
+page monitor), `page` (`None` for a search monitor), `disabled_reason` (`code`
+`runs_failed`, `webhook_unreachable` or `insufficient_credits`, while it is
+disabled), `estimated_cost_usd` and `cost_this_month_usd`. A completed
+`MonitorRun` has `usage` (`runs`, `credits`, `cost_usd`) and, for a page
+monitor, `changes` (`changed`, `notified`, `baseline`, `version`, `source`,
+`summary`, `items`, `diff`). With an output schema, `output` has `structured`,
+`fresh` and `error`.
 
 ### Verify webhooks
 
@@ -249,6 +300,11 @@ Verify the raw body before trusting it:
 match keenable::verify_webhook(body, &headers, secret) {
     Ok(event) if event.event_type == "monitor.hit" => {
         println!("{}", event.data.result.map(|r| r.url).unwrap_or_default());
+    }
+    Ok(event) if event.event_type == "monitor.change" => {
+        // a page monitor's change worth telling
+        let changes = event.data.run.and_then(|r| r.changes);
+        println!("{:?}", changes.and_then(|c| c.summary));
     }
     Ok(_) => {}
     Err(_) => { /* answer 400 */ }

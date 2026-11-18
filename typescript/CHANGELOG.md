@@ -5,6 +5,17 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+## 0.3.0
+
+- **Added:** page monitors. `monitors.create({ type: "page", page: { url, watchFor, sensitivity }, schedule })` watches one page and reports the changes worth telling; `update(id, { page: { ... } })` merges into the stored page (a new `url` starts a new baseline, `watchFor: null` clears it). `create()` rejects before sending a `type` other than `"search"` or `"page"`, a page monitor without `page.url` or with `search`, and a search monitor with `page`. `MonitorCreateParams.search` is now optional: it is required unless `type` is `"page"`. New types `MonitorType`, `MonitorPageTargetParams`, `MonitorPageSensitivity`.
+- **Added:** `monitors.versions(id, { limit, cursor })` reads a page monitor's history (`GET /v1/monitors/{id}/versions`) as a `VersionList` of `MonitorVersion` (`version`, `fetchedAt`, `title`, `source`, `notified`, `summary`, `items`, `diff`). Its params type is `MonitorVersionsParams`.
+- **Added:** `Monitor.type`, `Monitor.page` (`MonitorPageTarget`: `url`, `watchFor`, `sensitivity`) and `Monitor.disabledReason` (`MonitorDisabledReason`: `code` `runs_failed`, `webhook_unreachable` or `insufficient_credits`, and `message`).
+- **Added:** typed run fields: `MonitorRun.changes` is a `MonitorRunChanges` (`changed`, `notified`, `baseline`, `version`, `source`, `summary`, `items`, `diff` as a `MonitorDiff`), `MonitorRun.usage` a `MonitorRunUsage` (`runs`, `credits`, `costUsd`), and `MonitorRunOutput` gains `fresh` and `error` (`MonitorRunOutputError`: `code` `output_failed` or `output_invalid`, and `message`).
+- **Added:** `"monitor.change"` in `MonitorEvent` (a page monitor's run, in `event.data.run`, with its `changes`); `WebhookEvent.type` is typed as `MonitorEvent` (any other string still type-checks).
+- **Changed (may break code):** `Monitor.search` is now `MonitorSearch | null`: it is null for a page monitor. Code that reads `monitor.search.query` stops compiling under `strictNullChecks`, and fails at run time on a page monitor; check `monitor.type` or use `monitor.search?.query`.
+- **Changed:** `Monitor.estimatedCostUsd` and `costThisMonthUsd` are filled now that runs are priced ($0.002 a run); the schedule docs give the API's limits: interval `10m` to `90d`, cron runs at least 10 minutes apart. The SDK does not check schedules itself.
+- **Changed:** the error contract fixtures follow the backend's current catalog: `monitor_limit_reached` (403) now points to contact sales for a higher limit.
+
 ## 0.2.0
 
 - **Added:** Keenable Monitors. `new Keenable().monitors` calls `https://api.keenable.ai/v1/monitors` (or `KEENABLE_API_URL`): `create`, `list`, `listAll` (async iterator), `get`, `update`, `delete`, `pause`, `resume`, `trigger`, `runs`, `run`, `pages`, `deliveries`, `stats` and `bulk`, with typed results (`Monitor`, `MonitorRun`, `MonitorResult`, `MonitorDelivery`, `MonitorStats`, `BulkResult`, `ListPage<T>`). Monitors need an API key: without one a call throws `KeenableAuthError` (`code: "missing_api_key"`) and sends nothing. `create()` sends an `Idempotency-Key` (`idempotencyKey`, or a new UUID per call), so it is retried safely; `update()`, `trigger()` and `bulk()` are retried only on a 429. `bulk()` needs ids or a filter with a status, a name or non-empty metadata. Monitor ids `.` and `..` are refused before sending, since they would change the request's path.

@@ -1,5 +1,6 @@
 /**
- * Keenable Monitors: standing searches that report new pages as they appear.
+ * Keenable Monitors: standing searches that report new pages as they appear,
+ * and page monitors that report changes to one page.
  *
  * ```ts
  * const monitor = await keenable.monitors.create({
@@ -7,6 +8,13 @@
  *   schedule: { type: "cron", value: "0 9 * * 1-5", timezone: "Europe/Paris" },
  * });
  * const pages = await keenable.monitors.pages(monitor.id);
+ *
+ * const pricing = await keenable.monitors.create({
+ *   type: "page",
+ *   page: { url: "https://example.com/pricing", watchFor: "plan prices" },
+ *   schedule: { type: "interval", value: "6h" },
+ * });
+ * const versions = await keenable.monitors.versions(pricing.id);
  * ```
  */
 
@@ -14,6 +22,9 @@ import { KeenableInvalidRequestError } from "./errors.js";
 import type { RequestOptions } from "./types.js";
 
 export type MonitorStatus = "active" | "paused" | "disabled" | "completed";
+/** search: new pages on the web about a topic. page: changes to one page. */
+export type MonitorType = "search" | "page";
+export type MonitorPageSensitivity = "meaningful" | "any";
 export type MonitorRunStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 export type MonitorEvent =
   | "monitor.created"
@@ -24,7 +35,8 @@ export type MonitorEvent =
   | "monitor.run.failed"
   | "monitor.disabled"
   | "monitor.hit"
-  | "monitor.update";
+  | "monitor.update"
+  | "monitor.change";
 export type BulkAction = "pause" | "resume" | "delete";
 
 /** What a monitor watches for. `query` is required on create. */
@@ -41,10 +53,20 @@ export interface MonitorSearchParams {
   contentText?: boolean;
 }
 
+/** The page a page monitor watches. `url` is required on create. */
+export interface MonitorPageTargetParams {
+  /** A public http(s) address. A new one on update starts a new baseline. */
+  url: string;
+  /** What on the page matters, in plain words, e.g. "plan prices". `null` on update clears it. */
+  watchFor?: string | null;
+  /** meaningful (the default): a change is judged worth telling or not. any: every change that is not cosmetic is told. */
+  sensitivity?: MonitorPageSensitivity;
+}
+
 /** When runs happen. */
 export interface MonitorScheduleParams {
   type: "cron" | "interval" | "once";
-  /** cron: five fields, at most hourly. interval: 1h to 90d ("6h", "2w"). once: a timestamp or a delay ("2h"); empty means now. */
+  /** cron: five fields, runs at least 10 minutes apart. interval: 10m to 90d ("10m", "6h", "2w"). once: a timestamp or a delay ("2h"); empty means now. */
   value?: string | null;
   /** IANA name, cron only; UTC when unset. */
   timezone?: string | null;
@@ -54,17 +76,27 @@ export interface MonitorScheduleParams {
 export interface MonitorWebhookParams {
   /** A public HTTPS address. */
   url: string;
-  /** Default: the monitor.* and monitor.run.* events. Add "monitor.hit" to get each new page as soon as it is found. */
+  /**
+   * A search monitor's default: the monitor.* and monitor.run.* events; add
+   * "monitor.hit" to get each new page as soon as it is found. A page
+   * monitor's default: monitor.created, updated, deleted, disabled,
+   * run.failed and monitor.change.
+   */
   events?: MonitorEvent[] | null;
 }
 
 export interface MonitorCreateParams extends RequestOptions {
-  search: MonitorSearchParams;
+  /** search (the API's default) or page. */
+  type?: MonitorType;
+  /** What a search monitor watches for. Required unless `type` is "page". */
+  search?: MonitorSearchParams;
+  /** The page a page monitor watches. Only with `type: "page"`. */
+  page?: MonitorPageTargetParams;
   /** Up to 200 characters. */
   name?: string;
-  /** Without one, runs happen only on `trigger()`. */
+  /** Without one, a search monitor runs only on `trigger()` and a page monitor every hour. */
   schedule?: MonitorScheduleParams;
-  /** JSON Schema of each run's `output.structured`. */
+  /** JSON Schema of each run's `output.structured`, in the subset the API supports; the API checks it. */
   outputSchema?: Record<string, unknown>;
   webhook?: MonitorWebhookParams;
   /** Your own tags (at most 50), echoed in every webhook. */
@@ -82,8 +114,10 @@ export interface MonitorUpdateParams extends RequestOptions {
   name?: string | null;
   /** "active" also re-enables a disabled monitor. */
   status?: "active" | "paused";
-  /** Merged into the stored search. */
+  /** Merged into the stored search (search monitors). */
   search?: Partial<MonitorSearchParams>;
+  /** Merged into the stored page (page monitors). */
+  page?: Partial<MonitorPageTargetParams>;
   schedule?: MonitorScheduleParams | null;
   outputSchema?: Record<string, unknown> | null;
   /** Merged into the stored webhook. */
@@ -107,6 +141,9 @@ export interface MonitorPageParams extends RequestOptions {
   limit?: number;
   cursor?: string;
 }
+
+/** Paging through a page monitor's versions. */
+export type MonitorVersionsParams = MonitorPageParams;
 
 export interface MonitorPagesParams extends MonitorPageParams {
   /** Keep pages the monitor rated at least this important (1 to 5). */
@@ -136,6 +173,21 @@ export interface MonitorSearch {
   contentText: boolean;
 }
 
+/** The page a page monitor watches. */
+export interface MonitorPageTarget {
+  url: string;
+  /** What on the page matters; null means every meaningful change counts. */
+  watchFor: string | null;
+  sensitivity: MonitorPageSensitivity | (string & {});
+}
+
+/** Why Keenable disabled a monitor. */
+export interface MonitorDisabledReason {
+  /** runs_failed, webhook_unreachable or insufficient_credits. */
+  code: string;
+  message: string;
+}
+
 export interface MonitorSchedule {
   type: string;
   value: string | null;
@@ -154,7 +206,14 @@ export interface Monitor {
   object: string;
   name: string | null;
   status: MonitorStatus | (string & {});
-  search: MonitorSearch;
+  /** search or page. */
+  type: MonitorType | (string & {});
+  /** What a search monitor watches for; null for a page monitor. */
+  search: MonitorSearch | null;
+  /** The page a page monitor watches; null for a search monitor. */
+  page: MonitorPageTarget | null;
+  /** Why a disabled monitor stopped; null otherwise. */
+  disabledReason: MonitorDisabledReason | null;
   schedule: MonitorSchedule | null;
   outputSchema: Record<string, unknown> | null;
   webhook: MonitorWebhook | null;
@@ -171,9 +230,9 @@ export interface Monitor {
   backfill: unknown;
   /** Not available yet: always null. */
   memoryScope: unknown;
-  /** Null until monitors are priced. */
+  /** The runs the schedule gives in the next 30 days times the price of a run; 0 unless active. */
   estimatedCostUsd: number | null;
-  /** Null until monitors are priced. */
+  /** The completed runs this calendar month (UTC) times the price of a run. */
   costThisMonthUsd: number | null;
   requestId?: string;
   raw: Record<string, unknown>;
@@ -225,10 +284,79 @@ export interface MonitorResult {
   raw: Record<string, unknown>;
 }
 
+/** Why a run has no output. */
+export interface MonitorRunOutputError {
+  /** output_failed (it could not be made) or output_invalid (it did not match the schema). */
+  code: string;
+  message: string;
+}
+
 export interface MonitorRunOutput {
+  /** The output in the monitor's schema; null with `error`. */
   structured: unknown;
   text: string | null;
+  /** Each field filled, with the pages that support it. */
   grounding: unknown[];
+  /** False when a page monitor's page did not change and the last reading is carried forward. */
+  fresh: boolean;
+  /** Why there is no output. The run still completes. */
+  error: MonitorRunOutputError | null;
+}
+
+/** How a version of a page differs from the version before it from the same source. */
+export interface MonitorDiff {
+  /** When the version compared with was read. */
+  previousAt: string | null;
+  /** The share of the text that is new, 0 to 1. */
+  ratio: number | null;
+  added: string[];
+  removed: string[];
+}
+
+/** What a page monitor's run found on its page. */
+export interface MonitorRunChanges {
+  /** The text changed since the previous version (a baseline is not a change). */
+  changed: boolean;
+  /** The change is worth telling: monitor.change was sent. */
+  notified: boolean;
+  /** The first reading of the page (or of a new URL). */
+  baseline: boolean;
+  /** The page's version after this run; `versions()` has them all. */
+  version: number | null;
+  /** live (fetched now) or stream (the crawler's fresh copy). */
+  source: string | null;
+  /** One sentence on what changed, when it was judged. */
+  summary: string | null;
+  /** The new entries, facts or figures. */
+  items: string[];
+  diff: MonitorDiff | null;
+}
+
+/** What a completed run costs. */
+export interface MonitorRunUsage {
+  runs: number;
+  credits: number;
+  costUsd: number;
+}
+
+/** One stored version of a page monitor's page: a reading whose text changed. */
+export interface MonitorVersion {
+  /** Opaque; the cursor of the page of versions it ends. */
+  id: string;
+  object: string;
+  /** Counts up from 1, the baseline. */
+  version: number;
+  fetchedAt: string | null;
+  title: string | null;
+  /** live or stream; versions are compared only with versions of the same source. */
+  source: string;
+  /** This version's change was told (monitor.change). */
+  notified: boolean;
+  summary: string | null;
+  items: string[];
+  /** Against the version before it from the same source; null for a first version. */
+  diff: MonitorDiff | null;
+  raw: Record<string, unknown>;
 }
 
 export interface MonitorRun {
@@ -238,13 +366,13 @@ export interface MonitorRun {
   status: MonitorRunStatus | (string & {});
   /** New pages; [] when none; null until the run completes. */
   results: MonitorResult[] | null;
-  /** Always null for now. */
-  changes: unknown;
+  /** A page monitor's completed run: what changed on the page. Null for a search monitor. */
+  changes: MonitorRunChanges | null;
   /** When the monitor has an output schema. */
   output: MonitorRunOutput | null;
   error: { code: string; message: string } | null;
-  /** Null until monitors are priced. */
-  usage: unknown;
+  /** A completed run's cost; null otherwise. */
+  usage: MonitorRunUsage | null;
   createdAt: string | null;
   startedAt: string | null;
   endedAt: string | null;
@@ -299,6 +427,7 @@ export type MonitorList = ListPage<Monitor>;
 export type RunList = ListPage<MonitorRun>;
 export type PageList = ListPage<MonitorResult>;
 export type DeliveryList = ListPage<MonitorDelivery>;
+export type VersionList = ListPage<MonitorVersion>;
 
 type Json = Record<string, unknown>;
 
@@ -347,24 +476,34 @@ function intMap(value: unknown): Record<string, number> {
   return out;
 }
 
+function toSearch(search: Json): MonitorSearch {
+  const content = isObject(search.content) ? search.content : {};
+  return {
+    query: reqStr(search.query),
+    maxResults: int(search.max_results) ?? 0,
+    includeDomains: strs(search.include_domains),
+    excludeDomains: strs(search.exclude_domains),
+    contentText: content.text === true,
+  };
+}
+
 /** @internal */
 export function toMonitor(data: Json, requestId?: string): Monitor {
-  const search = isObject(data.search) ? data.search : {};
-  const content = isObject(search.content) ? search.content : {};
   const schedule = isObject(data.schedule) ? data.schedule : null;
   const webhook = isObject(data.webhook) ? data.webhook : null;
+  const page = isObject(data.page) ? data.page : null;
+  const disabled = isObject(data.disabled_reason) ? data.disabled_reason : null;
   return {
     id: reqStr(data.id),
     object: reqStr(data.object) || "monitor",
     name: str(data.name),
     status: reqStr(data.status),
-    search: {
-      query: reqStr(search.query),
-      maxResults: int(search.max_results) ?? 0,
-      includeDomains: strs(search.include_domains),
-      excludeDomains: strs(search.exclude_domains),
-      contentText: content.text === true,
-    },
+    type: reqStr(data.type) || "search",
+    search: isObject(data.search) ? toSearch(data.search) : null,
+    page: page
+      ? { url: reqStr(page.url), watchFor: str(page.watch_for), sensitivity: reqStr(page.sensitivity) || "meaningful" }
+      : null,
+    disabledReason: disabled ? { code: reqStr(disabled.code), message: reqStr(disabled.message) } : null,
     schedule: schedule
       ? { type: reqStr(schedule.type), value: str(schedule.value), timezone: str(schedule.timezone) }
       : null,
@@ -430,6 +569,57 @@ export function toMonitorResult(data: Json): MonitorResult {
   return result;
 }
 
+function toDiff(value: unknown): MonitorDiff | null {
+  if (!isObject(value)) return null;
+  return {
+    previousAt: str(value.previous_at),
+    ratio: num(value.ratio),
+    added: strs(value.added) ?? [],
+    removed: strs(value.removed) ?? [],
+  };
+}
+
+function toOutputError(value: unknown): MonitorRunOutputError | null {
+  if (typeof value === "string" && value !== "") return { code: value, message: "" };
+  if (!isObject(value)) return null;
+  return { code: reqStr(value.code), message: reqStr(value.message) };
+}
+
+function toChanges(value: unknown): MonitorRunChanges | null {
+  if (!isObject(value)) return null;
+  return {
+    changed: value.changed === true,
+    notified: value.notified === true,
+    baseline: value.baseline === true,
+    version: int(value.version),
+    source: str(value.source),
+    summary: str(value.summary),
+    items: strs(value.items) ?? [],
+    diff: toDiff(value.diff),
+  };
+}
+
+function toUsage(value: unknown): MonitorRunUsage | null {
+  if (!isObject(value)) return null;
+  return { runs: int(value.runs) ?? 0, credits: num(value.credits) ?? 0, costUsd: num(value.cost_usd) ?? 0 };
+}
+
+function toVersion(data: Json): MonitorVersion {
+  return {
+    id: reqStr(data.id),
+    object: reqStr(data.object) || "page_version",
+    version: int(data.version) ?? 0,
+    fetchedAt: str(data.fetched_at),
+    title: str(data.title),
+    source: reqStr(data.source),
+    notified: data.notified === true,
+    summary: str(data.summary),
+    items: strs(data.items) ?? [],
+    diff: toDiff(data.diff),
+    raw: data,
+  };
+}
+
 /** @internal */
 export function toMonitorRun(data: Json, requestId?: string): MonitorRun {
   const output = isObject(data.output) ? data.output : null;
@@ -440,16 +630,18 @@ export function toMonitorRun(data: Json, requestId?: string): MonitorRun {
     monitorId: reqStr(data.monitor_id),
     status: reqStr(data.status),
     results: Array.isArray(data.results) ? objects(data.results).map(toMonitorResult) : null,
-    changes: data.changes ?? null,
+    changes: toChanges(data.changes),
     output: output
       ? {
           structured: output.structured ?? null,
           text: str(output.text),
           grounding: Array.isArray(output.grounding) ? output.grounding : [],
+          fresh: output.fresh !== false,
+          error: toOutputError(output.error),
         }
       : null,
     error: error ? { code: reqStr(error.code), message: reqStr(error.message) } : null,
-    usage: data.usage ?? null,
+    usage: toUsage(data.usage),
     createdAt: str(data.created_at),
     startedAt: str(data.started_at),
     endedAt: str(data.ended_at),
@@ -542,6 +734,20 @@ function searchBody(search: Partial<MonitorSearchParams>, required: boolean): Js
   return body;
 }
 
+function pageBody(page: Partial<MonitorPageTargetParams>, required: boolean): Json {
+  if (!isObject(page)) {
+    throw new KeenableInvalidRequestError('page must be an object such as { url: "https://example.com/pricing" }');
+  }
+  if ((required || page.url !== undefined) && (typeof page.url !== "string" || page.url.trim() === "")) {
+    throw new KeenableInvalidRequestError("page needs a non-empty url string");
+  }
+  const body: Json = {};
+  if (page.url !== undefined) body.url = page.url;
+  if (page.watchFor !== undefined) body.watch_for = page.watchFor;
+  if (page.sensitivity !== undefined) body.sensitivity = page.sensitivity;
+  return body;
+}
+
 function webhookBody(webhook: Partial<MonitorWebhookParams>): Json {
   const body: Json = {};
   if (webhook.url !== undefined) body.url = webhook.url;
@@ -579,10 +785,31 @@ export class Monitors {
   /** @internal */
   constructor(private readonly send: Send) {}
 
-  /** Create a monitor. Takes a few seconds; `webhook.secret` is in this response only. */
+  /**
+   * Create a monitor: `{ search: { query } }`, or `{ type: "page", page: { url } }`
+   * for a page monitor. Takes a few seconds; `webhook.secret` is in this
+   * response only.
+   */
   async create(params: MonitorCreateParams): Promise<Monitor> {
-    if (!isObject(params)) throw new KeenableInvalidRequestError("create() needs { search: { query } }");
-    const body: Json = { search: searchBody(params.search, true) };
+    if (typeof params !== "object" || params === null || Array.isArray(params)) {
+      throw new KeenableInvalidRequestError("create() needs { search: { query } } or { type: \"page\", page: { url } }");
+    }
+    const type: unknown = params.type;
+    if (type !== undefined && type !== "search" && type !== "page") {
+      throw new KeenableInvalidRequestError(`type must be "search" or "page", got ${JSON.stringify(type)}`);
+    }
+    const body: Json = {};
+    if (type === "page") {
+      if (params.search !== undefined) throw new KeenableInvalidRequestError("a page monitor takes page, not search");
+      body.type = "page";
+      body.page = pageBody(params.page as MonitorPageTargetParams, true);
+    } else {
+      if (params.page !== undefined) {
+        throw new KeenableInvalidRequestError('page is only for type: "page"; a search monitor takes search');
+      }
+      if (type !== undefined) body.type = type;
+      body.search = searchBody(params.search as MonitorSearchParams, true);
+    }
     if (params.name !== undefined) body.name = params.name;
     if (params.schedule !== undefined) body.schedule = scheduleBody(params.schedule);
     if (params.outputSchema !== undefined) body.output_schema = params.outputSchema;
@@ -639,6 +866,7 @@ export class Monitors {
     if (params.name !== undefined) body.name = params.name;
     if (params.status !== undefined) body.status = params.status;
     if (params.search !== undefined) body.search = searchBody(params.search, false);
+    if (params.page !== undefined) body.page = pageBody(params.page, false);
     if (params.schedule !== undefined) body.schedule = params.schedule === null ? null : scheduleBody(params.schedule);
     if (params.outputSchema !== undefined) body.output_schema = params.outputSchema;
     if (params.webhook !== undefined) body.webhook = params.webhook === null ? null : webhookBody(params.webhook);
@@ -721,6 +949,24 @@ export class Monitors {
       requestOptions(params),
     );
     return toList(data, requestId, toMonitorResult);
+  }
+
+  /**
+   * A page monitor's history, newest first (its last 500 versions): every
+   * reading whose text changed, with the diff against the version before it
+   * from the same source. Empty for a search monitor.
+   */
+  async versions(monitorId: string, params: MonitorVersionsParams = {}): Promise<VersionList> {
+    const { data, requestId } = await this.send(
+      {
+        method: "GET",
+        path: `monitors/${segment("monitorId", monitorId)}/versions`,
+        query: query({ limit: params.limit, cursor: params.cursor }),
+        safe: true,
+      },
+      requestOptions(params),
+    );
+    return toList(data, requestId, toVersion);
   }
 
   /** The monitor's webhook events of the last 7 days, with attempts and the last error. */

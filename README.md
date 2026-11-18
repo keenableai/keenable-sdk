@@ -102,12 +102,13 @@ reference.
 
 ## Monitors
 
-A monitor is a standing search: it watches the web for a topic and reports
-every new page that matches, by webhook, in scheduled runs, or when you poll
-it. Every SDK has a `monitors` namespace for `https://api.keenable.ai/v1/monitors`
-(create, list, get, update, pause, resume, delete, trigger, runs, pages,
-deliveries, stats, bulk) and a `verify_webhook` helper for the signed
-deliveries. Monitors need an API key.
+A search monitor is a standing search: it watches the web for a topic and
+reports every new page that matches, by webhook, in scheduled runs, or when
+you poll it. A page monitor watches one page and reports the changes worth
+telling. Every SDK has a `monitors` namespace for
+`https://api.keenable.ai/v1/monitors` (create, list, get, update, pause,
+resume, delete, trigger, runs, pages, versions, deliveries, stats, bulk) and a
+`verify_webhook` helper for the signed deliveries. Monitors need an API key.
 
 ```python
 from keenable import Keenable
@@ -116,6 +117,14 @@ keenable = Keenable()  # reads KEENABLE_API_KEY
 monitor = keenable.monitors.create(search={"query": "new open-weights LLM releases"})
 for page in keenable.monitors.pages(monitor.id):
     print(page.title, page.url)
+
+pricing = keenable.monitors.create(
+    type="page",
+    page={"url": "https://example.com/pricing", "watch_for": "plan prices"},
+    schedule={"type": "interval", "value": "6h"},
+)
+for version in keenable.monitors.versions(pricing.id):
+    print(version.version, version.summary)
 ```
 
 See each SDK's README for the full list, and [`examples/monitors`](./examples/monitors).
@@ -127,7 +136,9 @@ See each SDK's README for the full list, and [`examples/monitors`](./examples/mo
 - [`examples/domain-filters/`](./examples/domain-filters) - keeping sites out
   of the results with `exclude_domains`. Python and TypeScript.
 - [`examples/monitors/`](./examples/monitors) - a monitor that reads new pages
-  and a webhook receiver that verifies deliveries. Python and TypeScript; Go
+  and a webhook receiver that verifies deliveries, and a page monitor that
+  watches a pricing page (`pricing_page.py`, `pricing_page.ts`). Python and
+  TypeScript; Go
   in [`go/example/monitors`](./go/example/monitors), Rust in
   [`rust/examples/monitors.rs`](./rust/examples/monitors.rs).
 

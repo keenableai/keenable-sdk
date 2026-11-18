@@ -1,8 +1,10 @@
-"""Keenable Monitors: standing searches that report new pages as they appear.
+"""Keenable Monitors: standing searches that report new pages as they appear,
+and page monitors that report changes to one page.
 
-A monitor watches the web for a topic and hands over every new page that
-matches it, by webhook, in scheduled runs, or by polling its pages. Monitors
-need an API key.
+A search monitor watches the web for a topic and hands over every new page
+that matches it, by webhook, in scheduled runs, or by polling its pages. A
+page monitor (``type="page"``) reads one page on a schedule and reports the
+changes worth telling. Monitors need an API key.
 
     from keenable import Keenable
 
@@ -13,6 +15,12 @@ need an API key.
     )
     for page in keenable.monitors.pages(monitor.id).data:
         print(page.title, page.url)
+
+    pricing = keenable.monitors.create(
+        type="page",
+        page={"url": "https://example.com/pricing", "watch_for": "plan prices"},
+        schedule={"type": "interval", "value": "6h"},
+    )
 """
 
 from __future__ import annotations
@@ -48,8 +56,17 @@ class MonitorSearchParams(TypedDict, total=False):
     content: MonitorContentParams | None
 
 
+class MonitorPageTargetParams(TypedDict, total=False):
+    """The page a page monitor watches. ``url`` is required on create."""
+
+    url: str
+    watch_for: str | None
+    sensitivity: Literal["meaningful", "any"]
+
+
 class MonitorScheduleParams(TypedDict, total=False):
-    """When runs happen: cron, interval or once."""
+    """When runs happen: cron (runs at least 10 minutes apart), interval
+    (``"10m"`` to ``"90d"``) or once."""
 
     type: Literal["cron", "interval", "once"]
     value: str | None
@@ -78,31 +95,43 @@ __all__ = [
     "Monitor",
     "MonitorContentParams",
     "MonitorDelivery",
+    "MonitorDiff",
+    "MonitorDisabledReason",
     "MonitorList",
+    "MonitorPageTarget",
+    "MonitorPageTargetParams",
     "MonitorResult",
     "MonitorResultChange",
     "MonitorRun",
+    "MonitorRunChanges",
     "MonitorRunError",
     "MonitorRunOutput",
+    "MonitorRunOutputError",
+    "MonitorRunUsage",
     "MonitorSchedule",
     "MonitorScheduleParams",
     "MonitorSearch",
     "MonitorSearchParams",
     "MonitorStats",
+    "MonitorType",
+    "MonitorVersion",
     "MonitorWebhook",
     "MonitorWebhookParams",
     "PageList",
     "RunList",
+    "VersionList",
     "AsyncMonitors",
     "Monitors",
     "NOT_GIVEN",
 ]
 
 MonitorStatus = Literal["active", "paused", "disabled", "completed"]
+MonitorType = Literal["search", "page"]
 RunStatus = Literal["queued", "running", "completed", "failed", "cancelled"]
 BulkAction = Literal["pause", "resume", "delete"]
 
 _BULK_ACTIONS = ("pause", "resume", "delete")
+_TYPES = ("search", "page")
 
 
 class _NotGiven(enum.Enum):
@@ -216,8 +245,9 @@ class MonitorSchedule:
     type: str
     """``"cron"``, ``"interval"`` or ``"once"``."""
     value: str | None = None
-    """cron: five fields. interval: ``"6h"``, ``"5d"``, ``"2w"``. once: a
-    timestamp or a delay."""
+    """cron: five fields, runs at least 10 minutes apart. interval: ``"10m"``
+    to ``"90d"``, such as ``"6h"``, ``"5d"``, ``"2w"``. once: a timestamp or a
+    delay."""
     timezone: str | None = None
     """An IANA name, for cron; UTC when unset."""
 
@@ -251,6 +281,44 @@ class MonitorWebhook:
 
 
 @dataclass
+class MonitorPageTarget:
+    """The page a page monitor watches."""
+
+    url: str
+    watch_for: str | None = None
+    """What on the page matters, in plain words; None means every meaningful
+    change counts."""
+    sensitivity: str = "meaningful"
+    """``"meaningful"``: a change is judged worth telling or not. ``"any"``:
+    every change that is not cosmetic is told."""
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> MonitorPageTarget:
+        return cls(
+            url=_req_str(data.get("url")),
+            watch_for=_str(data.get("watch_for")),
+            sensitivity=_str(data.get("sensitivity")) or "meaningful",
+        )
+
+
+@dataclass
+class MonitorDisabledReason:
+    """Why Keenable disabled a monitor."""
+
+    code: str
+    """``"runs_failed"`` (10 failed runs in a row), ``"webhook_unreachable"``
+    (no delivery succeeded for 3 days) or ``"insufficient_credits"`` (a
+    scheduled run found the organization out of credits)."""
+    message: str
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> MonitorDisabledReason:
+        return cls(
+            code=_req_str(data.get("code")), message=_req_str(data.get("message"))
+        )
+
+
+@dataclass
 class Monitor:
     """A monitor, as :meth:`Monitors.create`, :meth:`Monitors.get` and the
     other calls return it."""
@@ -260,7 +328,8 @@ class Monitor:
     name: str | None
     status: str
     """``"active"``, ``"paused"``, ``"disabled"`` or ``"completed"``."""
-    search: MonitorSearch
+    search: MonitorSearch | None
+    """What a search monitor watches for; None for a page monitor."""
     schedule: MonitorSchedule | None
     output_schema: dict[str, Any] | None
     webhook: MonitorWebhook | None
@@ -278,9 +347,17 @@ class Monitor:
     memory_scope: Any = None
     """Not available yet: always None."""
     estimated_cost_usd: float | None = None
-    """None until monitors are priced."""
+    """The runs the schedule gives in the next 30 days times the price of a
+    run; 0 unless the monitor is active."""
     cost_this_month_usd: float | None = None
-    """None until monitors are priced."""
+    """The completed runs this calendar month (UTC) times the price of a run."""
+    type: str = "search"
+    """``"search"`` (new pages about a topic) or ``"page"`` (changes to one
+    page)."""
+    page: MonitorPageTarget | None = None
+    """The page a page monitor watches; None for a search monitor."""
+    disabled_reason: MonitorDisabledReason | None = None
+    """Why a disabled monitor stopped; None otherwise."""
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
     request_id: str | None = None
 
@@ -288,12 +365,15 @@ class Monitor:
     def _from_json(cls, data: dict[str, Any], request_id: str | None = None) -> Monitor:
         schedule = _dict(data.get("schedule"))
         webhook = _dict(data.get("webhook"))
+        search = _dict(data.get("search"))
+        page = _dict(data.get("page"))
+        disabled = _dict(data.get("disabled_reason"))
         return cls(
             id=_req_str(data.get("id")),
             object=_req_str(data.get("object")) or "monitor",
             name=_str(data.get("name")),
             status=_req_str(data.get("status")),
-            search=MonitorSearch._from_json(_dict(data.get("search")) or {}),
+            search=MonitorSearch._from_json(search) if search is not None else None,
             schedule=MonitorSchedule._from_json(schedule) if schedule else None,
             output_schema=_dict(data.get("output_schema")),
             webhook=MonitorWebhook._from_json(webhook) if webhook else None,
@@ -308,6 +388,11 @@ class Monitor:
             memory_scope=data.get("memory_scope"),
             estimated_cost_usd=_float(data.get("estimated_cost_usd")),
             cost_this_month_usd=_float(data.get("cost_this_month_usd")),
+            type=_str(data.get("type")) or "search",
+            page=MonitorPageTarget._from_json(page) if page is not None else None,
+            disabled_reason=MonitorDisabledReason._from_json(disabled)
+            if disabled is not None
+            else None,
             raw=data,
             request_id=request_id,
         )
@@ -413,13 +498,132 @@ class MonitorRunError:
 
 
 @dataclass
+class MonitorRunOutputError:
+    """Why a run has no output."""
+
+    code: str
+    """``"output_failed"`` (it could not be made) or ``"output_invalid"`` (it
+    did not match the schema). The run still completes."""
+    message: str = ""
+
+    @classmethod
+    def _from_json(cls, value: Any) -> MonitorRunOutputError | None:
+        if isinstance(value, str) and value:
+            return cls(code=value)
+        data = _dict(value)
+        if data is None:
+            return None
+        return cls(
+            code=_req_str(data.get("code")), message=_req_str(data.get("message"))
+        )
+
+
+@dataclass
 class MonitorRunOutput:
     """A run's digest, when the monitor has an ``output_schema``."""
 
     structured: Any = None
-    """The output in the monitor's schema."""
+    """The output in the monitor's schema; None with ``error``."""
     text: str | None = None
     grounding: list[Any] = field(default_factory=list)
+    """Each field filled, with the pages that support it."""
+    fresh: bool = True
+    """Read in this run; False when a page monitor's page did not change and
+    the last reading is carried forward."""
+    error: MonitorRunOutputError | None = None
+    """Why there is no output."""
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> MonitorRunOutput:
+        grounding = data.get("grounding")
+        return cls(
+            structured=data.get("structured"),
+            text=_str(data.get("text")),
+            grounding=grounding if isinstance(grounding, list) else [],
+            fresh=data.get("fresh") is not False,
+            error=MonitorRunOutputError._from_json(data.get("error")),
+        )
+
+
+@dataclass
+class MonitorDiff:
+    """How a version of a page differs from the version before it from the
+    same source."""
+
+    previous_at: str | None = None
+    """When the version compared with was read."""
+    ratio: float | None = None
+    """The share of the text that is new, 0 to 1."""
+    added: list[str] = field(default_factory=list)
+    removed: list[str] = field(default_factory=list)
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> MonitorDiff:
+        return cls(
+            previous_at=_str(data.get("previous_at")),
+            ratio=_float(data.get("ratio")),
+            added=_strs(data.get("added")) or [],
+            removed=_strs(data.get("removed")) or [],
+        )
+
+
+def _diff(value: Any) -> MonitorDiff | None:
+    data = _dict(value)
+    return MonitorDiff._from_json(data) if data is not None else None
+
+
+@dataclass
+class MonitorRunChanges:
+    """What a page monitor's run found on its page."""
+
+    changed: bool
+    """The text changed since the previous version (a baseline is not a
+    change)."""
+    notified: bool
+    """The change is worth telling: ``monitor.change`` was sent."""
+    baseline: bool
+    """The first reading of the page (or of a new URL), which later versions
+    are compared with."""
+    version: int | None = None
+    """The page's version after this run; :meth:`Monitors.versions` has them
+    all."""
+    source: str | None = None
+    """``"live"`` (fetched now) or ``"stream"`` (the crawler's fresh copy)."""
+    summary: str | None = None
+    """One sentence on what changed, when it was judged."""
+    items: list[str] = field(default_factory=list)
+    """The new entries, facts or figures."""
+    diff: MonitorDiff | None = None
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> MonitorRunChanges:
+        return cls(
+            changed=data.get("changed") is True,
+            notified=data.get("notified") is True,
+            baseline=data.get("baseline") is True,
+            version=_int(data.get("version")),
+            source=_str(data.get("source")),
+            summary=_str(data.get("summary")),
+            items=_strs(data.get("items")) or [],
+            diff=_diff(data.get("diff")),
+        )
+
+
+@dataclass
+class MonitorRunUsage:
+    """What a completed run costs."""
+
+    runs: int
+    credits: float
+    cost_usd: float
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> MonitorRunUsage:
+        return cls(
+            runs=_int(data.get("runs")) or 0,
+            credits=_float(data.get("credits")) or 0.0,
+            cost_usd=_float(data.get("cost_usd")) or 0.0,
+        )
 
 
 @dataclass
@@ -439,10 +643,11 @@ class MonitorRun:
     created_at: str | None
     started_at: str | None
     ended_at: str | None
-    changes: Any = None
-    """Always None for now."""
-    usage: Any = None
-    """None until monitors are priced."""
+    changes: MonitorRunChanges | None = None
+    """A page monitor's completed run: what changed on the page. None for a
+    search monitor and until the run completes."""
+    usage: MonitorRunUsage | None = None
+    """A completed run's cost; None otherwise."""
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
     request_id: str | None = None
 
@@ -453,7 +658,8 @@ class MonitorRun:
         results = data.get("results")
         output = _dict(data.get("output"))
         error = _dict(data.get("error"))
-        grounding = output.get("grounding") if output else None
+        changes = _dict(data.get("changes"))
+        usage = _dict(data.get("usage"))
         return cls(
             id=_req_str(data.get("id")),
             object=_req_str(data.get("object")) or "monitor_run",
@@ -462,13 +668,7 @@ class MonitorRun:
             results=[MonitorResult._from_json(r) for r in _objects(results)]
             if isinstance(results, list)
             else None,
-            output=MonitorRunOutput(
-                structured=output.get("structured"),
-                text=_str(output.get("text")),
-                grounding=grounding if isinstance(grounding, list) else [],
-            )
-            if output is not None
-            else None,
+            output=MonitorRunOutput._from_json(output) if output is not None else None,
             error=MonitorRunError(
                 code=_req_str(error.get("code")), message=_req_str(error.get("message"))
             )
@@ -477,10 +677,53 @@ class MonitorRun:
             created_at=_str(data.get("created_at")),
             started_at=_str(data.get("started_at")),
             ended_at=_str(data.get("ended_at")),
-            changes=data.get("changes"),
-            usage=data.get("usage"),
+            changes=MonitorRunChanges._from_json(changes)
+            if changes is not None
+            else None,
+            usage=MonitorRunUsage._from_json(usage) if usage is not None else None,
             raw=data,
             request_id=request_id,
+        )
+
+
+@dataclass
+class MonitorVersion:
+    """One stored version of a page monitor's page: a reading whose text
+    changed."""
+
+    id: str
+    """Opaque; the cursor of the page of versions it ends."""
+    object: str
+    version: int
+    """Counts up from 1, the baseline."""
+    fetched_at: str | None
+    title: str | None
+    source: str
+    """``"live"`` or ``"stream"``; versions are compared only with versions
+    of the same source."""
+    notified: bool
+    """This version's change was told (``monitor.change``)."""
+    summary: str | None = None
+    items: list[str] = field(default_factory=list)
+    diff: MonitorDiff | None = None
+    """Against the version before it from the same source; None for a first
+    version."""
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> MonitorVersion:
+        return cls(
+            id=_req_str(data.get("id")),
+            object=_req_str(data.get("object")) or "page_version",
+            version=_int(data.get("version")) or 0,
+            fetched_at=_str(data.get("fetched_at")),
+            title=_str(data.get("title")),
+            source=_req_str(data.get("source")),
+            notified=data.get("notified") is True,
+            summary=_str(data.get("summary")),
+            items=_strs(data.get("items")) or [],
+            diff=_diff(data.get("diff")),
+            raw=data,
         )
 
 
@@ -592,6 +835,7 @@ MonitorList = ListPage[Monitor]
 RunList = ListPage[MonitorRun]
 PageList = ListPage[MonitorResult]
 DeliveryList = ListPage[MonitorDelivery]
+VersionList = ListPage[MonitorVersion]
 
 
 def _list(data: dict[str, Any], request_id: str | None, item: Any) -> ListPage[Any]:
@@ -618,6 +862,10 @@ def _page_list(data: dict[str, Any], request_id: str | None) -> PageList:
 
 def _delivery_list(data: dict[str, Any], request_id: str | None) -> DeliveryList:
     return _list(data, request_id, MonitorDelivery._from_json)
+
+
+def _version_list(data: dict[str, Any], request_id: str | None) -> VersionList:
+    return _list(data, request_id, MonitorVersion._from_json)
 
 
 @dataclass
@@ -682,6 +930,18 @@ def _check_search(search: Any, required: bool) -> dict[str, Any]:
     return body
 
 
+def _check_page(page: Any, required: bool) -> dict[str, Any]:
+    if not isinstance(page, Mapping):
+        raise KeenableInvalidRequestError(
+            "page must be a mapping such as {'url': 'https://example.com/pricing'}"
+        )
+    body = dict(page)
+    url = body.get("url")
+    if (required or "url" in body) and (not isinstance(url, str) or not url.strip()):
+        raise KeenableInvalidRequestError("page needs a non-empty url string")
+    return body
+
+
 def _webhook_body(webhook: Mapping[str, Any]) -> dict[str, Any]:
     body = dict(webhook)
     if body.get("events") is not None:
@@ -691,6 +951,8 @@ def _webhook_body(webhook: Mapping[str, Any]) -> dict[str, Any]:
 
 def _create_call(
     search: Any,
+    type: Any,
+    page: Any,
     name: str | None,
     schedule: Mapping[str, Any] | None,
     output_schema: Mapping[str, Any] | None,
@@ -698,7 +960,24 @@ def _create_call(
     metadata: Mapping[str, str] | None,
     idempotency_key: str | None,
 ) -> _Call:
-    body: dict[str, Any] = {"search": _check_search(search, True)}
+    if type is not None and type not in _TYPES:
+        raise KeenableInvalidRequestError(
+            f"type must be 'search' or 'page', got {type!r}"
+        )
+    body: dict[str, Any] = {}
+    if type == "page":
+        if search is not None:
+            raise KeenableInvalidRequestError("a page monitor takes page, not search")
+        body["type"] = "page"
+        body["page"] = _check_page(page, True)
+    else:
+        if page is not None:
+            raise KeenableInvalidRequestError(
+                "page is only for type='page'; a search monitor takes search"
+            )
+        if type is not None:
+            body["type"] = type
+        body["search"] = _check_search(search, True)
     if name is not None:
         body["name"] = name
     if schedule is not None:
@@ -722,6 +1001,8 @@ def _update_call(monitor_id: str, fields: dict[str, Any]) -> _Call:
             body[key] = None
         elif key == "search":
             body[key] = _check_search(value, False)
+        elif key == "page":
+            body[key] = _check_page(value, False)
         elif key == "webhook":
             body[key] = _webhook_body(value)
         elif isinstance(value, Mapping):
@@ -813,7 +1094,9 @@ class Monitors:
     def create(
         self,
         *,
-        search: MonitorSearchParams,
+        search: MonitorSearchParams | None = None,
+        type: MonitorType | None = None,
+        page: MonitorPageTargetParams | None = None,
         name: str | None = None,
         schedule: MonitorScheduleParams | None = None,
         output_schema: Mapping[str, Any] | None = None,
@@ -828,19 +1111,32 @@ class Monitors:
         last week of the web.
 
         Args:
-            search: What to watch for: ``query`` (required), ``max_results``
-                (1 to 100, default 10), ``include_domains``,
+            search: What a search monitor watches for: ``query`` (required),
+                ``max_results`` (1 to 100, default 10), ``include_domains``,
                 ``exclude_domains`` and ``content`` (``{"text": True}``
-                returns each page's text).
+                returns each page's text). Required unless ``type="page"``.
+            type: ``"search"`` (the API's default: new pages about a topic)
+                or ``"page"`` (changes to one page).
+            page: The page a page monitor watches: ``url`` (required, a
+                public http(s) address), ``watch_for`` (what on the page
+                matters, in plain words) and ``sensitivity``
+                (``"meaningful"``, the default, or ``"any"``). Only with
+                ``type="page"``.
             name: A name for the monitor, up to 200 characters.
             schedule: When runs happen: ``{"type": "cron", "value": "0 9 * *
-                1-5", "timezone": "Europe/Paris"}``, ``{"type": "interval",
-                "value": "6h"}`` or ``{"type": "once", "value": "2h"}``.
-                Without one, runs happen only on :meth:`trigger`.
-            output_schema: JSON Schema of each run's ``output.structured``.
-            webhook: ``{"url": "https://...", "events": [...]}``. The default
-                events are the ``monitor.*`` and ``monitor.run.*`` ones; add
-                ``"monitor.hit"`` to get each new page as soon as it is found.
+                1-5", "timezone": "Europe/Paris"}`` (runs at least 10 minutes
+                apart), ``{"type": "interval", "value": "6h"}`` (``"10m"`` to
+                ``"90d"``) or ``{"type": "once", "value": "2h"}``. Without
+                one, a search monitor runs only on :meth:`trigger` and a page
+                monitor every hour.
+            output_schema: JSON Schema of each run's ``output.structured``,
+                in the subset the API supports; the API checks it.
+            webhook: ``{"url": "https://...", "events": [...]}``. A search
+                monitor's default events are the ``monitor.*`` and
+                ``monitor.run.*`` ones; add ``"monitor.hit"`` to get each new
+                page as soon as it is found. A page monitor's default events
+                are ``monitor.created``, ``updated``, ``deleted``,
+                ``disabled``, ``run.failed`` and ``monitor.change``.
             metadata: Your own tags, at most 50, echoed in every webhook.
             idempotency_key: Makes a retry safe: the same key with the same
                 body returns the monitor the first call created, for 24 hours.
@@ -851,7 +1147,15 @@ class Monitors:
             else: keep it to verify deliveries.
         """
         call = _create_call(
-            search, name, schedule, output_schema, webhook, metadata, idempotency_key
+            search,
+            type,
+            page,
+            name,
+            schedule,
+            output_schema,
+            webhook,
+            metadata,
+            idempotency_key,
         )
         data, request_id = self._send(call, timeout, max_retries, extra_headers)
         return Monitor._from_json(data, request_id)
@@ -933,6 +1237,7 @@ class Monitors:
         name: str | None | _NotGiven = NOT_GIVEN,
         status: Literal["active", "paused"] | _NotGiven = NOT_GIVEN,
         search: MonitorSearchParams | _NotGiven = NOT_GIVEN,
+        page: MonitorPageTargetParams | _NotGiven = NOT_GIVEN,
         schedule: MonitorScheduleParams | None | _NotGiven = NOT_GIVEN,
         output_schema: Mapping[str, Any] | None | _NotGiven = NOT_GIVEN,
         webhook: MonitorWebhookParams | None | _NotGiven = NOT_GIVEN,
@@ -943,7 +1248,9 @@ class Monitors:
     ) -> Monitor:
         """Change a monitor. Only the arguments you pass are sent.
 
-        ``search`` and ``webhook`` are merged into the stored ones. ``None``
+        ``search`` (search monitors), ``page`` (page monitors) and
+        ``webhook`` are merged into the stored ones; a new ``page.url`` starts
+        a new baseline, and ``watch_for`` ``None`` clears it. ``None``
         removes the schedule, the webhook or the output schema. ``status`` is
         ``"active"`` or ``"paused"``; active also re-enables a disabled
         monitor. Not retried on a 5xx.
@@ -954,6 +1261,7 @@ class Monitors:
                 "name": name,
                 "status": status,
                 "search": search,
+                "page": page,
                 "schedule": schedule,
                 "output_schema": output_schema,
                 "webhook": webhook,
@@ -1096,6 +1404,33 @@ class Monitors:
         data, request_id = self._send(call, timeout, max_retries, extra_headers)
         return _page_list(data, request_id)
 
+    def versions(
+        self,
+        monitor_id: str,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> VersionList:
+        """A page monitor's history, newest first (its last 500 versions):
+        every reading whose text changed, with the diff against the version
+        before it from the same source and, for a change that was told, the
+        summary and the new items. Empty for a search monitor.
+
+        Args:
+            limit: Versions per page (the API's default is 50).
+            cursor: The previous page's ``next_cursor``.
+        """
+        call = _Call(
+            "GET",
+            _path(_segment("monitor_id", monitor_id), "versions"),
+            params=_query(limit=limit, cursor=cursor),
+        )
+        data, request_id = self._send(call, timeout, max_retries, extra_headers)
+        return _version_list(data, request_id)
+
     def deliveries(
         self,
         monitor_id: str,
@@ -1175,7 +1510,9 @@ class AsyncMonitors:
     async def create(
         self,
         *,
-        search: MonitorSearchParams,
+        search: MonitorSearchParams | None = None,
+        type: MonitorType | None = None,
+        page: MonitorPageTargetParams | None = None,
         name: str | None = None,
         schedule: MonitorScheduleParams | None = None,
         output_schema: Mapping[str, Any] | None = None,
@@ -1188,7 +1525,15 @@ class AsyncMonitors:
     ) -> Monitor:
         """Create a monitor. See :meth:`Monitors.create`."""
         call = _create_call(
-            search, name, schedule, output_schema, webhook, metadata, idempotency_key
+            search,
+            type,
+            page,
+            name,
+            schedule,
+            output_schema,
+            webhook,
+            metadata,
+            idempotency_key,
         )
         data, request_id = await self._send(call, timeout, max_retries, extra_headers)
         return Monitor._from_json(data, request_id)
@@ -1263,6 +1608,7 @@ class AsyncMonitors:
         name: str | None | _NotGiven = NOT_GIVEN,
         status: Literal["active", "paused"] | _NotGiven = NOT_GIVEN,
         search: MonitorSearchParams | _NotGiven = NOT_GIVEN,
+        page: MonitorPageTargetParams | _NotGiven = NOT_GIVEN,
         schedule: MonitorScheduleParams | None | _NotGiven = NOT_GIVEN,
         output_schema: Mapping[str, Any] | None | _NotGiven = NOT_GIVEN,
         webhook: MonitorWebhookParams | None | _NotGiven = NOT_GIVEN,
@@ -1278,6 +1624,7 @@ class AsyncMonitors:
                 "name": name,
                 "status": status,
                 "search": search,
+                "page": page,
                 "schedule": schedule,
                 "output_schema": output_schema,
                 "webhook": webhook,
@@ -1410,6 +1757,25 @@ class AsyncMonitors:
         )
         data, request_id = await self._send(call, timeout, max_retries, extra_headers)
         return _page_list(data, request_id)
+
+    async def versions(
+        self,
+        monitor_id: str,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> VersionList:
+        """A page monitor's history. See :meth:`Monitors.versions`."""
+        call = _Call(
+            "GET",
+            _path(_segment("monitor_id", monitor_id), "versions"),
+            params=_query(limit=limit, cursor=cursor),
+        )
+        data, request_id = await self._send(call, timeout, max_retries, extra_headers)
+        return _version_list(data, request_id)
 
     async def deliveries(
         self,
