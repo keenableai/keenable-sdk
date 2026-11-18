@@ -100,9 +100,15 @@ with a caller's own `httpx` client, `http.Client` or `fetch` too.
 
 ## Errors (`errors`)
 
-- The class follows the status: 401/403 are authentication errors unless the
-  type is `target_error`, 402 is the insufficient-credits error, 429 the
-  rate-limit error, anything else the API error.
+- The class follows the `type` the body sends, as the backend's error catalog
+  defines it: `authentication_error` and `permission_error` are authentication
+  errors, `billing_error` the insufficient-credits error, `rate_limit_error`
+  the rate-limit error, and `invalid_request_error`, `target_error` and
+  `api_error` the API error, whatever the status. A body without one of these
+  types (older servers send none) maps by status: 401/403 are authentication
+  errors unless the derived type is `target_error`, 402 is the
+  insufficient-credits error, 429 the rate-limit error, anything else the API
+  error.
 - The detail (`body`) is the first of the body's `message`, `error` and `detail`
   that is a string with more than whitespace. Other types are skipped, never
   stringified. A body that is JSON but not an object gives no detail and no

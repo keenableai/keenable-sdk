@@ -227,30 +227,6 @@ func TestTheThreeSDKsTestTheSameFixture(t *testing.T) {
 	}
 }
 
-func TestAServerWithoutTypeGetsTheCatalogTypeDerived(t *testing.T) {
-	for _, tc := range loadContract(t) {
-		if _, ok := tc.Body["type"]; !ok {
-			continue
-		}
-		t.Run(tc.Name, func(t *testing.T) {
-			body := map[string]any{}
-			for k, v := range tc.Body {
-				if k != "type" {
-					body[k] = v
-				}
-			}
-			c, _ := start(t, replyWith(tc.Status, body, tc.Headers), keyed())
-			_, err := c.Search(context.Background(), "q", nil)
-			if got := apiErrorFrom(t, err).Type; got != tc.Expect.Type {
-				t.Fatalf("derived %q, want %q", got, tc.Expect.Type)
-			}
-			if isAuth := errors.As(err, new(*keenable.AuthError)); isAuth != (tc.Expect.Kind == "auth") {
-				t.Fatalf("auth %v, want kind %s", isAuth, tc.Expect.Kind)
-			}
-		})
-	}
-}
-
 func TestTheTypeTheAPISendsIsKeptAsSent(t *testing.T) {
 	c, _ := start(t, replyWith(400, map[string]any{"error": "x", "type": "new_error"}, nil), keyed())
 	_, err := c.Search(context.Background(), "q", nil)

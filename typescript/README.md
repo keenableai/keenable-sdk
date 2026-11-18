@@ -199,9 +199,9 @@ All errors extend `KeenableError`:
 
 | Error | When |
 |---|---|
-| `KeenableRateLimitError` | HTTP 429. Set `KEENABLE_API_KEY` to lift the keyless cap |
-| `KeenableAuthError` | HTTP 401/403, the key was rejected |
-| `KeenableInsufficientCreditsError` (alias `KeenableCreditsError`) | HTTP 402, no credits left; retrying will not help |
+| `KeenableRateLimitError` | Type `rate_limit_error` (HTTP 429 when the API sends no type). Set `KEENABLE_API_KEY` to lift the keyless cap |
+| `KeenableAuthError` | Type `authentication_error` or `permission_error` (HTTP 401/403 when the API sends no type), the key was rejected |
+| `KeenableInsufficientCreditsError` (alias `KeenableCreditsError`) | Type `billing_error` (HTTP 402 when the API sends no type), no credits left; retrying will not help |
 | `KeenableAPIError` | Any other non-2xx response; carries `statusCode` |
 | `KeenableConnectionError` | The API could not be reached |
 | `KeenableTimeoutError` | A `KeenableConnectionError`: the API did not answer within `timeoutMs` |

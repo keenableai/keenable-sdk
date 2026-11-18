@@ -34,6 +34,7 @@ removed after the API retires `GET /v1/fetch` (announced with 90 days' notice).
   accepted only for `localhost`, `127.0.0.1` and `::1` spelled exactly so (one
   trailing dot is ignored); fullwidth letters and `localhost..` no longer
   count.
+- **Changed:** the error type follows the body's `type`, not the status: `authentication_error` and `permission_error` return `*AuthError`, `rate_limit_error` `*RateLimitError`, `billing_error` `*InsufficientCreditsError`, and a 429 about the fetched page (`target_error`) `*APIError`. A body without a known type still maps by status.
 
 ## 0.1.5
 

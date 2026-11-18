@@ -109,34 +109,6 @@ async fn backend_error_bodies_parse_into_typed_errors() {
 }
 
 #[tokio::test]
-async fn a_server_without_type_gets_the_catalog_type_derived() {
-    let mut failures = Vec::new();
-    for case in contract() {
-        let Some(body) = case["body"].as_object() else {
-            continue;
-        };
-        if !body.contains_key("type") {
-            continue;
-        }
-        let mut body = body.clone();
-        body.remove("type");
-        let server = start(Script::Replies(vec![reply(&case, &Value::Object(body))])).await;
-        let err = keyed(&server).search("q").await.unwrap_err();
-        let got = err
-            .api_error()
-            .map(|a| a.error_type.clone())
-            .unwrap_or_default();
-        let want = &case["expect"];
-        if got != want["type"].as_str().unwrap()
-            || matches!(err, Error::Auth(_)) != (want["kind"] == "auth")
-        {
-            failures.push(format!("{}: derived {got}, {err:?}", case["name"]));
-        }
-    }
-    assert!(failures.is_empty(), "{}", failures.join("\n"));
-}
-
-#[tokio::test]
 async fn the_type_the_api_sends_is_kept_as_sent() {
     let server = start(Script::Replies(vec![Reply::new(
         400,

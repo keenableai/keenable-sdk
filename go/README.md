@@ -260,9 +260,9 @@ if errors.As(err, &sdk) {
 
 | Type | Code | When |
 |---|---|---|
-| `RateLimitError` | `rate_limit` | HTTP 429. The message names `X-RateLimit-Reset` when the API sent it. A keyless call is told to set `KEENABLE_API_KEY`. A keyed call is told to wait for the window |
-| `AuthError` | `auth` | HTTP 401/403, the key was rejected |
-| `InsufficientCreditsError` (alias `CreditsError`) | `api_error` | HTTP 402, no credits left, or a pay-per-request (x402) payment this SDK cannot make; retrying will not help. The message starts "Keenable: insufficient credits (402)" or "Keenable: payment required (402)" |
+| `RateLimitError` | `rate_limit` | Type `rate_limit_error` (HTTP 429 when the API sends no type). The message names `X-RateLimit-Reset` when the API sent it. A keyless call is told to set `KEENABLE_API_KEY`. A keyed call is told to wait for the window |
+| `AuthError` | `auth` | Type `authentication_error` or `permission_error` (HTTP 401/403 when the API sends no type), the key was rejected |
+| `InsufficientCreditsError` (alias `CreditsError`) | `api_error` | Type `billing_error` (HTTP 402 when the API sends no type), no credits left, or a pay-per-request (x402) payment this SDK cannot make; retrying will not help. The message starts "Keenable: insufficient credits (402)" or "Keenable: payment required (402)" |
 | `APIError` | `api_error` | Any other non-2xx response; carries `StatusCode`, `Body`, and `RequestID` when the API sent `X-Request-Id` |
 | `ConnectionError` | `connection` | The API could not be reached, or the client deadline elapsed (`Timeout()` reports which) |
 | `InvalidRequestError` | `invalid_request` | Bad arguments; no request was sent |

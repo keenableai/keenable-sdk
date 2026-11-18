@@ -474,6 +474,29 @@ def _derive_type(status: int, code: str | None) -> str:
     return "api_error"
 
 
+_TYPE_KINDS = {
+    "authentication_error": "auth",
+    "permission_error": "auth",
+    "billing_error": "insufficient_credits",
+    "rate_limit_error": "rate_limit",
+    "invalid_request_error": "api",
+    "target_error": "api",
+    "api_error": "api",
+}
+
+
+def _error_kind(status: int, sent_type: str | None, type_: str) -> str:
+    if sent_type in _TYPE_KINDS:
+        return _TYPE_KINDS[sent_type]
+    if status in (401, 403) and type_ != "target_error":
+        return "auth"
+    if status == 402:
+        return "insufficient_credits"
+    if status == 429:
+        return "rate_limit"
+    return "api"
+
+
 def _str_field(body: dict[str, Any], key: str) -> str | None:
     value = body.get(key)
     return value if isinstance(value, str) and value.strip() else None
@@ -774,8 +797,8 @@ def _to_api_error(response: httpx.Response) -> KeenableAPIError:
 
     fields = _error_fields(body, response)
     status = response.status_code
-    # A 401/403 about the page being fetched is not an authentication failure.
-    auth = status in (401, 403) and fields["type"] != "target_error"
+    kind = _error_kind(status, _str_field(body or {}, "type"), fields["type"])
+    auth = kind == "auth"
     if status == 402:
         message = (
             _PAYMENT_REQUIRED
@@ -801,11 +824,11 @@ def _to_api_error(response: httpx.Response) -> KeenableAPIError:
 
     if auth:
         return KeenableAuthError(message, status, detail or None, **fields)
-    if status == 402:
+    if kind == "insufficient_credits":
         return KeenableInsufficientCreditsError(
             message, status, detail or None, **fields
         )
-    if status == 429:
+    if kind == "rate_limit":
         return KeenableRateLimitError(message, status, detail or None, **fields)
     return KeenableAPIError(message, status, detail or None, **fields)
 

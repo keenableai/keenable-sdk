@@ -16,6 +16,7 @@
   `error` set, not an `Err`. The answer across pages is `output` (`text`,
   `structured`, `based_on`, `grounding` with verified citations). Preview: it
   works once `POST /v1/fetch` is enabled for your organization.
+- **Changed:** the error variant follows the body's `type`, not the status: `authentication_error` and `permission_error` give `Error::Auth`, `rate_limit_error` `Error::RateLimit`, `billing_error` `Error::InsufficientCredits`, and a 429 about the fetched page (`target_error`) `Error::Api`. A body without a known type still maps by status.
 
 ## 0.1.0
 

@@ -40,6 +40,7 @@ All notable changes to the `keenable` npm package. Versions follow
 - **Behaviour change:** `fetch()` refuses a host with an empty label before
   sending: two dots in a row (`a..b`, `example.com..`) or a leading dot
   (`.example.com`). One trailing dot is still fine.
+- **Behaviour change:** the error class follows the body's `type`, not the status: `authentication_error` and `permission_error` throw `KeenableAuthError`, `rate_limit_error` `KeenableRateLimitError`, `billing_error` `KeenableInsufficientCreditsError`, and a 429 about the fetched page (`target_error`) `KeenableAPIError`. A body without a known type still maps by status.
 
 ## 0.1.5
 

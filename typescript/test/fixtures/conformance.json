@@ -2848,6 +2848,178 @@
       }
     },
     {
+      "name": "a rate_limit_error type is a rate-limit error at any status",
+      "status": 400,
+      "headers": {},
+      "body": "{\"type\":\"rate_limit_error\",\"code\":\"slow_down\"}",
+      "expect": {
+        "kind": "rate_limit",
+        "detail": null,
+        "code": "slow_down",
+        "type": "rate_limit_error",
+        "error": null,
+        "fix": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": null,
+        "value": null,
+        "reason": null,
+        "limit": null,
+        "message_contains": [],
+        "message_excludes": [],
+        "absent": []
+      }
+    },
+    {
+      "name": "a permission_error type is an auth error at any status",
+      "status": 400,
+      "headers": {},
+      "body": "{\"type\":\"permission_error\",\"code\":\"device_code_denied\"}",
+      "expect": {
+        "kind": "auth",
+        "detail": null,
+        "code": "device_code_denied",
+        "type": "permission_error",
+        "error": null,
+        "fix": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": null,
+        "value": null,
+        "reason": null,
+        "limit": null,
+        "message_contains": [],
+        "message_excludes": [],
+        "absent": []
+      }
+    },
+    {
+      "name": "a billing_error type is the insufficient-credits error at any status",
+      "status": 451,
+      "headers": {},
+      "body": "{\"type\":\"billing_error\",\"code\":\"payments_region_unavailable\"}",
+      "expect": {
+        "kind": "insufficient_credits",
+        "detail": null,
+        "code": "payments_region_unavailable",
+        "type": "billing_error",
+        "error": null,
+        "fix": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": null,
+        "value": null,
+        "reason": null,
+        "limit": null,
+        "message_contains": [],
+        "message_excludes": [],
+        "absent": []
+      }
+    },
+    {
+      "name": "a 429 about the fetched page is not a rate-limit error",
+      "status": 429,
+      "headers": {},
+      "body": "{\"type\":\"target_error\",\"code\":\"target_rate_limited\"}",
+      "expect": {
+        "kind": "api",
+        "detail": null,
+        "code": "target_rate_limited",
+        "type": "target_error",
+        "error": null,
+        "fix": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": null,
+        "value": null,
+        "reason": null,
+        "limit": null,
+        "message_contains": [],
+        "message_excludes": [],
+        "absent": []
+      }
+    },
+    {
+      "name": "a 401 with type api_error is not an auth error",
+      "status": 401,
+      "headers": {},
+      "body": "{\"type\":\"api_error\",\"message\":\"auth backend down\"}",
+      "expect": {
+        "kind": "api",
+        "detail": "auth backend down",
+        "code": null,
+        "type": "api_error",
+        "error": null,
+        "fix": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": null,
+        "value": null,
+        "reason": null,
+        "limit": null,
+        "message_contains": [
+          "Keenable API error (401)"
+        ],
+        "message_excludes": [
+          "authentication failed"
+        ],
+        "absent": []
+      }
+    },
+    {
+      "name": "an unknown type falls back to the status",
+      "status": 429,
+      "headers": {},
+      "body": "{\"type\":\"brand_new_error\"}",
+      "expect": {
+        "kind": "rate_limit",
+        "detail": null,
+        "code": null,
+        "type": "brand_new_error",
+        "error": null,
+        "fix": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": null,
+        "value": null,
+        "reason": null,
+        "limit": null,
+        "message_contains": [],
+        "message_excludes": [],
+        "absent": []
+      }
+    },
+    {
+      "name": "a 429 without type about the fetched page stays a rate-limit error",
+      "status": 429,
+      "headers": {},
+      "body": "{\"code\":\"target_rate_limited\"}",
+      "expect": {
+        "kind": "rate_limit",
+        "detail": null,
+        "code": "target_rate_limited",
+        "type": "target_error",
+        "error": null,
+        "fix": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": null,
+        "value": null,
+        "reason": null,
+        "limit": null,
+        "message_contains": [],
+        "message_excludes": [],
+        "absent": []
+      }
+    },
+    {
       "name": "page_not_found is a target error",
       "status": 404,
       "headers": {},

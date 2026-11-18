@@ -193,9 +193,9 @@ Every call returns `keenable::Error`:
 
 | Variant | When |
 |---|---|
-| `Error::RateLimit` | HTTP 429, rate limit exceeded |
-| `Error::Auth` | HTTP 401 or 403, key rejected |
-| `Error::InsufficientCredits` | HTTP 402, out of credits |
+| `Error::RateLimit` | Type `rate_limit_error` (HTTP 429 when the API sends no type), rate limit exceeded |
+| `Error::Auth` | Type `authentication_error` or `permission_error` (HTTP 401 or 403 when the API sends no type), key rejected |
+| `Error::InsufficientCredits` | Type `billing_error` (HTTP 402 when the API sends no type), out of credits |
 | `Error::Api` | Any other non-2xx response |
 | `Error::Connection` | API could not be reached, or the deadline elapsed (`is_timeout()`) |
 | `Error::InvalidRequest` | Bad arguments, no request sent |

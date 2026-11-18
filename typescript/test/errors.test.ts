@@ -42,8 +42,6 @@ const CASES: Case[] = JSON.parse(
   readFileSync(new URL("./fixtures/error_contract.json", import.meta.url), "utf8"),
 ).cases;
 
-const CATALOG_CASES = CASES.filter((c) => "type" in c.body);
-
 const KINDS = {
   auth: KeenableAuthError,
   rate_limit: KeenableRateLimitError,
@@ -114,17 +112,6 @@ describe("backend error bodies", () => {
       });
     }
   });
-
-  it.each(CATALOG_CASES.map((c) => [c.name, c] as const))(
-    "%s without type gets the catalog's type derived",
-    async (_name, c) => {
-      const { type: _type, ...body } = c.body;
-      const error = await errorFor(reply(c.status, body, c.headers));
-
-      expect(error.type).toBe(c.expect.type);
-      expect(error.constructor).toBe(KINDS[c.expect.kind]);
-    },
-  );
 
   it("keeps the type the API sends as sent", async () => {
     const error = await errorFor(reply(400, { error: "x", type: "new_error" }));

@@ -644,6 +644,29 @@ fn derive_type(status: u16, code: Option<&str>) -> &'static str {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Api,
+    Auth,
+    RateLimit,
+    Credits,
+}
+
+fn kind_of(status: u16, sent_type: Option<&str>, error_type: &str) -> Kind {
+    match sent_type {
+        Some(types::AUTHENTICATION_ERROR | types::PERMISSION_ERROR) => Kind::Auth,
+        Some(types::BILLING_ERROR) => Kind::Credits,
+        Some(types::RATE_LIMIT_ERROR) => Kind::RateLimit,
+        Some(types::INVALID_REQUEST_ERROR | types::TARGET_ERROR | types::API_ERROR) => Kind::Api,
+        _ => match status {
+            401 | 403 if error_type != types::TARGET_ERROR => Kind::Auth,
+            402 => Kind::Credits,
+            429 => Kind::RateLimit,
+            _ => Kind::Api,
+        },
+    }
+}
+
 /// 429 codes for a limit that is not the caller's own (ours or the fetched
 /// site's), so a key would not lift it.
 fn not_your_limit(code: Option<&str>) -> bool {
@@ -734,13 +757,13 @@ fn build_api_error(
     }
     api.code = code;
 
-    // A 401/403 about the page being fetched is not an authentication failure.
-    let auth = (status == 401 || status == 403) && api.error_type != types::TARGET_ERROR;
+    let kind = kind_of(status, field("type").as_deref(), &api.error_type);
+    let auth = kind == Kind::Auth;
     if status == 402 {
         // The API's text for a 402 points at billing pages and payment
         // offers, which the SDKs do not pass on; the next step is the SDK's.
         api.msg = payment_message(obj, api.code.as_deref());
-        return Error::InsufficientCredits(Box::new(api));
+        return classify(api, kind, headers);
     }
     let label = match status {
         401 | 403 if auth => format!("Keenable authentication failed ({status})"),
@@ -777,16 +800,19 @@ fn build_api_error(
         }
     }
     api.msg = msg;
-    if auth {
-        return Error::Auth(Box::new(api));
-    }
-    if status == 429 {
-        return Error::RateLimit(Box::new(RateLimitError {
+    classify(api, kind, headers)
+}
+
+fn classify(api: ApiError, kind: Kind, headers: &HeaderMap) -> Error {
+    match kind {
+        Kind::Auth => Error::Auth(Box::new(api)),
+        Kind::Credits => Error::InsufficientCredits(Box::new(api)),
+        Kind::RateLimit => Error::RateLimit(Box::new(RateLimitError {
             api,
             header_limit: header_u64(headers, "X-RateLimit-Limit"),
             header_remaining: header_u64(headers, "X-RateLimit-Remaining"),
             header_reset: header_value(headers, "X-RateLimit-Reset"),
-        }));
+        })),
+        Kind::Api => Error::Api(Box::new(api)),
     }
-    Error::Api(Box::new(api))
 }

@@ -51,12 +51,15 @@ pub enum Error {
     /// The API could not be reached, the deadline elapsed, or the API
     /// answered with a redirect, which is never followed.
     Connection(ConnectionError),
-    /// HTTP 401 or 403: the API key was rejected.
+    /// Type `authentication_error` or `permission_error` (HTTP 401 or 403
+    /// from a server that sends no type): the API key was rejected.
     Auth(Box<ApiError>),
-    /// HTTP 429: the rate limit was exceeded.
+    /// Type `rate_limit_error` (HTTP 429 from a server that sends no type):
+    /// the rate limit was exceeded.
     RateLimit(Box<RateLimitError>),
-    /// HTTP 402: the organization has no credits left, or the API asked for a
-    /// per-request (x402) payment, which this SDK cannot make.
+    /// Type `billing_error` (HTTP 402 from a server that sends no type): the
+    /// organization has no credits left, or the API asked for a per-request
+    /// (x402) payment, which this SDK cannot make.
     InsufficientCredits(Box<ApiError>),
     /// Any other non-2xx response, or a 2xx body that is not a JSON object.
     Api(Box<ApiError>),

@@ -1253,6 +1253,28 @@ function deriveType(status: number, code: string | undefined): KeenableErrorType
   return "api_error";
 }
 
+type ErrorKind = "auth" | "rate_limit" | "insufficient_credits" | "api";
+
+const TYPE_KINDS: Record<KeenableErrorType, ErrorKind> = {
+  authentication_error: "auth",
+  permission_error: "auth",
+  billing_error: "insufficient_credits",
+  rate_limit_error: "rate_limit",
+  invalid_request_error: "api",
+  target_error: "api",
+  api_error: "api",
+};
+
+function errorKind(status: number, sentType: string | undefined, type: string): ErrorKind {
+  if (sentType !== undefined && Object.hasOwn(TYPE_KINDS, sentType)) {
+    return TYPE_KINDS[sentType as KeenableErrorType];
+  }
+  if ((status === 401 || status === 403) && type !== "target_error") return "auth";
+  if (status === 402) return "insufficient_credits";
+  if (status === 429) return "rate_limit";
+  return "api";
+}
+
 /** Append `more` as a new sentence, without doubling a final period. */
 function sentence(message: string, more: string): string {
   return `${message}${message.endsWith(".") ? " " : ". "}${more}`;
@@ -1340,8 +1362,8 @@ function toApiError(status: number, text: string, headers?: Headers): KeenableAP
   }
 
   const details = errorDetails(status, record, headers);
-  // A 401/403 about the page being fetched is not an authentication failure.
-  const auth = (status === 401 || status === 403) && details.type !== "target_error";
+  const kind = errorKind(status, nonEmpty(record?.type), details.type ?? "");
+  const auth = kind === "auth";
   let message: string;
   if (status === 402) {
     message = paymentMessage(details.code, record);
@@ -1363,10 +1385,10 @@ function toApiError(status: number, text: string, headers?: Headers): KeenableAP
   if (auth) {
     return new KeenableAuthError(message, status, detail || undefined, details);
   }
-  if (status === 402) {
+  if (kind === "insufficient_credits") {
     return new KeenableInsufficientCreditsError(message, status, detail || undefined, details);
   }
-  if (status === 429) {
+  if (kind === "rate_limit") {
     return new KeenableRateLimitError(message, status, detail || undefined, details);
   }
   return new KeenableAPIError(message, status, detail || undefined, details);

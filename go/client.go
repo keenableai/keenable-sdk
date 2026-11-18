@@ -989,8 +989,8 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 		api.Reason = stringField(obj, "reason")
 	}
 
-	// A 401/403 about the page being fetched is not an authentication failure.
-	auth := (status == 401 || status == 403) && api.Type != TypeTargetError
+	kind := kindOf(status, stringField(obj, "type"), api.Type)
+	auth := kind == kindAuth
 	label, ok := statusLabels[status]
 	if !ok || ((status == 401 || status == 403) && !auth) {
 		label = fmt.Sprintf("Keenable API error (%d)", status)
@@ -999,7 +999,7 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 		// The API's text for a 402 points at billing pages and payment
 		// offers, which the SDKs do not pass on; the next step is the SDK's.
 		api.msg = paymentMessage(obj, api.APICode)
-		return classifyStatus(api, auth, header)
+		return classify(api, kind, header)
 	}
 	msg := label
 	if detail != "" {
@@ -1034,7 +1034,7 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 		}
 	}
 	api.msg = msg
-	return classifyStatus(api, auth, header)
+	return classify(api, kind, header)
 }
 
 // paymentMessage is a 402's message, the same in every SDK. A pay-per-request
@@ -1057,13 +1057,48 @@ func sentence(msg, more string) string {
 	return msg + ". " + more
 }
 
-func classifyStatus(api *APIError, auth bool, header http.Header) error {
-	api.code = CodeAPI
+type errorKind int
+
+const (
+	kindAPI errorKind = iota
+	kindAuth
+	kindRateLimit
+	kindCredits
+)
+
+var typeKinds = map[string]errorKind{
+	TypeAuthenticationError: kindAuth,
+	TypePermissionError:     kindAuth,
+	TypeBillingError:        kindCredits,
+	TypeRateLimitError:      kindRateLimit,
+	TypeInvalidRequestError: kindAPI,
+	TypeTargetError:         kindAPI,
+	TypeAPIError:            kindAPI,
+}
+
+func kindOf(status int, sentType, typ string) errorKind {
+	if kind, ok := typeKinds[sentType]; ok {
+		return kind
+	}
 	switch {
-	case auth:
+	case (status == 401 || status == 403) && typ != TypeTargetError:
+		return kindAuth
+	case status == 402:
+		return kindCredits
+	case status == 429:
+		return kindRateLimit
+	default:
+		return kindAPI
+	}
+}
+
+func classify(api *APIError, kind errorKind, header http.Header) error {
+	api.code = CodeAPI
+	switch kind {
+	case kindAuth:
 		api.code = CodeAuth
 		return &AuthError{APIError: api}
-	case api.StatusCode == 429:
+	case kindRateLimit:
 		api.code = CodeRateLimit
 		return &RateLimitError{
 			APIError:  api,
@@ -1071,7 +1106,7 @@ func classifyStatus(api *APIError, auth bool, header http.Header) error {
 			Remaining: headerInt(header, "X-RateLimit-Remaining"),
 			Reset:     headerValue(header, "X-RateLimit-Reset"),
 		}
-	case api.StatusCode == 402:
+	case kindCredits:
 		return &InsufficientCreditsError{APIError: api}
 	default:
 		return api

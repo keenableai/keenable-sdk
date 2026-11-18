@@ -108,11 +108,15 @@ class KeenableAPIError(KeenableError):
 
 
 class KeenableAuthError(KeenableAPIError):
-    """The API key was rejected (HTTP 401/403)."""
+    """The API key was rejected.
+
+    Type ``authentication_error`` or ``permission_error``, or HTTP 401/403 from
+    a server that sends no type.
+    """
 
 
 class KeenableRateLimitError(KeenableAPIError):
-    """The rate limit was exceeded (HTTP 429).
+    """The rate limit was exceeded (type ``rate_limit_error``, or HTTP 429).
 
     Keyless requests share a lower hourly cap. Setting ``KEENABLE_API_KEY``
     lifts it; a key is never required to make a request. Wait
@@ -121,7 +125,7 @@ class KeenableRateLimitError(KeenableAPIError):
 
 
 class KeenableInsufficientCreditsError(KeenableAPIError):
-    """The organization has no credits left (HTTP 402).
+    """The organization has no credits left (type ``billing_error``, or HTTP 402).
 
     Retrying returns the same error until credits are added. Also raised for
     a pay-per-request (x402) 402, which this SDK cannot pay: call the API with

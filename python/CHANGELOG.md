@@ -50,6 +50,7 @@ All notable changes to the `keenable` Python package. Versions follow
 - **Changed:** `fetch()` refuses a host with an empty label before sending: two
   dots in a row (`a..b`, `127.0.0..1`, `example.com..`) or a leading dot
   (`.example.com`). One trailing dot is still fine.
+- **Changed:** the error class follows the body's `type`, not the status: `authentication_error` and `permission_error` raise `KeenableAuthError`, `rate_limit_error` `KeenableRateLimitError`, `billing_error` `KeenableInsufficientCreditsError`, and a 429 about the fetched page (`target_error`) `KeenableAPIError`. A body without a known type still maps by status.
 
 ## 0.1.5
 
