@@ -135,3 +135,12 @@ KeenableCreditsError = KeenableInsufficientCreditsError
 
 class KeenableInvalidRequestError(KeenableError):
     """The arguments passed to the SDK are invalid; no request was sent."""
+
+
+class WebhookVerificationError(KeenableError):
+    """A webhook delivery failed :func:`keenable.verify_webhook`.
+
+    The signature did not match, a header was missing, the timestamp was too
+    far from now, or the signed body was not a JSON object. Answer such a
+    request with a 400 and do not act on it.
+    """

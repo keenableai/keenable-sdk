@@ -16,6 +16,8 @@ pub mod codes {
     pub const AUTH: &str = "auth";
     /// The rate limit was exceeded (HTTP 429).
     pub const RATE_LIMIT: &str = "rate_limit";
+    /// A webhook delivery failed [`verify_webhook`](crate::verify_webhook).
+    pub const WEBHOOK_VERIFICATION: &str = "webhook_verification";
 }
 
 /// Error types the API sends as [`ApiError::error_type`], Stripe-style. Switch
@@ -60,6 +62,8 @@ pub enum Error {
     InsufficientCredits(Box<ApiError>),
     /// Any other non-2xx response, or a 2xx body that is not a JSON object.
     Api(Box<ApiError>),
+    /// A webhook delivery failed [`verify_webhook`](crate::verify_webhook).
+    WebhookVerification(WebhookVerificationError),
 }
 
 impl Error {
@@ -72,6 +76,7 @@ impl Error {
             Error::Auth(_) => codes::AUTH,
             Error::RateLimit(_) => codes::RATE_LIMIT,
             Error::InsufficientCredits(_) | Error::Api(_) => codes::API,
+            Error::WebhookVerification(_) => codes::WEBHOOK_VERIFICATION,
         }
     }
 
@@ -81,7 +86,7 @@ impl Error {
         match self {
             Error::Auth(e) | Error::InsufficientCredits(e) | Error::Api(e) => Some(e),
             Error::RateLimit(e) => Some(&e.api),
-            Error::InvalidRequest(_) | Error::Connection(_) => None,
+            Error::InvalidRequest(_) | Error::Connection(_) | Error::WebhookVerification(_) => None,
         }
     }
 
@@ -108,6 +113,7 @@ impl fmt::Display for Error {
             Error::RateLimit(e) => e.api.write(f, codes::RATE_LIMIT),
             Error::Auth(e) => e.write(f, codes::AUTH),
             Error::InsufficientCredits(e) | Error::Api(e) => e.write(f, codes::API),
+            Error::WebhookVerification(e) => e.fmt(f),
         }
     }
 }
@@ -127,6 +133,23 @@ impl fmt::Display for InvalidRequestError {
 }
 
 impl std::error::Error for InvalidRequestError {}
+
+/// A webhook delivery failed [`verify_webhook`](crate::verify_webhook): the
+/// signature did not match, a header was missing, the timestamp was too far
+/// from now, or the signed body was not a JSON object. Answer such a request
+/// with a 400 and do not act on it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WebhookVerificationError {
+    pub(crate) msg: String,
+}
+
+impl fmt::Display for WebhookVerificationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} ({})", self.msg, codes::WEBHOOK_VERIFICATION)
+    }
+}
+
+impl std::error::Error for WebhookVerificationError {}
 
 /// The API could not be reached, or the deadline for one attempt elapsed
 /// before the whole body arrived.

@@ -100,12 +100,36 @@ Each SDK exposes the same surface: search, fetch, a `to_context()` /
 definitions for tool calling. See the per-language READMEs for the full
 reference.
 
+## Monitors
+
+A monitor is a standing search: it watches the web for a topic and reports
+every new page that matches, by webhook, in scheduled runs, or when you poll
+it. Every SDK has a `monitors` namespace for `https://api.keenable.ai/v1/monitors`
+(create, list, get, update, pause, resume, delete, trigger, runs, pages,
+deliveries, stats, bulk) and a `verify_webhook` helper for the signed
+deliveries. Monitors need an API key.
+
+```python
+from keenable import Keenable
+
+keenable = Keenable()  # reads KEENABLE_API_KEY
+monitor = keenable.monitors.create(search={"query": "new open-weights LLM releases"})
+for page in keenable.monitors.pages(monitor.id):
+    print(page.title, page.url)
+```
+
+See each SDK's README for the full list, and [`examples/monitors`](./examples/monitors).
+
 ## Examples
 
 - [`examples/cerebras/`](./examples/cerebras) - grounding a Cerebras model in
   live web results, and letting it call Keenable as a tool. Python and Node.
 - [`examples/domain-filters/`](./examples/domain-filters) - keeping sites out
   of the results with `exclude_domains`. Python and TypeScript.
+- [`examples/monitors/`](./examples/monitors) - a monitor that reads new pages
+  and a webhook receiver that verifies deliveries. Python and TypeScript; Go
+  in [`go/example/monitors`](./go/example/monitors), Rust in
+  [`rust/examples/monitors.rs`](./rust/examples/monitors.rs).
 
 ## Documentation for partners
 

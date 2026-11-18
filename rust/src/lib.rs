@@ -25,8 +25,10 @@ mod error;
 mod guard;
 mod json;
 mod models;
+mod monitors;
 mod retry;
 mod tools;
+mod webhooks;
 
 #[cfg(test)]
 mod test_hooks;
@@ -39,15 +41,27 @@ pub use client::{
 };
 pub use error::{
     codes, types, ApiError, ConnectionError, Error, InvalidRequestError, RateLimitError,
-    RateLimitInfo, Result,
+    RateLimitInfo, Result, WebhookVerificationError,
 };
 pub use models::{
     ContextOptions, Page, SearchResponse, SearchResult, DEFAULT_CONTEXT_MAX_CHARS,
     DEFAULT_CONTEXT_MAX_SNIPPET_CHARS,
 };
+pub use monitors::{
+    BulkFilter, BulkResult, DeliveryList, List, Monitor, MonitorBulkParams, MonitorCreateParams,
+    MonitorDelivery, MonitorList, MonitorListParams, MonitorPageParams, MonitorPager,
+    MonitorPagesParams, MonitorResult, MonitorResultChange, MonitorRun, MonitorRunError,
+    MonitorRunOutput, MonitorSchedule, MonitorScheduleParams, MonitorSearch, MonitorSearchParams,
+    MonitorStats, MonitorUpdateParams, MonitorWebhook, MonitorWebhookParams, Monitors, PageList,
+    RunList,
+};
 pub use tools::{
     fetch_tool, run_tool_call, search_tool, tools, ToolArguments, ToolDefinition, ToolFunction,
     FETCH_TOOL_NAME, SEARCH_TOOL_NAME,
+};
+pub use webhooks::{
+    verify_webhook, verify_webhook_with, WebhookEvent, WebhookEventData, WebhookOptions,
+    DEFAULT_WEBHOOK_TOLERANCE,
 };
 
 /// The SDK version, sent in the User-Agent. It is read from `Cargo.toml`, the

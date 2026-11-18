@@ -226,3 +226,25 @@ var (
 	_ Error = (*RateLimitError)(nil)
 	_ Error = (*InsufficientCreditsError)(nil)
 )
+
+// CodeWebhookVerification is the Code() of a [WebhookVerificationError].
+const CodeWebhookVerification = "webhook_verification"
+
+// WebhookVerificationError means a webhook delivery failed [VerifyWebhook]:
+// the signature did not match, a header was missing, the timestamp was too
+// far from now, or the signed body was not a JSON object. Answer such a
+// request with a 400 and do not act on it.
+type WebhookVerificationError struct {
+	msg string
+}
+
+func (e *WebhookVerificationError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return e.msg + " (" + CodeWebhookVerification + ")"
+}
+func (e *WebhookVerificationError) Code() string   { return CodeWebhookVerification }
+func (e *WebhookVerificationError) keenableError() {}
+
+var _ Error = (*WebhookVerificationError)(nil)

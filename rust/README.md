@@ -187,6 +187,80 @@ longer than 60 s (such as the keyless hourly cap) is not waited out: the error
 is returned at once. A redirect is never followed or retried, so the API key
 goes only to the configured host.
 
+## Monitors
+
+A monitor is a standing search: it watches the web for a topic and hands over
+every new page that matches, by webhook, in scheduled runs, or when you poll
+it. Monitors need an API key (`KEENABLE_API_KEY`); without one, every call
+returns `Error::Auth` with code `missing_api_key` and sends nothing. An
+organization can have 100 active monitors.
+
+```rust
+use keenable::{MonitorCreateParams, MonitorPagesParams, MonitorScheduleParams, MonitorSearchParams};
+
+let client = keenable::Client::new()?;
+let monitor = client
+    .monitors()
+    .create(&MonitorCreateParams {
+        search: MonitorSearchParams::new("new open-weights LLM releases"),
+        schedule: Some(MonitorScheduleParams {
+            schedule_type: "cron".into(),
+            value: Some("0 9 * * 1-5".into()),
+            timezone: Some("Europe/Paris".into()),
+        }),
+        ..Default::default()
+    })
+    .await?;
+let pages = client
+    .monitors()
+    .pages(&monitor.id, &MonitorPagesParams { min_importance: Some(4), ..Default::default() })
+    .await?;
+for page in pages.data {
+    println!("{}", page.url);
+}
+```
+
+| Method on `client.monitors()` | What it does |
+|---|---|
+| `create(&MonitorCreateParams)` | Make a monitor (`POST /v1/monitors`) |
+| `list(&MonitorListParams)` / `list_all(&MonitorListParams)` | One page of monitors / a `MonitorPager` over all of them |
+| `get(id)`, `update(id, &MonitorUpdateParams)`, `delete(id)` | Read, change (only what is set; `Some(None)` removes the name, schedule, webhook, output schema or metadata), delete |
+| `pause(id)`, `resume(id)` | Update with status "paused" / "active" |
+| `trigger(id)` | Start a run now; returns the queued `MonitorRun` |
+| `runs(id, &MonitorPageParams)`, `run(id, run_id)` | A monitor's runs |
+| `pages(id, &MonitorPagesParams)` | The pages it accepted, newest first, one per story |
+| `deliveries(id, &MonitorPageParams)` | Webhook events of the last 7 days, with attempts and errors |
+| `stats()` | Counts by status and by kind of schedule |
+| `bulk(action, &MonitorBulkParams)` | Pause, resume or delete many; a dry run unless `dry_run: Some(false)` |
+
+`client.monitors().with_request(RequestOptions { .. })` sets a timeout, retry
+budget or headers for the calls made through it. Reads and deletes are retried
+like a search; `create` sends an `Idempotency-Key` (yours, or a new one per
+call), so its retries cannot make a second monitor; `update`, `trigger` and
+`bulk` are retried only on a 429.
+
+### Verify webhooks
+
+Deliveries are signed as [Standard Webhooks](https://www.standardwebhooks.com).
+Verify the raw body before trusting it:
+
+```rust
+// body: the raw request body; headers: a keenable::reqwest::header::HeaderMap
+match keenable::verify_webhook(body, &headers, secret) {
+    Ok(event) if event.event_type == "monitor.hit" => {
+        println!("{}", event.data.result.map(|r| r.url).unwrap_or_default());
+    }
+    Ok(_) => {}
+    Err(_) => { /* answer 400 */ }
+}
+```
+
+`verify_webhook` checks the HMAC-SHA256 signature in constant time and refuses
+a timestamp more than 5 minutes from now (`verify_webhook_with` and
+`WebhookOptions::tolerance` change it). A failure is
+`Error::WebhookVerification`. Drop repeats by `event.id`, which stays the same
+across retries.
+
 ## Errors
 
 Every call returns `keenable::Error`:

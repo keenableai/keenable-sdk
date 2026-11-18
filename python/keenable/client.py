@@ -38,6 +38,7 @@ from .errors import (
     RateLimitInfo,
 )
 from .models import Page, SearchResponse
+from .monitors import AsyncMonitors, Monitors, _Call
 
 __all__ = ["Keenable", "AsyncKeenable", "DEFAULT_MAX_RETRIES"]
 
@@ -1078,6 +1079,11 @@ def _retry_delay(error: Exception, retry: int) -> float | None:
     return None
 
 
+def _rate_limited(error: Exception) -> bool:
+    """A 429: the API refused the request before acting on it."""
+    return isinstance(error, KeenableAPIError) and error.status_code == 429
+
+
 def _check_max_retries(value: int) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise KeenableInvalidRequestError(
@@ -1204,6 +1210,20 @@ class _BaseClient:
         suffix = "/public" if self.keyless else ""
         return f"{self._base_url}/v1/{endpoint}{suffix}"
 
+    def _monitors_url(self, path: str) -> str:
+        """A Monitors URL. Monitors need a key: keyless, nothing is sent."""
+        if self.keyless:
+            raise KeenableAuthError(
+                "Keenable authentication failed (401): Monitors need an API key. "
+                "Pass api_key or set KEENABLE_API_KEY; create one at "
+                "https://keenable.ai/console. (code: missing_api_key)",
+                401,
+                code="missing_api_key",
+                type="authentication_error",
+                retryable=False,
+            )
+        return f"{self._base_url}/v1/{path}"
+
     def _call_settings(
         self, timeout: float | httpx.Timeout | None, max_retries: int | None
     ) -> tuple[Any, int]:
@@ -1291,6 +1311,29 @@ class Keenable(_BaseClient):
         # the SDK cannot reach into a client you pass, so there it keeps
         # httpx's per-phase meaning.
         self._bounds_attempts = self._owns_client and _bound_by_deadline(self._client)
+        self.monitors = Monitors(self)
+        """Keenable Monitors: standing searches that report new pages."""
+
+    def _monitors_request(
+        self,
+        call: _Call,
+        *,
+        timeout: float | httpx.Timeout | None,
+        max_retries: int | None,
+        extra_headers: Mapping[str, str] | None,
+    ) -> tuple[dict[str, Any], str | None]:
+        headers = {**(call.headers or {}), **(extra_headers or {})}
+        return self._request(
+            call.path,
+            json=call.json,
+            params=call.params,
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=headers,
+            method=call.method,
+            url=self._monitors_url(call.path),
+            safe=call.safe,
+        )
 
     def _call_default_timeout(self) -> Any:
         return httpx.USE_CLIENT_DEFAULT if self._use_client_timeout else self._timeout
@@ -1315,6 +1358,9 @@ class Keenable(_BaseClient):
         timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
+        method: str | None = None,
+        url: str | None = None,
+        safe: bool = True,
     ) -> tuple[dict[str, Any], str | None]:
         """Send a request, retrying what can be retried, and decode the body.
 
@@ -1332,8 +1378,8 @@ class Keenable(_BaseClient):
                         _attempt_deadline(call_timeout)
                         if self._bounds_attempts
                         else None,
-                        "GET" if json is None else "POST",
-                        self._url(endpoint),
+                        method or ("GET" if json is None else "POST"),
+                        url or self._url(endpoint),
                         params=params,
                         json=json,
                         headers=headers,
@@ -1344,7 +1390,11 @@ class Keenable(_BaseClient):
                     )
                 return _decode(response)
             except KeenableError as error:
-                delay = _retry_delay(error, retry) if retry < retries else None
+                delay = (
+                    _retry_delay(error, retry)
+                    if retry < retries and (safe or _rate_limited(error))
+                    else None
+                )
                 if delay is None:
                     raise
                 time.sleep(delay)
@@ -1522,6 +1572,29 @@ class AsyncKeenable(_BaseClient):
         self._use_client_timeout = client is not None and isinstance(timeout, _Unset)
         self._client = client or httpx.AsyncClient(timeout=self._timeout)
         self._owns_client = client is None
+        self.monitors = AsyncMonitors(self)
+        """Keenable Monitors, with awaitable methods."""
+
+    async def _monitors_request(
+        self,
+        call: _Call,
+        *,
+        timeout: float | httpx.Timeout | None,
+        max_retries: int | None,
+        extra_headers: Mapping[str, str] | None,
+    ) -> tuple[dict[str, Any], str | None]:
+        headers = {**(call.headers or {}), **(extra_headers or {})}
+        return await self._request(
+            call.path,
+            json=call.json,
+            params=call.params,
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=headers,
+            method=call.method,
+            url=self._monitors_url(call.path),
+            safe=call.safe,
+        )
 
     def _call_default_timeout(self) -> Any:
         return httpx.USE_CLIENT_DEFAULT if self._use_client_timeout else self._timeout
@@ -1546,6 +1619,9 @@ class AsyncKeenable(_BaseClient):
         timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
+        method: str | None = None,
+        url: str | None = None,
+        safe: bool = True,
     ) -> tuple[dict[str, Any], str | None]:
         """Async counterpart of :meth:`Keenable._request`."""
         call_timeout, retries = self._call_settings(timeout, max_retries)
@@ -1557,8 +1633,8 @@ class AsyncKeenable(_BaseClient):
                     # A number bounds the whole attempt, not only each phase.
                     response = await asyncio.wait_for(
                         self._client.request(
-                            "GET" if json is None else "POST",
-                            self._url(endpoint),
+                            method or ("GET" if json is None else "POST"),
+                            url or self._url(endpoint),
                             params=params,
                             json=json,
                             headers=headers,
@@ -1569,7 +1645,11 @@ class AsyncKeenable(_BaseClient):
                     )
                 return _decode(response)
             except KeenableError as error:
-                delay = _retry_delay(error, retry) if retry < retries else None
+                delay = (
+                    _retry_delay(error, retry)
+                    if retry < retries and (safe or _rate_limited(error))
+                    else None
+                )
                 if delay is None:
                     raise
                 await asyncio.sleep(delay)
