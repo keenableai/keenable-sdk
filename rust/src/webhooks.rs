@@ -70,6 +70,8 @@ fn fail<T>(msg: impl Into<String>) -> Result<T> {
     }))
 }
 
+const MAX_STAMP_DIGITS: usize = 12;
+
 fn key(secret: &str) -> Vec<u8> {
     let text = secret.strip_prefix("whsec_").unwrap_or(secret);
     match STANDARD.decode(text) {
@@ -117,7 +119,7 @@ pub fn verify_webhook_with(
     ) else {
         return fail("missing webhook-id, webhook-timestamp or webhook-signature header");
     };
-    if !stamp.bytes().all(|b| b.is_ascii_digit()) {
+    if stamp.len() > MAX_STAMP_DIGITS || !stamp.bytes().all(|b| b.is_ascii_digit()) {
         return fail(format!("webhook-timestamp is not a Unix time: {stamp:?}"));
     }
     let Ok(sent) = stamp.parse::<f64>() else {
@@ -133,7 +135,13 @@ pub fn verify_webhook_with(
             "webhook-timestamp is too far from now: the delivery is stale or the clock is off",
         );
     }
-    let mut mac = match Hmac::<Sha256>::new_from_slice(&key(secret)) {
+    let key = key(secret);
+    if key.is_empty() {
+        return fail(
+            "the webhook secret has no key after whsec_: pass the monitor's webhook.secret",
+        );
+    }
+    let mut mac = match Hmac::<Sha256>::new_from_slice(&key) {
         Ok(mac) => mac,
         Err(_) => return fail("the webhook secret cannot key an HMAC"),
     };

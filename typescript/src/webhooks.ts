@@ -119,10 +119,15 @@ function toBase64(bytes: Uint8Array): string {
   return out;
 }
 
+const MAX_STAMP_DIGITS = 12;
+
 function secretKey(secret: string): Uint8Array {
   const text = secret.startsWith("whsec_") ? secret.slice("whsec_".length) : secret;
-  if (text.length > 0 && BASE64.test(text)) return fromBase64(text);
-  return new TextEncoder().encode(text);
+  const key = text.length > 0 && BASE64.test(text) ? fromBase64(text) : new TextEncoder().encode(text);
+  if (key.length === 0) {
+    throw new WebhookVerificationError("the webhook secret has no key after whsec_: pass the monitor's webhook.secret");
+  }
+  return key;
 }
 
 function sameText(a: string, b: string): boolean {
@@ -178,8 +183,8 @@ export async function verifyWebhook(
     throw new WebhookVerificationError("the webhook secret is empty: pass the monitor's webhook.secret");
   }
   const tolerance = options.toleranceSeconds ?? DEFAULT_WEBHOOK_TOLERANCE_SECONDS;
-  if (typeof tolerance !== "number" || !(tolerance > 0)) {
-    throw new WebhookVerificationError("toleranceSeconds must be a positive number");
+  if (typeof tolerance !== "number" || !Number.isFinite(tolerance) || !(tolerance > 0)) {
+    throw new WebhookVerificationError("toleranceSeconds must be a positive, finite number");
   }
   const body =
     typeof payload === "string"
@@ -193,7 +198,7 @@ export async function verifyWebhook(
   if (!id || !stamp || !signatures) {
     throw new WebhookVerificationError("missing webhook-id, webhook-timestamp or webhook-signature header");
   }
-  if (!/^[0-9]+$/.test(stamp)) {
+  if (!/^[0-9]+$/.test(stamp) || stamp.length > MAX_STAMP_DIGITS) {
     throw new WebhookVerificationError(`webhook-timestamp is not a Unix time: ${JSON.stringify(stamp)}`);
   }
   const now = options.now ?? Date.now() / 1000;

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from typing import Any
 
 import httpx
@@ -386,6 +387,21 @@ def test_bulk_checks_its_arguments() -> None:
         keenable.monitors.bulk("archive", ids=["mon_1"])  # type: ignore[arg-type]
     with pytest.raises(KeenableInvalidRequestError):
         keenable.monitors.bulk("pause")
+    for empty in ({}, {"metadata": {}}, {"status": "", "name": ""}):
+        with pytest.raises(KeenableInvalidRequestError):
+            keenable.monitors.bulk("pause", filter=empty)  # type: ignore[arg-type]
+    assert seen == []
+
+
+@pytest.mark.parametrize("monitor_id", [".", ".."])
+def test_dot_ids_are_refused(monitor_id: str) -> None:
+    keenable, seen = _client([httpx.Response(200, json=MONITOR)])
+    with pytest.raises(KeenableInvalidRequestError):
+        keenable.monitors.get(monitor_id)
+    with pytest.raises(KeenableInvalidRequestError):
+        keenable.monitors.delete(monitor_id)
+    with pytest.raises(KeenableInvalidRequestError):
+        keenable.monitors.runs(monitor_id)
     assert seen == []
 
 
@@ -469,3 +485,23 @@ def test_verify_webhook_refuses_a_stale_delivery_by_the_clock() -> None:
 def test_verify_webhook_refuses_an_empty_secret() -> None:
     with pytest.raises(WebhookVerificationError):
         verify_webhook(BODY, HEADERS, "", now=1763400000)
+
+
+def test_verify_webhook_refuses_an_empty_key() -> None:
+    with pytest.raises(WebhookVerificationError):
+        verify_webhook(BODY, HEADERS, "whsec_", now=1763400000)
+
+
+@pytest.mark.parametrize("tolerance", [math.inf, -math.inf, math.nan, 0, -1])
+def test_verify_webhook_refuses_a_tolerance_that_is_not_positive_and_finite(
+    tolerance: float,
+) -> None:
+    with pytest.raises(WebhookVerificationError):
+        verify_webhook(BODY, HEADERS, SECRET, tolerance=tolerance, now=1763400000)
+
+
+@pytest.mark.parametrize("digits", [13, 400, 5000])
+def test_verify_webhook_refuses_a_long_timestamp(digits: int) -> None:
+    headers = {**HEADERS, "webhook-timestamp": "1" * digits}
+    with pytest.raises(WebhookVerificationError, match="not a Unix time"):
+        verify_webhook(BODY, headers, SECRET, now=1763400000)

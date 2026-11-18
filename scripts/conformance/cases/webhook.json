@@ -103,6 +103,21 @@
       "valid": false
     },
     {
+      "name": "a 400-digit timestamp is refused",
+      "headers": {
+        "webhook-timestamp": "1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "valid": false
+    },
+    {
+      "name": "a 13-digit timestamp is refused even when its value is now and it is signed",
+      "headers": {
+        "webhook-timestamp": "0001763400000"
+      },
+      "signature": "v1,24rwSfPZu2R5b5Az4x1BO97a/Enu1Z4ZmzI9kKSqrUE=",
+      "valid": false
+    },
+    {
       "name": "header names in any case",
       "header_case": "upper",
       "valid": true,
@@ -120,6 +135,12 @@
       "signature": "v1,uXnm9PAKBqRoaXzXrdbeIz+EvYI7yhVPSL/5CAF5K7c=",
       "valid": true,
       "type": "monitor.hit"
+    },
+    {
+      "name": "a secret of only whsec_ has no key and is refused, even signed with the empty key",
+      "secret": "whsec_",
+      "signature": "v1,gE2yS/eBL1nnn74P1Rfi52r9XeQ3JOR2psw/MA1j4ss=",
+      "valid": false
     },
     {
       "name": "a signed body that is not JSON is refused",

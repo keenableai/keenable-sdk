@@ -111,6 +111,8 @@ type MonitorUpdateParams struct {
 	RequestOptions
 	// Name renames the monitor.
 	Name *string
+	// RemoveName removes the name (sends null). It wins over Name.
+	RemoveName bool
 	// Status is "active" or "paused"; active also re-enables a disabled
 	// monitor. Empty is unset.
 	Status string
@@ -468,6 +470,9 @@ func segment(name, value string) (string, error) {
 	if strings.TrimSpace(value) == "" {
 		return "", &InvalidRequestError{msg: name + " must be a non-empty string"}
 	}
+	if value == "." || value == ".." {
+		return "", &InvalidRequestError{msg: fmt.Sprintf("%s must not be %q: it would change the request's path", name, value)}
+	}
 	return url.PathEscape(value), nil
 }
 
@@ -655,7 +660,10 @@ func (m *MonitorsService) Update(ctx context.Context, monitorID string, params *
 		params = &MonitorUpdateParams{}
 	}
 	body := map[string]any{}
-	if params.Name != nil {
+	switch {
+	case params.RemoveName:
+		body["name"] = nil
+	case params.Name != nil:
 		body["name"] = *params.Name
 	}
 	if params.Status != "" {

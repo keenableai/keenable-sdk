@@ -224,7 +224,7 @@ for page in pages.data {
 |---|---|
 | `create(&MonitorCreateParams)` | Make a monitor (`POST /v1/monitors`) |
 | `list(&MonitorListParams)` / `list_all(&MonitorListParams)` | One page of monitors / a `MonitorPager` over all of them |
-| `get(id)`, `update(id, &MonitorUpdateParams)`, `delete(id)` | Read, change (only what is set; `Some(None)` removes the schedule, webhook, output schema or metadata), delete |
+| `get(id)`, `update(id, &MonitorUpdateParams)`, `delete(id)` | Read, change (only what is set; `Some(None)` removes the name, schedule, webhook, output schema or metadata), delete |
 | `pause(id)`, `resume(id)` | Update with status "paused" / "active" |
 | `trigger(id)` | Start a run now; returns the queued `MonitorRun` |
 | `runs(id, &MonitorPageParams)`, `run(id, run_id)` | A monitor's runs |

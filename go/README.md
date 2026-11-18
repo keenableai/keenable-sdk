@@ -272,7 +272,7 @@ for _, page := range pages.Data {
 |---|---|
 | `Create(ctx, *MonitorCreateParams)` | Make a monitor (`POST /v1/monitors`) |
 | `List(ctx, *MonitorListParams)` / `ListAll(ctx, *MonitorListParams)` | One page of monitors / a `*MonitorIterator` over all of them |
-| `Get(ctx, id, *RequestOptions)`, `Update(ctx, id, *MonitorUpdateParams)`, `Delete(ctx, id, *RequestOptions)` | Read, change (only what is set; `RemoveSchedule`, `RemoveWebhook`, ... send null), delete |
+| `Get(ctx, id, *RequestOptions)`, `Update(ctx, id, *MonitorUpdateParams)`, `Delete(ctx, id, *RequestOptions)` | Read, change (only what is set; `RemoveName`, `RemoveSchedule`, `RemoveWebhook`, ... send null and win over the value), delete |
 | `Pause(ctx, id, *RequestOptions)`, `Resume(ctx, id, *RequestOptions)` | Update with Status "paused" / "active" |
 | `Trigger(ctx, id, *RequestOptions)` | Start a run now; returns the queued `*MonitorRun` |
 | `Runs(ctx, id, *MonitorPageParams)`, `Run(ctx, id, runID, *RequestOptions)` | A monitor's runs |

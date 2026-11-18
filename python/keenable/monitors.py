@@ -635,6 +635,10 @@ class _Call:
 def _segment(name: str, value: Any) -> str:
     if not isinstance(value, str) or not value.strip():
         raise KeenableInvalidRequestError(f"{name} must be a non-empty string")
+    if value in (".", ".."):
+        raise KeenableInvalidRequestError(
+            f"{name} must not be {value!r}: it would change the request's path"
+        )
     return quote(value, safe="")
 
 
@@ -729,6 +733,17 @@ def _update_call(monitor_id: str, fields: dict[str, Any]) -> _Call:
     )
 
 
+def _selects(filter: Mapping[str, Any] | None) -> bool:
+    if not filter:
+        return False
+    metadata = filter.get("metadata")
+    return (
+        bool(filter.get("status"))
+        or bool(filter.get("name"))
+        or (isinstance(metadata, Mapping) and len(metadata) > 0)
+    )
+
+
 def _bulk_call(
     action: str,
     ids: Sequence[str] | None,
@@ -742,14 +757,18 @@ def _bulk_call(
         )
     if isinstance(ids, str):
         raise KeenableInvalidRequestError("ids must be a list of monitor ids")
-    if not ids and not filter:
-        raise KeenableInvalidRequestError("bulk() needs ids or a filter")
+    if filter is not None and not isinstance(filter, Mapping):
+        raise KeenableInvalidRequestError("filter must be a mapping")
+    if not ids and not _selects(filter):
+        raise KeenableInvalidRequestError(
+            "bulk() needs ids or a filter with a status, a name or metadata"
+        )
     if not isinstance(dry_run, bool):
         raise KeenableInvalidRequestError("dry_run must be True or False")
     body: dict[str, Any] = {"action": action, "dry_run": dry_run}
     if ids:
         body["ids"] = list(ids)
-    if filter:
+    if filter is not None and _selects(filter):
         body["filter"] = dict(filter)
     if limit is not None:
         body["limit"] = limit

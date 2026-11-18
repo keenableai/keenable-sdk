@@ -215,11 +215,12 @@ delivery as a Standard Webhook:
 
 - The `webhook-id`, `webhook-timestamp` and `webhook-signature` headers are
   read in any letter case; a missing one fails.
-- The timestamp is Unix seconds, digits only, and fails when it is more than
+- The timestamp is Unix seconds, digits only and at most 12 of them (more is
+  not a Unix time, whatever its value), and fails when it is more than
   the tolerance (default 300 seconds, inclusive) from now, in either direction.
 - The key is the secret after an optional `whsec_` prefix, base64-decoded
   (standard alphabet, padded); a secret that is not valid base64 is used as
-  its own bytes.
+  its own bytes. A secret that leaves no key bytes (`whsec_` alone) fails.
 - The signature is HMAC-SHA256 over `<id>.<timestamp>.<body>` with the body's
   exact bytes, base64-encoded. `webhook-signature` holds space-separated
   `v1,<signature>` entries; any `v1` entry that matches, compared in constant

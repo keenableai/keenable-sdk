@@ -215,7 +215,7 @@ async fn paths_get_delete_update_pause_resume() {
         .update(
             "mon_1",
             &MonitorUpdateParams {
-                name: Some("New".into()),
+                name: Some(Some("New".into())),
                 schedule: Some(None),
                 search: Some(MonitorSearchParams {
                     max_results: Some(5),
@@ -228,6 +228,16 @@ async fn paths_get_delete_update_pause_resume() {
         .unwrap();
     monitors.pause("mon_1").await.unwrap();
     monitors.resume("mon_1").await.unwrap();
+    monitors
+        .update(
+            "mon_1",
+            &MonitorUpdateParams {
+                name: Some(None),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
     let seen = server.requests();
     assert_eq!(seen[0].path, "/v1/monitors/mon%2F1");
     assert_eq!(seen[1].method, "DELETE");
@@ -238,6 +248,7 @@ async fn paths_get_delete_update_pause_resume() {
     );
     assert_eq!(body(&seen[3]), json!({"status": "paused"}));
     assert_eq!(body(&seen[4]), json!({"status": "active"}));
+    assert_eq!(body(&seen[5]), json!({"name": null}));
 }
 
 #[tokio::test]
@@ -249,7 +260,7 @@ async fn unsafe_calls_are_not_retried_on_a_5xx() {
         .update(
             "mon_1",
             &MonitorUpdateParams {
-                name: Some("x".into()),
+                name: Some(Some("x".into())),
                 ..Default::default()
             }
         )
@@ -407,6 +418,24 @@ async fn bulk_checks_its_arguments() {
     assert_eq!(server.count(), 0);
 }
 
+#[tokio::test]
+async fn dot_ids_are_refused() {
+    let server = start(Script::Replies(vec![ok(200, monitor())])).await;
+    let client = keyed(&server);
+    let monitors = client.monitors();
+    for id in [".", ".."] {
+        assert!(matches!(
+            monitors.get(id).await,
+            Err(Error::InvalidRequest(_))
+        ));
+        assert!(matches!(
+            monitors.delete(id).await,
+            Err(Error::InvalidRequest(_))
+        ));
+    }
+    assert_eq!(server.count(), 0);
+}
+
 const WEBHOOK_BODY: &str = r#"{"id":"msg_2nY8kTestVector01","type":"monitor.hit","created_at":"2026-11-17T17:20:00Z","data":{"monitor_id":"mon_test01","result":{"url":"https://example.com/news/1","title":"Open weights model released","author":null,"published_at":"2026-11-17T16:00:00Z","acquired_at":"2026-11-17T16:05:00Z","image":null,"favicon":null,"highlights":null,"matched_at":"2026-11-17T16:10:00Z","published_at_source":"declared","summary":"A lab released an open-weights model.","importance":4,"kind":"news","source_type":"original","score":0.82}},"metadata":{"team":"research"}}"#;
 const WEBHOOK_SECRET: &str = "whsec_a2VlbmFibGUtbW9uaXRvcnMtd2ViaG9vay10ZXN0ISE=";
 
@@ -450,4 +479,22 @@ fn verify_webhook_refuses_a_stale_delivery_by_the_clock() {
         .unwrap_err();
     assert!(matches!(err, Error::WebhookVerification(_)));
     assert_eq!(err.sdk_code(), "webhook_verification");
+}
+
+#[test]
+fn verify_webhook_refuses_an_empty_key_and_a_long_timestamp() {
+    let opts = crate::WebhookOptions {
+        now: Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_763_400_000)),
+        ..Default::default()
+    };
+    let err =
+        crate::verify_webhook_with(WEBHOOK_BODY.as_bytes(), &webhook_headers(), "whsec_", &opts)
+            .unwrap_err();
+    assert!(matches!(err, Error::WebhookVerification(_)));
+    let mut headers = webhook_headers();
+    headers.insert("webhook-timestamp", "1".repeat(400).parse().unwrap());
+    let err = crate::verify_webhook_with(WEBHOOK_BODY.as_bytes(), &headers, WEBHOOK_SECRET, &opts)
+        .unwrap_err();
+    assert!(matches!(err, Error::WebhookVerification(_)));
+    assert!(err.to_string().contains("not a Unix time"));
 }

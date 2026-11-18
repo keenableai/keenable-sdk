@@ -109,8 +109,8 @@ pub struct MonitorCreateParams {
 /// the fields that can be removed, `Some(None)` removes it.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct MonitorUpdateParams {
-    /// A new name.
-    pub name: Option<String>,
+    /// A new name, or `Some(None)` to remove it.
+    pub name: Option<Option<String>>,
     /// "active" or "paused"; active also re-enables a disabled monitor.
     pub status: Option<String>,
     /// Merged into the stored search.
@@ -632,6 +632,11 @@ fn segment(name: &str, value: &str) -> Result<String> {
     if value.trim().is_empty() {
         return Err(Error::invalid(format!("{name} must be a non-empty string")));
     }
+    if value == "." || value == ".." {
+        return Err(Error::invalid(format!(
+            "{name} must not be {value:?}: it would change the request's path"
+        )));
+    }
     Ok(url::form_urlencoded::byte_serialize(value.as_bytes())
         .collect::<String>()
         .replace('+', "%20"))
@@ -820,7 +825,10 @@ impl<'a> Monitors<'a> {
         let path = monitor_path(monitor_id, &[])?;
         let mut body = Map::new();
         if let Some(n) = &params.name {
-            body.insert("name".into(), Value::String(n.clone()));
+            body.insert(
+                "name".into(),
+                n.clone().map(Value::String).unwrap_or(Value::Null),
+            );
         }
         if let Some(s) = params.status.as_deref().filter(|s| !s.is_empty()) {
             body.insert("status".into(), Value::String(s.into()));

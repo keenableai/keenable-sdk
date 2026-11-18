@@ -53,6 +53,8 @@ type WebhookEvent struct {
 	Raw map[string]any `json:"-"`
 }
 
+const maxStampDigits = 12
+
 func webhookKey(secret string) []byte {
 	text := strings.TrimPrefix(secret, "whsec_")
 	if key, err := base64.StdEncoding.DecodeString(text); err == nil && text != "" {
@@ -105,6 +107,9 @@ func VerifyWebhook(payload []byte, headers http.Header, secret string, opts *Web
 	if id == "" || stamp == "" || signatures == "" {
 		return fail("missing webhook-id, webhook-timestamp or webhook-signature header")
 	}
+	if len(stamp) > maxStampDigits {
+		return fail("webhook-timestamp is not a Unix time: %q", stamp)
+	}
 	for _, r := range stamp {
 		if r < '0' || r > '9' {
 			return fail("webhook-timestamp is not a Unix time: %q", stamp)
@@ -118,7 +123,11 @@ func VerifyWebhook(payload []byte, headers http.Header, secret string, opts *Web
 	if math.Abs(clock-sent) > tolerance.Seconds() {
 		return fail("webhook-timestamp is too far from now: the delivery is stale or the clock is off")
 	}
-	mac := hmac.New(sha256.New, webhookKey(secret))
+	key := webhookKey(secret)
+	if len(key) == 0 {
+		return fail("the webhook secret has no key after whsec_: pass the monitor's Webhook.Secret")
+	}
+	mac := hmac.New(sha256.New, key)
 	mac.Write([]byte(id + "." + stamp + "."))
 	mac.Write(payload)
 	expected := []byte(base64.StdEncoding.EncodeToString(mac.Sum(nil)))

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -233,6 +234,9 @@ func TestMonitorsUpdatePauseResume(t *testing.T) {
 	if _, err := c.Monitors.Resume(ctx, "mon_1", nil); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := c.Monitors.Update(ctx, "mon_1", &keenable.MonitorUpdateParams{Name: &name, RemoveName: true}); err != nil {
+		t.Fatal(err)
+	}
 	if (*seen)[0].Method != "PATCH" {
 		t.Fatalf("method %s", (*seen)[0].Method)
 	}
@@ -240,6 +244,7 @@ func TestMonitorsUpdatePauseResume(t *testing.T) {
 		{"name": "New", "schedule": nil, "search": map[string]any{"max_results": float64(5)}},
 		{"status": "paused"},
 		{"status": "active"},
+		{"name": nil},
 	}
 	for i, w := range want {
 		if !reflect.DeepEqual((*seen)[i].Body, w) {
@@ -405,5 +410,36 @@ func TestVerifyWebhookRefusesAStaleDeliveryByTheClock(t *testing.T) {
 	var bad *keenable.WebhookVerificationError
 	if !errors.As(err, &bad) || bad.Code() != keenable.CodeWebhookVerification {
 		t.Fatalf("err %v", err)
+	}
+}
+
+func TestMonitorsDotIDsAreRefused(t *testing.T) {
+	c, seen := monitorServer(t, "k", mreply{200, monitorBody})
+	ctx := context.Background()
+	for _, id := range []string{".", ".."} {
+		var bad *keenable.InvalidRequestError
+		if _, err := c.Monitors.Get(ctx, id, nil); !errors.As(err, &bad) {
+			t.Fatalf("Get(%q) err %v", id, err)
+		}
+		if _, err := c.Monitors.Delete(ctx, id, nil); !errors.As(err, &bad) {
+			t.Fatalf("Delete(%q) err %v", id, err)
+		}
+	}
+	if len(*seen) != 0 {
+		t.Fatalf("%d requests, want 0", len(*seen))
+	}
+}
+
+func TestVerifyWebhookRefusesAnEmptyKeyAndALongTimestamp(t *testing.T) {
+	opts := &keenable.WebhookOptions{Now: time.Unix(1763400000, 0)}
+	var bad *keenable.WebhookVerificationError
+	if _, err := keenable.VerifyWebhook([]byte(webhookBody), webhookHeaders(), "whsec_", opts); !errors.As(err, &bad) {
+		t.Fatalf("empty key: err %v", err)
+	}
+	h := webhookHeaders()
+	h.Set("webhook-timestamp", strings.Repeat("1", 400))
+	_, err := keenable.VerifyWebhook([]byte(webhookBody), h, "whsec_a2VlbmFibGUtbW9uaXRvcnMtd2ViaG9vay10ZXN0ISE=", opts)
+	if !errors.As(err, &bad) || !strings.Contains(err.Error(), "not a Unix time") {
+		t.Fatalf("long timestamp: err %v", err)
 	}
 }

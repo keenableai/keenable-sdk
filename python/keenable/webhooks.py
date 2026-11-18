@@ -106,6 +106,9 @@ class WebhookEvent:
         )
 
 
+_MAX_STAMP_DIGITS = 12
+
+
 def _text(value: Any) -> str:
     return value if isinstance(value, str) else ""
 
@@ -132,9 +135,15 @@ def _key(secret: str) -> bytes:
     if text.startswith(_SECRET_PREFIX):
         text = text[len(_SECRET_PREFIX) :]
     try:
-        return base64.b64decode(text, validate=True)
+        key = base64.b64decode(text, validate=True)
     except (binascii.Error, ValueError):
-        return text.encode()
+        key = text.encode()
+    if not key:
+        raise WebhookVerificationError(
+            "the webhook secret has no key after whsec_: "
+            "pass the monitor's webhook.secret"
+        )
+    return key
 
 
 def verify_webhook(
@@ -168,8 +177,11 @@ def verify_webhook(
         isinstance(tolerance, bool)
         or not isinstance(tolerance, (int, float))
         or not tolerance > 0
+        or (isinstance(tolerance, float) and not math.isfinite(tolerance))
     ):
-        raise WebhookVerificationError("tolerance must be a positive number of seconds")
+        raise WebhookVerificationError(
+            "tolerance must be a positive, finite number of seconds"
+        )
     body = payload.encode() if isinstance(payload, str) else bytes(payload)
     msg_id = _header(headers, "webhook-id")
     stamp = _header(headers, "webhook-timestamp")
@@ -179,7 +191,7 @@ def verify_webhook(
             "missing webhook-id, webhook-timestamp or webhook-signature header"
         )
     stamp = stamp.strip()
-    if not stamp.isascii() or not stamp.isdigit():
+    if not stamp.isascii() or not stamp.isdigit() or len(stamp) > _MAX_STAMP_DIGITS:
         raise WebhookVerificationError(
             f"webhook-timestamp is not a Unix time: {stamp!r}"
         )

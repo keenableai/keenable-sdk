@@ -298,6 +298,22 @@ describe("monitors", () => {
     expect(result.notFound).toEqual(["mon_x"]);
     await expect(keenable.monitors.bulk("pause")).rejects.toBeInstanceOf(KeenableInvalidRequestError);
   });
+
+  it("refuses a bulk filter that selects nothing before sending", async () => {
+    const { keenable, seen } = client([[200, {}]]);
+    for (const filter of [{}, { metadata: {} }, { name: "" }]) {
+      await expect(keenable.monitors.bulk("pause", { filter })).rejects.toBeInstanceOf(KeenableInvalidRequestError);
+    }
+    expect(seen).toHaveLength(0);
+  });
+
+  it.each([".", ".."])("refuses the monitor id %j before sending", async (id) => {
+    const { keenable, seen } = client([[200, MONITOR]]);
+    await expect(keenable.monitors.get(id)).rejects.toBeInstanceOf(KeenableInvalidRequestError);
+    await expect(keenable.monitors.delete(id)).rejects.toBeInstanceOf(KeenableInvalidRequestError);
+    await expect(keenable.monitors.runs(id)).rejects.toBeInstanceOf(KeenableInvalidRequestError);
+    expect(seen).toHaveLength(0);
+  });
 });
 
 const SECRET = "whsec_a2VlbmFibGUtbW9uaXRvcnMtd2ViaG9vay10ZXN0ISE=";
@@ -322,5 +338,22 @@ describe("verifyWebhook", () => {
 
   it("refuses a stale delivery by the clock", async () => {
     await expect(verifyWebhook(BODY, HEADERS, SECRET)).rejects.toBeInstanceOf(WebhookVerificationError);
+  });
+
+  it.each([Infinity, -Infinity, NaN, 0, -1])("refuses the tolerance %s", async (toleranceSeconds) => {
+    await expect(verifyWebhook(BODY, HEADERS, SECRET, { now: 1763400000, toleranceSeconds })).rejects.toBeInstanceOf(
+      WebhookVerificationError,
+    );
+  });
+
+  it("refuses a secret with no key after whsec_", async () => {
+    await expect(verifyWebhook(BODY, HEADERS, "whsec_", { now: 1763400000 })).rejects.toBeInstanceOf(
+      WebhookVerificationError,
+    );
+  });
+
+  it("refuses a timestamp of more than 12 digits", async () => {
+    const headers = { ...HEADERS, "webhook-timestamp": "1".repeat(400) };
+    await expect(verifyWebhook(BODY, headers, SECRET, { now: 1763400000 })).rejects.toThrow(/not a Unix time/);
   });
 });

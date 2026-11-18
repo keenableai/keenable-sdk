@@ -501,6 +501,9 @@ function segment(name: string, value: unknown): string {
   if (typeof value !== "string" || value.trim() === "") {
     throw new KeenableInvalidRequestError(`${name} must be a non-empty string`);
   }
+  if (value === "." || value === "..") {
+    throw new KeenableInvalidRequestError(`${name} must not be ${JSON.stringify(value)}: it would change the request's path`);
+  }
   return encodeURIComponent(value);
 }
 
@@ -757,9 +760,13 @@ export class Monitors {
     if (!BULK_ACTIONS.has(action)) {
       throw new KeenableInvalidRequestError(`action must be pause, resume or delete, got ${JSON.stringify(action)}`);
     }
-    const hasFilter = params.filter !== undefined && Object.keys(params.filter).length > 0;
+    const f = params.filter;
+    const hasFilter =
+      f !== undefined &&
+      f !== null &&
+      (!!f.status || !!f.name || (typeof f.metadata === "object" && f.metadata !== null && Object.keys(f.metadata).length > 0));
     if (!params.ids?.length && !hasFilter) {
-      throw new KeenableInvalidRequestError("bulk() needs ids or a filter");
+      throw new KeenableInvalidRequestError("bulk() needs ids or a filter with a status, a name or metadata");
     }
     const body: Json = { action, dry_run: params.dryRun ?? true };
     if (params.ids?.length) body.ids = params.ids;
