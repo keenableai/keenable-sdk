@@ -290,3 +290,16 @@ func TestMonitorTypeKeepsPage(t *testing.T) {
 		t.Fatalf("type %q, want page", m.Type)
 	}
 }
+
+func TestMonitorUnmarshalKeepsRequestIDAndRaw(t *testing.T) {
+	m := keenable.Monitor{RequestID: "req_1", Raw: map[string]any{"id": "mon_1"}}
+	if err := json.Unmarshal([]byte(`{"id":"mon_2"}`), &m); err != nil {
+		t.Fatal(err)
+	}
+	if m.ID != "mon_2" || m.Type != "search" {
+		t.Fatalf("decoded %q %q", m.ID, m.Type)
+	}
+	if m.RequestID != "req_1" || m.Raw["id"] != "mon_1" {
+		t.Fatalf("lost metadata: %q %v", m.RequestID, m.Raw)
+	}
+}

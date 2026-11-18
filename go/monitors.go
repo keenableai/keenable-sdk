@@ -362,7 +362,9 @@ func (m *Monitor) UnmarshalJSON(raw []byte) error {
 	if wire.Type == "" {
 		wire.Type = "search"
 	}
+	requestID, kept := m.RequestID, m.Raw
 	*m = Monitor(wire)
+	m.RequestID, m.Raw = requestID, kept
 	return nil
 }
 
