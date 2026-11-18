@@ -288,7 +288,10 @@ describe("monitors", () => {
     const { keenable, seen } = client([
       [200, { action: "pause", affected: 1, ids: ["mon_1"], dry_run: true, has_more: false, not_found: ["mon_x"] }],
     ]);
-    const result = await keenable.monitors.bulk("pause", { ids: ["mon_1", "mon_x"], filter: { status: "active" } });
+    const result = await keenable.monitors.bulk("pause", {
+      ids: ["mon_1", "mon_x"],
+      filter: { status: "active", name: "", metadata: {} },
+    });
     expect(seen[0]!.body).toEqual({
       action: "pause",
       dry_run: true,

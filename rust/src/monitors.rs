@@ -989,7 +989,17 @@ impl<'a> Monitors<'a> {
             body.insert("ids".into(), Value::from(ids.clone()));
         }
         if let Some(f) = filter {
-            body.insert("filter".into(), to_value(f));
+            let mut selector = Map::new();
+            if let Some(s) = f.status.as_deref().filter(|s| !s.is_empty()) {
+                selector.insert("status".into(), Value::String(s.into()));
+            }
+            if let Some(n) = f.name.as_deref().filter(|n| !n.is_empty()) {
+                selector.insert("name".into(), Value::String(n.into()));
+            }
+            if let Some(m) = f.metadata.as_ref().filter(|m| !m.is_empty()) {
+                selector.insert("metadata".into(), to_value(m));
+            }
+            body.insert("filter".into(), Value::Object(selector));
         }
         if let Some(n) = params.limit {
             body.insert("limit".into(), Value::from(n));

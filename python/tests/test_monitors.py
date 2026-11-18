@@ -365,7 +365,9 @@ def test_deliveries_stats_and_bulk() -> None:
     deliveries = keenable.monitors.deliveries("mon_1")
     stats = keenable.monitors.stats()
     result = keenable.monitors.bulk(
-        "pause", ids=["mon_1", "mon_x"], filter={"status": "active"}
+        "pause",
+        ids=["mon_1", "mon_x"],
+        filter={"status": "active", "name": "", "metadata": {}},
     )
     assert deliveries.data[0].attempts == 2
     assert deliveries.data[0].last_error == "HTTP 500"

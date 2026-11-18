@@ -770,7 +770,13 @@ export class Monitors {
     }
     const body: Json = { action, dry_run: params.dryRun ?? true };
     if (params.ids?.length) body.ids = params.ids;
-    if (hasFilter) body.filter = params.filter;
+    if (hasFilter && f) {
+      const filter: Json = {};
+      if (f.status) filter.status = f.status;
+      if (f.name) filter.name = f.name;
+      if (f.metadata && Object.keys(f.metadata).length > 0) filter.metadata = f.metadata;
+      body.filter = filter;
+    }
     if (params.limit !== undefined) body.limit = params.limit;
     const { data, requestId } = await this.send(
       { method: "POST", path: "monitors/bulk", body, safe: false },

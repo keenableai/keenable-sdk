@@ -349,7 +349,8 @@ async fn reads() {
                 ids: Some(vec!["mon_1".into(), "mon_x".into()]),
                 filter: Some(BulkFilter {
                     status: Some("active".into()),
-                    ..Default::default()
+                    name: Some(String::new()),
+                    metadata: Some(HashMap::new()),
                 }),
                 ..Default::default()
             },

@@ -769,7 +769,11 @@ def _bulk_call(
     if ids:
         body["ids"] = list(ids)
     if filter is not None and _selects(filter):
-        body["filter"] = dict(filter)
+        body["filter"] = {
+            key: value
+            for key, value in filter.items()
+            if key in ("status", "name", "metadata") and value
+        }
     if limit is not None:
         body["limit"] = limit
     return _Call("POST", _path("bulk"), json=body, safe=False)
