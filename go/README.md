@@ -74,6 +74,7 @@ results, err := client.Search(context.Background(), "post-training quantization 
 | `SnippetMaxLength` | Cap the page text returned per result. Nil means unset; a pointer to zero is sent |
 | `MaxResults` | How many results to return, 1 to 50. Zero means the API default of 10 |
 | `QueryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
+| `Objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price. Not sent when empty |
 | `Mode` | Search mode: `"pro"` does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops. Empty means `"pro"` |
 | `DisableCards` | `true` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). False, the default, is not sent. In the next release after `v0.1.1` |
 
@@ -371,7 +372,8 @@ client, err := keenable.New(&keenable.Options{APIKey: &key})
 ```
 
 `BaseURL` must be `https`, except `http` to `localhost`, `127.0.0.1`, or `::1`.
-It cannot include a query string or a fragment. `Timeout` of zero means 30
+It cannot include a query string, a fragment, a user name or password, or a
+backslash before its path. `Timeout` of zero means 30
 seconds when this SDK creates the HTTP client. When you pass `HTTPClient`,
 zero adds no extra deadline and that client's `Timeout` is left unchanged.
 `ClientSource` is sent as

@@ -237,6 +237,26 @@ func TestSearchSendsEveryFilter(t *testing.T) {
 	}
 }
 
+func TestSearchSendsObjectiveOnlyWhenSet(t *testing.T) {
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, searchBody), nil)
+	if _, err := c.Search(context.Background(), "q", &keenable.SearchOptions{Objective: "Find the 2024 CBP count for NAICS 812112."}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Search(context.Background(), "q", &keenable.SearchOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	requests := *seen
+	if len(requests) != 2 {
+		t.Fatalf("got %d requests", len(requests))
+	}
+	if got := payloadOf(t, requests[0])["objective"]; got != "Find the 2024 CBP count for NAICS 812112." {
+		t.Fatalf("objective not sent: %#v", got)
+	}
+	if _, ok := payloadOf(t, requests[1])["objective"]; ok {
+		t.Fatal("sent an unset objective")
+	}
+}
+
 func TestSearchRawKeepsWarning(t *testing.T) {
 	body := map[string]any{
 		"query":   "q",
@@ -266,6 +286,16 @@ func TestToolSchemaOffersSiteAndExcludeDomains(t *testing.T) {
 	site, _ := props["site"].(map[string]any)
 	if site["type"] != "string" {
 		t.Fatalf("site: %#v", site)
+	}
+}
+
+func TestToolSchemaOffersObjectiveAsAString(t *testing.T) {
+	prop, _ := searchToolProperties(t)["objective"].(map[string]any)
+	if prop["type"] != "string" {
+		t.Fatalf("objective should be a string: %#v", prop)
+	}
+	if desc, _ := prop["description"].(string); !strings.Contains(desc, "self-contained") {
+		t.Fatalf("objective description: %#v", prop)
 	}
 }
 
@@ -426,6 +456,33 @@ func TestEmptyAPIKeyStaysKeylessWhenEnvIsSet(t *testing.T) {
 	req := one(t, seen)
 	if req.Path != "/v1/search/public" || req.Header.Get("X-API-Key") != "" {
 		t.Fatalf("path %s key %q", req.Path, req.Header.Get("X-API-Key"))
+	}
+}
+
+func TestBlankAPIKeyIsKeyless(t *testing.T) {
+	for _, blank := range []string{" ", "\t\n", "   \r\n "} {
+		// Explicit: keyless, and the env key is not used instead.
+		t.Setenv("KEENABLE_API_KEY", "keen_env")
+		key := blank
+		c, seen := start(t, jsonHandler(http.StatusOK, searchBody), &keenable.Options{APIKey: &key})
+		if _, err := c.Search(context.Background(), "hello", nil); err != nil {
+			t.Fatal(err)
+		}
+		req := one(t, seen)
+		if !c.Keyless() || req.Path != "/v1/search/public" || len(req.Header.Values("X-API-Key")) != 0 {
+			t.Fatalf("explicit %q: keyless %v path %s key %q", blank, c.Keyless(), req.Path, req.Header.Values("X-API-Key"))
+		}
+
+		// From the environment: the same.
+		t.Setenv("KEENABLE_API_KEY", blank)
+		c, seen = start(t, jsonHandler(http.StatusOK, searchBody), nil)
+		if _, err := c.Search(context.Background(), "hello", nil); err != nil {
+			t.Fatal(err)
+		}
+		req = one(t, seen)
+		if !c.Keyless() || req.Path != "/v1/search/public" || len(req.Header.Values("X-API-Key")) != 0 {
+			t.Fatalf("env %q: keyless %v path %s key %q", blank, c.Keyless(), req.Path, req.Header.Values("X-API-Key"))
+		}
 	}
 }
 

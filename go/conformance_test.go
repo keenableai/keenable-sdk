@@ -1,11 +1,15 @@
 package keenable_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"math"
+	"net"
 	"net/http"
 	"os"
 	"reflect"
@@ -146,6 +150,18 @@ type conformance struct {
 		} `json:"expect"`
 		Skip map[string]string `json:"skip"`
 	} `json:"fetch_many_stream"`
+	Deadline struct {
+		Slack float64 `json:"slack"`
+		Cases []struct {
+			Name     string            `json:"name"`
+			Phase    string            `json:"phase"`
+			Timeout  float64           `json:"timeout"`
+			Interval float64           `json:"interval"`
+			Pieces   int               `json:"pieces"`
+			Outcome  string            `json:"outcome"`
+			Skip     map[string]string `json:"skip"`
+		} `json:"cases"`
+	} `json:"deadline"`
 }
 
 func loadConformance(t *testing.T) *conformance {
@@ -1100,5 +1116,144 @@ func TestFetchManyRefusesAPrivateURLAndAnEmptyList(t *testing.T) {
 	}
 	if len(*seen) != 0 {
 		t.Fatalf("sent %d requests, want none", len(*seen))
+	}
+}
+
+const deadlineJSON = `{"results": []}`
+
+// readRequest reads one HTTP request: its headers and a Content-Length body.
+func readRequest(r *bufio.Reader) error {
+	req, err := http.ReadRequest(r)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(io.Discard, req.Body)
+	return err
+}
+
+// servePhase answers as a deadline case says (scripts/conformance/cases/deadline.json).
+func servePhase(conn net.Conn, phase string, interval time.Duration, pieces int) error {
+	write := func(s string) error {
+		_, err := io.WriteString(conn, s)
+		return err
+	}
+	trickle := func(unit string) error {
+		for i := 0; i < pieces; i++ {
+			time.Sleep(interval)
+			if err := write(unit); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	rest := fmt.Sprintf("Content-Type: application/json\r\nContent-Length: %d\r\n\r\n%s", len(deadlineJSON), deadlineJSON)
+	switch phase {
+	case "headers":
+		if err := write("HTTP/1.1 200 OK\r\nX-Slow: "); err != nil {
+			return err
+		}
+		if err := trickle("a"); err != nil {
+			return err
+		}
+		return write("\r\n" + rest)
+	case "body":
+		if err := write(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n", pieces+len(deadlineJSON))); err != nil {
+			return err
+		}
+		if err := trickle(" "); err != nil {
+			return err
+		}
+		return write(deadlineJSON)
+	case "terminator":
+		if err := write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n"); err != nil {
+			return err
+		}
+		time.Sleep(interval)
+		if err := write(fmt.Sprintf("%x\r\n%s\r\n", len(deadlineJSON), deadlineJSON)); err != nil {
+			return err
+		}
+		return trickle("0\r\n\r\n")
+	default:
+		return write("HTTP/1.1 200 OK\r\n" + rest)
+	}
+}
+
+// deadlineServer is a raw HTTP/1.1 server on 127.0.0.1 that answers every
+// request as the case says. It returns the base URL.
+func deadlineServer(t *testing.T, phase string, interval time.Duration, pieces int) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer conn.Close()
+				if readRequest(bufio.NewReader(conn)) != nil {
+					return
+				}
+				if servePhase(conn, phase, interval, pieces) == nil {
+					time.Sleep(200 * time.Millisecond)
+				}
+			}()
+		}
+	}()
+	return "http://" + ln.Addr().String()
+}
+
+func TestConformanceDeadline(t *testing.T) {
+	fixture := loadConformance(t).Deadline
+	for _, tc := range fixture.Cases {
+		t.Run(tc.Name, func(t *testing.T) {
+			if why, ok := tc.Skip["go"]; ok {
+				t.Skip(why)
+			}
+			skipKnown(t, tc.Name)
+			t.Setenv("KEENABLE_API_KEY", "")
+			t.Setenv("KEENABLE_API_URL", "")
+			base := deadlineServer(t, tc.Phase, time.Duration(tc.Interval*float64(time.Second)), tc.Pieces)
+			timeout := time.Duration(tc.Timeout * float64(time.Second))
+			zero, empty := 0, ""
+			c, err := keenable.New(&keenable.Options{
+				APIKey:     &empty,
+				BaseURL:    &base,
+				Timeout:    timeout,
+				MaxRetries: &zero,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			started := time.Now()
+			res, err := c.Search(context.Background(), "q", nil)
+			elapsed := time.Since(started)
+			if tc.Outcome == "timeout" {
+				var conn *keenable.ConnectionError
+				if !errors.As(err, &conn) || !conn.Timeout() {
+					t.Fatalf("want the timeout error, got %T: %v", err, err)
+				}
+				low := timeout - 50*time.Millisecond
+				high := timeout + time.Duration(fixture.Slack*float64(time.Second))
+				if elapsed < low || elapsed > high {
+					t.Fatalf("timed out after %v, want between %v and %v", elapsed, low, high)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("want success, got %T: %v", err, err)
+			}
+			if len(res.Results) != 0 {
+				t.Fatalf("want no results, got %d", len(res.Results))
+			}
+			if elapsed >= timeout {
+				t.Fatalf("took %v, want under %v", elapsed, timeout)
+			}
+		})
 	}
 }

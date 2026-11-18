@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   Keenable,
@@ -193,6 +193,41 @@ describe("headers", () => {
     await client.search("q");
     const sent = seen[0]?.headers as Record<string, string>;
     expect(Object.keys(sent).map((h) => h.toLowerCase())).not.toContain("x-api-key");
+  });
+});
+
+describe("a blank API key", () => {
+  const savedKey = process.env.KEENABLE_API_KEY;
+  afterEach(() => {
+    if (savedKey === undefined) delete process.env.KEENABLE_API_KEY;
+    else process.env.KEENABLE_API_KEY = savedKey;
+  });
+
+  async function searchOnce(options: KeenableOptions) {
+    const calls: Array<{ url: string; headers: Record<string, string> }> = [];
+    const client = new Keenable({
+      ...options,
+      fetch: (async (input: RequestInfo | URL, init: RequestInit = {}) => {
+        calls.push({ url: String(input), headers: init.headers as Record<string, string> });
+        return json(SEARCH_BODY);
+      }) as unknown as typeof globalThis.fetch,
+    });
+    await client.search("q");
+    return calls[0];
+  }
+
+  it.each([" ", "\t\n", "   \r\n "])("is keyless, explicit or from the environment (%j)", async (blank) => {
+    // Explicit: keyless, and the env key is not used instead.
+    process.env.KEENABLE_API_KEY = "keen_env";
+    let call = await searchOnce({ apiKey: blank });
+    expect(new URL(call?.url ?? "").pathname).toBe("/v1/search/public");
+    expect(Object.keys(call?.headers ?? {}).map((h) => h.toLowerCase())).not.toContain("x-api-key");
+
+    // From the environment: the same.
+    process.env.KEENABLE_API_KEY = blank;
+    call = await searchOnce({});
+    expect(new URL(call?.url ?? "").pathname).toBe("/v1/search/public");
+    expect(Object.keys(call?.headers ?? {}).map((h) => h.toLowerCase())).not.toContain("x-api-key");
   });
 });
 

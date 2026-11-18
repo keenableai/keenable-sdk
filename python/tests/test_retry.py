@@ -215,6 +215,23 @@ def test_headers_layering_and_key_protection() -> None:
     assert seen[0].url.path.endswith("/public")
 
 
+@pytest.mark.parametrize("blank", [" ", "\t\n", "   \r\n "])
+def test_blank_api_key_is_keyless(blank: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Explicit: keyless, and the env key is not used instead.
+    monkeypatch.setenv("KEENABLE_API_KEY", "keen_env")
+    client, seen = scripted([ok], api_key=blank)
+    client.search("q")
+    assert "X-API-Key" not in seen[0].headers
+    assert seen[0].url.path == "/v1/search/public"
+
+    # From the environment: the same.
+    monkeypatch.setenv("KEENABLE_API_KEY", blank)
+    client, seen = scripted([ok], api_key=None)
+    client.search("q")
+    assert "X-API-Key" not in seen[0].headers
+    assert seen[0].url.path == "/v1/search/public"
+
+
 def test_request_id_from_header_and_body() -> None:
     def with_id(request: httpx.Request) -> httpx.Response:
         if request.url.path.startswith("/v1/fetch"):

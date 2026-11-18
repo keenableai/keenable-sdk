@@ -27,6 +27,21 @@ pages linked from each URL; each `FetchResult` has `Subpages`.
 `Client.FetchManyStream` returns a `FetchStream` that hands over each page as
 soon as it is read (`Next`, `Item`, `Err`, `Summary`, `Close`), over
 `Accept: application/x-ndjson`.
+- **Added:** `SearchOptions.Objective`: what the search is for, in two or three natural sentences, up to 1,000 characters. Not sent when empty. The API validates and logs it; it does not change results or price. The search tool offers it to a model.
+
+- **Security fix:** `Fetch` refuses loopback and private hosts spelled with
+  Unicode compatibility characters, which a browser or Node folds to plain
+  ones: `①②⑦.0.0.1`, `𝟏𝟐𝟕.0.0.1`, `ℓocalhost`. Hosts are now NFKC-normalized
+  before the check, as in the Python and TypeScript SDKs. This adds the
+  module's first dependency, `golang.org/x/text`.
+- **Changed:** `Fetch` refuses a host with an empty label before sending: two
+  dots in a row (`a..b`, `127.0.0..1`, `example.com..`) or a leading dot
+  (`.example.com`). One trailing dot is still fine.
+- **Changed:** `BaseURL` and `KEENABLE_API_URL` are refused when they have a
+  user name or password, or a backslash before the path. Plain `http` is
+  accepted only for `localhost`, `127.0.0.1` and `::1` spelled exactly so (one
+  trailing dot is ignored); fullwidth letters and `localhost..` no longer
+  count.
 
 ## 0.1.5
 

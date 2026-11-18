@@ -67,15 +67,22 @@ const STATUS_LABELS: Record<number, string> = {
   429: "Keenable rate limit exceeded (429)",
 };
 
-/** The host as written in a URL, before a WHATWG parser rewrites it. */
+/** The text between "scheme://" and the path, query or fragment, as written. */
+function writtenAuthority(raw: string): string {
+  return /^[a-z][a-z0-9+.-]*:\/\/([^/?#]*)/i.exec(raw)?.[1] ?? "";
+}
+
+/**
+ * The host as written in a URL, before a WHATWG parser rewrites it, without
+ * the port, IPv6 brackets or one trailing dot.
+ */
 function writtenHost(raw: string): string {
-  const authority = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]*)/i.exec(raw)?.[1] ?? "";
-  const host = authority.slice(authority.lastIndexOf("@") + 1);
+  const host = writtenAuthority(raw);
   const port = host.startsWith("[") ? host.indexOf("]") + 1 : host.lastIndexOf(":");
   const bare = (port > 0 ? host.slice(0, port) : host)
     .toLowerCase()
     .replace(/^\[|\]$/g, "");
-  return trimTrailing(bare, ".");
+  return bare.endsWith(".") ? bare.slice(0, -1) : bare;
 }
 
 /** `text` without any trailing `char`s, in linear time (a /x+$/ regex is polynomial). */
@@ -104,9 +111,21 @@ function resolveBaseUrl(baseUrl: string | undefined): string {
       `baseUrl must be an https:// URL with a host and no query or fragment, got ${JSON.stringify(raw)}`,
     );
   }
+  // The API key is sent to this host. The parser reads a backslash as a
+  // slash, so http://evil.example\@localhost is evil.example to fetch() while
+  // it looks like localhost; a user name or password has no use here.
+  const authority = writtenAuthority(raw);
+  if (authority.includes("\\") || authority.includes("@") || parsed.username || parsed.password) {
+    throw new KeenableInvalidRequestError(
+      "baseUrl must not contain a backslash, user name or password before its path; " +
+        "pass an https:// URL with only a host, an optional port and an optional path",
+    );
+  }
   // The host as written: the URL parser would read 127.1 as 127.0.0.1, which
-  // Python and Go do not accept for plain http.
-  const isLocal = LOCAL_HOSTS.has(writtenHost(raw));
+  // Python and Go do not accept for plain http. The parsed host must agree,
+  // so the check is on the host fetch() connects to.
+  const isLocal =
+    LOCAL_HOSTS.has(writtenHost(raw)) && LOCAL_HOSTS.has(normalizeHost(parsed));
   if (parsed.protocol === "https:" || (parsed.protocol === "http:" && isLocal)) {
     return raw;
   }
@@ -162,6 +181,14 @@ function rejectPrivateFetchTarget(url: unknown): void {
   const host = normalizeHost(parsed);
   if (!scheme[2] || !host) {
     throw new KeenableInvalidRequestError(`fetch() URL has no host: ${JSON.stringify(url)}`);
+  }
+  // One trailing dot is the root label. Any other empty label (a..b, .a,
+  // a..) is read differently by resolvers and URL parsers, so it is refused.
+  const name = parsed.hostname.endsWith(".") ? parsed.hostname.slice(0, -1) : parsed.hostname;
+  if (!name.includes(":") && name.split(".").includes("")) {
+    throw new KeenableInvalidRequestError(
+      `fetch() URL has an empty label in its host (two dots in a row, or a leading dot): ${JSON.stringify(url)}`,
+    );
   }
   if (BLOCKED_HOSTS.has(host) || host.endsWith(".localhost")) {
     throw new KeenableInvalidRequestError(
@@ -1317,9 +1344,13 @@ export class Keenable {
 
     if (response.redirected) {
       // A custom fetch followed the redirect although the SDK passed
-      // redirect: "manual"; the reply came from wherever it led.
+      // redirect: "manual"; the reply came from wherever it led, and that
+      // fetch may have carried X-API-Key there.
+      const sentKey = this.apiKey
+        ? " Your API key may have been sent to that address: rotate it at https://keenable.ai/console."
+        : "";
       throw new KeenableRedirectError(
-        `the Keenable API redirected to ${response.url || "another URL"}, and the fetch function you passed followed it although the SDK asked it not to. The response was discarded. Check KEENABLE_API_URL and the fetch option.`,
+        `the Keenable API redirected to ${response.url || "another URL"}, and the fetch function you passed followed it although the SDK asked it not to (redirect: "manual").${sentKey} The response was discarded. Check KEENABLE_API_URL, and make the fetch option honour redirect: "manual".`,
       );
     }
     if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400)) {

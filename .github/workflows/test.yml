@@ -138,3 +138,50 @@ jobs:
             echo "$out"
             exit 1
           fi
+
+  rust:
+    name: Rust ${{ matrix.rust }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
+    strategy:
+      fail-fast: false
+      matrix:
+        # 1.80 is rust-version in Cargo.toml (the MSRV). Cargo.lock is resolved
+        # to versions that build on it, so --locked tests the MSRV for real.
+        rust: ["1.80", "stable"]
+    steps:
+      - uses: actions/checkout@v7
+      # rustup ships on GitHub's Ubuntu runners, so no third-party action is
+      # needed (and the org allows none outside its list).
+      - name: Install Rust ${{ matrix.rust }}
+        env:
+          TOOLCHAIN: ${{ matrix.rust }}
+        run: |
+          rustup toolchain install "$TOOLCHAIN" --profile minimal --component clippy,rustfmt
+          rustup default "$TOOLCHAIN"
+          rustc --version
+      - name: Test
+        run: cargo test --locked
+      - name: Example builds
+        run: cargo build --locked --examples
+      # Lints and docs read the pinned compiler's answer; run them once.
+      - name: rustfmt
+        if: matrix.rust == 'stable'
+        run: cargo fmt --check
+      - name: Clippy
+        if: matrix.rust == 'stable'
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Docs build without warnings
+        if: matrix.rust == 'stable'
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --locked --no-deps
+      - name: Builds with the native-tls feature
+        if: matrix.rust == 'stable'
+        run: cargo check --locked --no-default-features --features native-tls
+      # What crates.io would build: the packaged sources on their own.
+      - name: Package
+        if: matrix.rust == 'stable'
+        run: cargo package --locked

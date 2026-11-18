@@ -118,6 +118,20 @@
     ["https://[febf::1]/", "link-local, top"],
     ["https://[fe80::1%25eth0]/", "link-local with a zone id"],
     ["https://[fec0::1]/", "site-local (fec0::/10, deprecated)"],
-    ["https://[ff02::1]/", "multicast"]
+    ["https://[ff02::1]/", "multicast"],
+    ["https://①②⑦.0.0.1/", "loopback in circled digits, which a WHATWG parser folds to 127"],
+    ["https://𝟏𝟐𝟕.0.0.1/", "loopback in mathematical bold digits"],
+    ["https://ℓocalhost/", "localhost with a script small l (U+2113)"],
+    ["https://169.254.169.₂₅₄/", "cloud metadata with subscript digits"],
+    ["https://a..b/", "an empty label inside a hostname"],
+    ["https://example..com/", "an empty label inside a hostname"],
+    ["https://.example.com/", "a leading dot"],
+    ["https://example.com../", "two trailing dots"],
+    ["https://localhost../", "localhost with two trailing dots"],
+    ["https://127.0.0..1/", "an empty label inside a loopback address"],
+    ["https://127..1/", "an empty label inside a short loopback address"],
+    ["https://.127.0.0.1/", "a leading dot before a loopback address"],
+    ["https://./", "a host that is only a dot"],
+    ["https://../", "a host that is only dots"]
   ]
 }

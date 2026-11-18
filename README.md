@@ -13,11 +13,13 @@ markdown.
 | Python 3.9+ | [`keenable`](https://pypi.org/project/keenable/) | [`python/`](./python) |
 | TypeScript / Node 18+ | [`keenable`](https://www.npmjs.com/package/keenable) | [`typescript/`](./typescript) |
 | Go 1.22+ | [`keenable`](https://pkg.go.dev/github.com/keenableai/keenable-sdk/go) | [`go/`](./go) |
+| Rust 1.80+ | [`keenable`](https://crates.io/crates/keenable) | [`rust/`](./rust) |
 
 ```bash
 pip install keenable
 npm install keenable
 go get github.com/keenableai/keenable-sdk/go@latest
+cargo add keenable
 ```
 
 Straight from GitHub, no registry needed:
@@ -25,6 +27,7 @@ Straight from GitHub, no registry needed:
 ```bash
 pip install "git+https://github.com/keenableai/keenable-sdk.git#subdirectory=python"
 go get github.com/keenableai/keenable-sdk/go@latest
+cargo add keenable --git https://github.com/keenableai/keenable-sdk
 ```
 
 Every [GitHub Release](https://github.com/keenableai/keenable-sdk/releases) also attaches the built package (the Python wheel and sdist, the TypeScript `keenable-<version>.tgz`) and lists the exact install command for that release in its notes. That is the way to install the TypeScript SDK from GitHub, and to pin any SDK to a release.
@@ -71,8 +74,18 @@ func main() {
 }
 ```
 
+```rust
+#[tokio::main]
+async fn main() -> Result<(), keenable::Error> {
+    let client = keenable::Client::new()?;
+    let results = client.search("fastest inference providers 2026").await?;
+    println!("{}", results.to_context());
+    Ok(())
+}
+```
+
 Keep sites out of a search with `exclude_domains` (`excludeDomains` in
-TypeScript, `ExcludeDomains` in Go). Each entry is a host and also covers its
+TypeScript, `ExcludeDomains` in Go, `exclude_domains` on `SearchOptions` in Rust). Each entry is a host and also covers its
 subdomains, up to 1,000 hosts:
 
 ```python
@@ -83,7 +96,7 @@ results = keenable.search(
 ```
 
 Each SDK exposes the same surface: search, fetch, a `to_context()` /
-`toContext()` / `ToContext()` renderer for prompts, and OpenAI-compatible tool
+`toContext()` / `ToContext()` / `to_context()` renderer for prompts, and OpenAI-compatible tool
 definitions for tool calling. See the per-language READMEs for the full
 reference.
 

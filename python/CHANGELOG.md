@@ -31,6 +31,30 @@ All notable changes to the `keenable` Python package. Versions follow
   `FetchStreamItem(index, result)` as soon as it is read, over
   `Accept: application/x-ndjson`; `stream.summary` holds the request id,
   warnings, usage and latency after the last item.
+- **Added:** `objective` on `search()` (sync and async): what the search is for, in two or three natural sentences, up to 1,000 characters. Left out of the request when unset or empty. The API validates and logs it; it does not change results or price. The search tool offers it to a model.
+
+- **Changed:** a numeric `timeout` is now the deadline for the whole attempt,
+  as in the TypeScript and Go SDKs, not only for each httpx phase. Before, a
+  server that kept sending a few bytes inside every read timeout could hold a
+  request open indefinitely. The deadline covers connecting, the response
+  headers, the body and its end, and ends the attempt on time in both
+  `Keenable` and `AsyncKeenable`; a timed-out attempt's connection is closed,
+  so repeated timeouts do not tie up the connection pool. In `Keenable` the
+  deadline applies to the HTTP client the SDK creates: with a passed
+  `httpx.Client` a numeric timeout keeps httpx's per-phase meaning, since the
+  SDK cannot reach into it. The request still goes through the client's own
+  `request()`, so a passed client that overrides it is still used. An
+  `httpx.Timeout`, `timeout=None` and a passed client's own timeout keep
+  httpx's per-phase meaning.
+- **Changed:** `base_url` and `KEENABLE_API_URL` are refused when the part
+  before the path has a backslash or a user name or password (`@`). The API key
+  goes to this host, and URL parsers disagree on the host of a URL such as
+  `http://evil.example\@localhost`. Plain `http` is accepted only for
+  `localhost`, `127.0.0.1` and `::1` spelled exactly so (one trailing dot is
+  ignored); fullwidth letters and `localhost..` no longer count.
+- **Changed:** `fetch()` refuses a host with an empty label before sending: two
+  dots in a row (`a..b`, `127.0.0..1`, `example.com..`) or a leading dot
+  (`.example.com`). One trailing dot is still fine.
 
 ## 0.1.5
 

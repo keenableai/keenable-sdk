@@ -1,6 +1,6 @@
 # SDK conformance cases
 
-The Python, TypeScript and Go SDKs must behave the same. The cases in
+The Python, TypeScript, Go and Rust SDKs must behave the same. The cases in
 `cases/*.json` pin that behaviour down as input and expected outcome, and
 `sync.ts` copies them, in one explicit form, to each SDK's tests:
 
@@ -8,9 +8,10 @@ The Python, TypeScript and Go SDKs must behave the same. The cases in
 - `python/tests/fixtures/conformance.json`, run by `python/tests/test_conformance.py`
   (on both `Keenable` and `AsyncKeenable`)
 - `typescript/test/fixtures/conformance.json`, run by `typescript/test/conformance.test.ts`
+- `rust/tests/fixtures/conformance.json`, run by `rust/src/tests/conformance.rs`
 
 To change a behaviour, edit a case file, run `node scripts/conformance/sync.ts`
-(Node 22.18+), and make all three SDKs pass. CI runs
+(Node 22.18+), and make all four SDKs pass. CI runs
 `node scripts/conformance/sync.ts --check`, which fails when a copy is out of
 date. A case an SDK cannot express (a `NaN` for Go's `time.Duration`) names that
 SDK in `skip`, with the reason.
@@ -29,10 +30,15 @@ A refused URL raises the invalid-request error and sends nothing. In order:
 3. The authority (up to the first `/`, `?` or `#`) has no backslash: WHATWG
    parsers read `\` as `/`, other parsers do not, so the two disagree on the host.
 4. The host is read as the language's URL parser reads it, then percent-decoded,
-   width-folded (`１２７。０。０。１` is `127.0.0.1`), stripped of the characters
+   folded to its compatibility form (Unicode NFKC, which a WHATWG parser's
+   IDNA mapping also applies: `１２７。０。０。１` and `①②⑦.0.0.1` are
+   `127.0.0.1`, `ℓocalhost` is `localhost`), stripped of the characters
    IDNA mapping deletes (soft hyphen U+00AD, U+200B, U+2060, U+FEFF),
-   lowercased, and stripped of IPv6 brackets, an IPv6 zone and trailing dots.
-   An empty host is refused.
+   lowercased, and stripped of IPv6 brackets and an IPv6 zone.
+   A hostname with an empty label is refused: two dots in a row (`a..b`,
+   `127.0.0..1`, `example.com..`) or a leading dot (`.example.com`).
+   Resolvers and URL parsers disagree on what such a name means. One trailing
+   dot is the root label and is dropped. An empty host is refused.
 5. `localhost`, any name under `.localhost`, and `metadata.google.internal` are
    refused.
 6. An IP literal, including IPv4 written as one number, in hex or octal, or with
@@ -56,8 +62,14 @@ A refused URL raises the invalid-request error and sends nothing. In order:
 ## Base URLs (`base_url`)
 
 Surrounding whitespace and trailing slashes are dropped. The URL must be
-`https`, or `http` to `localhost`, `127.0.0.1` or `::1` (a trailing dot on the
-host is ignored), with a host and no query or fragment.
+`https`, or `http` to `localhost`, `127.0.0.1` or `::1` (one trailing dot on the
+host is ignored), with a host and no query or fragment. For `http`, only those
+three spellings count, in any letter case: not `127.1`, not fullwidth letters.
+
+The part before the path must have no backslash and no user name or password
+(no `@`). The API key is sent to this host, and a WHATWG parser reads
+`http://evil.example\@localhost` as the host `evil.example` where it looks
+like `localhost`.
 
 ## Retry-After (`retry_after`)
 
@@ -134,6 +146,13 @@ body's, else the trimmed `X-Request-Id` header.
 - A per-call timeout is a finite number above 0; unset keeps the client's. A
   timeout over 2,147,483.647 seconds (about 24.8 days, the longest a JavaScript
   timer can wait) is treated as that long.
+- A numeric timeout is the deadline for one whole attempt, from sending the
+  request to the end of the body, not for each read on its own. A server that
+  keeps trickling bytes still times out. The `deadline` cases check it against
+  a live server. It applies to the HTTP client each SDK creates; Python's sync
+  `Keenable` cannot impose it on an `httpx.Client` the caller passes, which
+  keeps httpx's per-phase timeouts (documented in the Python README), as a
+  caller's TypeScript `fetch` must honour what the SDK passes it.
 - Header names are HTTP tokens and values hold no CR, LF or NUL; anything else is
   the invalid-request error, not a retried connection failure. `X-API-Key` is
   ignored: the key always comes from the client.
@@ -155,6 +174,28 @@ body's, else the trimmed `X-Request-Id` header.
   an absent `live` is false), and `prompt` as given. An empty prompt is unset.
   The URL is checked first (`fetch_url`), so a refused URL sends nothing
   whatever the options.
+
+## The whole-attempt deadline (`deadline`)
+
+Each case runs one keyless search, with no retries and the case's timeout,
+against a raw HTTP/1.1 server on 127.0.0.1 that answers every request the same
+way. The server stretches out one phase of the reply:
+
+- `headers`: one byte of a header value every `interval` seconds, `pieces`
+  times, before the rest of the headers and the body.
+- `body`: the headers at once, then one space of the body every `interval`
+  seconds, `pieces` times, then the JSON.
+- `terminator`: a chunked reply with the whole JSON in one chunk after
+  `interval` seconds, and the terminating chunk after `interval` seconds more.
+  Every gap is shorter than the timeout, so a timeout on each read alone never
+  fires: only a deadline on the whole attempt does.
+- `none`: the whole reply at once.
+
+A `timeout` outcome is the SDK's timeout error, raised no earlier than 0.05 s
+before the timeout and no later than `slack` seconds after it. A `success`
+outcome is a result with no results, returned before the timeout. Each SDK runs
+its own server (Go `net.Listen`, Node `net.createServer`, Python `socket`), so
+the reply bytes are the same everywhere.
 
 ## Tool calls (`tool_call`)
 

@@ -53,6 +53,7 @@ const results = await keenable.search("post-training quantization results", {
 | `snippetMaxLength` | Cap the page text returned per result |
 | `maxResults` | How many results to return, 1 to 50 (default 10) |
 | `queryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
+| `objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price. Not sent when empty |
 | `mode` | Search mode: `"pro"` (default) does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops |
 | `disableCards` | `true` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). Default `false`, which is not sent; a non-boolean throws `KeenableInvalidRequestError`. In the next release after 0.1.4 |
 | `signal` | An `AbortSignal` to cancel the request |
@@ -293,6 +294,11 @@ Both can also be passed to the constructor as `apiKey` and `baseUrl`, alongside
 proxy), and `clientSource`. Building an integration on
 top of this SDK? Set `clientSource: "Your Integration"` so your traffic is
 attributed to you rather than to the bare SDK.
+
+A custom `fetch` must honour `redirect: "manual"`, which the SDK passes on
+every request so the API key never follows a redirect. If yours follows one
+anyway, the SDK throws a `KeenableRedirectError` that tells you to rotate the
+key, since it may already have been sent to the redirect's target.
 
 ## License
 
