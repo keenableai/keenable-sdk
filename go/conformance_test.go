@@ -768,8 +768,6 @@ func fetchManyOptions(t *testing.T, options map[string]any) *keenable.FetchManyO
 					c.MaxChars = keenable.Ptr(int(value.(float64)))
 				case "objective":
 					c.Objective = value.(string)
-				case "schema":
-					c.Schema = value.(map[string]any)
 				case "links":
 					c.Links = int(value.(float64))
 				case "images":
@@ -842,13 +840,6 @@ func emptyToNil(s string) any {
 		return nil
 	}
 	return s
-}
-
-func mapOrNil(m map[string]any) any {
-	if m == nil {
-		return nil
-	}
-	return m
 }
 
 func TestConformanceFetchManyResponses(t *testing.T) {
@@ -931,7 +922,6 @@ func plainFetchResult(r keenable.FetchResult) map[string]any {
 		"content": map[string]any{
 			"text":        ptrOrNil(r.Content.Text),
 			"total_chars": ptrOrNil(r.Content.TotalChars),
-			"answer":      mapOrNil(r.Content.Answer),
 			"links":       links,
 			"images":      images,
 		},

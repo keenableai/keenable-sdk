@@ -550,8 +550,6 @@ export interface FetchContent {
   readonly text?: string;
   /** The length of the whole page, so you can tell whether `text` was cut. */
   readonly totalChars?: number;
-  /** The record for `content.schema`, an object matching it. */
-  readonly answer?: Record<string, unknown>;
   readonly links?: FetchLink[];
   readonly images?: FetchImage[];
 }
@@ -658,7 +656,6 @@ function toFetchContent(value: unknown): FetchContent {
   return {
     text: str(data.text),
     totalChars: count(data.total_chars),
-    answer: record(data.answer),
     links: Array.isArray(data.links)
       ? objects(data.links).map((item) => ({ url: text(item.url), text: nonEmpty(item.text) }))
       : undefined,
@@ -744,7 +741,6 @@ function fetchManyBody(urls: string | readonly string[], options: FetchManyOptio
     body.content = group([
       ["max_chars", content.maxChars],
       ["objective", content.objective],
-      ["schema", content.schema],
       ["links", content.links],
       ["images", content.images],
     ]);

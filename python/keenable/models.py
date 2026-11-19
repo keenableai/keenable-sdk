@@ -704,9 +704,6 @@ class FetchContent:
     total_chars: int | None = None
     """The length of the whole page, so you can tell whether ``text`` was cut."""
 
-    answer: dict[str, Any] | None = None
-    """The record for ``content["schema"]``, an object matching it."""
-
     links: list[FetchLink] | None = None
     images: list[FetchImage] | None = None
 
@@ -716,7 +713,6 @@ class FetchContent:
         return cls(
             text=_str_kept_or_none(data.get("text")),
             total_chars=_count_or_none(data.get("total_chars")),
-            answer=_object_or_none(data.get("answer")),
             links=_links(data.get("links")),
             images=_images(data.get("images")),
         )

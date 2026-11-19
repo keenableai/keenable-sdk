@@ -19,9 +19,6 @@ pub struct FetchContentOptions {
     /// What you are looking for on the pages, up to 1,000 characters. The
     /// API keeps the passages relevant to it. An empty objective is unset.
     pub objective: Option<String>,
-    /// A JSON Schema to fill from each page; the result is
-    /// [`FetchContent::answer`].
-    pub schema: Option<Map<String, Value>>,
     /// Returns up to this many of each page's links.
     pub links: Option<u32>,
     /// Returns up to this many of each page's images.
@@ -86,8 +83,6 @@ pub struct FetchContent {
     pub text: Option<String>,
     /// The length of the full text before any cut.
     pub total_chars: Option<u64>,
-    /// The values filled from [`FetchContentOptions::schema`].
-    pub answer: Option<Map<String, Value>>,
     /// The page's links, when [`FetchContentOptions::links`] asked for them.
     pub links: Option<Vec<FetchLink>>,
     /// The page's images, when [`FetchContentOptions::images`] asked for them.
@@ -310,9 +305,6 @@ fn fetch_many_payload<S: AsRef<str>>(
             g.insert("max_chars".into(), Value::from(n));
         }
         put_str(&mut g, "objective", &c.objective);
-        if let Some(s) = &c.schema {
-            g.insert("schema".into(), Value::Object(s.clone()));
-        }
         if let Some(n) = c.links {
             g.insert("links".into(), Value::from(n));
         }
@@ -396,7 +388,6 @@ fn fetch_result_from_json(data: &Map<String, Value>, position: usize) -> FetchRe
         content: FetchContent {
             text: str_or_none(content.get("text")),
             total_chars: safe_count(content.get("total_chars")),
-            answer: object(content.get("answer")),
             links: list("links").map(|v| {
                 objects(Some(v))
                     .map(|item| FetchLink {

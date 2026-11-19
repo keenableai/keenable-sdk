@@ -118,13 +118,8 @@ export interface FetchOptions extends RequestOptions {
 export interface FetchContentOptions {
   /** The most characters of text per page, 50,000 by default; `0` leaves the text out (metadata only). */
   maxChars?: number;
-  /**
-   * What you are after on the pages, up to 1,000 characters. Each page's text becomes the
-   * passages about it; with `schema` it also steers the record. Needs an API key.
-   */
+  /** What you are after on the pages, up to 1,000 characters. Each page's text becomes the passages about it. Needs an API key. */
   objective?: string;
-  /** A JSON Schema (`type: "object"`): each result's `content.answer` is a record matching it. Needs an API key. */
-  schema?: Record<string, unknown>;
   /** The most links per page to return, with their text (1 to 1,000). */
   links?: number;
   /** The most images per page to return, with their alt text (1 to 1,000). */

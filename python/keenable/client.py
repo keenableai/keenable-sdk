@@ -345,12 +345,7 @@ class FetchContentOptions(TypedDict, total=False):
 
     objective: str
     """What you are after on the pages, up to 1,000 characters. Each page's
-    text becomes the passages about it; with ``schema`` it also steers the
-    record. Needs an API key."""
-
-    schema: Mapping[str, Any]
-    """A JSON Schema (``type: object``): each result's ``content.answer`` is a
-    record matching it. Needs an API key."""
+    text becomes the passages about it. Needs an API key."""
 
     links: int
     """The most links per page to return, with their text (1 to 1,000)."""
@@ -1638,8 +1633,8 @@ class Keenable(_BaseClient):
                 page). Internal hosts and private addresses are refused before
                 a request is sent. Keyless calls take up to 20.
             content: What each result carries: ``max_chars`` (50,000 by
-                default; 0 for metadata only), ``objective``, ``schema``,
-                ``links``, ``images``. See :class:`FetchContentOptions`.
+                default; 0 for metadata only), ``objective``, ``links``,
+                ``images``. See :class:`FetchContentOptions`.
                 Left out: each page's text up to 50,000 characters.
             retrieval: ``max_age_hours`` (0 to 720, fractions allowed; 0 reads
                 live) or ``as_of`` (``"P0D"`` for stored copies only). See

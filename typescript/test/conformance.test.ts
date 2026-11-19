@@ -452,7 +452,6 @@ describe("tool calls", () => {
 const FETCH_MANY_FIELDS: Record<string, string> = {
   max_chars: "maxChars",
   objective: "objective",
-  schema: "schema",
   links: "links",
   images: "images",
   max_age_hours: "maxAgeHours",
@@ -512,7 +511,6 @@ function plainResult(x: FetchResult): Record<string, unknown> {
     content: {
       text: orNull(x.content.text),
       total_chars: orNull(x.content.totalChars),
-      answer: orNull(x.content.answer),
       links: x.content.links ? x.content.links.map((l) => ({ url: l.url, text: orNull(l.text) })) : null,
       images: x.content.images ? x.content.images.map((i) => ({ url: i.url, alt: orNull(i.alt) })) : null,
     },

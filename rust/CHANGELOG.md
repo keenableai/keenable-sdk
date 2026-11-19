@@ -6,11 +6,11 @@
   with `POST /v1/fetch`. `FetchManyOptions`
   mirrors the API's groups: `content: Option<FetchContentOptions>`
   (`max_chars`, default 50,000 and `Some(0)` for metadata only; `objective`;
-  `schema`; `links`; `images`), `retrieval: Option<FetchRetrievalOptions>`
+  `links`; `images`), `retrieval: Option<FetchRetrievalOptions>`
   (`max_age_hours`, 0 to 720 with fractions, `Some(0.0)` always live, `None`
   takes the stored copy; or `as_of`, `"P0D"` for stored copies only), plus
   `deadline_ms` and `session_id`. `results[i]` is the entry for `urls[i]`, with
-  the page in `content` (`text`, `total_chars`, `answer`, `links`, `images`)
+  the page in `content` (`text`, `total_chars`, `links`, `images`)
   and `retrieved_from`; a failed page has its `error` set, not an `Err`.
   Preview: it works once `POST /v1/fetch` is enabled for your organization.
 - **Changed:** the error variant follows the body's `type`, not the status: `authentication_error` and `permission_error` give `Error::Auth`, `rate_limit_error` `Error::RateLimit`, `billing_error` `Error::InsufficientCredits`, and a 429 about the fetched page (`target_error`) `Error::Api`. A body without a known type still maps by status.

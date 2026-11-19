@@ -659,7 +659,6 @@ fn fetch_many_options(case: &Value, failures: &mut Vec<String>) -> FetchManyOpti
     let n = name(case);
     let mut opts = FetchManyOptions::default();
     let u32_of = |v: &Value| v.as_u64().map(|n| n as u32);
-    let schema = |v: &Value| v.as_object().cloned();
     for (wire, v) in case["options"].as_object().unwrap() {
         match wire.as_str() {
             "content" => {
@@ -668,7 +667,6 @@ fn fetch_many_options(case: &Value, failures: &mut Vec<String>) -> FetchManyOpti
                         match k {
                             "max_chars" => g.max_chars = u32_of(v),
                             "objective" => g.objective = opt_string(v),
-                            "schema" => g.schema = schema(v),
                             "links" => g.links = u32_of(v),
                             "images" => g.images = u32_of(v),
                             _ => return false,

@@ -10,13 +10,12 @@ All notable changes to the `keenable` Python package. Versions follow
   in one call with `POST /v1/fetch`. The option
   groups mirror the API:
   - `content`: `max_chars` (default 50,000; `0` returns metadata only),
-    `objective` (up to 1,000 characters), `schema` (filled per page into
-    `result.content.answer`), `links`, `images`.
+    `objective` (up to 1,000 characters), `links`, `images`.
   - `retrieval`: `max_age_hours` (0 to 720, fractions allowed; `0` always
     fetches live; leave it out to take the stored copy), or `as_of` (`"P0D"`
     for stored copies only).
   `results[i]` is the entry for `urls[i]`, with the page in `result.content`
-  (`text`, `total_chars`, `answer`, `links`, `images`) and `retrieved_from`; a
+  (`text`, `total_chars`, `links`, `images`) and `retrieved_from`; a
   failed page has its `error` set, not an exception. An unset option is not
   sent, an empty string is unset, and `0` is sent where it is a value.
   Preview: it works once `POST /v1/fetch` is enabled for your organization.

@@ -18,12 +18,9 @@ type FetchContentOptions struct {
 	// default of 50000, and Ptr(0) leaves the text out (metadata only).
 	MaxChars *int
 	// Objective is what you are after on the pages, up to 1,000 characters.
-	// Each page's text becomes the passages about it; with Schema it also
-	// steers the record. Needs an API key. Empty means unset.
+	// Each page's text becomes the passages about it. Needs an API key.
+	// Empty means unset.
 	Objective string
-	// Schema is a JSON Schema (type "object"): each result's Content.Answer
-	// is a record matching it. Needs an API key.
-	Schema map[string]any
 	// Links is the most links per page to return, with their text (1 to
 	// 1000). Zero means unset.
 	Links int
@@ -84,11 +81,9 @@ type FetchContent struct {
 	Text *string `json:"text,omitempty"`
 	// TotalChars is the length of the whole page, so you can tell whether
 	// Text was cut.
-	TotalChars *int `json:"total_chars,omitempty"`
-	// Answer is the record for FetchContentOptions.Schema, a map matching it.
-	Answer map[string]any `json:"answer,omitempty"`
-	Links  []FetchLink    `json:"links,omitempty"`
-	Images []FetchImage   `json:"images,omitempty"`
+	TotalChars *int         `json:"total_chars,omitempty"`
+	Links      []FetchLink  `json:"links,omitempty"`
+	Images     []FetchImage `json:"images,omitempty"`
 }
 
 // FetchError says why one URL failed. The call itself succeeded; the URL is
@@ -232,9 +227,6 @@ func fetchManyPayload(urls []string, o *FetchManyOptions) map[string]any {
 		if c.Objective != "" {
 			content["objective"] = c.Objective
 		}
-		if c.Schema != nil {
-			content["schema"] = c.Schema
-		}
 		if c.Links != 0 {
 			content["links"] = c.Links
 		}
@@ -341,7 +333,6 @@ func fetchResultFromJSON(data map[string]any, position int) FetchResult {
 	r.Content = FetchContent{
 		Text:       stringOrNil(content["text"]),
 		TotalChars: count(content["total_chars"]),
-		Answer:     objectOrNil(content["answer"]),
 	}
 	if _, ok := content["links"].([]any); ok {
 		r.Content.Links = []FetchLink{}

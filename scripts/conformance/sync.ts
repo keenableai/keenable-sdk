@@ -229,7 +229,7 @@ function fetchParams(): Obj[] {
 }
 
 const FETCH_MANY_OPTIONS: Record<string, Set<string> | null> = {
-  content: new Set(["max_chars", "objective", "schema", "links", "images"]),
+  content: new Set(["max_chars", "objective", "links", "images"]),
   retrieval: new Set(["max_age_hours", "as_of"]),
   deadline_ms: null,
   session_id: null,

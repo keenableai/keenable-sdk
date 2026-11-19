@@ -1,5 +1,5 @@
 {
-  "_comment": "fetch_many(urls, options): the JSON body sent to POST /v1/fetch (\"body\" cases) and what a success body becomes (\"responses\" cases). Options mirror the request groups: content {max_chars, objective, schema, links, images}, retrieval {max_age_hours, as_of}, plus deadline_ms and session_id; each SDK maps the names to its own spelling (Python keeps them, TypeScript uses camelCase, Go and Rust use struct fields). Body rules: urls are sent as given (a lone string is wrapped in a list). A group is sent when it is given, holding only the fields set; an empty string means unset, and there are no sentinel values: max_chars 0 (metadata only) and max_age_hours 0 (always live) are sent. max_age_hours is a number, fractions allowed. Fields the API rejects together (max_age_hours with as_of) are sent for the API to reject. deadline_ms and session_id are sent as given. `sent` is the whole body, compared as JSON. Response rules: results, notices and warnings are lists of objects (anything else is []), non-object entries skipped. request_id is the body's non-blank string, else the trimmed X-Request-Id header, else null. status is a string or null. summary has integer requested, succeeded and failed (0 otherwise). resolved keeps the string values of an object ({} otherwise). A result's index is an integer from 0 (else its position in the list); requested_url, url and status are strings (\"\" otherwise); title, published_at, acquired_at, image, favicon and retrieved_from a non-blank string or null. Its content (from the content object, {} otherwise): text a string or null; total_chars an integer from 0 or null; answer an object or null; links [{url, text}] and images [{url, alt}] (url \"\" and text/alt null for anything else), or null when not a list. error is null unless it is an object; then type, code, message are strings (\"\" otherwise), fix a string or null, retryable a boolean (false otherwise), upstream_status details.upstream_status as an integer or null. A notice or warning has code and message strings (\"\" otherwise) and path a string or null (details kept raw, not compared). usage is the object as sent, or null, and is not compared; neither are details on notices, warnings and errors. latency_ms an integer from 0 or null; session_id a non-blank string or null. `skip` names an SDK whose types cannot express the case, with why.",
+  "_comment": "fetch_many(urls, options): the JSON body sent to POST /v1/fetch (\"body\" cases) and what a success body becomes (\"responses\" cases). Options mirror the request groups: content {max_chars, objective, links, images}, retrieval {max_age_hours, as_of}, plus deadline_ms and session_id; each SDK maps the names to its own spelling (Python keeps them, TypeScript uses camelCase, Go and Rust use struct fields). Body rules: urls are sent as given (a lone string is wrapped in a list). A group is sent when it is given, holding only the fields set; an empty string means unset, and there are no sentinel values: max_chars 0 (metadata only) and max_age_hours 0 (always live) are sent. max_age_hours is a number, fractions allowed. Fields the API rejects together (max_age_hours with as_of) are sent for the API to reject. deadline_ms and session_id are sent as given. `sent` is the whole body, compared as JSON. Response rules: results, notices and warnings are lists of objects (anything else is []), non-object entries skipped. request_id is the body's non-blank string, else the trimmed X-Request-Id header, else null. status is a string or null. summary has integer requested, succeeded and failed (0 otherwise). resolved keeps the string values of an object ({} otherwise). A result's index is an integer from 0 (else its position in the list); requested_url, url and status are strings (\"\" otherwise); title, published_at, acquired_at, image, favicon and retrieved_from a non-blank string or null. Its content (from the content object, {} otherwise): text a string or null; total_chars an integer from 0 or null; links [{url, text}] and images [{url, alt}] (url \"\" and text/alt null for anything else), or null when not a list. error is null unless it is an object; then type, code, message are strings (\"\" otherwise), fix a string or null, retryable a boolean (false otherwise), upstream_status details.upstream_status as an integer or null. A notice or warning has code and message strings (\"\" otherwise) and path a string or null (details kept raw, not compared). usage is the object as sent, or null, and is not compared; neither are details on notices, warnings and errors. latency_ms an integer from 0 or null; session_id a non-blank string or null. `skip` names an SDK whose types cannot express the case, with why.",
   "body": [
     {
       "name": "one url, no options",
@@ -95,41 +95,6 @@
         ],
         "content": {
           "objective": "the pricing tiers"
-        }
-      }
-    },
-    {
-      "name": "a schema with an objective",
-      "urls": [
-        "https://example.com/"
-      ],
-      "options": {
-        "content": {
-          "objective": "Card fees",
-          "schema": {
-            "type": "object",
-            "properties": {
-              "pct": {
-                "type": "number"
-              }
-            }
-          }
-        }
-      },
-      "sent": {
-        "urls": [
-          "https://example.com/"
-        ],
-        "content": {
-          "objective": "Card fees",
-          "schema": {
-            "type": "object",
-            "properties": {
-              "pct": {
-                "type": "number"
-              }
-            }
-          }
         }
       }
     },
@@ -299,9 +264,6 @@
         "content": {
           "max_chars": 1000,
           "objective": "o",
-          "schema": {
-            "type": "object"
-          },
           "links": 3,
           "images": 2
         },
@@ -318,9 +280,6 @@
         "content": {
           "max_chars": 1000,
           "objective": "o",
-          "schema": {
-            "type": "object"
-          },
           "links": 3,
           "images": 2
         },
@@ -381,9 +340,6 @@
             "content": {
               "text": "hello",
               "total_chars": 11,
-              "answer": {
-                "pct": 2.9
-              },
               "links": [
                 {
                   "url": "https://e.com/x",
@@ -421,7 +377,7 @@
         "notices": [
           {
             "code": "content_unavailable",
-            "path": "/results/0/content/answer",
+            "path": "/results/0/content/images",
             "message": "m",
             "details": null
           }
@@ -471,9 +427,6 @@
             "content": {
               "text": "hello",
               "total_chars": 11,
-              "answer": {
-                "pct": 2.9
-              },
               "links": [
                 {
                   "url": "https://e.com/x",
@@ -510,7 +463,6 @@
             "content": {
               "text": null,
               "total_chars": null,
-              "answer": null,
               "links": null,
               "images": null
             }
@@ -519,7 +471,7 @@
         "notices": [
           {
             "code": "content_unavailable",
-            "path": "/results/0/content/answer",
+            "path": "/results/0/content/images",
             "message": "m"
           }
         ],
@@ -579,7 +531,6 @@
             "content": {
               "text": 5,
               "total_chars": -1,
-              "answer": "str",
               "links": "no",
               "images": [
                 {
@@ -635,7 +586,6 @@
             "content": {
               "text": null,
               "total_chars": null,
-              "answer": null,
               "links": null,
               "images": [
                 {
