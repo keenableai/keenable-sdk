@@ -27,8 +27,7 @@ func pageMonitorBody() map[string]any {
 	out["page"] = map[string]any{"url": "https://example.com/pricing", "watch_for": "plan prices", "sensitivity": "meaningful"}
 	out["webhook"] = nil
 	out["status"] = "disabled"
-	out["cost_this_month_usd"] = 0.004
-	out["disabled_reason"] = map[string]any{"code": "insufficient_credits", "message": "The organization is out of credits."}
+	out["disabled_reason"] = map[string]any{"code": "data_policy", "message": "The organization turned on zero data retention."}
 	return out
 }
 
@@ -51,7 +50,6 @@ func pageRunBody() map[string]any {
 		"structured": nil, "text": nil, "grounding": []any{}, "fresh": false,
 		"error": map[string]any{"code": "output_invalid", "message": "missing field price"},
 	}
-	out["usage"] = map[string]any{"runs": 1, "credits": 0.5, "cost_usd": 0.002}
 	return out
 }
 
@@ -85,10 +83,7 @@ func TestMonitorsCreatePage(t *testing.T) {
 	if *m.Page != (keenable.MonitorPageTarget{URL: "https://example.com/pricing", WatchFor: "plan prices", Sensitivity: "meaningful"}) {
 		t.Fatalf("page %+v", m.Page)
 	}
-	if m.CostThisMonthUSD == nil || *m.CostThisMonthUSD != 0.004 {
-		t.Fatalf("cost %v", m.CostThisMonthUSD)
-	}
-	if m.DisabledReason == nil || m.DisabledReason.Code != "insufficient_credits" {
+	if m.DisabledReason == nil || m.DisabledReason.Code != "data_policy" {
 		t.Fatalf("disabled reason %+v", m.DisabledReason)
 	}
 }
@@ -170,9 +165,6 @@ func TestMonitorsPageRun(t *testing.T) {
 	}
 	if run.Output == nil || run.Output.Fresh || run.Output.Error == nil || *run.Output.Error != (keenable.MonitorRunOutputError{Code: "output_invalid", Message: "missing field price"}) {
 		t.Fatalf("output %+v", run.Output)
-	}
-	if run.Usage == nil || *run.Usage != (keenable.MonitorRunUsage{Runs: 1, Credits: 0.5, CostUSD: 0.002}) {
-		t.Fatalf("usage %+v", run.Usage)
 	}
 }
 

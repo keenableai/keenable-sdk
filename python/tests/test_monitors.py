@@ -46,6 +46,7 @@ MONITOR: dict[str, Any] = {
     },
     "metadata": {"team": "research"},
     "memory_scope": None,
+    "estimated_cost_usd": None,
     "cost_this_month_usd": None,
     "last_run_at": None,
     "next_run_at": "2026-11-18T08:00:00Z",
@@ -154,6 +155,7 @@ def test_create_sends_the_body_and_an_idempotency_key() -> None:
     assert monitor.webhook is not None and monitor.webhook.secret == "whsec_abc"
     assert monitor.metadata == {"team": "research"}
     assert monitor.upcoming_runs[0] == "2026-11-18T08:00:00Z"
+    assert monitor.estimated_cost_usd is None
     assert monitor.cost_this_month_usd is None
 
 
@@ -522,11 +524,10 @@ PAGE_MONITOR: dict[str, Any] = dict(
         "sensitivity": "meaningful",
     },
     webhook=None,
-    cost_this_month_usd=0.004,
     status="disabled",
     disabled_reason={
-        "code": "insufficient_credits",
-        "message": "The organization is out of credits.",
+        "code": "data_policy",
+        "message": "The organization turned on zero data retention.",
     },
 )
 
@@ -559,7 +560,6 @@ PAGE_RUN: dict[str, Any] = dict(
         "fresh": False,
         "error": {"code": "output_invalid", "message": "missing field price"},
     },
-    usage={"runs": 1, "credits": 0.5, "cost_usd": 0.002},
 )
 
 
@@ -589,9 +589,8 @@ def test_create_a_page_monitor() -> None:
     assert monitor.page.url == "https://example.com/pricing"
     assert monitor.page.watch_for == "plan prices"
     assert monitor.page.sensitivity == "meaningful"
-    assert monitor.cost_this_month_usd == 0.004
     assert monitor.disabled_reason is not None
-    assert monitor.disabled_reason.code == "insufficient_credits"
+    assert monitor.disabled_reason.code == "data_policy"
 
 
 def test_a_search_monitor_reads_type_and_no_page() -> None:
@@ -641,7 +640,7 @@ def test_update_sends_page() -> None:
         keenable.monitors.update("mon_p", page={"url": ""})
 
 
-def test_a_page_run_has_changes_output_and_usage() -> None:
+def test_a_page_run_has_changes_and_output() -> None:
     keenable, _ = _client([httpx.Response(200, json=PAGE_RUN)])
     run = keenable.monitors.run("mon_p", "mrun_p")
     assert run.results == []
@@ -655,12 +654,10 @@ def test_a_page_run_has_changes_output_and_usage() -> None:
     assert run.output.error is not None
     assert run.output.error.code == "output_invalid"
     assert run.output.error.message == "missing field price"
-    assert run.usage is not None
-    assert (run.usage.runs, run.usage.credits, run.usage.cost_usd) == (1, 0.5, 0.002)
 
 
 def test_a_search_run_has_no_changes_and_fresh_output() -> None:
-    keenable, _ = _client([httpx.Response(200, json=dict(RUN, usage=None))])
+    keenable, _ = _client([httpx.Response(200, json=RUN)])
     run = keenable.monitors.run("mon_1", "mrun_1")
     assert run.changes is None and run.usage is None
     assert run.output is not None and run.output.fresh and run.output.error is None

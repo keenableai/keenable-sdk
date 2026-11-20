@@ -107,7 +107,6 @@ __all__ = [
     "MonitorRunError",
     "MonitorRunOutput",
     "MonitorRunOutputError",
-    "MonitorRunUsage",
     "MonitorSchedule",
     "MonitorScheduleParams",
     "MonitorSearch",
@@ -307,8 +306,7 @@ class MonitorDisabledReason:
 
     code: str
     """``"runs_failed"`` (10 failed runs in a row), ``"webhook_unreachable"``
-    (no delivery succeeded for 3 days), ``"insufficient_credits"`` (a
-    scheduled run found the organization out of credits) or ``"data_policy"``
+    (no delivery succeeded for 3 days) or ``"data_policy"``
     (a page monitor of an organization that turned on zero data retention)."""
     message: str
 
@@ -347,8 +345,10 @@ class Monitor:
     """Not available yet: always None."""
     memory_scope: Any = None
     """Not available yet: always None."""
+    estimated_cost_usd: float | None = None
+    """None until monitors are priced."""
     cost_this_month_usd: float | None = None
-    """The completed runs this calendar month (UTC) times the price of a run."""
+    """None until monitors are priced."""
     type: str = "search"
     """``"search"`` (new pages about a topic) or ``"page"`` (changes to one
     page)."""
@@ -384,6 +384,7 @@ class Monitor:
             agent_run_id=data.get("agent_run_id"),
             backfill=data.get("backfill"),
             memory_scope=data.get("memory_scope"),
+            estimated_cost_usd=_float(data.get("estimated_cost_usd")),
             cost_this_month_usd=_float(data.get("cost_this_month_usd")),
             type=_str(data.get("type")) or "search",
             page=MonitorPageTarget._from_json(page) if page is not None else None,
@@ -607,23 +608,6 @@ class MonitorRunChanges:
 
 
 @dataclass
-class MonitorRunUsage:
-    """What a completed run costs."""
-
-    runs: int
-    credits: float
-    cost_usd: float
-
-    @classmethod
-    def _from_json(cls, data: dict[str, Any]) -> MonitorRunUsage:
-        return cls(
-            runs=_int(data.get("runs")) or 0,
-            credits=_float(data.get("credits")) or 0.0,
-            cost_usd=_float(data.get("cost_usd")) or 0.0,
-        )
-
-
-@dataclass
 class MonitorRun:
     """One run of a monitor."""
 
@@ -643,8 +627,8 @@ class MonitorRun:
     changes: MonitorRunChanges | None = None
     """A page monitor's completed run: what changed on the page. None for a
     search monitor and until the run completes."""
-    usage: MonitorRunUsage | None = None
-    """A completed run's cost; None otherwise."""
+    usage: Any = None
+    """None until monitors are priced."""
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
     request_id: str | None = None
 
@@ -656,7 +640,6 @@ class MonitorRun:
         output = _dict(data.get("output"))
         error = _dict(data.get("error"))
         changes = _dict(data.get("changes"))
-        usage = _dict(data.get("usage"))
         return cls(
             id=_req_str(data.get("id")),
             object=_req_str(data.get("object")) or "monitor_run",
@@ -677,7 +660,7 @@ class MonitorRun:
             changes=MonitorRunChanges._from_json(changes)
             if changes is not None
             else None,
-            usage=MonitorRunUsage._from_json(usage) if usage is not None else None,
+            usage=data.get("usage"),
             raw=data,
             request_id=request_id,
         )

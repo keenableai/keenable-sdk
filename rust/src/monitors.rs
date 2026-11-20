@@ -321,8 +321,7 @@ pub struct MonitorWebhook {
 #[non_exhaustive]
 pub struct MonitorDisabledReason {
     /// runs_failed (10 failed runs in a row), webhook_unreachable (no
-    /// delivery succeeded for 3 days), insufficient_credits (a scheduled
-    /// run found the organization out of credits) or data_policy (a page
+    /// delivery succeeded for 3 days) or data_policy (a page
     /// monitor of an organization that turned on zero data retention).
     pub code: String,
     /// What happened.
@@ -387,7 +386,9 @@ pub struct Monitor {
     pub backfill: Option<Value>,
     /// Not available yet: always `None`.
     pub memory_scope: Option<Value>,
-    /// The completed runs this calendar month (UTC) times the price of a run.
+    /// `None` until monitors are priced.
+    pub estimated_cost_usd: Option<f64>,
+    /// `None` until monitors are priced.
     pub cost_this_month_usd: Option<f64>,
     /// The API's id for this request.
     #[serde(skip)]
@@ -590,19 +591,6 @@ pub struct MonitorRunChanges {
     pub diff: Option<MonitorDiff>,
 }
 
-/// What a completed run costs.
-#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
-#[serde(default)]
-#[non_exhaustive]
-pub struct MonitorRunUsage {
-    /// Runs billed: 1.
-    pub runs: u32,
-    /// Credits charged.
-    pub credits: f64,
-    /// The price in US dollars.
-    pub cost_usd: f64,
-}
-
 /// One stored version of a page monitor's page: a reading whose text
 /// changed.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
@@ -656,8 +644,8 @@ pub struct MonitorRun {
     pub output: Option<MonitorRunOutput>,
     /// Why it failed.
     pub error: Option<MonitorRunError>,
-    /// A completed run's cost; `None` otherwise.
-    pub usage: Option<MonitorRunUsage>,
+    /// `None` until monitors are priced.
+    pub usage: Option<Value>,
     /// When it was made.
     pub created_at: Option<String>,
     /// When it started.

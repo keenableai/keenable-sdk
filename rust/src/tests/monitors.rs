@@ -23,6 +23,7 @@ fn monitor() -> Value {
         "output_schema": null,
         "webhook": {"url": "https://hooks.example.com/k", "events": ["monitor.hit"], "secret": "whsec_abc"},
         "metadata": {"team": "research"}, "memory_scope": null,
+        "estimated_cost_usd": null,
         "cost_this_month_usd": null,
         "last_run_at": null, "next_run_at": "2026-11-18T08:00:00Z",
         "upcoming_runs": ["2026-11-18T08:00:00Z"],
@@ -115,6 +116,7 @@ async fn create_sends_the_body_and_an_idempotency_key() {
         Some("Europe/Paris")
     );
     assert_eq!(m.metadata.unwrap()["team"], "research");
+    assert_eq!(m.estimated_cost_usd, None);
     assert_eq!(m.cost_this_month_usd, None);
     assert_eq!(m.raw["id"], json!("mon_1"));
 }
@@ -524,9 +526,7 @@ fn page_monitor() -> Value {
     m["page"] = json!({"url": "https://example.com/pricing", "watch_for": "plan prices", "sensitivity": "meaningful"});
     m["webhook"] = Value::Null;
     m["status"] = json!("disabled");
-    m["cost_this_month_usd"] = json!(0.004);
-    m["disabled_reason"] =
-        json!({"code": "insufficient_credits", "message": "The organization is out of credits."});
+    m["disabled_reason"] = json!({"code": "data_policy", "message": "The organization turned on zero data retention."});
     m
 }
 
@@ -549,7 +549,6 @@ fn page_run() -> Value {
         "structured": null, "text": null, "grounding": [], "fresh": false,
         "error": {"code": "output_invalid", "message": "missing field price"}
     });
-    r["usage"] = json!({"runs": 1, "credits": 0.5, "cost_usd": 0.002});
     r
 }
 
@@ -602,8 +601,7 @@ async fn create_a_page_monitor() {
             sensitivity: Some("meaningful".into()),
         })
     );
-    assert_eq!(m.cost_this_month_usd, Some(0.004));
-    assert_eq!(m.disabled_reason.unwrap().code, "insufficient_credits");
+    assert_eq!(m.disabled_reason.unwrap().code, "data_policy");
 }
 
 #[tokio::test]
@@ -705,7 +703,7 @@ async fn update_sends_page() {
 }
 
 #[tokio::test]
-async fn a_page_run_has_changes_output_and_usage() {
+async fn a_page_run_has_changes_and_output() {
     let mut bare = run();
     bare["output"] = json!({"structured": null, "error": "output_failed"});
     let server = start(Script::Replies(vec![
@@ -731,8 +729,6 @@ async fn a_page_run_has_changes_output_and_usage() {
         (error.code.as_str(), error.message.as_str()),
         ("output_invalid", "missing field price")
     );
-    let usage = r.usage.unwrap();
-    assert_eq!((usage.runs, usage.credits, usage.cost_usd), (1, 0.5, 0.002));
 
     let search = client.monitors().run("mon_1", "mrun_1").await.unwrap();
     assert!(search.changes.is_none() && search.usage.is_none());

@@ -52,7 +52,7 @@ pub use monitors::{
     MonitorDelivery, MonitorDiff, MonitorDisabledReason, MonitorList, MonitorListParams,
     MonitorPageParams, MonitorPageTarget, MonitorPager, MonitorPagesParams, MonitorResult,
     MonitorResultChange, MonitorRun, MonitorRunChanges, MonitorRunError, MonitorRunOutput,
-    MonitorRunOutputError, MonitorRunUsage, MonitorSchedule, MonitorScheduleParams, MonitorSearch,
+    MonitorRunOutputError, MonitorSchedule, MonitorScheduleParams, MonitorSearch,
     MonitorSearchParams, MonitorStats, MonitorUpdateParams, MonitorVersion, MonitorVersionsParams,
     MonitorWebhook, MonitorWebhookParams, Monitors, PageList, RunList, VersionList,
 };

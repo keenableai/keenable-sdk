@@ -1784,8 +1784,8 @@
         "error": "Active monitor limit reached",
         "type": "permission_error",
         "code": "monitor_limit_reached",
-        "message": "The organization already has as many active monitors as its limit allows (20 unless agreed otherwise); search and page monitors count together.",
-        "fix": "The organization already has as many active monitors as its limit allows; the message gives the limit. Pause or delete a monitor (PATCH status \"paused\", or DELETE) and retry, or contact sales at https://app.keenable.ai/console/talk-to-us?subject=monitors for a higher limit. Retrying unchanged returns the same 403.",
+        "message": "The organization already has the most active monitors it may have.",
+        "fix": "The organization already has the most active monitors it may have; the message gives the limit. Pause or delete a monitor (PATCH status \"paused\", or DELETE), then retry.",
         "docs_url": "https://docs.keenable.ai/errors#monitor-limit-reached",
         "request_id": "req-monitor_limit_reached",
         "retryable": false
@@ -1799,9 +1799,9 @@
         "retry_after_seconds": null,
         "request_id": "req-monitor_limit_reached",
         "param": null,
-        "fix": "The organization already has as many active monitors as its limit allows; the message gives the limit. Pause or delete a monitor (PATCH status \"paused\", or DELETE) and retry, or contact sales at https://app.keenable.ai/console/talk-to-us?subject=monitors for a higher limit. Retrying unchanged returns the same 403.",
+        "fix": "The organization already has the most active monitors it may have; the message gives the limit. Pause or delete a monitor (PATCH status \"paused\", or DELETE), then retry.",
         "limit": null,
-        "message_contains": "The organization already has as many active monitors as its limit allows (20 unless agreed otherwise); search and page monitors count together.",
+        "message_contains": "The organization already has the most active monitors it may have.",
         "absent": [
           "https://docs.keenable.ai/errors#monitor-limit-reached"
         ]

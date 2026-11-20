@@ -4,13 +4,12 @@
 
 - **Added:** page monitors. `MonitorCreateParams { monitor_type: Some("page".into()), page: Some(MonitorPageTarget::new(url)), .. }` (`monitor_type` is sent as `type`) watches one page and reports the changes worth telling; `MonitorUpdateParams::page` merges into the stored page (a new `url` starts a new baseline, `watch_for: Some(String::new())` clears it). `create` refuses before sending a `monitor_type` other than "search" or "page", a page monitor without `page.url` or with `search`, and a search monitor with `page`.
 - **Added:** `monitors().versions(id, &MonitorVersionsParams { limit, cursor })` reads a page monitor's history (`GET /v1/monitors/{id}/versions`) as a `VersionList` of `MonitorVersion`.
-- **Added:** `Monitor::monitor_type` (`type`), `Monitor::page` (`Option<MonitorPageTarget>`) and `Monitor::disabled_reason` (`Option<MonitorDisabledReason>`: `code` `runs_failed`, `webhook_unreachable`, `insufficient_credits` or `data_policy` (a page monitor whose organization turned on zero data retention), and `message`).
-- **Added:** typed run fields: `MonitorRun::changes` is an `Option<MonitorRunChanges>` (with `diff: Option<MonitorDiff>`), `MonitorRun::usage` an `Option<MonitorRunUsage>` (`runs`, `credits`, `cost_usd`), and `MonitorRunOutput` gains `fresh` and `error` (`Option<MonitorRunOutputError>`: `code` `output_failed` or `output_invalid`, and `message`).
+- **Added:** `Monitor::monitor_type` (`type`), `Monitor::page` (`Option<MonitorPageTarget>`) and `Monitor::disabled_reason` (`Option<MonitorDisabledReason>`: `code` `runs_failed`, `webhook_unreachable` or `data_policy` (a page monitor whose organization turned on zero data retention), and `message`).
+- **Added:** typed run fields: `MonitorRun::changes` is an `Option<MonitorRunChanges>` (with `diff: Option<MonitorDiff>`), and `MonitorRunOutput` gains `fresh` and `error` (`Option<MonitorRunOutputError>`: `code` `output_failed` or `output_invalid`, and `message`).
 - **Added:** the `monitor.change` webhook event (a page monitor's run, in `WebhookEventData::run`, with its `changes`) is documented on `WebhookEventData::run`.
-- **Changed (breaking):** `Monitor::search` is now `Option<MonitorSearch>`, `None` for a page monitor; `MonitorRun::changes` and `MonitorRun::usage` change from `Option<Value>` to typed options. Code that reads `monitor.search.query` no longer compiles. Before this, a page monitor's `"search": null` failed to parse.
-- **Removed (breaking):** `Monitor::estimated_cost_usd` (`estimated_cost_usd`; always null; a run costs $0.002, see `cost_this_month_usd` and run `usage`).
-- **Changed:** `Monitor::cost_this_month_usd` is filled now that runs are priced ($0.002 a run); the schedule docs give the API's limits: interval `10m` to `90d`, cron runs at least 10 minutes apart. The SDK does not check schedules itself.
-- **Changed:** the error contract fixtures follow the backend's current catalog: `monitor_limit_reached` (403) now points to contact sales for a higher limit.
+- **Changed (breaking):** `Monitor::search` is now `Option<MonitorSearch>`, `None` for a page monitor; `MonitorRun::changes` changes from `Option<Value>` to an `Option<MonitorRunChanges>`. Code that reads `monitor.search.query` no longer compiles. Before this, a page monitor's `"search": null` failed to parse.
+- **Changed:** the schedule docs give the API's limits: interval `10m` to `90d`, cron runs at least 10 minutes apart. The SDK does not check schedules itself.
+- **Changed:** the error contract fixtures follow the backend's current catalog, which adds `run_in_progress` (409: the monitor is already running).
 
 ## 0.2.0
 

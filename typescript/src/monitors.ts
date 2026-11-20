@@ -198,7 +198,7 @@ export interface MonitorPageTarget {
 
 /** Why Keenable disabled a monitor. */
 export interface MonitorDisabledReason {
-  /** runs_failed, webhook_unreachable, insufficient_credits or data_policy. */
+  /** runs_failed, webhook_unreachable or data_policy. */
   code: string;
   message: string;
 }
@@ -245,7 +245,9 @@ export interface Monitor {
   backfill: unknown;
   /** Not available yet: always null. */
   memoryScope: unknown;
-  /** The completed runs this calendar month (UTC) times the price of a run. */
+  /** Null until monitors are priced. */
+  estimatedCostUsd: number | null;
+  /** Null until monitors are priced. */
   costThisMonthUsd: number | null;
   requestId?: string;
   raw: Record<string, unknown>;
@@ -345,13 +347,6 @@ export interface MonitorRunChanges {
   diff: MonitorDiff | null;
 }
 
-/** What a completed run costs. */
-export interface MonitorRunUsage {
-  runs: number;
-  credits: number;
-  costUsd: number;
-}
-
 /** One stored version of a page monitor's page: a reading whose text changed. */
 export interface MonitorVersion {
   /** Opaque; the cursor of the page of versions it ends. */
@@ -384,8 +379,8 @@ export interface MonitorRun {
   /** When the monitor has an output schema. */
   output: MonitorRunOutput | null;
   error: { code: string; message: string } | null;
-  /** A completed run's cost; null otherwise. */
-  usage: MonitorRunUsage | null;
+  /** Null until monitors are priced. */
+  usage: unknown;
   createdAt: string | null;
   startedAt: string | null;
   endedAt: string | null;
@@ -537,6 +532,7 @@ export function toMonitor(data: Json, requestId?: string): Monitor {
     agentRunId: data.agent_run_id ?? null,
     backfill: data.backfill ?? null,
     memoryScope: data.memory_scope ?? null,
+    estimatedCostUsd: num(data.estimated_cost_usd),
     costThisMonthUsd: num(data.cost_this_month_usd),
     requestId,
     raw: data,
@@ -611,11 +607,6 @@ function toChanges(value: unknown): MonitorRunChanges | null {
   };
 }
 
-function toUsage(value: unknown): MonitorRunUsage | null {
-  if (!isObject(value)) return null;
-  return { runs: int(value.runs) ?? 0, credits: num(value.credits) ?? 0, costUsd: num(value.cost_usd) ?? 0 };
-}
-
 function toVersion(data: Json): MonitorVersion {
   return {
     id: reqStr(data.id),
@@ -653,7 +644,7 @@ export function toMonitorRun(data: Json, requestId?: string): MonitorRun {
         }
       : null,
     error: error ? { code: reqStr(error.code), message: reqStr(error.message) } : null,
-    usage: toUsage(data.usage),
+    usage: data.usage ?? null,
     createdAt: str(data.created_at),
     startedAt: str(data.started_at),
     endedAt: str(data.ended_at),

@@ -74,7 +74,6 @@ export type {
   MonitorRunOutput,
   MonitorRunOutputError,
   MonitorRunStatus,
-  MonitorRunUsage,
   MonitorSchedule,
   MonitorScheduleParams,
   MonitorSearch,

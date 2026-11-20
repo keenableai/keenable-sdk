@@ -194,10 +194,7 @@ hands over every new page that matches, by webhook, in scheduled runs, or when
 you poll it. A page monitor (`monitor_type: Some("page".into())`, sent as
 `type`) reads one page on a schedule and reports the changes worth telling.
 Monitors need an API key (`KEENABLE_API_KEY`); without one, every call returns
-`Error::Auth` with code `missing_api_key` and sends nothing. An organization
-can have 20 active monitors, search and page together, unless agreed
-otherwise; past that, a create or resume returns `Error::Auth` with code
-`monitor_limit_reached`. Every completed run costs $0.002.
+`Error::Auth` with code `missing_api_key` and sends nothing. An organization can have 100 active monitors.
 
 ```rust
 use keenable::{MonitorCreateParams, MonitorPagesParams, MonitorScheduleParams, MonitorSearchParams};
@@ -283,9 +280,8 @@ call), so its retries cannot make a second monitor; `update`, `trigger` and
 
 A `Monitor` has `monitor_type` ("search" or "page"), `search` (`None` for a
 page monitor), `page` (`None` for a search monitor), `disabled_reason` (`code`
-`runs_failed`, `webhook_unreachable`, `insufficient_credits` or `data_policy` (a page monitor whose organization turned on zero data retention), while it is
-disabled) and `cost_this_month_usd`. A completed
-`MonitorRun` has `usage` (`runs`, `credits`, `cost_usd`) and, for a page
+`runs_failed`, `webhook_unreachable` or `data_policy` (a page monitor whose organization turned on zero data retention), while it is
+disabled). A completed `MonitorRun` has, for a page
 monitor, `changes` (`changed`, `notified`, `baseline`, `version`, `source`,
 `summary`, `items`, `diff`). With an output schema, `output` has `structured`,
 `fresh` and `error`.

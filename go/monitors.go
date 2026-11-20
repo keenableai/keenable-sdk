@@ -306,8 +306,7 @@ type MonitorWebhook struct {
 // MonitorDisabledReason is why Keenable disabled a monitor.
 type MonitorDisabledReason struct {
 	// Code is runs_failed (10 failed runs in a row), webhook_unreachable (no
-	// delivery succeeded for 3 days), insufficient_credits (a scheduled
-	// run found the organization out of credits) or data_policy (a page
+	// delivery succeeded for 3 days) or data_policy (a page
 	// monitor of an organization that turned on zero data retention).
 	Code    string `json:"code"`
 	Message string `json:"message"`
@@ -343,8 +342,8 @@ type Monitor struct {
 	AgentRunID  any `json:"agent_run_id"`
 	Backfill    any `json:"backfill"`
 	MemoryScope any `json:"memory_scope"`
-	// CostThisMonthUSD is the completed runs this calendar month (UTC) times
-	// the price of a run.
+	// EstimatedCostUSD and CostThisMonthUSD are nil until monitors are priced.
+	EstimatedCostUSD *float64 `json:"estimated_cost_usd"`
 	CostThisMonthUSD *float64 `json:"cost_this_month_usd"`
 	// RequestID is the X-Request-Id of the response.
 	RequestID string `json:"-"`
@@ -504,13 +503,6 @@ type MonitorRunChanges struct {
 	Diff  *MonitorDiff `json:"diff"`
 }
 
-// MonitorRunUsage is what a completed run costs.
-type MonitorRunUsage struct {
-	Runs    int     `json:"runs"`
-	Credits float64 `json:"credits"`
-	CostUSD float64 `json:"cost_usd"`
-}
-
 // MonitorVersion is one stored version of a page monitor's page: a reading
 // whose text changed.
 type MonitorVersion struct {
@@ -547,13 +539,13 @@ type MonitorRun struct {
 	Changes *MonitorRunChanges `json:"changes"`
 	Output  *MonitorRunOutput  `json:"output"`
 	Error   *MonitorRunError   `json:"error"`
-	// Usage is a completed run's cost; nil otherwise.
-	Usage     *MonitorRunUsage `json:"usage"`
-	CreatedAt *string          `json:"created_at"`
-	StartedAt *string          `json:"started_at"`
-	EndedAt   *string          `json:"ended_at"`
-	RequestID string           `json:"-"`
-	Raw       map[string]any   `json:"-"`
+	// Usage is nil until monitors are priced.
+	Usage     any            `json:"usage"`
+	CreatedAt *string        `json:"created_at"`
+	StartedAt *string        `json:"started_at"`
+	EndedAt   *string        `json:"ended_at"`
+	RequestID string         `json:"-"`
+	Raw       map[string]any `json:"-"`
 }
 
 // MonitorDelivery is one webhook event and its delivery attempts.

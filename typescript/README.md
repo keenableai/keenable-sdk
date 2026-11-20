@@ -200,10 +200,7 @@ hands over every new page that matches, by webhook, in scheduled runs, or when
 you poll it. A page monitor (`type: "page"`) reads one page on a schedule and
 reports the changes worth telling. Monitors need an API key
 (`KEENABLE_API_KEY`); without one, every call throws `KeenableAuthError` with
-`code === "missing_api_key"` and sends nothing. An organization can have 20
-active monitors, search and page together, unless agreed otherwise; past that,
-a create or resume throws `KeenableAuthError` with
-`code === "monitor_limit_reached"`. Every completed run costs $0.002.
+`code === "missing_api_key"` and sends nothing. An organization can have 100 active monitors.
 
 ```ts
 import { Keenable } from "keenable";
@@ -268,9 +265,9 @@ and deletes are retried like a search; `create()` sends an `Idempotency-Key`
 
 A `Monitor` has `type` (`"search"` or `"page"`), `search` (null for a page
 monitor), `page` (null for a search monitor), `disabledReason` (`code`
-`runs_failed`, `webhook_unreachable`, `insufficient_credits` or `data_policy` (a page monitor whose organization turned on zero data retention), while it is
-disabled) and `costThisMonthUsd`. A completed `MonitorRun`
-has `usage` (`runs`, `credits`, `costUsd`) and, for a page monitor, `changes`
+`runs_failed`, `webhook_unreachable` or `data_policy` (a page monitor whose organization turned on zero data retention), while it is
+disabled). A completed `MonitorRun`
+has, for a page monitor, `changes`
 (`changed`, `notified`, `baseline`, `version`, `source`, `summary`, `items`,
 `diff`). With an output schema, `output` has `structured`, `fresh` and `error`.
 

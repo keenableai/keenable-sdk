@@ -245,10 +245,7 @@ hands over every new page that matches, by webhook, in scheduled runs, or when
 you poll it. A page monitor (`Type: "page"`) reads one page on a schedule and
 reports the changes worth telling. Monitors need an API key
 (`KEENABLE_API_KEY`); without one, every call returns an `*AuthError` with
-`APICode == "missing_api_key"` and sends nothing. An organization can have 20
-active monitors, search and page together, unless agreed otherwise; past that,
-a create or resume returns an `*AuthError` with
-`APICode == "monitor_limit_reached"`. Every completed run costs $0.002.
+`APICode == "missing_api_key"` and sends nothing. An organization can have 100 active monitors.
 
 ```go
 ctx := context.Background()
@@ -325,9 +322,8 @@ retried only on a 429.
 
 A `Monitor` has `Type` ("search" or "page"), `Search` (nil for a page monitor),
 `Page` (nil for a search monitor), `DisabledReason` (`Code` `runs_failed`,
-`webhook_unreachable`, `insufficient_credits` or `data_policy` (a page monitor whose organization turned on zero data retention), while it is disabled),
-and `CostThisMonthUSD`. A completed `MonitorRun` has `Usage`
-(`Runs`, `Credits`, `CostUSD`) and, for a page monitor, `Changes` (`Changed`,
+`webhook_unreachable` or `data_policy` (a page monitor whose organization turned on zero data retention), while it is disabled).
+A completed `MonitorRun` has, for a page monitor, `Changes` (`Changed`,
 `Notified`, `Baseline`, `Version`, `Source`, `Summary`, `Items`, `Diff`). With
 an output schema, `Output` has `Structured`, `Fresh` and `Error`.
 

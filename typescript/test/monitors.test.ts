@@ -29,6 +29,7 @@ const MONITOR = {
   webhook: { url: "https://hooks.example.com/k", events: ["monitor.hit"], secret: "whsec_abc" },
   metadata: { team: "research" },
   memory_scope: null,
+  estimated_cost_usd: null,
   cost_this_month_usd: null,
   last_run_at: null,
   next_run_at: "2026-11-18T08:00:00Z",
@@ -124,6 +125,7 @@ describe("monitors", () => {
     expect(monitor.search?.excludeDomains).toEqual(["example.com"]);
     expect(monitor.webhook?.secret).toBe("whsec_abc");
     expect(monitor.upcomingRuns).toEqual(["2026-11-18T08:00:00Z"]);
+    expect(monitor.estimatedCostUsd).toBeNull();
     expect(monitor.costThisMonthUsd).toBeNull();
   });
 
@@ -369,8 +371,7 @@ const PAGE_MONITOR = {
   page: { url: "https://example.com/pricing", watch_for: "plan prices", sensitivity: "meaningful" },
   webhook: null,
   status: "disabled",
-  cost_this_month_usd: 0.004,
-  disabled_reason: { code: "insufficient_credits", message: "The organization is out of credits." },
+  disabled_reason: { code: "data_policy", message: "The organization turned on zero data retention." },
 };
 
 const DIFF = {
@@ -402,7 +403,6 @@ const PAGE_RUN = {
     fresh: false,
     error: { code: "output_invalid", message: "missing field price" },
   },
-  usage: { runs: 1, credits: 0.5, cost_usd: 0.002 },
 };
 
 const VERSION = {
@@ -438,10 +438,9 @@ describe("page monitors", () => {
       watchFor: "plan prices",
       sensitivity: "meaningful",
     });
-    expect(monitor.costThisMonthUsd).toBe(0.004);
     expect(monitor.disabledReason).toEqual({
-      code: "insufficient_credits",
-      message: "The organization is out of credits.",
+      code: "data_policy",
+      message: "The organization turned on zero data retention.",
     });
   });
 
@@ -504,7 +503,7 @@ describe("page monitors", () => {
     );
   });
 
-  it("parses a page run's changes, output and usage", async () => {
+  it("parses a page run's changes and output", async () => {
     const { keenable } = client([[200, PAGE_RUN]]);
     const run = await keenable.monitors.run("mon_p", "mrun_p");
     expect(run.results).toEqual([]);
@@ -520,7 +519,6 @@ describe("page monitors", () => {
     });
     expect(run.output?.fresh).toBe(false);
     expect(run.output?.error).toEqual({ code: "output_invalid", message: "missing field price" });
-    expect(run.usage).toEqual({ runs: 1, credits: 0.5, costUsd: 0.002 });
   });
 
   it("gives a search run no changes and a fresh output", async () => {
