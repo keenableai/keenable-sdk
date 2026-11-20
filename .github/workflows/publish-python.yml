@@ -30,6 +30,11 @@ jobs:
       (github.event_name == 'workflow_dispatch' && github.ref_type == 'tag' && startsWith(github.ref_name, 'python-v')) ||
       startsWith(github.event.release.tag_name, 'python-v')
     runs-on: ubuntu-latest
+    # Supply-chain cooldown for everything uv resolves in this job: the build
+    # backend (`uv build`) and `uvx twine`. Nothing uploaded to PyPI in the last
+    # 7 days can run here and touch dist/ before it is published (KEE-1709).
+    env:
+      UV_EXCLUDE_NEWER: "7 days"
     steps:
       - uses: actions/checkout@v7
         with:
