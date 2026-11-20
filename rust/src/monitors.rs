@@ -1,9 +1,10 @@
-//! Keenable Monitors: standing searches that report new pages as they appear.
+//! Keenable Monitors: standing searches that report new pages as they appear,
+//! and page monitors that report changes to one page.
 
 use std::collections::{HashMap, VecDeque};
 
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value};
 
 use crate::client::RequestOptions;
@@ -57,14 +58,45 @@ impl MonitorSearchParams {
     }
 }
 
+/// The page a page monitor watches. On create `url` is required; on update
+/// the fields set are merged into the stored page, an empty `url` is unset,
+/// a new one starts a new baseline, and `watch_for: Some(String::new())`
+/// clears it. A monitor read from the API carries it too.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MonitorPageTarget {
+    /// A public http(s) address.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub url: String,
+    /// What on the page matters, in plain words, e.g. "plan prices". `None`
+    /// means every meaningful change counts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub watch_for: Option<String>,
+    /// "meaningful" (the API's default: a change is judged worth telling or
+    /// not) or "any" (every change that is not cosmetic is told).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sensitivity: Option<String>,
+}
+
+impl MonitorPageTarget {
+    /// A page target with only a URL.
+    pub fn new(url: impl Into<String>) -> Self {
+        MonitorPageTarget {
+            url: url.into(),
+            ..Default::default()
+        }
+    }
+}
+
 /// When runs happen.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct MonitorScheduleParams {
     /// "cron", "interval" or "once".
     #[serde(rename = "type")]
     pub schedule_type: String,
-    /// cron: five fields, at most hourly. interval: 1h to 90d ("6h", "2w").
-    /// once: a timestamp or a delay ("2h"); `None` means now.
+    /// cron: five fields whose runs are at least 10 minutes apart. interval:
+    /// 10m to 90d ("10m", "6h", "2w"). once: a timestamp or a delay ("2h");
+    /// `None` means now.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
     /// An IANA name, for cron; UTC when unset.
@@ -78,8 +110,10 @@ pub struct MonitorWebhookParams {
     /// A public HTTPS address. On update, `None` keeps the stored one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
-    /// Defaults to the monitor.* and monitor.run.* events. Add "monitor.hit"
-    /// to get each new page as soon as it is found.
+    /// For a search monitor, defaults to the monitor.* and monitor.run.*
+    /// events; add "monitor.hit" to get each new page as soon as it is
+    /// found. For a page monitor, defaults to monitor.created, updated,
+    /// deleted, disabled, run.failed and monitor.change.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub events: Option<Vec<String>>,
 }
@@ -87,13 +121,22 @@ pub struct MonitorWebhookParams {
 /// The arguments to [`Monitors::create`].
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct MonitorCreateParams {
-    /// Required, with a query.
+    /// "search" or "page", sent as `type`. `None` is unset (the API's default
+    /// is search).
+    pub monitor_type: Option<String>,
+    /// What a search monitor watches for: required, with a query, unless
+    /// `monitor_type` is "page".
     pub search: MonitorSearchParams,
+    /// The page a page monitor watches: required, with a URL, when
+    /// `monitor_type` is "page", and refused otherwise.
+    pub page: Option<MonitorPageTarget>,
     /// Up to 200 characters.
     pub name: Option<String>,
-    /// When runs happen. `None` means only [`Monitors::trigger`] starts one.
+    /// When runs happen. `None` means a search monitor runs only on
+    /// [`Monitors::trigger`] and a page monitor every hour.
     pub schedule: Option<MonitorScheduleParams>,
-    /// The JSON Schema of each run's `output.structured`.
+    /// The JSON Schema of each run's `output.structured`, in the subset the
+    /// API supports; the API checks it.
     pub output_schema: Option<Value>,
     /// Where events go.
     pub webhook: Option<MonitorWebhookParams>,
@@ -113,8 +156,10 @@ pub struct MonitorUpdateParams {
     pub name: Option<Option<String>>,
     /// "active" or "paused"; active also re-enables a disabled monitor.
     pub status: Option<String>,
-    /// Merged into the stored search.
+    /// Merged into the stored search (search monitors).
     pub search: Option<MonitorSearchParams>,
+    /// Merged into the stored page (page monitors).
+    pub page: Option<MonitorPageTarget>,
     /// A new schedule, or `Some(None)` to remove it.
     pub schedule: Option<Option<MonitorScheduleParams>>,
     /// A new output schema, or `Some(None)` to remove it.
@@ -144,6 +189,15 @@ pub struct MonitorListParams {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MonitorPageParams {
     /// Items per page.
+    pub limit: Option<u32>,
+    /// The previous page's `next_cursor`.
+    pub cursor: Option<String>,
+}
+
+/// Paging through a page monitor's versions.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MonitorVersionsParams {
+    /// Versions per page (the API's default is 50).
     pub limit: Option<u32>,
     /// The previous page's `next_cursor`.
     pub cursor: Option<String>,
@@ -261,6 +315,31 @@ pub struct MonitorWebhook {
     pub secret: Option<String>,
 }
 
+/// Why Keenable disabled a monitor.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+#[non_exhaustive]
+pub struct MonitorDisabledReason {
+    /// runs_failed (10 failed runs in a row), webhook_unreachable (no
+    /// delivery succeeded for 3 days) or data_policy (a page
+    /// monitor of an organization that turned on zero data retention).
+    pub code: String,
+    /// What happened.
+    pub message: String,
+}
+
+fn null_as_default<'de, D, T>(d: D) -> std::result::Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Ok(Option::<T>::deserialize(d)?.unwrap_or_default())
+}
+
+fn default_type() -> String {
+    "search".into()
+}
+
 /// A monitor as the API returns it.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
@@ -272,10 +351,17 @@ pub struct Monitor {
     pub object: String,
     /// Its name.
     pub name: Option<String>,
+    /// search (new pages about a topic) or page (changes to one page).
+    #[serde(rename = "type", default = "default_type")]
+    pub monitor_type: String,
     /// active, paused, disabled or completed.
     pub status: String,
-    /// What it watches for.
-    pub search: MonitorSearch,
+    /// Why a disabled monitor stopped; `None` otherwise.
+    pub disabled_reason: Option<MonitorDisabledReason>,
+    /// What a search monitor watches for; `None` for a page monitor.
+    pub search: Option<MonitorSearch>,
+    /// The page a page monitor watches; `None` for a search monitor.
+    pub page: Option<MonitorPageTarget>,
     /// When its runs happen.
     pub schedule: Option<MonitorSchedule>,
     /// The JSON Schema of each run's `output.structured`.
@@ -389,17 +475,151 @@ pub struct MonitorRunError {
     pub message: String,
 }
 
+/// Why a run has no output.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(from = "WireOutputError")]
+#[non_exhaustive]
+pub struct MonitorRunOutputError {
+    /// output_failed (it could not be made) or output_invalid (it did not
+    /// match the schema). The run still completes.
+    pub code: String,
+    /// What happened.
+    pub message: String,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum WireOutputError {
+    Code(String),
+    Object {
+        #[serde(default)]
+        code: String,
+        #[serde(default)]
+        message: String,
+    },
+}
+
+impl From<WireOutputError> for MonitorRunOutputError {
+    fn from(w: WireOutputError) -> Self {
+        match w {
+            WireOutputError::Code(code) => MonitorRunOutputError {
+                code,
+                message: String::new(),
+            },
+            WireOutputError::Object { code, message } => MonitorRunOutputError { code, message },
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
 /// A run's digest, when the monitor has an output schema.
-#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
 #[non_exhaustive]
 pub struct MonitorRunOutput {
-    /// The output in the monitor's schema.
+    /// The output in the monitor's schema; `None` with `error`.
     pub structured: Option<Value>,
     /// The output as text.
     pub text: Option<String>,
-    /// The sources behind it.
+    /// Each field filled, with the pages that support it.
+    #[serde(deserialize_with = "null_as_default")]
     pub grounding: Vec<Value>,
+    /// False when a page monitor's page did not change and the last reading
+    /// is carried forward.
+    #[serde(default = "default_true")]
+    pub fresh: bool,
+    /// Why there is no output.
+    pub error: Option<MonitorRunOutputError>,
+}
+
+impl Default for MonitorRunOutput {
+    fn default() -> Self {
+        MonitorRunOutput {
+            structured: None,
+            text: None,
+            grounding: Vec::new(),
+            fresh: true,
+            error: None,
+        }
+    }
+}
+
+/// How a version of a page differs from the version before it from the same
+/// source.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+#[non_exhaustive]
+pub struct MonitorDiff {
+    /// When the version compared with was read.
+    pub previous_at: Option<String>,
+    /// The share of the text that is new, 0 to 1.
+    pub ratio: Option<f64>,
+    /// Text added.
+    #[serde(deserialize_with = "null_as_default")]
+    pub added: Vec<String>,
+    /// Text removed.
+    #[serde(deserialize_with = "null_as_default")]
+    pub removed: Vec<String>,
+}
+
+/// What a page monitor's run found on its page.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+#[non_exhaustive]
+pub struct MonitorRunChanges {
+    /// The text changed since the previous version (a baseline is not a
+    /// change).
+    pub changed: bool,
+    /// The change is worth telling: monitor.change was sent.
+    pub notified: bool,
+    /// The first reading of the page (or of a new URL).
+    pub baseline: bool,
+    /// The page's version after this run; [`Monitors::versions`] has them
+    /// all.
+    pub version: Option<u32>,
+    /// live (fetched now) or stream (the crawler's fresh copy).
+    pub source: Option<String>,
+    /// One sentence on what changed, when it was judged.
+    pub summary: Option<String>,
+    /// The new entries, facts or figures.
+    #[serde(deserialize_with = "null_as_default")]
+    pub items: Vec<String>,
+    /// The diff against the previous version.
+    pub diff: Option<MonitorDiff>,
+}
+
+/// One stored version of a page monitor's page: a reading whose text
+/// changed.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+#[non_exhaustive]
+pub struct MonitorVersion {
+    /// Opaque; the cursor of the page of versions it ends.
+    pub id: String,
+    /// "page_version".
+    pub object: String,
+    /// Counts up from 1, the baseline.
+    pub version: u32,
+    /// When it was read.
+    pub fetched_at: Option<String>,
+    /// The page's title.
+    pub title: Option<String>,
+    /// live or stream; versions are compared only with versions of the same
+    /// source.
+    pub source: String,
+    /// This version's change was told (monitor.change).
+    pub notified: bool,
+    /// One sentence on what changed, when it was told.
+    pub summary: Option<String>,
+    /// The new entries, facts or figures.
+    #[serde(deserialize_with = "null_as_default")]
+    pub items: Vec<String>,
+    /// Against the version before it from the same source; `None` for a
+    /// first version.
+    pub diff: Option<MonitorDiff>,
 }
 
 /// One run of a monitor.
@@ -417,8 +637,9 @@ pub struct MonitorRun {
     pub status: String,
     /// New pages; empty when none; `None` until the run completes.
     pub results: Option<Vec<MonitorResult>>,
-    /// Always `None` for now.
-    pub changes: Option<Value>,
+    /// A page monitor's completed run: what changed on the page. `None` for
+    /// a search monitor.
+    pub changes: Option<MonitorRunChanges>,
     /// The digest, when the monitor has an output schema.
     pub output: Option<MonitorRunOutput>,
     /// Why it failed.
@@ -547,6 +768,8 @@ pub type RunList = List<MonitorRun>;
 pub type PageList = List<MonitorResult>;
 /// A page of webhook deliveries.
 pub type DeliveryList = List<MonitorDelivery>;
+/// A page of a page monitor's versions.
+pub type VersionList = List<MonitorVersion>;
 
 trait Response: DeserializeOwned {
     fn attach(&mut self, _request_id: Option<String>, _raw: Map<String, Value>) {}
@@ -748,16 +971,48 @@ impl<'a> Monitors<'a> {
         Ok(out)
     }
 
-    /// Creates a monitor. Takes a few seconds: it is calibrated against the
-    /// last week of the web. `webhook.secret` is set in this response only.
+    /// Creates a monitor: a search monitor (`search.query`) or, with
+    /// `monitor_type` "page", a page monitor (`page.url`). Takes a few
+    /// seconds. `webhook.secret` is set in this response only.
     pub async fn create(&self, params: &MonitorCreateParams) -> Result<Monitor> {
-        if params.search.query.trim().is_empty() {
-            return Err(Error::invalid(
-                "create needs search.query, the topic in plain words",
-            ));
-        }
         let mut body = Map::new();
-        body.insert("search".into(), params.search.body());
+        match params.monitor_type.as_deref() {
+            Some("page") => {
+                let page = params
+                    .page
+                    .as_ref()
+                    .filter(|p| !p.url.trim().is_empty())
+                    .ok_or_else(|| {
+                        Error::invalid("a page monitor needs page.url, the page to watch")
+                    })?;
+                if params.search != MonitorSearchParams::default() {
+                    return Err(Error::invalid("a page monitor takes page, not search"));
+                }
+                body.insert("type".into(), Value::String("page".into()));
+                body.insert("page".into(), to_value(page));
+            }
+            None | Some("search") => {
+                if params.page.is_some() {
+                    return Err(Error::invalid(
+                        "page is only for monitor_type \"page\"; a search monitor takes search",
+                    ));
+                }
+                if params.search.query.trim().is_empty() {
+                    return Err(Error::invalid(
+                        "create needs search.query, the topic in plain words",
+                    ));
+                }
+                if let Some(t) = &params.monitor_type {
+                    body.insert("type".into(), Value::String(t.clone()));
+                }
+                body.insert("search".into(), params.search.body());
+            }
+            Some(other) => {
+                return Err(Error::invalid(format!(
+                    "monitor_type must be \"search\" or \"page\", got {other:?}"
+                )));
+            }
+        }
         if let Some(name) = &params.name {
             body.insert("name".into(), Value::String(name.clone()));
         }
@@ -835,6 +1090,26 @@ impl<'a> Monitors<'a> {
         }
         if let Some(s) = &params.search {
             body.insert("search".into(), s.body());
+        }
+        if let Some(p) = &params.page {
+            let mut page = Map::new();
+            if !p.url.is_empty() {
+                page.insert("url".into(), Value::String(p.url.clone()));
+            }
+            if let Some(w) = &p.watch_for {
+                page.insert(
+                    "watch_for".into(),
+                    if w.is_empty() {
+                        Value::Null
+                    } else {
+                        Value::String(w.clone())
+                    },
+                );
+            }
+            if let Some(s) = &p.sensitivity {
+                page.insert("sensitivity".into(), Value::String(s.clone()));
+            }
+            body.insert("page".into(), Value::Object(page));
         }
         if let Some(s) = &params.schedule {
             body.insert(
@@ -932,6 +1207,23 @@ impl<'a> Monitors<'a> {
         if let Some(n) = params.min_importance {
             call.query.push(("min_importance".into(), n.to_string()));
         }
+        self.send(call).await
+    }
+
+    /// A page monitor's history, newest first (its last 500 versions): every
+    /// reading whose text changed, with the diff against the version before
+    /// it from the same source. Empty for a search monitor.
+    pub async fn versions(
+        &self,
+        monitor_id: &str,
+        params: &MonitorVersionsParams,
+    ) -> Result<VersionList> {
+        let mut call = Call::new(
+            reqwest::Method::GET,
+            monitor_path(monitor_id, &["versions"])?,
+            true,
+        );
+        call.query = page_query(params.limit, &params.cursor);
         self.send(call).await
     }
 

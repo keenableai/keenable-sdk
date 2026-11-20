@@ -137,7 +137,7 @@ func TestMonitorsCreate(t *testing.T) {
 	if m.Schedule == nil || *m.Schedule.Timezone != "Europe/Paris" || m.Metadata["team"] != "research" {
 		t.Fatalf("monitor %+v", m)
 	}
-	if m.EstimatedCostUSD != nil || len(m.UpcomingRuns) != 1 || m.Raw["id"] != "mon_1" {
+	if m.EstimatedCostUSD != nil || m.CostThisMonthUSD != nil || len(m.UpcomingRuns) != 1 || m.Raw["id"] != "mon_1" {
 		t.Fatalf("monitor %+v", m)
 	}
 }

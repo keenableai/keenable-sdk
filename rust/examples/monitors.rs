@@ -1,10 +1,11 @@
-//! Watch the web for a topic, read what the monitor found, and verify a
-//! webhook delivery.
+//! Watch the web for a topic, read what the monitor found, watch a pricing
+//! page for changes, and verify a webhook delivery.
 //!
 //!     KEENABLE_API_KEY=keen_... cargo run --example monitors
 
 use keenable::{
-    MonitorCreateParams, MonitorPagesParams, MonitorScheduleParams, MonitorSearchParams,
+    MonitorCreateParams, MonitorPageTarget, MonitorPagesParams, MonitorScheduleParams,
+    MonitorSearchParams, MonitorVersionsParams,
 };
 
 #[tokio::main]
@@ -46,6 +47,40 @@ async fn main() -> Result<(), keenable::Error> {
     }
 
     monitors.delete(&monitor.id).await?;
+
+    // A page monitor watches one page and reports the changes worth telling.
+    let pricing = monitors
+        .create(&MonitorCreateParams {
+            name: Some("Example pricing".into()),
+            monitor_type: Some("page".into()),
+            page: Some(MonitorPageTarget {
+                watch_for: Some("plan prices and new plans".into()),
+                sensitivity: Some("meaningful".into()),
+                ..MonitorPageTarget::new("https://example.com/pricing")
+            }),
+            schedule: Some(MonitorScheduleParams {
+                schedule_type: "interval".into(),
+                value: Some("6h".into()),
+                timezone: None,
+            }),
+            ..Default::default()
+        })
+        .await?;
+    let versions = monitors
+        .versions(
+            &pricing.id,
+            &MonitorVersionsParams {
+                limit: Some(10),
+                ..Default::default()
+            },
+        )
+        .await?;
+    for v in versions.data {
+        if let Some(diff) = v.diff {
+            println!("version {} added {:?}", v.version, diff.added);
+        }
+    }
+    monitors.delete(&pricing.id).await?;
     Ok(())
 }
 
@@ -60,6 +95,10 @@ fn handle_webhook(
         Ok(event) => {
             if let Some(result) = event.data.result {
                 println!("new page: {}", result.url);
+            }
+            if event.event_type == "monitor.change" {
+                let summary = event.data.run.and_then(|r| r.changes?.summary);
+                println!("the page changed: {}", summary.unwrap_or_default());
             }
             200
         }

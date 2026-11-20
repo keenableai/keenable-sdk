@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Added:** page monitors. `client.Monitors.Create(ctx, &keenable.MonitorCreateParams{Type: "page", Page: &keenable.MonitorPageTarget{URL: ..., WatchFor: ..., Sensitivity: ...}})` watches one page and reports the changes worth telling. `MonitorUpdateParams.Page` merges into the stored page (a new `URL` starts a new baseline) and `RemovePageWatchFor` clears `watch_for`. `Create` refuses before sending a `Type` other than `"search"` or `"page"`, a page monitor without `Page.URL` or with `Search`, and a search monitor with `Page`.
+- **Added:** `client.Monitors.Versions(ctx, id, &keenable.MonitorVersionsParams{Limit: ..., Cursor: ...})` reads a page monitor's history (`GET /v1/monitors/{id}/versions`) as a `*VersionList` of `MonitorVersion`.
+- **Added:** `Monitor.Type`, `Monitor.Page` (`*MonitorPageTarget`) and `Monitor.DisabledReason` (`*MonitorDisabledReason`: `Code` `runs_failed`, `webhook_unreachable` or `data_policy` (a page monitor whose organization turned on zero data retention), and `Message`). `Monitor.Type` is "search" when a response leaves it out, as in the other SDKs.
+- **Added:** typed run fields: `MonitorRun.Changes` is a `*MonitorRunChanges` (with `Diff *MonitorDiff`), and `MonitorRunOutput` gains `Fresh` and `Error` (`*MonitorRunOutputError`: `Code` `output_failed` or `output_invalid`, and `Message`).
+- **Added:** the `monitor.change` webhook event (a page monitor's run, in `WebhookEventData.Run`, with its `Changes`) is documented on `WebhookEventData.Run`.
+- **Changed (breaking):** `Monitor.Search` is now `*MonitorSearch`, nil for a page monitor; `MonitorRun.Changes` changes from `any` to a typed pointer. Code that passes `m.Search` as a `MonitorSearch` no longer compiles, and `m.Search.Query` panics on a page monitor; check `m.Type` or `m.Search != nil` first.
+- **Changed:** the schedule docs give the API's limits: interval `10m` to `90d`, cron runs at least 10 minutes apart. The SDK does not check schedules itself.
+- **Changed:** the error contract fixtures follow the backend's current catalog, which adds `run_in_progress` (409: the monitor is already running).
+
 ## 0.2.0
 
 - **Added:** Keenable Monitors. `client.Monitors` calls `https://api.keenable.ai/v1/monitors` (or `KEENABLE_API_URL`): `Create`, `List`, `ListAll` (a `*MonitorIterator`), `Get`, `Update`, `Delete`, `Pause`, `Resume`, `Trigger`, `Runs`, `Run`, `Pages`, `Deliveries`, `Stats` and `Bulk`, with typed results (`Monitor`, `MonitorRun`, `MonitorResult`, `MonitorDelivery`, `MonitorStats`, `BulkResult`, `List[T]`). Monitors need an API key: without one a call returns an `*AuthError` (`APICode` `missing_api_key`) and sends nothing. `Create` sends an `Idempotency-Key` (`IdempotencyKey`, or a new UUID per call), so it is retried safely; `Update`, `Trigger` and `Bulk` are retried only on a 429. In `MonitorUpdateParams`, `RemoveName`, `RemoveSchedule`, `RemoveOutputSchema`, `RemoveWebhook` and `RemoveMetadata` send null and win over the value. Monitor ids `.` and `..` are refused before sending, since they would change the request's path.

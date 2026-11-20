@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
 import math
 from typing import Any
@@ -153,6 +156,7 @@ def test_create_sends_the_body_and_an_idempotency_key() -> None:
     assert monitor.metadata == {"team": "research"}
     assert monitor.upcoming_runs[0] == "2026-11-18T08:00:00Z"
     assert monitor.estimated_cost_usd is None
+    assert monitor.cost_this_month_usd is None
 
 
 def test_create_retries_with_the_same_idempotency_key() -> None:
@@ -507,3 +511,267 @@ def test_verify_webhook_refuses_a_long_timestamp(digits: int) -> None:
     headers = {**HEADERS, "webhook-timestamp": "1" * digits}
     with pytest.raises(WebhookVerificationError, match="not a Unix time"):
         verify_webhook(BODY, headers, SECRET, now=1763400000)
+
+
+PAGE_MONITOR: dict[str, Any] = dict(
+    MONITOR,
+    id="mon_p",
+    type="page",
+    search=None,
+    page={
+        "url": "https://example.com/pricing",
+        "watch_for": "plan prices",
+        "sensitivity": "meaningful",
+    },
+    webhook=None,
+    status="disabled",
+    disabled_reason={
+        "code": "data_policy",
+        "message": "The organization turned on zero data retention.",
+    },
+)
+
+DIFF: dict[str, Any] = {
+    "previous_at": "2026-11-17T08:00:00Z",
+    "ratio": 0.12,
+    "added": ["Pro: $30/month"],
+    "removed": ["Pro: $25/month"],
+}
+
+PAGE_RUN: dict[str, Any] = dict(
+    RUN,
+    id="mrun_p",
+    monitor_id="mon_p",
+    results=[],
+    changes={
+        "changed": True,
+        "notified": True,
+        "baseline": False,
+        "version": 3,
+        "source": "live",
+        "summary": "The Pro plan went from $25 to $30 a month.",
+        "items": ["Pro: $30/month"],
+        "diff": DIFF,
+    },
+    output={
+        "structured": None,
+        "text": None,
+        "grounding": [],
+        "fresh": False,
+        "error": {"code": "output_invalid", "message": "missing field price"},
+    },
+)
+
+
+def test_create_a_page_monitor() -> None:
+    keenable, seen = _client([httpx.Response(201, json=PAGE_MONITOR)])
+    monitor = keenable.monitors.create(
+        type="page",
+        page={
+            "url": "https://example.com/pricing",
+            "watch_for": "plan prices",
+            "sensitivity": "any",
+        },
+        schedule={"type": "interval", "value": "10m"},
+    )
+    assert json.loads(seen[0].content) == {
+        "type": "page",
+        "page": {
+            "url": "https://example.com/pricing",
+            "watch_for": "plan prices",
+            "sensitivity": "any",
+        },
+        "schedule": {"type": "interval", "value": "10m"},
+    }
+    assert monitor.type == "page"
+    assert monitor.search is None
+    assert monitor.page is not None
+    assert monitor.page.url == "https://example.com/pricing"
+    assert monitor.page.watch_for == "plan prices"
+    assert monitor.page.sensitivity == "meaningful"
+    assert monitor.disabled_reason is not None
+    assert monitor.disabled_reason.code == "data_policy"
+
+
+def test_a_search_monitor_reads_type_and_no_page() -> None:
+    keenable, _ = _client([httpx.Response(200, json=dict(MONITOR, type="search"))])
+    monitor = keenable.monitors.get("mon_1")
+    assert monitor.type == "search" and monitor.page is None
+    assert monitor.search is not None and monitor.search.content_text
+    assert monitor.disabled_reason is None
+
+
+def test_type_search_is_sent_when_given() -> None:
+    keenable, seen = _client([httpx.Response(201, json=MONITOR)])
+    keenable.monitors.create(type="search", search={"query": "q"})
+    assert json.loads(seen[0].content) == {"type": "search", "search": {"query": "q"}}
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"type": "page"},
+        {"type": "page", "page": {"url": " "}},
+        {"type": "page", "page": "https://example.com"},
+        {
+            "type": "page",
+            "page": {"url": "https://example.com"},
+            "search": {"query": "q"},
+        },
+        {"search": {"query": "q"}, "page": {"url": "https://example.com"}},
+        {"type": "feed", "search": {"query": "q"}},
+        {},
+    ],
+)
+def test_create_checks_the_kind_of_monitor(kwargs: dict[str, Any]) -> None:
+    keenable, seen = _client([httpx.Response(201, json=MONITOR)])
+    with pytest.raises(KeenableInvalidRequestError):
+        keenable.monitors.create(**kwargs)
+    assert seen == []
+
+
+def test_update_sends_page() -> None:
+    keenable, seen = _client([httpx.Response(200, json=PAGE_MONITOR)])
+    keenable.monitors.update("mon_p", page={"watch_for": None, "sensitivity": "any"})
+    assert json.loads(seen[0].content) == {
+        "page": {"watch_for": None, "sensitivity": "any"}
+    }
+    with pytest.raises(KeenableInvalidRequestError):
+        keenable.monitors.update("mon_p", page={"url": ""})
+
+
+def test_a_page_run_has_changes_and_output() -> None:
+    keenable, _ = _client([httpx.Response(200, json=PAGE_RUN)])
+    run = keenable.monitors.run("mon_p", "mrun_p")
+    assert run.results == []
+    assert run.changes is not None
+    assert run.changes.changed and run.changes.notified and not run.changes.baseline
+    assert run.changes.version == 3 and run.changes.source == "live"
+    assert run.changes.items == ["Pro: $30/month"]
+    assert run.changes.diff is not None and run.changes.diff.ratio == 0.12
+    assert run.changes.diff.removed == ["Pro: $25/month"]
+    assert run.output is not None and run.output.fresh is False
+    assert run.output.error is not None
+    assert run.output.error.code == "output_invalid"
+    assert run.output.error.message == "missing field price"
+
+
+def test_a_search_run_has_no_changes_and_fresh_output() -> None:
+    keenable, _ = _client([httpx.Response(200, json=RUN)])
+    run = keenable.monitors.run("mon_1", "mrun_1")
+    assert run.changes is None and run.usage is None
+    assert run.output is not None and run.output.fresh and run.output.error is None
+
+
+def test_an_output_error_as_a_bare_code() -> None:
+    body = dict(RUN, output={"structured": None, "error": "output_failed"})
+    keenable, _ = _client([httpx.Response(200, json=body)])
+    run = keenable.monitors.run("mon_1", "mrun_1")
+    assert run.output is not None and run.output.error is not None
+    assert run.output.error.code == "output_failed" and run.output.error.message == ""
+
+
+VERSION: dict[str, Any] = {
+    "id": "ver_3",
+    "object": "page_version",
+    "version": 3,
+    "fetched_at": "2026-11-18T08:00:00Z",
+    "title": "Pricing",
+    "source": "live",
+    "notified": True,
+    "summary": "The Pro plan went from $25 to $30 a month.",
+    "items": ["Pro: $30/month"],
+    "diff": DIFF,
+}
+
+
+def test_versions() -> None:
+    first = dict(
+        VERSION,
+        id="ver_1",
+        version=1,
+        notified=False,
+        summary=None,
+        items=[],
+        diff=None,
+    )
+    body = {"data": [VERSION, first], "has_more": True, "next_cursor": "ver_1"}
+    keenable, seen = _client([httpx.Response(200, json=body)])
+    versions = keenable.monitors.versions("mon_p", limit=2, cursor="ver_4")
+    assert seen[0].method == "GET"
+    assert seen[0].url.path == "/v1/monitors/mon_p/versions"
+    assert dict(seen[0].url.params) == {"limit": "2", "cursor": "ver_4"}
+    assert versions.has_more and versions.next_cursor == "ver_1"
+    newest, oldest = versions.data
+    assert newest.version == 3 and newest.source == "live" and newest.notified
+    assert newest.diff is not None and newest.diff.added == ["Pro: $30/month"]
+    assert oldest.diff is None and oldest.items == []
+
+
+def test_versions_refuses_dot_ids() -> None:
+    keenable, seen = _client([httpx.Response(200, json={})])
+    with pytest.raises(KeenableInvalidRequestError):
+        keenable.monitors.versions("..")
+    assert seen == []
+
+
+async def test_the_async_client_page_monitors() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if request.url.path.endswith("/versions"):
+            return httpx.Response(
+                200, json={"data": [VERSION], "has_more": False, "next_cursor": None}
+            )
+        return httpx.Response(200, json=PAGE_MONITOR)
+
+    async with AsyncKeenable(
+        "k", client=httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    ) as keenable:
+        created = await keenable.monitors.create(
+            type="page", page={"url": "https://example.com/pricing"}
+        )
+        updated = await keenable.monitors.update(
+            "mon_p", page={"url": "https://example.com/plans"}
+        )
+        versions = await keenable.monitors.versions("mon_p", limit=1)
+    assert created.page is not None and updated.type == "page"
+    assert json.loads(seen[0].content) == {
+        "type": "page",
+        "page": {"url": "https://example.com/pricing"},
+    }
+    assert json.loads(seen[1].content) == {"page": {"url": "https://example.com/plans"}}
+    assert seen[2].url.path == "/v1/monitors/mon_p/versions"
+    assert versions.data[0].id == "ver_3"
+
+
+def _sign(body: str, msg_id: str, stamp: str) -> dict[str, str]:
+    key = base64.b64decode(SECRET[len("whsec_") :])
+    mac = hmac.new(key, f"{msg_id}.{stamp}.{body}".encode(), hashlib.sha256)
+    return {
+        "webhook-id": msg_id,
+        "webhook-timestamp": stamp,
+        "webhook-signature": "v1," + base64.b64encode(mac.digest()).decode(),
+    }
+
+
+def test_verify_webhook_reads_a_monitor_change() -> None:
+    body = json.dumps(
+        {
+            "id": "msg_change1",
+            "type": "monitor.change",
+            "created_at": "2026-11-18T08:00:05Z",
+            "data": {"monitor_id": "mon_p", "run": PAGE_RUN},
+            "metadata": None,
+        }
+    )
+    headers = _sign(body, "msg_change1", "1763452805")
+    event = verify_webhook(body, headers, SECRET, now=1763452805)
+    assert event.type == "monitor.change"
+    assert event.data.monitor_id == "mon_p"
+    assert event.data.run is not None and event.data.run.changes is not None
+    assert (
+        event.data.run.changes.summary == "The Pro plan went from $25 to $30 a month."
+    )
+    assert event.data.result is None and event.data.monitor is None

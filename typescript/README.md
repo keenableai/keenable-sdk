@@ -195,11 +195,12 @@ yourself.
 
 ## Monitors
 
-A monitor is a standing search: it watches the web for a topic and hands over
-every new page that matches, by webhook, in scheduled runs, or when you poll
-it. Monitors need an API key (`KEENABLE_API_KEY`); without one, every call
-throws `KeenableAuthError` with `code === "missing_api_key"` and sends nothing.
-An organization can have 100 active monitors.
+A search monitor is a standing search: it watches the web for a topic and
+hands over every new page that matches, by webhook, in scheduled runs, or when
+you poll it. A page monitor (`type: "page"`) reads one page on a schedule and
+reports the changes worth telling. Monitors need an API key
+(`KEENABLE_API_KEY`); without one, every call throws `KeenableAuthError` with
+`code === "missing_api_key"` and sends nothing. An organization can have 100 active monitors.
 
 ```ts
 import { Keenable } from "keenable";
@@ -217,15 +218,42 @@ const pages = await keenable.monitors.pages(monitor.id, { minImportance: 4 });
 for (const page of pages.data) console.log(page.importance, page.title, page.url);
 ```
 
+A page monitor watches one page, here a pricing page every 6 hours:
+
+```ts
+const pricing = await keenable.monitors.create({
+  type: "page",
+  page: {
+    url: "https://example.com/pricing",
+    watchFor: "plan prices and new plans",
+    sensitivity: "meaningful", // or "any": every change that is not cosmetic
+  },
+  schedule: { type: "interval", value: "6h" },
+});
+const runs = await keenable.monitors.runs(pricing.id);
+for (const run of runs.data) {
+  if (run.changes?.notified) console.log(run.changes.summary, run.changes.items);
+}
+const versions = await keenable.monitors.versions(pricing.id, { limit: 10 });
+for (const version of versions.data) console.log(version.version, version.fetchedAt, version.diff?.added);
+```
+
+Schedules: `cron` (runs at least 10 minutes apart, in `timezone`), `interval`
+(`"10m"` to `"90d"`) or `once`. Without one, a search monitor runs only on
+`trigger()` and a page monitor every hour. The API checks the schedule and the
+`outputSchema`: one that breaks a rule throws `KeenableAPIError` with status
+400, `code === "invalid_request"` and a message that names the rule.
+
 | Method | What it does |
 |---|---|
-| `create({ search, name, schedule, outputSchema, webhook, metadata, idempotencyKey })` | Make a monitor (`POST /v1/monitors`) |
+| `create({ type, search, page, name, schedule, outputSchema, webhook, metadata, idempotencyKey })` | Make a search monitor (`search`) or a page monitor (`type: "page"`, `page`) (`POST /v1/monitors`) |
 | `list({ status, name, metadata, limit, cursor })` / `listAll(...)` | One page of monitors / an async iterator over all of them |
-| `get(id)`, `update(id, fields)`, `delete(id)` | Read, change (only the fields set; `null` removes the schedule, webhook or output schema), delete |
+| `get(id)`, `update(id, fields)`, `delete(id)` | Read, change (only the fields set; `search`, `page` and `webhook` are merged; `null` removes the schedule, webhook or output schema), delete |
 | `pause(id)`, `resume(id)` | `update(id, { status: "paused" / "active" })` |
 | `trigger(id)` | Start a run now; returns the queued `MonitorRun` |
 | `runs(id, { limit, cursor })`, `run(id, runId)` | A monitor's runs |
-| `pages(id, { limit, cursor, minImportance })` | The pages it accepted, newest first, one per story |
+| `pages(id, { limit, cursor, minImportance })` | The pages a search monitor accepted, newest first, one per story |
+| `versions(id, { limit, cursor })` | A page monitor's history, newest first: each version whose text changed, with its `diff` |
 | `deliveries(id, { limit, cursor })` | Webhook events of the last 7 days, with attempts and errors |
 | `stats()` | Counts by status and by kind of schedule |
 | `bulk(action, { ids, filter, limit, dryRun })` | Pause, resume or delete many; a dry run unless `dryRun: false` |
@@ -234,6 +262,14 @@ Every call also takes `signal`, `timeoutMs`, `maxRetries` and `headers`. Reads
 and deletes are retried like a search; `create()` sends an `Idempotency-Key`
 (yours, or a new one per call), so its retries cannot make a second monitor;
 `update()`, `trigger()` and `bulk()` are retried only on a 429.
+
+A `Monitor` has `type` (`"search"` or `"page"`), `search` (null for a page
+monitor), `page` (null for a search monitor), `disabledReason` (`code`
+`runs_failed`, `webhook_unreachable` or `data_policy` (a page monitor whose organization turned on zero data retention), while it is
+disabled). A completed `MonitorRun`
+has, for a page monitor, `changes`
+(`changed`, `notified`, `baseline`, `version`, `source`, `summary`, `items`,
+`diff`). With an output schema, `output` has `structured`, `fresh` and `error`.
 
 ### Verify webhooks
 
@@ -246,6 +282,7 @@ import { verifyWebhook, WebhookVerificationError } from "keenable";
 try {
   const event = await verifyWebhook(rawBody, request.headers, secret);
   if (event.type === "monitor.hit") console.log(event.data.result?.url);
+  if (event.type === "monitor.change") console.log(event.data.run?.changes?.summary);
 } catch (error) {
   if (error instanceof WebhookVerificationError) return new Response(null, { status: 400 });
   throw error;

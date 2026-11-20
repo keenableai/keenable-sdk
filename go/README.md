@@ -240,11 +240,12 @@ this SDK created, and does nothing when you passed your own `http.Client`.
 
 ## Monitors
 
-A monitor is a standing search: it watches the web for a topic and hands over
-every new page that matches, by webhook, in scheduled runs, or when you poll
-it. Monitors need an API key (`KEENABLE_API_KEY`); without one, every call
-returns an `*AuthError` with `APICode == "missing_api_key"` and sends nothing.
-An organization can have 100 active monitors.
+A search monitor is a standing search: it watches the web for a topic and
+hands over every new page that matches, by webhook, in scheduled runs, or when
+you poll it. A page monitor (`Type: "page"`) reads one page on a schedule and
+reports the changes worth telling. Monitors need an API key
+(`KEENABLE_API_KEY`); without one, every call returns an `*AuthError` with
+`APICode == "missing_api_key"` and sends nothing. An organization can have 100 active monitors.
 
 ```go
 ctx := context.Background()
@@ -268,15 +269,48 @@ for _, page := range pages.Data {
 }
 ```
 
+A page monitor watches one page, here a pricing page every 6 hours:
+
+```go
+pricing, err := client.Monitors.Create(ctx, &keenable.MonitorCreateParams{
+	Type: "page",
+	Page: &keenable.MonitorPageTarget{
+		URL:         "https://example.com/pricing",
+		WatchFor:    "plan prices and new plans",
+		Sensitivity: "meaningful", // or "any": every change that is not cosmetic
+	},
+	Schedule: &keenable.MonitorScheduleParams{Type: "interval", Value: "6h"},
+})
+if err != nil {
+	log.Fatal(err)
+}
+versions, err := client.Monitors.Versions(ctx, pricing.ID, &keenable.MonitorVersionsParams{Limit: 10})
+if err != nil {
+	log.Fatal(err)
+}
+for _, v := range versions.Data {
+	if v.Diff != nil {
+		fmt.Println(v.Version, v.Diff.Added)
+	}
+}
+```
+
+Schedules: `cron` (runs at least 10 minutes apart, in `Timezone`), `interval`
+(`"10m"` to `"90d"`) or `once`. Without one, a search monitor runs only on
+`Trigger` and a page monitor every hour. The API checks the schedule and the
+`OutputSchema`: one that breaks a rule returns an `*APIError` with status 400,
+`APICode == "invalid_request"` and a message that names the rule.
+
 | Method | What it does |
 |---|---|
-| `Create(ctx, *MonitorCreateParams)` | Make a monitor (`POST /v1/monitors`) |
+| `Create(ctx, *MonitorCreateParams)` | Make a search monitor (`Search`) or a page monitor (`Type: "page"`, `Page`) (`POST /v1/monitors`) |
 | `List(ctx, *MonitorListParams)` / `ListAll(ctx, *MonitorListParams)` | One page of monitors / a `*MonitorIterator` over all of them |
-| `Get(ctx, id, *RequestOptions)`, `Update(ctx, id, *MonitorUpdateParams)`, `Delete(ctx, id, *RequestOptions)` | Read, change (only what is set; `RemoveName`, `RemoveSchedule`, `RemoveWebhook`, ... send null and win over the value), delete |
+| `Get(ctx, id, *RequestOptions)`, `Update(ctx, id, *MonitorUpdateParams)`, `Delete(ctx, id, *RequestOptions)` | Read, change (only what is set; `Search`, `Page` and `Webhook` are merged; `RemoveName`, `RemoveSchedule`, `RemoveWebhook`, `RemovePageWatchFor`, ... send null and win over the value), delete |
 | `Pause(ctx, id, *RequestOptions)`, `Resume(ctx, id, *RequestOptions)` | Update with Status "paused" / "active" |
 | `Trigger(ctx, id, *RequestOptions)` | Start a run now; returns the queued `*MonitorRun` |
 | `Runs(ctx, id, *MonitorPageParams)`, `Run(ctx, id, runID, *RequestOptions)` | A monitor's runs |
-| `Pages(ctx, id, *MonitorPagesParams)` | The pages it accepted, newest first, one per story |
+| `Pages(ctx, id, *MonitorPagesParams)` | The pages a search monitor accepted, newest first, one per story |
+| `Versions(ctx, id, *MonitorVersionsParams)` | A page monitor's history, newest first: each version whose text changed, with its `Diff` |
 | `Deliveries(ctx, id, *MonitorPageParams)` | Webhook events of the last 7 days, with attempts and errors |
 | `Stats(ctx, *RequestOptions)` | Counts by status and by kind of schedule |
 | `Bulk(ctx, action, *MonitorBulkParams)` | Pause, resume or delete many; a dry run unless `DryRun` points to false |
@@ -285,6 +319,13 @@ Every params struct embeds `RequestOptions`. Reads and deletes are retried like
 a search; `Create` sends an `Idempotency-Key` (yours, or a new one per call), so
 its retries cannot make a second monitor; `Update`, `Trigger` and `Bulk` are
 retried only on a 429.
+
+A `Monitor` has `Type` ("search" or "page"), `Search` (nil for a page monitor),
+`Page` (nil for a search monitor), `DisabledReason` (`Code` `runs_failed`,
+`webhook_unreachable` or `data_policy` (a page monitor whose organization turned on zero data retention), while it is disabled).
+A completed `MonitorRun` has, for a page monitor, `Changes` (`Changed`,
+`Notified`, `Baseline`, `Version`, `Source`, `Summary`, `Items`, `Diff`). With
+an output schema, `Output` has `Structured`, `Fresh` and `Error`.
 
 ### Verify webhooks
 
@@ -299,8 +340,15 @@ func hook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad signature", http.StatusBadRequest)
 		return
 	}
-	if event.Type == "monitor.hit" {
-		fmt.Println(event.Data.Result.URL)
+	switch event.Type {
+	case "monitor.hit":
+		if event.Data.Result != nil {
+			fmt.Println(event.Data.Result.URL)
+		}
+	case "monitor.change": // a page monitor's change worth telling
+		if run := event.Data.Run; run != nil && run.Changes != nil && run.Changes.Summary != nil {
+			fmt.Println(*run.Changes.Summary)
+		}
 	}
 }
 ```

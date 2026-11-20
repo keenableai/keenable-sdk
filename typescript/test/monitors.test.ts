@@ -5,6 +5,7 @@ import {
   KeenableAPIError,
   KeenableAuthError,
   KeenableInvalidRequestError,
+  type MonitorCreateParams,
   verifyWebhook,
   WebhookVerificationError,
 } from "../src/index.js";
@@ -120,11 +121,12 @@ describe("monitors", () => {
       metadata: { team: "research" },
     });
     expect(monitor.id).toBe("mon_1");
-    expect(monitor.search.contentText).toBe(true);
-    expect(monitor.search.excludeDomains).toEqual(["example.com"]);
+    expect(monitor.search?.contentText).toBe(true);
+    expect(monitor.search?.excludeDomains).toEqual(["example.com"]);
     expect(monitor.webhook?.secret).toBe("whsec_abc");
     expect(monitor.upcomingRuns).toEqual(["2026-11-18T08:00:00Z"]);
     expect(monitor.estimatedCostUsd).toBeNull();
+    expect(monitor.costThisMonthUsd).toBeNull();
   });
 
   it("retries a create with the same idempotency key", async () => {
@@ -358,5 +360,218 @@ describe("verifyWebhook", () => {
   it("refuses a timestamp of more than 12 digits", async () => {
     const headers = { ...HEADERS, "webhook-timestamp": "1".repeat(400) };
     await expect(verifyWebhook(BODY, headers, SECRET, { now: 1763400000 })).rejects.toThrow(/not a Unix time/);
+  });
+});
+
+const PAGE_MONITOR = {
+  ...MONITOR,
+  id: "mon_p",
+  type: "page",
+  search: null,
+  page: { url: "https://example.com/pricing", watch_for: "plan prices", sensitivity: "meaningful" },
+  webhook: null,
+  status: "disabled",
+  disabled_reason: { code: "data_policy", message: "The organization turned on zero data retention." },
+};
+
+const DIFF = {
+  previous_at: "2026-11-17T08:00:00Z",
+  ratio: 0.12,
+  added: ["Pro: $30/month"],
+  removed: ["Pro: $25/month"],
+};
+
+const PAGE_RUN = {
+  ...RUN,
+  id: "mrun_p",
+  monitor_id: "mon_p",
+  results: [],
+  changes: {
+    changed: true,
+    notified: true,
+    baseline: false,
+    version: 3,
+    source: "live",
+    summary: "The Pro plan went from $25 to $30 a month.",
+    items: ["Pro: $30/month"],
+    diff: DIFF,
+  },
+  output: {
+    structured: null,
+    text: null,
+    grounding: [],
+    fresh: false,
+    error: { code: "output_invalid", message: "missing field price" },
+  },
+};
+
+const VERSION = {
+  id: "ver_3",
+  object: "page_version",
+  version: 3,
+  fetched_at: "2026-11-18T08:00:00Z",
+  title: "Pricing",
+  source: "live",
+  notified: true,
+  summary: "The Pro plan went from $25 to $30 a month.",
+  items: ["Pro: $30/month"],
+  diff: DIFF,
+};
+
+describe("page monitors", () => {
+  it("creates a page monitor and parses it", async () => {
+    const { keenable, seen } = client([[201, PAGE_MONITOR]]);
+    const monitor = await keenable.monitors.create({
+      type: "page",
+      page: { url: "https://example.com/pricing", watchFor: "plan prices", sensitivity: "any" },
+      schedule: { type: "interval", value: "10m" },
+    });
+    expect(seen[0]!.body).toEqual({
+      type: "page",
+      page: { url: "https://example.com/pricing", watch_for: "plan prices", sensitivity: "any" },
+      schedule: { type: "interval", value: "10m" },
+    });
+    expect(monitor.type).toBe("page");
+    expect(monitor.search).toBeNull();
+    expect(monitor.page).toEqual({
+      url: "https://example.com/pricing",
+      watchFor: "plan prices",
+      sensitivity: "meaningful",
+    });
+    expect(monitor.disabledReason).toEqual({
+      code: "data_policy",
+      message: "The organization turned on zero data retention.",
+    });
+  });
+
+  it("reads a search monitor's type, with no page", async () => {
+    const { keenable } = client([[200, { ...MONITOR, type: "search" }]]);
+    const monitor = await keenable.monitors.get("mon_1");
+    expect(monitor.type).toBe("search");
+    expect(monitor.page).toBeNull();
+    expect(monitor.disabledReason).toBeNull();
+    expect(monitor.search?.query).toBe("new open-weights LLM releases");
+  });
+
+  it("sends type search when given", async () => {
+    const { keenable, seen } = client([[201, MONITOR]]);
+    await keenable.monitors.create({ type: "search", search: { query: "q" } });
+    expect(seen[0]!.body).toEqual({ type: "search", search: { query: "q" } });
+  });
+
+  it("checks the kind of monitor before sending", async () => {
+    const { keenable, seen } = client([[201, MONITOR]]);
+    const bad = [
+      { type: "page" },
+      { type: "page", page: { url: " " } },
+      { type: "page", page: { url: "https://example.com" }, search: { query: "q" } },
+      { search: { query: "q" }, page: { url: "https://example.com" } },
+      { type: "feed", search: { query: "q" } },
+      {},
+    ];
+    for (const params of bad) {
+      const untyped = params as unknown as MonitorCreateParams;
+      await expect(keenable.monitors.create(untyped)).rejects.toBeInstanceOf(KeenableInvalidRequestError);
+    }
+    expect(seen).toHaveLength(0);
+  });
+
+  it("types a create as a search monitor or a page monitor", () => {
+    const ok: MonitorCreateParams[] = [
+      { search: { query: "q" } },
+      { type: "search", search: { query: "q" } },
+      { type: "page", page: { url: "https://example.com" } },
+    ];
+    expect(ok).toHaveLength(3);
+    // @ts-expect-error a page monitor needs page
+    const noPage: MonitorCreateParams = { type: "page" };
+    // @ts-expect-error a page monitor takes no search
+    const pageAndSearch: MonitorCreateParams = { type: "page", page: { url: "https://example.com" }, search: { query: "q" } };
+    // @ts-expect-error a search monitor takes no page
+    const searchAndPage: MonitorCreateParams = { search: { query: "q" }, page: { url: "https://example.com" } };
+    // @ts-expect-error a search monitor needs search
+    const empty: MonitorCreateParams = {};
+    expect([noPage, pageAndSearch, searchAndPage, empty]).toHaveLength(4);
+  });
+
+  it("updates a page, null clears watchFor", async () => {
+    const { keenable, seen } = client([[200, PAGE_MONITOR]]);
+    await keenable.monitors.update("mon_p", { page: { watchFor: null, sensitivity: "any" } });
+    expect(seen[0]!.body).toEqual({ page: { watch_for: null, sensitivity: "any" } });
+    await expect(keenable.monitors.update("mon_p", { page: { url: "" } })).rejects.toBeInstanceOf(
+      KeenableInvalidRequestError,
+    );
+  });
+
+  it("parses a page run's changes and output", async () => {
+    const { keenable } = client([[200, PAGE_RUN]]);
+    const run = await keenable.monitors.run("mon_p", "mrun_p");
+    expect(run.results).toEqual([]);
+    expect(run.changes).toEqual({
+      changed: true,
+      notified: true,
+      baseline: false,
+      version: 3,
+      source: "live",
+      summary: "The Pro plan went from $25 to $30 a month.",
+      items: ["Pro: $30/month"],
+      diff: { previousAt: "2026-11-17T08:00:00Z", ratio: 0.12, added: ["Pro: $30/month"], removed: ["Pro: $25/month"] },
+    });
+    expect(run.output?.fresh).toBe(false);
+    expect(run.output?.error).toEqual({ code: "output_invalid", message: "missing field price" });
+  });
+
+  it("gives a search run no changes and a fresh output", async () => {
+    const { keenable } = client([[200, RUN]]);
+    const run = await keenable.monitors.run("mon_1", "mrun_1");
+    expect(run.changes).toBeNull();
+    expect(run.usage).toBeNull();
+    expect(run.output?.fresh).toBe(true);
+    expect(run.output?.error).toBeNull();
+  });
+
+  it("reads an output error sent as a bare code", async () => {
+    const { keenable } = client([[200, { ...RUN, output: { structured: null, error: "output_failed" } }]]);
+    const run = await keenable.monitors.run("mon_1", "mrun_1");
+    expect(run.output?.error).toEqual({ code: "output_failed", message: "" });
+  });
+
+  it("lists versions", async () => {
+    const first = { ...VERSION, id: "ver_1", version: 1, notified: false, summary: null, items: [], diff: null };
+    const { keenable, seen } = client([[200, page([VERSION, first], "ver_1")]]);
+    const versions = await keenable.monitors.versions("mon_p", { limit: 2, cursor: "ver_4" });
+    expect(seen[0]!.method).toBe("GET");
+    expect(seen[0]!.url.pathname).toBe("/v1/monitors/mon_p/versions");
+    expect(Object.fromEntries(seen[0]!.url.searchParams)).toEqual({ limit: "2", cursor: "ver_4" });
+    expect(versions.hasMore).toBe(true);
+    expect(versions.nextCursor).toBe("ver_1");
+    expect(versions.data[0]!.version).toBe(3);
+    expect(versions.data[0]!.fetchedAt).toBe("2026-11-18T08:00:00Z");
+    expect(versions.data[0]!.diff?.added).toEqual(["Pro: $30/month"]);
+    expect(versions.data[1]!.diff).toBeNull();
+    expect(versions.data[1]!.items).toEqual([]);
+    await expect(keenable.monitors.versions("..")).rejects.toBeInstanceOf(KeenableInvalidRequestError);
+  });
+
+  it("verifies a monitor.change event", async () => {
+    const { createHmac } = await import("node:crypto");
+    const body = JSON.stringify({
+      id: "msg_change1",
+      type: "monitor.change",
+      created_at: "2026-11-18T08:00:05Z",
+      data: { monitor_id: "mon_p", run: PAGE_RUN },
+      metadata: null,
+    });
+    const key = Buffer.from(SECRET.slice("whsec_".length), "base64");
+    const signature = createHmac("sha256", key).update(`msg_change1.1763452805.${body}`).digest("base64");
+    const event = await verifyWebhook(
+      body,
+      { "webhook-id": "msg_change1", "webhook-timestamp": "1763452805", "webhook-signature": `v1,${signature}` },
+      SECRET,
+      { now: 1763452805 },
+    );
+    expect(event.type).toBe("monitor.change");
+    expect(event.data.run?.changes?.summary).toBe("The Pro plan went from $25 to $30 a month.");
+    expect(event.data.result).toBeUndefined();
   });
 });
