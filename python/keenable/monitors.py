@@ -1,8 +1,8 @@
-"""Keenable Monitors: standing searches that report new pages as they appear,
-and page monitors that report changes to one page.
+"""Keenable Monitors: standing searches that report new results as they
+appear, and page monitors that report changes to one page.
 
-A search monitor watches the web for a topic and hands over every new page
-that matches it, by webhook, in scheduled runs, or by polling its pages. A
+A search monitor watches the web for a topic and hands over every new result
+that matches it, by webhook, in scheduled runs, or by polling its results. A
 page monitor (``type="page"``) reads one page on a schedule and reports the
 changes worth telling. Monitors need an API key.
 
@@ -13,8 +13,8 @@ changes worth telling. Monitors need an API key.
         search={"query": "new open-weights LLM releases"},
         schedule={"type": "cron", "value": "0 9 * * 1-5", "timezone": "Europe/Paris"},
     )
-    for page in keenable.monitors.pages(monitor.id).data:
-        print(page.title, page.url)
+    for result in keenable.monitors.results(monitor.id).data:
+        print(result.title, result.url)
 
     pricing = keenable.monitors.create(
         type="page",
@@ -116,7 +116,7 @@ __all__ = [
     "MonitorVersion",
     "MonitorWebhook",
     "MonitorWebhookParams",
-    "PageList",
+    "ResultList",
     "RunList",
     "VersionList",
     "AsyncMonitors",
@@ -215,7 +215,7 @@ class MonitorSearch:
     query: str
     """The topic in plain words, as written when the monitor was made."""
     max_results: int
-    """Pages a run returns at most."""
+    """Results a run returns at most."""
     include_domains: list[str] | None = None
     """Only pages on these sites."""
     exclude_domains: list[str] | None = None
@@ -339,18 +339,8 @@ class Monitor:
     """The next three run times, UTC."""
     created_at: str
     updated_at: str
-    agent_run_id: Any = None
-    """Not available yet: always None."""
-    backfill: Any = None
-    """Not available yet: always None."""
-    memory_scope: Any = None
-    """Not available yet: always None."""
-    estimated_cost_usd: float | None = None
-    """None until monitors are priced."""
-    cost_this_month_usd: float | None = None
-    """None until monitors are priced."""
     type: str = "search"
-    """``"search"`` (new pages about a topic) or ``"page"`` (changes to one
+    """``"search"`` (new results about a topic) or ``"page"`` (changes to one
     page)."""
     page: MonitorPageTarget | None = None
     """The page a page monitor watches; None for a search monitor."""
@@ -381,11 +371,6 @@ class Monitor:
             upcoming_runs=_strs(data.get("upcoming_runs")) or [],
             created_at=_req_str(data.get("created_at")),
             updated_at=_req_str(data.get("updated_at")),
-            agent_run_id=data.get("agent_run_id"),
-            backfill=data.get("backfill"),
-            memory_scope=data.get("memory_scope"),
-            estimated_cost_usd=_float(data.get("estimated_cost_usd")),
-            cost_this_month_usd=_float(data.get("cost_this_month_usd")),
             type=_str(data.get("type")) or "search",
             page=MonitorPageTarget._from_json(page) if page is not None else None,
             disabled_reason=MonitorDisabledReason._from_json(disabled)
@@ -422,7 +407,8 @@ class MonitorResultChange:
 
 @dataclass
 class MonitorResult:
-    """A page a monitor found: in a run, a webhook event or :meth:`Monitors.pages`."""
+    """A result a monitor found: in a run, a webhook event or
+    :meth:`Monitors.results`."""
 
     url: str
     title: str | None = None
@@ -430,10 +416,6 @@ class MonitorResult:
     published_at: str | None = None
     acquired_at: str | None = None
     image: str | None = None
-    favicon: str | None = None
-    """Always None for now."""
-    highlights: Any = None
-    """Always None for now."""
     matched_at: str | None = None
     """When the monitor accepted the page."""
     published_at_source: str | None = None
@@ -442,21 +424,19 @@ class MonitorResult:
     summary: str | None = None
     """One line on what the page reports."""
     importance: int | None = None
-    """1 to 5 for the monitor's topic; pages under 3 are not sent."""
+    """1 to 5 for the monitor's topic; results under 3 are not sent."""
     kind: str | None = None
     source_type: str | None = None
     """``"original"`` or ``"rewrite"``."""
-    score: float | None = None
-    """Uncalibrated relevance, only for ordering one monitor's pages."""
     text: str | None = None
     """The page's text, when the monitor's search asks for it."""
     change: MonitorResultChange | None = None
-    """Set on a ``monitor.update``: how the page changed."""
+    """Set on a ``monitor.result.changed``: how the page changed."""
     id: str | None = None
-    """Set by :meth:`Monitors.pages`: identifies the match, and is the cursor
+    """Set by :meth:`Monitors.results`: identifies the match, and is the cursor
     of the page of results it ends."""
     same_story: int | None = None
-    """Set by :meth:`Monitors.pages`: how many more pages reported the same
+    """Set by :meth:`Monitors.results`: how many more results reported the same
     story and were left out."""
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
@@ -470,15 +450,12 @@ class MonitorResult:
             published_at=_str(data.get("published_at")),
             acquired_at=_str(data.get("acquired_at")),
             image=_str(data.get("image")),
-            favicon=_str(data.get("favicon")),
-            highlights=data.get("highlights"),
             matched_at=_str(data.get("matched_at")),
             published_at_source=_str(data.get("published_at_source")),
             summary=_str(data.get("summary")),
             importance=_int(data.get("importance")),
             kind=_str(data.get("kind")),
             source_type=_str(data.get("source_type")),
-            score=_float(data.get("score")),
             text=_str(data.get("text")),
             change=MonitorResultChange._from_json(change) if change else None,
             id=_str(data.get("id")),
@@ -578,7 +555,7 @@ class MonitorRunChanges:
     """The text changed since the previous version (a baseline is not a
     change)."""
     notified: bool
-    """The change is worth telling: ``monitor.change`` was sent."""
+    """The change is worth telling: ``monitor.page.changed`` was sent."""
     baseline: bool
     """The first reading of the page (or of a new URL), which later versions
     are compared with."""
@@ -618,7 +595,7 @@ class MonitorRun:
     """``"queued"``, ``"running"``, ``"completed"``, ``"failed"`` or
     ``"cancelled"``."""
     results: list[MonitorResult] | None
-    """New pages; ``[]`` when none; None until the run completes."""
+    """New results; ``[]`` when none; None until the run completes."""
     output: MonitorRunOutput | None
     error: MonitorRunError | None
     created_at: str | None
@@ -627,8 +604,6 @@ class MonitorRun:
     changes: MonitorRunChanges | None = None
     """A page monitor's completed run: what changed on the page. None for a
     search monitor and until the run completes."""
-    usage: Any = None
-    """None until monitors are priced."""
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
     request_id: str | None = None
 
@@ -660,7 +635,6 @@ class MonitorRun:
             changes=MonitorRunChanges._from_json(changes)
             if changes is not None
             else None,
-            usage=data.get("usage"),
             raw=data,
             request_id=request_id,
         )
@@ -682,7 +656,7 @@ class MonitorVersion:
     """``"live"`` or ``"stream"``; versions are compared only with versions
     of the same source."""
     notified: bool
-    """This version's change was told (``monitor.change``)."""
+    """This version's change was told (``monitor.page.changed``)."""
     summary: str | None = None
     items: list[str] = field(default_factory=list)
     diff: MonitorDiff | None = None
@@ -813,7 +787,7 @@ class ListPage(Generic[T]):
 
 MonitorList = ListPage[Monitor]
 RunList = ListPage[MonitorRun]
-PageList = ListPage[MonitorResult]
+ResultList = ListPage[MonitorResult]
 DeliveryList = ListPage[MonitorDelivery]
 VersionList = ListPage[MonitorVersion]
 
@@ -836,7 +810,7 @@ def _run_list(data: dict[str, Any], request_id: str | None) -> RunList:
     return _list(data, request_id, MonitorRun._from_json)
 
 
-def _page_list(data: dict[str, Any], request_id: str | None) -> PageList:
+def _result_list(data: dict[str, Any], request_id: str | None) -> ResultList:
     return _list(data, request_id, MonitorResult._from_json)
 
 
@@ -1095,7 +1069,7 @@ class Monitors:
                 ``max_results`` (1 to 100, default 10), ``include_domains``,
                 ``exclude_domains`` and ``content`` (``{"text": True}``
                 returns each page's text). Required unless ``type="page"``.
-            type: ``"search"`` (the API's default: new pages about a topic)
+            type: ``"search"`` (the API's default: new results about a topic)
                 or ``"page"`` (changes to one page).
             page: The page a page monitor watches: ``url`` (required, a
                 public http(s) address), ``watch_for`` (what on the page
@@ -1113,10 +1087,12 @@ class Monitors:
                 in the subset the API supports; the API checks it.
             webhook: ``{"url": "https://...", "events": [...]}``. A search
                 monitor's default events are the ``monitor.*`` and
-                ``monitor.run.*`` ones; add ``"monitor.hit"`` to get each new
-                page as soon as it is found. A page monitor's default events
-                are ``monitor.created``, ``updated``, ``deleted``,
-                ``disabled``, ``run.failed`` and ``monitor.change``.
+                ``monitor.run.*`` ones plus ``monitor.result.found`` (each
+                new result as soon as it is found), ``monitor.result.changed``
+                and, once a page is attached, ``monitor.page.changed``. A
+                page monitor's default events are ``monitor.created``,
+                ``updated``, ``deleted``, ``disabled``, ``run.failed`` and
+                ``monitor.page.changed``.
             metadata: Your own tags, at most 50, echoed in every webhook.
             idempotency_key: Makes a retry safe: the same key with the same
                 body returns the monitor the first call created, for 24 hours.
@@ -1296,7 +1272,7 @@ class Monitors:
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
     ) -> Monitor:
-        """Delete a monitor and the pages it found, for good. Returns it as it was."""
+        """Delete a monitor and the results it found, for good. Returns it as it was."""
         call = _Call("DELETE", _path(_segment("monitor_id", monitor_id)))
         data, request_id = self._send(call, timeout, max_retries, extra_headers)
         return Monitor._from_json(data, request_id)
@@ -1359,7 +1335,7 @@ class Monitors:
         data, request_id = self._send(call, timeout, max_retries, extra_headers)
         return MonitorRun._from_json(data, request_id)
 
-    def pages(
+    def results(
         self,
         monitor_id: str,
         *,
@@ -1369,20 +1345,20 @@ class Monitors:
         timeout: Timeout = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
-    ) -> PageList:
-        """The pages a monitor accepted, newest first, one per story.
+    ) -> ResultList:
+        """The results a monitor accepted, newest first, one per story.
 
         The way to read a monitor without a webhook or a schedule: poll, and
         stop at the first ``id`` already seen. ``min_importance=4`` keeps the
-        pages a reader would not want to miss.
+        results a reader would not want to miss.
         """
         call = _Call(
             "GET",
-            _path(_segment("monitor_id", monitor_id), "pages"),
+            _path(_segment("monitor_id", monitor_id), "results"),
             params=_query(limit=limit, cursor=cursor, min_importance=min_importance),
         )
         data, request_id = self._send(call, timeout, max_retries, extra_headers)
-        return _page_list(data, request_id)
+        return _result_list(data, request_id)
 
     def versions(
         self,
@@ -1718,7 +1694,7 @@ class AsyncMonitors:
         data, request_id = await self._send(call, timeout, max_retries, extra_headers)
         return MonitorRun._from_json(data, request_id)
 
-    async def pages(
+    async def results(
         self,
         monitor_id: str,
         *,
@@ -1728,15 +1704,15 @@ class AsyncMonitors:
         timeout: Timeout = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
-    ) -> PageList:
-        """The pages a monitor accepted. See :meth:`Monitors.pages`."""
+    ) -> ResultList:
+        """The results a monitor accepted. See :meth:`Monitors.results`."""
         call = _Call(
             "GET",
-            _path(_segment("monitor_id", monitor_id), "pages"),
+            _path(_segment("monitor_id", monitor_id), "results"),
             params=_query(limit=limit, cursor=cursor, min_importance=min_importance),
         )
         data, request_id = await self._send(call, timeout, max_retries, extra_headers)
-        return _page_list(data, request_id)
+        return _result_list(data, request_id)
 
     async def versions(
         self,

@@ -4,25 +4,25 @@
   "id": "msg_2nY8kTestVector01",
   "timestamp": "1763400000",
   "now": 1763400000,
-  "signature": "v1,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4=",
-  "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"research\"}}",
+  "signature": "v1,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc=",
+  "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"research\"}}",
   "cases": [
     {
       "name": "a valid signature",
       "valid": true,
-      "type": "monitor.hit"
+      "type": "monitor.result.found"
     },
     {
       "name": "the timestamp 300 s ago is within the default tolerance",
       "now": 1763400300,
       "valid": true,
-      "type": "monitor.hit"
+      "type": "monitor.result.found"
     },
     {
       "name": "the timestamp 300 s ahead is within the default tolerance",
       "now": 1763399700,
       "valid": true,
-      "type": "monitor.hit"
+      "type": "monitor.result.found"
     },
     {
       "name": "the timestamp 301 s ago is refused",
@@ -39,17 +39,17 @@
       "now": 1763400500,
       "tolerance": 600,
       "valid": true,
-      "type": "monitor.hit"
+      "type": "monitor.result.found"
     },
     {
       "name": "one of several signatures matches",
-      "signature": "v1,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= v1,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4=",
+      "signature": "v1,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= v1,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc=",
       "valid": true,
-      "type": "monitor.hit"
+      "type": "monitor.result.found"
     },
     {
       "name": "a signature of another version is not read",
-      "signature": "v2,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4=",
+      "signature": "v2,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc=",
       "valid": false
     },
     {
@@ -59,12 +59,12 @@
     },
     {
       "name": "a signature without its version",
-      "signature": "9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4=",
+      "signature": "ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc=",
       "valid": false
     },
     {
       "name": "a changed body",
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"marketing\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"marketing\"}}",
       "valid": false
     },
     {
@@ -114,32 +114,32 @@
       "headers": {
         "webhook-timestamp": "0001763400000"
       },
-      "signature": "v1,24rwSfPZu2R5b5Az4x1BO97a/Enu1Z4ZmzI9kKSqrUE=",
+      "signature": "v1,lxdzPfDgYBsTS5dEapLZ1CgQ0cWYz8ep2y4cmi+QaqQ=",
       "valid": false
     },
     {
       "name": "header names in any case",
       "header_case": "upper",
       "valid": true,
-      "type": "monitor.hit"
+      "type": "monitor.result.found"
     },
     {
       "name": "a secret without the whsec_ prefix",
       "secret": "a2VlbmFibGUtbW9uaXRvcnMtd2ViaG9vay10ZXN0ISE=",
       "valid": true,
-      "type": "monitor.hit"
+      "type": "monitor.result.found"
     },
     {
       "name": "a secret that is not base64 is used as its bytes",
       "secret": "not base64!",
-      "signature": "v1,uXnm9PAKBqRoaXzXrdbeIz+EvYI7yhVPSL/5CAF5K7c=",
+      "signature": "v1,84S6wGp5ppG5rr1fsjjMUdecv4BWy3Nb64bR61AX/hg=",
       "valid": true,
-      "type": "monitor.hit"
+      "type": "monitor.result.found"
     },
     {
       "name": "a secret of only whsec_ has no key and is refused, even signed with the empty key",
       "secret": "whsec_",
-      "signature": "v1,gE2yS/eBL1nnn74P1Rfi52r9XeQ3JOR2psw/MA1j4ss=",
+      "signature": "v1,dgPMsxW48usGC4XJvBLel2TSXb/Vd0LWfPcWqzd5wfc=",
       "valid": false
     },
     {

@@ -203,7 +203,7 @@ asyncio.run(main())
 ## Monitors
 
 A search monitor is a standing search: it watches the web for a topic and
-hands over every new page that matches, by webhook, in scheduled runs, or when
+hands over every new result that matches, by webhook, in scheduled runs, or when
 you poll it. A page monitor (`type="page"`) reads one page on a schedule and
 reports the changes worth telling. Monitors need an API key
 (`KEENABLE_API_KEY`); without one, every call raises `KeenableAuthError` with
@@ -216,13 +216,13 @@ keenable = Keenable()
 monitor = keenable.monitors.create(
     search={"query": "new open-weights LLM releases", "max_results": 20},
     schedule={"type": "cron", "value": "0 9 * * 1-5", "timezone": "Europe/Paris"},
-    webhook={"url": "https://example.com/keenable", "events": ["monitor.hit"]},
+    webhook={"url": "https://example.com/keenable"},
     metadata={"team": "research"},
 )
 secret = monitor.webhook.secret  # whsec_..., returned by create() only
 
-for page in keenable.monitors.pages(monitor.id, min_importance=4):
-    print(page.importance, page.title, page.url)
+for result in keenable.monitors.results(monitor.id, min_importance=4):
+    print(result.importance, result.title, result.url)
 ```
 
 A page monitor watches one page, here a pricing page every 6 hours:
@@ -258,7 +258,7 @@ Schedules: `cron` (runs at least 10 minutes apart, in `timezone`), `interval`
 | `pause(id)`, `resume(id)` | `update(id, status="paused" / "active")` |
 | `trigger(id)` | Start a run now; returns the queued `MonitorRun` |
 | `runs(id, *, limit, cursor)`, `run(id, run_id)` | A monitor's runs |
-| `pages(id, *, limit, cursor, min_importance)` | The pages a search monitor accepted, newest first, one per story |
+| `results(id, *, limit, cursor, min_importance)` | The results a search monitor accepted, newest first, one per story (`GET /v1/monitors/{id}/results`) |
 | `versions(id, *, limit, cursor)` | A page monitor's history, newest first: each version whose text changed, with its `diff` |
 | `deliveries(id, *, limit, cursor)` | Webhook events of the last 7 days, with attempts and errors |
 | `stats()` | Counts by status and by kind of schedule |
@@ -290,9 +290,9 @@ try:
     event = verify_webhook(raw_body, request.headers, secret)
 except WebhookVerificationError:
     ...  # answer 400
-if event.type == "monitor.hit":
+if event.type == "monitor.result.found":
     print(event.data.result.url)
-elif event.type == "monitor.change":  # a page monitor's change worth telling
+elif event.type == "monitor.page.changed":  # a page monitor's change worth telling
     print(event.data.run.changes.summary)
 ```
 

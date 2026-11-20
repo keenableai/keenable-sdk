@@ -241,7 +241,7 @@ this SDK created, and does nothing when you passed your own `http.Client`.
 ## Monitors
 
 A search monitor is a standing search: it watches the web for a topic and
-hands over every new page that matches, by webhook, in scheduled runs, or when
+hands over every new result that matches, by webhook, in scheduled runs, or when
 you poll it. A page monitor (`Type: "page"`) reads one page on a schedule and
 reports the changes worth telling. Monitors need an API key
 (`KEENABLE_API_KEY`); without one, every call returns an `*AuthError` with
@@ -252,7 +252,7 @@ ctx := context.Background()
 monitor, err := client.Monitors.Create(ctx, &keenable.MonitorCreateParams{
 	Search:   keenable.MonitorSearchParams{Query: "new open-weights LLM releases", MaxResults: 20},
 	Schedule: &keenable.MonitorScheduleParams{Type: "cron", Value: "0 9 * * 1-5", Timezone: "Europe/Paris"},
-	Webhook:  &keenable.MonitorWebhookParams{URL: "https://example.com/keenable", Events: []string{"monitor.hit"}},
+	Webhook:  &keenable.MonitorWebhookParams{URL: "https://example.com/keenable"},
 	Metadata: map[string]string{"team": "research"},
 })
 if err != nil {
@@ -260,12 +260,12 @@ if err != nil {
 }
 secret := *monitor.Webhook.Secret // whsec_..., returned by Create only
 
-pages, err := client.Monitors.Pages(ctx, monitor.ID, &keenable.MonitorPagesParams{MinImportance: 4})
+results, err := client.Monitors.Results(ctx, monitor.ID, &keenable.MonitorResultsParams{MinImportance: 4})
 if err != nil {
 	log.Fatal(err)
 }
-for _, page := range pages.Data {
-	fmt.Println(page.URL)
+for _, result := range results.Data {
+	fmt.Println(result.URL)
 }
 ```
 
@@ -309,7 +309,7 @@ Schedules: `cron` (runs at least 10 minutes apart, in `Timezone`), `interval`
 | `Pause(ctx, id, *RequestOptions)`, `Resume(ctx, id, *RequestOptions)` | Update with Status "paused" / "active" |
 | `Trigger(ctx, id, *RequestOptions)` | Start a run now; returns the queued `*MonitorRun` |
 | `Runs(ctx, id, *MonitorPageParams)`, `Run(ctx, id, runID, *RequestOptions)` | A monitor's runs |
-| `Pages(ctx, id, *MonitorPagesParams)` | The pages a search monitor accepted, newest first, one per story |
+| `Results(ctx, id, *MonitorResultsParams)` | The results a search monitor accepted, newest first, one per story (`GET /v1/monitors/{id}/results`) |
 | `Versions(ctx, id, *MonitorVersionsParams)` | A page monitor's history, newest first: each version whose text changed, with its `Diff` |
 | `Deliveries(ctx, id, *MonitorPageParams)` | Webhook events of the last 7 days, with attempts and errors |
 | `Stats(ctx, *RequestOptions)` | Counts by status and by kind of schedule |
@@ -341,11 +341,11 @@ func hook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch event.Type {
-	case "monitor.hit":
+	case "monitor.result.found":
 		if event.Data.Result != nil {
 			fmt.Println(event.Data.Result.URL)
 		}
-	case "monitor.change": // a page monitor's change worth telling
+	case "monitor.page.changed": // a page monitor's change worth telling
 		if run := event.Data.Run; run != nil && run.Changes != nil && run.Changes.Summary != nil {
 			fmt.Println(*run.Changes.Summary)
 		}

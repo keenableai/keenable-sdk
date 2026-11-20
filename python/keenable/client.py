@@ -1312,7 +1312,7 @@ class Keenable(_BaseClient):
         # httpx's per-phase meaning.
         self._bounds_attempts = self._owns_client and _bound_by_deadline(self._client)
         self.monitors = Monitors(self)
-        """Keenable Monitors: standing searches that report new pages."""
+        """Keenable Monitors: standing searches that report new results."""
 
     def _monitors_request(
         self,

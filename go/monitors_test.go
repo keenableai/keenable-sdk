@@ -26,13 +26,11 @@ var monitorBody = map[string]any{
 		"query": "new open-weights LLM releases", "max_results": 10, "include_domains": nil,
 		"exclude_domains": []string{"example.com"}, "content": map[string]any{"text": true},
 	},
-	"agent_run_id": nil, "backfill": nil,
 	"schedule":      map[string]any{"type": "cron", "value": "0 9 * * 1-5", "timezone": "Europe/Paris"},
 	"output_schema": nil,
-	"webhook":       map[string]any{"url": "https://hooks.example.com/k", "events": []string{"monitor.hit"}, "secret": "whsec_abc"},
+	"webhook":       map[string]any{"url": "https://hooks.example.com/k", "events": []string{"monitor.result.found"}, "secret": "whsec_abc"},
 	"metadata":      map[string]any{"team": "research"},
-	"memory_scope":  nil, "estimated_cost_usd": nil, "cost_this_month_usd": nil,
-	"last_run_at": nil, "next_run_at": "2026-11-18T08:00:00Z",
+	"last_run_at":   nil, "next_run_at": "2026-11-18T08:00:00Z",
 	"upcoming_runs": []string{"2026-11-18T08:00:00Z"},
 	"created_at":    "2026-11-17T10:00:00Z", "updated_at": "2026-11-17T10:00:00Z",
 }
@@ -40,16 +38,16 @@ var monitorBody = map[string]any{
 var resultBody = map[string]any{
 	"url": "https://example.org/a", "title": "A model", "author": nil,
 	"published_at": "2026-11-17T09:00:00Z", "acquired_at": "2026-11-17T09:05:00Z",
-	"image": nil, "favicon": nil, "highlights": nil, "matched_at": "2026-11-17T09:10:00Z",
+	"image": nil, "matched_at": "2026-11-17T09:10:00Z",
 	"published_at_source": "declared", "summary": "A lab released a model.", "importance": 4,
-	"kind": "news", "source_type": "original", "score": 0.7,
+	"kind": "news", "source_type": "original",
 }
 
 var runBody = map[string]any{
 	"id": "mrun_1", "object": "monitor_run", "monitor_id": "mon_1", "status": "completed",
 	"results": []any{resultBody}, "changes": nil,
 	"output": map[string]any{"structured": map[string]any{"n": 1}, "text": nil, "grounding": []any{}},
-	"error":  nil, "usage": nil, "created_at": "2026-11-17T10:00:00Z",
+	"error":  nil, "created_at": "2026-11-17T10:00:00Z",
 	"started_at": "2026-11-17T10:00:01Z", "ended_at": "2026-11-17T10:00:09Z",
 }
 
@@ -102,7 +100,7 @@ func TestMonitorsCreate(t *testing.T) {
 		Search:   keenable.MonitorSearchParams{Query: "new open-weights LLM releases", ExcludeDomains: []string{"x.com"}, ContentText: &text},
 		Name:     "LLM releases",
 		Schedule: &keenable.MonitorScheduleParams{Type: "cron", Value: "0 9 * * 1-5", Timezone: "Europe/Paris"},
-		Webhook:  &keenable.MonitorWebhookParams{URL: "https://hooks.example.com/k", Events: []string{"monitor.hit"}},
+		Webhook:  &keenable.MonitorWebhookParams{URL: "https://hooks.example.com/k", Events: []string{"monitor.result.found"}},
 		Metadata: map[string]string{"team": "research"},
 	})
 	if err != nil {
@@ -122,7 +120,7 @@ func TestMonitorsCreate(t *testing.T) {
 		},
 		"name":     "LLM releases",
 		"schedule": map[string]any{"type": "cron", "value": "0 9 * * 1-5", "timezone": "Europe/Paris"},
-		"webhook":  map[string]any{"url": "https://hooks.example.com/k", "events": []any{"monitor.hit"}},
+		"webhook":  map[string]any{"url": "https://hooks.example.com/k", "events": []any{"monitor.result.found"}},
 		"metadata": map[string]any{"team": "research"},
 	}
 	if !reflect.DeepEqual(req.Body, want) {
@@ -137,7 +135,7 @@ func TestMonitorsCreate(t *testing.T) {
 	if m.Schedule == nil || *m.Schedule.Timezone != "Europe/Paris" || m.Metadata["team"] != "research" {
 		t.Fatalf("monitor %+v", m)
 	}
-	if m.EstimatedCostUSD != nil || m.CostThisMonthUSD != nil || len(m.UpcomingRuns) != 1 || m.Raw["id"] != "mon_1" {
+	if len(m.UpcomingRuns) != 1 || m.Raw["id"] != "mon_1" {
 		t.Fatalf("monitor %+v", m)
 	}
 }
@@ -294,7 +292,7 @@ func TestMonitorsReads(t *testing.T) {
 	}
 	hit["id"], hit["same_story"] = "h1", 2
 	delivery := map[string]any{
-		"id": "evt_1", "type": "monitor.hit", "url": "https://hooks.example.com/k",
+		"id": "evt_1", "type": "monitor.result.found", "url": "https://hooks.example.com/k",
 		"created_at": "2026-11-17T10:00:00Z", "attempts": 2, "delivered_at": nil,
 		"last_error": "HTTP 500", "next_attempt_at": nil,
 	}
@@ -318,7 +316,7 @@ func TestMonitorsReads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pages, err := c.Monitors.Pages(ctx, "mon_1", &keenable.MonitorPagesParams{MinImportance: 4})
+	results, err := c.Monitors.Results(ctx, "mon_1", &keenable.MonitorResultsParams{MinImportance: 4})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +337,7 @@ func TestMonitorsReads(t *testing.T) {
 		paths = append(paths, r.Path)
 	}
 	wantPaths := []string{
-		"/v1/monitors/mon_1/runs", "/v1/monitors/mon_1/runs/mrun_1", "/v1/monitors/mon_1/pages",
+		"/v1/monitors/mon_1/runs", "/v1/monitors/mon_1/runs/mrun_1", "/v1/monitors/mon_1/results",
 		"/v1/monitors/mon_1/deliveries", "/v1/monitors/stats", "/v1/monitors/bulk",
 	}
 	if !reflect.DeepEqual(paths, wantPaths) {
@@ -355,8 +353,8 @@ func TestMonitorsReads(t *testing.T) {
 	if runs.Data[0].MonitorID != "mon_1" || *run.Results[0].Importance != 4 || run.Output.Structured.(map[string]any)["n"] != float64(1) {
 		t.Fatalf("run %+v", run)
 	}
-	if *pages.Data[0].ID != "h1" || *pages.Data[0].SameStory != 2 || *pages.Data[0].SourceType != "original" {
-		t.Fatalf("pages %+v", pages.Data[0])
+	if *results.Data[0].ID != "h1" || *results.Data[0].SameStory != 2 || *results.Data[0].SourceType != "original" {
+		t.Fatalf("results %+v", results.Data[0])
 	}
 	if *deliveries.Data[0].LastError != "HTTP 500" || stats.ByStatus["active"] != 2 || result.NotFound[0] != "mon_x" || !result.DryRun {
 		t.Fatalf("deliveries %+v stats %+v bulk %+v", deliveries, stats, result)
@@ -377,13 +375,13 @@ func TestMonitorsBulkChecksItsArguments(t *testing.T) {
 	}
 }
 
-const webhookBody = `{"id":"msg_2nY8kTestVector01","type":"monitor.hit","created_at":"2026-11-17T17:20:00Z","data":{"monitor_id":"mon_test01","result":{"url":"https://example.com/news/1","title":"Open weights model released","author":null,"published_at":"2026-11-17T16:00:00Z","acquired_at":"2026-11-17T16:05:00Z","image":null,"favicon":null,"highlights":null,"matched_at":"2026-11-17T16:10:00Z","published_at_source":"declared","summary":"A lab released an open-weights model.","importance":4,"kind":"news","source_type":"original","score":0.82}},"metadata":{"team":"research"}}`
+const webhookBody = `{"id":"msg_2nY8kTestVector01","type":"monitor.result.found","created_at":"2026-11-17T17:20:00Z","data":{"monitor_id":"mon_test01","result":{"url":"https://example.com/news/1","title":"Open weights model released","author":null,"published_at":"2026-11-17T16:00:00Z","acquired_at":"2026-11-17T16:05:00Z","image":null,"matched_at":"2026-11-17T16:10:00Z","published_at_source":"declared","summary":"A lab released an open-weights model.","importance":4,"kind":"news","source_type":"original"}},"metadata":{"team":"research"}}`
 
 func webhookHeaders() http.Header {
 	h := http.Header{}
 	h.Set("webhook-id", "msg_2nY8kTestVector01")
 	h.Set("webhook-timestamp", "1763400000")
-	h.Set("webhook-signature", "v1,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4=")
+	h.Set("webhook-signature", "v1,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc=")
 	return h
 }
 
@@ -393,7 +391,7 @@ func TestVerifyWebhookKnownVector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if event.ID != "msg_2nY8kTestVector01" || event.Type != "monitor.hit" || event.Data.MonitorID != "mon_test01" {
+	if event.ID != "msg_2nY8kTestVector01" || event.Type != "monitor.result.found" || event.Data.MonitorID != "mon_test01" {
 		t.Fatalf("event %+v", event)
 	}
 	if event.Data.Result == nil || event.Data.Result.URL != "https://example.com/news/1" || *event.Data.Result.Importance != 4 {

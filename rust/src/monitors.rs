@@ -1,5 +1,5 @@
-//! Keenable Monitors: standing searches that report new pages as they appear,
-//! and page monitors that report changes to one page.
+//! Keenable Monitors: standing searches that report new results as they
+//! appear, and page monitors that report changes to one page.
 
 use std::collections::{HashMap, VecDeque};
 
@@ -18,7 +18,7 @@ use crate::{types, Client};
 pub struct MonitorSearchParams {
     /// The topic in plain words, e.g. "new open-weights LLM releases".
     pub query: String,
-    /// Pages a run returns at most, 1 to 100 (the API's default is 10).
+    /// Results a run returns at most, 1 to 100 (the API's default is 10).
     pub max_results: Option<u32>,
     /// Only pages on these sites.
     pub include_domains: Option<Vec<String>>,
@@ -111,9 +111,11 @@ pub struct MonitorWebhookParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
     /// For a search monitor, defaults to the monitor.* and monitor.run.*
-    /// events; add "monitor.hit" to get each new page as soon as it is
-    /// found. For a page monitor, defaults to monitor.created, updated,
-    /// deleted, disabled, run.failed and monitor.change.
+    /// events plus monitor.result.found (each new result as soon as it is
+    /// found), monitor.result.changed and, once a page is attached,
+    /// monitor.page.changed. For a page monitor, defaults to
+    /// monitor.created, updated, deleted, disabled, run.failed and
+    /// monitor.page.changed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub events: Option<Vec<String>>,
 }
@@ -203,14 +205,14 @@ pub struct MonitorVersionsParams {
     pub cursor: Option<String>,
 }
 
-/// Paging through a monitor's pages.
+/// Paging through a monitor's results.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct MonitorPagesParams {
-    /// Pages per page.
+pub struct MonitorResultsParams {
+    /// Results per page.
     pub limit: Option<u32>,
     /// The previous page's `next_cursor`.
     pub cursor: Option<String>,
-    /// Keep pages rated at least this important (1 to 5).
+    /// Keep results rated at least this important (1 to 5).
     pub min_importance: Option<u32>,
 }
 
@@ -255,7 +257,7 @@ struct WireContent {
 pub struct MonitorSearch {
     /// The topic in plain words, as written when the monitor was made.
     pub query: String,
-    /// Pages a run returns at most.
+    /// Results a run returns at most.
     pub max_results: u32,
     /// Only pages on these sites.
     pub include_domains: Option<Vec<String>>,
@@ -351,7 +353,7 @@ pub struct Monitor {
     pub object: String,
     /// Its name.
     pub name: Option<String>,
-    /// search (new pages about a topic) or page (changes to one page).
+    /// search (new results about a topic) or page (changes to one page).
     #[serde(rename = "type", default = "default_type")]
     pub monitor_type: String,
     /// active, paused, disabled or completed.
@@ -380,16 +382,6 @@ pub struct Monitor {
     pub created_at: String,
     /// When it last changed.
     pub updated_at: String,
-    /// Not available yet: always `None`.
-    pub agent_run_id: Option<Value>,
-    /// Not available yet: always `None`.
-    pub backfill: Option<Value>,
-    /// Not available yet: always `None`.
-    pub memory_scope: Option<Value>,
-    /// `None` until monitors are priced.
-    pub estimated_cost_usd: Option<f64>,
-    /// `None` until monitors are priced.
-    pub cost_this_month_usd: Option<f64>,
     /// The API's id for this request.
     #[serde(skip)]
     pub request_id: Option<String>,
@@ -417,7 +409,7 @@ pub struct MonitorResultChange {
     pub removed: Option<Vec<String>>,
 }
 
-/// A page a monitor found: in a run, a webhook event or [`Monitors::pages`].
+/// A result a monitor found: in a run, a webhook event or [`Monitors::results`].
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
 #[non_exhaustive]
@@ -434,32 +426,26 @@ pub struct MonitorResult {
     pub acquired_at: Option<String>,
     /// Its image.
     pub image: Option<String>,
-    /// Always `None` for now.
-    pub favicon: Option<String>,
-    /// Always `None` for now.
-    pub highlights: Option<Value>,
     /// When the monitor accepted the page.
     pub matched_at: Option<String>,
     /// declared, url, x or text: where the date comes from.
     pub published_at_source: Option<String>,
     /// One line on what the page reports.
     pub summary: Option<String>,
-    /// 1 to 5 for the monitor's topic; pages under 3 are not sent.
+    /// 1 to 5 for the monitor's topic; results under 3 are not sent.
     pub importance: Option<u32>,
     /// The kind of page.
     pub kind: Option<String>,
     /// original or rewrite.
     pub source_type: Option<String>,
-    /// Uncalibrated relevance, only for ordering one monitor's pages.
-    pub score: Option<f64>,
     /// The page's text, when the monitor's search asks for it.
     pub text: Option<String>,
-    /// On monitor.update: how the page changed.
+    /// On monitor.result.changed: how the page changed.
     pub change: Option<MonitorResultChange>,
-    /// From [`Monitors::pages`]: identifies the match, and is the cursor of
+    /// From [`Monitors::results`]: identifies the match, and is the cursor of
     /// the page of results it ends.
     pub id: Option<String>,
-    /// From [`Monitors::pages`]: how many more pages reported the same story
+    /// From [`Monitors::results`]: how many more results reported the same story
     /// and were left out.
     pub same_story: Option<u32>,
 }
@@ -573,7 +559,7 @@ pub struct MonitorRunChanges {
     /// The text changed since the previous version (a baseline is not a
     /// change).
     pub changed: bool,
-    /// The change is worth telling: monitor.change was sent.
+    /// The change is worth telling: monitor.page.changed was sent.
     pub notified: bool,
     /// The first reading of the page (or of a new URL).
     pub baseline: bool,
@@ -610,7 +596,7 @@ pub struct MonitorVersion {
     /// live or stream; versions are compared only with versions of the same
     /// source.
     pub source: String,
-    /// This version's change was told (monitor.change).
+    /// This version's change was told (monitor.page.changed).
     pub notified: bool,
     /// One sentence on what changed, when it was told.
     pub summary: Option<String>,
@@ -635,7 +621,7 @@ pub struct MonitorRun {
     pub monitor_id: String,
     /// queued, running, completed, failed or cancelled.
     pub status: String,
-    /// New pages; empty when none; `None` until the run completes.
+    /// New results; empty when none; `None` until the run completes.
     pub results: Option<Vec<MonitorResult>>,
     /// A page monitor's completed run: what changed on the page. `None` for
     /// a search monitor.
@@ -644,8 +630,6 @@ pub struct MonitorRun {
     pub output: Option<MonitorRunOutput>,
     /// Why it failed.
     pub error: Option<MonitorRunError>,
-    /// `None` until monitors are priced.
-    pub usage: Option<Value>,
     /// When it was made.
     pub created_at: Option<String>,
     /// When it started.
@@ -764,8 +748,8 @@ impl<T> Default for List<T> {
 pub type MonitorList = List<Monitor>;
 /// A page of runs.
 pub type RunList = List<MonitorRun>;
-/// A page of a monitor's pages.
-pub type PageList = List<MonitorResult>;
+/// A page of a monitor's results.
+pub type ResultList = List<MonitorResult>;
 /// A page of webhook deliveries.
 pub type DeliveryList = List<MonitorDelivery>;
 /// A page of a page monitor's versions.
@@ -817,8 +801,8 @@ impl<T: DeserializeOwned> Response for List<T> {
 ///         ..Default::default()
 ///     })
 ///     .await?;
-/// for page in client.monitors().pages(&monitor.id, &Default::default()).await?.data {
-///     println!("{} {}", page.title.unwrap_or_default(), page.url);
+/// for result in client.monitors().results(&monitor.id, &Default::default()).await?.data {
+///     println!("{} {}", result.title.unwrap_or_default(), result.url);
 /// }
 /// # Ok(())
 /// # }
@@ -1162,7 +1146,7 @@ impl<'a> Monitors<'a> {
         .await
     }
 
-    /// Deletes a monitor and the pages it found, for good, and returns it as
+    /// Deletes a monitor and the results it found, for good, and returns it as
     /// it was.
     pub async fn delete(&self, monitor_id: &str) -> Result<Monitor> {
         let path = monitor_path(monitor_id, &[])?;
@@ -1195,12 +1179,16 @@ impl<'a> Monitors<'a> {
         self.send(Call::new(reqwest::Method::GET, path, true)).await
     }
 
-    /// The pages a monitor accepted, newest first, one per story. Poll and
-    /// stop at the first `id` already seen.
-    pub async fn pages(&self, monitor_id: &str, params: &MonitorPagesParams) -> Result<PageList> {
+    /// The results a monitor accepted, newest first, one per story. Poll
+    /// and stop at the first `id` already seen.
+    pub async fn results(
+        &self,
+        monitor_id: &str,
+        params: &MonitorResultsParams,
+    ) -> Result<ResultList> {
         let mut call = Call::new(
             reqwest::Method::GET,
-            monitor_path(monitor_id, &["pages"])?,
+            monitor_path(monitor_id, &["results"])?,
             true,
         );
         call.query = page_query(params.limit, &params.cursor);

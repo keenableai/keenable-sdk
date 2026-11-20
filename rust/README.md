@@ -190,14 +190,14 @@ goes only to the configured host.
 ## Monitors
 
 A search monitor is a standing search: it watches the web for a topic and
-hands over every new page that matches, by webhook, in scheduled runs, or when
+hands over every new result that matches, by webhook, in scheduled runs, or when
 you poll it. A page monitor (`monitor_type: Some("page".into())`, sent as
 `type`) reads one page on a schedule and reports the changes worth telling.
 Monitors need an API key (`KEENABLE_API_KEY`); without one, every call returns
 `Error::Auth` with code `missing_api_key` and sends nothing. An organization can have 100 active monitors.
 
 ```rust
-use keenable::{MonitorCreateParams, MonitorPagesParams, MonitorScheduleParams, MonitorSearchParams};
+use keenable::{MonitorCreateParams, MonitorResultsParams, MonitorScheduleParams, MonitorSearchParams};
 
 let client = keenable::Client::new()?;
 let monitor = client
@@ -212,12 +212,12 @@ let monitor = client
         ..Default::default()
     })
     .await?;
-let pages = client
+let results = client
     .monitors()
-    .pages(&monitor.id, &MonitorPagesParams { min_importance: Some(4), ..Default::default() })
+    .results(&monitor.id, &MonitorResultsParams { min_importance: Some(4), ..Default::default() })
     .await?;
-for page in pages.data {
-    println!("{}", page.url);
+for result in results.data {
+    println!("{}", result.url);
 }
 ```
 
@@ -266,7 +266,7 @@ code `invalid_request` and a message that names the rule.
 | `pause(id)`, `resume(id)` | Update with status "paused" / "active" |
 | `trigger(id)` | Start a run now; returns the queued `MonitorRun` |
 | `runs(id, &MonitorPageParams)`, `run(id, run_id)` | A monitor's runs |
-| `pages(id, &MonitorPagesParams)` | The pages a search monitor accepted, newest first, one per story |
+| `results(id, &MonitorResultsParams)` | The results a search monitor accepted, newest first, one per story (`GET /v1/monitors/{id}/results`) |
 | `versions(id, &MonitorVersionsParams)` | A page monitor's history, newest first: each version whose text changed, with its `diff` |
 | `deliveries(id, &MonitorPageParams)` | Webhook events of the last 7 days, with attempts and errors |
 | `stats()` | Counts by status and by kind of schedule |
@@ -294,10 +294,10 @@ Verify the raw body before trusting it:
 ```rust
 // body: the raw request body; headers: a keenable::reqwest::header::HeaderMap
 match keenable::verify_webhook(body, &headers, secret) {
-    Ok(event) if event.event_type == "monitor.hit" => {
+    Ok(event) if event.event_type == "monitor.result.found" => {
         println!("{}", event.data.result.map(|r| r.url).unwrap_or_default());
     }
-    Ok(event) if event.event_type == "monitor.change" => {
+    Ok(event) if event.event_type == "monitor.page.changed" => {
         // a page monitor's change worth telling
         let changes = event.data.run.and_then(|r| r.changes);
         println!("{:?}", changes.and_then(|c| c.summary));

@@ -658,7 +658,7 @@ export class Keenable {
   private readonly maxRetries: number;
   private readonly defaultHeaders: Record<string, string>;
   private readonly fetchImpl: typeof globalThis.fetch;
-  /** Keenable Monitors: standing searches that report new pages. Needs an API key. */
+  /** Keenable Monitors: standing searches that report new results. Needs an API key. */
   readonly monitors: Monitors;
 
   constructor(options: KeenableOptions = {}) {

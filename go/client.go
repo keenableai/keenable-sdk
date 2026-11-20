@@ -125,7 +125,7 @@ type Client struct {
 	maxRetries    int
 	// defaultHeaders is a copy of Options.Headers.
 	defaultHeaders map[string]string
-	// Monitors is Keenable Monitors: standing searches that report new pages
+	// Monitors is Keenable Monitors: standing searches that report new results
 	// as they appear. It needs an API key.
 	Monitors *MonitorsService
 }

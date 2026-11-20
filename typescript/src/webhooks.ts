@@ -3,8 +3,8 @@
  *
  * ```ts
  * const event = await verifyWebhook(rawBody, request.headers, process.env.KEENABLE_WEBHOOK_SECRET!);
- * if (event.type === "monitor.hit") console.log(event.data.result?.url);
- * if (event.type === "monitor.change") console.log(event.data.run?.changes?.summary);
+ * if (event.type === "monitor.result.found") console.log(event.data.result?.url);
+ * if (event.type === "monitor.page.changed") console.log(event.data.run?.changes?.summary);
  * ```
  */
 
@@ -19,9 +19,9 @@ export interface WebhookEventData {
   monitorId: string;
   /** On monitor.created, updated, deleted and disabled. */
   monitor?: Monitor;
-  /** On monitor.run.created, completed and failed, and on monitor.change (a page monitor's run, with its `changes`). */
+  /** On monitor.run.created, completed and failed, and on a page monitor's monitor.page.changed (its run, with its `changes`). */
   run?: MonitorRun;
-  /** On monitor.hit and monitor.update. */
+  /** On monitor.result.found and monitor.result.changed. */
   result?: MonitorResult;
   /** Why, on monitor.disabled. */
   reason?: string;

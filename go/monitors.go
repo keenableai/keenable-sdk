@@ -12,7 +12,7 @@ import (
 )
 
 // MonitorsService is client.Monitors: Keenable Monitors, standing searches
-// that report new pages as they appear, and page monitors that report
+// that report new results as they appear, and page monitors that report
 // changes to one page. Monitors need an API key; without
 // one every call returns an [AuthError] with APICode "missing_api_key" and
 // sends nothing.
@@ -30,7 +30,7 @@ type MonitorsService struct {
 type MonitorSearchParams struct {
 	// Query is the topic in plain words, e.g. "new open-weights LLM releases".
 	Query string
-	// MaxResults is the pages a run returns at most, 1 to 100. Zero is unset
+	// MaxResults is the results a run returns at most, 1 to 100. Zero is unset
 	// (the API's default is 10).
 	MaxResults int
 	// IncludeDomains keeps only pages on these sites. Nil is unset.
@@ -117,9 +117,11 @@ type MonitorWebhookParams struct {
 	// URL is a public HTTPS address.
 	URL string `json:"url,omitempty"`
 	// Events defaults, for a search monitor, to the monitor.* and
-	// monitor.run.* events; add "monitor.hit" to get each new page as soon
-	// as it is found. For a page monitor it defaults to monitor.created,
-	// updated, deleted, disabled, run.failed and monitor.change.
+	// monitor.run.* events plus monitor.result.found (each new result as
+	// soon as it is found), monitor.result.changed and, once a page is
+	// attached, monitor.page.changed. For a page monitor it defaults to
+	// monitor.created, updated, deleted, disabled, run.failed
+	// and monitor.page.changed.
 	Events []string `json:"events,omitempty"`
 }
 
@@ -228,13 +230,13 @@ type MonitorVersionsParams struct {
 	Cursor string
 }
 
-// MonitorPagesParams page through a monitor's pages. Zero values are unset.
-type MonitorPagesParams struct {
+// MonitorResultsParams page through a monitor's results. Zero values are unset.
+type MonitorResultsParams struct {
 	// RequestOptions holds this call's timeout, retry budget and headers.
 	RequestOptions
 	Limit  int
 	Cursor string
-	// MinImportance keeps pages rated at least this important (1 to 5).
+	// MinImportance keeps results rated at least this important (1 to 5).
 	MinImportance int
 }
 
@@ -317,7 +319,7 @@ type Monitor struct {
 	ID     string  `json:"id"`
 	Object string  `json:"object"`
 	Name   *string `json:"name"`
-	// Type is search (new pages about a topic) or page (changes to one page);
+	// Type is search (new results about a topic) or page (changes to one page);
 	// search when the response leaves it out.
 	Type string `json:"type"`
 	// Status is active, paused, disabled or completed.
@@ -338,13 +340,6 @@ type Monitor struct {
 	UpcomingRuns []string `json:"upcoming_runs"`
 	CreatedAt    string   `json:"created_at"`
 	UpdatedAt    string   `json:"updated_at"`
-	// AgentRunID, Backfill and MemoryScope are not available yet: always nil.
-	AgentRunID  any `json:"agent_run_id"`
-	Backfill    any `json:"backfill"`
-	MemoryScope any `json:"memory_scope"`
-	// EstimatedCostUSD and CostThisMonthUSD are nil until monitors are priced.
-	EstimatedCostUSD *float64 `json:"estimated_cost_usd"`
-	CostThisMonthUSD *float64 `json:"cost_this_month_usd"`
 	// RequestID is the X-Request-Id of the response.
 	RequestID string `json:"-"`
 	// Raw is the unmodified JSON object.
@@ -380,8 +375,8 @@ type MonitorResultChange struct {
 	Removed []string `json:"removed"`
 }
 
-// MonitorResult is a page a monitor found: in a run, a webhook event or
-// [MonitorsService.Pages].
+// MonitorResult is a result a monitor found: in a run, a webhook event or
+// [MonitorsService.Results].
 type MonitorResult struct {
 	URL         string  `json:"url"`
 	Title       *string `json:"title"`
@@ -389,30 +384,25 @@ type MonitorResult struct {
 	PublishedAt *string `json:"published_at"`
 	AcquiredAt  *string `json:"acquired_at"`
 	Image       *string `json:"image"`
-	// Favicon and Highlights are always nil for now.
-	Favicon    *string `json:"favicon"`
-	Highlights any     `json:"highlights"`
 	// MatchedAt is when the monitor accepted the page.
 	MatchedAt *string `json:"matched_at"`
 	// PublishedAtSource is declared, url, x or text: where the date comes from.
 	PublishedAtSource *string `json:"published_at_source"`
 	// Summary is one line on what the page reports.
 	Summary *string `json:"summary"`
-	// Importance is 1 to 5 for the monitor's topic; pages under 3 are not sent.
+	// Importance is 1 to 5 for the monitor's topic; results under 3 are not sent.
 	Importance *int    `json:"importance"`
 	Kind       *string `json:"kind"`
 	// SourceType is original or rewrite.
 	SourceType *string `json:"source_type"`
-	// Score is uncalibrated relevance, only for ordering one monitor's pages.
-	Score *float64 `json:"score"`
 	// Text is the page's text, when the monitor's search asks for it.
 	Text *string `json:"text,omitempty"`
-	// Change is set on monitor.update: how the page changed.
+	// Change is set on monitor.result.changed: how the page changed.
 	Change *MonitorResultChange `json:"change,omitempty"`
-	// ID is set by Pages: identifies the match, and is the cursor of the
+	// ID is set by Results: identifies the match, and is the cursor of the
 	// page of results it ends.
 	ID *string `json:"id,omitempty"`
-	// SameStory is set by Pages: how many more pages reported the same story
+	// SameStory is set by Results: how many more results reported the same story
 	// and were left out.
 	SameStory *int `json:"same_story,omitempty"`
 }
@@ -488,7 +478,7 @@ type MonitorRunChanges struct {
 	// Changed says the text changed since the previous version (a baseline
 	// is not a change).
 	Changed bool `json:"changed"`
-	// Notified says the change is worth telling: monitor.change was sent.
+	// Notified says the change is worth telling: monitor.page.changed was sent.
 	Notified bool `json:"notified"`
 	// Baseline says this is the first reading of the page (or of a new URL).
 	Baseline bool `json:"baseline"`
@@ -516,7 +506,7 @@ type MonitorVersion struct {
 	// Source is live or stream; versions are compared only with versions of
 	// the same source.
 	Source string `json:"source"`
-	// Notified says this version's change was told (monitor.change).
+	// Notified says this version's change was told (monitor.page.changed).
 	Notified bool     `json:"notified"`
 	Summary  *string  `json:"summary"`
 	Items    []string `json:"items"`
@@ -532,20 +522,18 @@ type MonitorRun struct {
 	MonitorID string `json:"monitor_id"`
 	// Status is queued, running, completed, failed or cancelled.
 	Status string `json:"status"`
-	// Results are the new pages; empty when none; nil until the run completes.
+	// Results are the new results; empty when none; nil until the run completes.
 	Results []MonitorResult `json:"results"`
 	// Changes is a page monitor's completed run: what changed on the page.
 	// Nil for a search monitor.
-	Changes *MonitorRunChanges `json:"changes"`
-	Output  *MonitorRunOutput  `json:"output"`
-	Error   *MonitorRunError   `json:"error"`
-	// Usage is nil until monitors are priced.
-	Usage     any            `json:"usage"`
-	CreatedAt *string        `json:"created_at"`
-	StartedAt *string        `json:"started_at"`
-	EndedAt   *string        `json:"ended_at"`
-	RequestID string         `json:"-"`
-	Raw       map[string]any `json:"-"`
+	Changes   *MonitorRunChanges `json:"changes"`
+	Output    *MonitorRunOutput  `json:"output"`
+	Error     *MonitorRunError   `json:"error"`
+	CreatedAt *string            `json:"created_at"`
+	StartedAt *string            `json:"started_at"`
+	EndedAt   *string            `json:"ended_at"`
+	RequestID string             `json:"-"`
+	Raw       map[string]any     `json:"-"`
 }
 
 // MonitorDelivery is one webhook event and its delivery attempts.
@@ -599,8 +587,8 @@ type MonitorList = List[Monitor]
 // RunList is a page of runs.
 type RunList = List[MonitorRun]
 
-// PageList is a page of a monitor's pages.
-type PageList = List[MonitorResult]
+// ResultList is a page of a monitor's results.
+type ResultList = List[MonitorResult]
 
 // DeliveryList is a page of webhook deliveries.
 type DeliveryList = List[MonitorDelivery]
@@ -958,7 +946,7 @@ func (m *MonitorsService) Resume(ctx context.Context, monitorID string, opts *Re
 	return m.Update(ctx, monitorID, &MonitorUpdateParams{RequestOptions: requestOrEmpty(opts), Status: "active"})
 }
 
-// Delete deletes a monitor and the pages it found, for good, and returns it
+// Delete deletes a monitor and the results it found, for good, and returns it
 // as it was.
 func (m *MonitorsService) Delete(ctx context.Context, monitorID string, opts *RequestOptions) (*Monitor, error) {
 	path, err := monitorPath(monitorID)
@@ -1002,15 +990,15 @@ func (m *MonitorsService) Run(ctx context.Context, monitorID, runID string, opts
 	return m.run(ctx, monitorCall{method: http.MethodGet, path: path, safe: true, opts: opts})
 }
 
-// Pages returns the pages a monitor accepted, newest first, one per story.
-// Poll and stop at the first ID already seen. params may be nil.
-func (m *MonitorsService) Pages(ctx context.Context, monitorID string, params *MonitorPagesParams) (*PageList, error) {
-	path, err := monitorPath(monitorID, "pages")
+// Results returns the results a monitor accepted, newest first, one per
+// story. Poll and stop at the first ID already seen. params may be nil.
+func (m *MonitorsService) Results(ctx context.Context, monitorID string, params *MonitorResultsParams) (*ResultList, error) {
+	path, err := monitorPath(monitorID, "results")
 	if err != nil {
 		return nil, err
 	}
 	if params == nil {
-		params = &MonitorPagesParams{}
+		params = &MonitorResultsParams{}
 	}
 	q := pageQuery(params.Limit, params.Cursor)
 	if params.MinImportance != 0 {

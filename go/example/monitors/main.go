@@ -40,12 +40,12 @@ func main() {
 	}
 	fmt.Println("run", run.ID, "is", run.Status)
 
-	pages, err := client.Monitors.Pages(ctx, monitor.ID, &keenable.MonitorPagesParams{MinImportance: 4})
+	results, err := client.Monitors.Results(ctx, monitor.ID, &keenable.MonitorResultsParams{MinImportance: 4})
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, page := range pages.Data {
-		fmt.Println(page.URL)
+	for _, result := range results.Data {
+		fmt.Println(result.URL)
 	}
 
 	if _, err := client.Monitors.Delete(ctx, monitor.ID, nil); err != nil {
@@ -96,10 +96,10 @@ func webhookHandler(secret string) http.HandlerFunc {
 			http.Error(w, "bad signature", http.StatusBadRequest)
 			return
 		}
-		if event.Type == "monitor.hit" && event.Data.Result != nil {
-			fmt.Println("new page:", event.Data.Result.URL)
+		if event.Type == "monitor.result.found" && event.Data.Result != nil {
+			fmt.Println("new result:", event.Data.Result.URL)
 		}
-		if event.Type == "monitor.change" && event.Data.Run != nil && event.Data.Run.Changes != nil && event.Data.Run.Changes.Summary != nil {
+		if event.Type == "monitor.page.changed" && event.Data.Run != nil && event.Data.Run.Changes != nil && event.Data.Run.Changes.Summary != nil {
 			fmt.Println("the page changed:", *event.Data.Run.Changes.Summary)
 		}
 	}

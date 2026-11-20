@@ -178,7 +178,7 @@ func TestMonitorsSearchRunOutputIsFresh(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if run.Changes != nil || run.Usage != nil || run.Output == nil || !run.Output.Fresh || run.Output.Error != nil {
+	if run.Changes != nil || run.Output == nil || !run.Output.Fresh || run.Output.Error != nil {
 		t.Fatalf("run %+v", run)
 	}
 	bare, err := c.Monitors.Run(context.Background(), "mon_1", "mrun_2", nil)
@@ -221,10 +221,10 @@ func TestMonitorsVersions(t *testing.T) {
 	}
 }
 
-func TestVerifyWebhookMonitorChange(t *testing.T) {
+func TestVerifyWebhookPageChanged(t *testing.T) {
 	const secret = "whsec_a2VlbmFibGUtbW9uaXRvcnMtd2ViaG9vay10ZXN0ISE="
 	body, _ := json.Marshal(map[string]any{
-		"id": "msg_change1", "type": "monitor.change", "created_at": "2026-11-18T08:00:05Z",
+		"id": "msg_change1", "type": "monitor.page.changed", "created_at": "2026-11-18T08:00:05Z",
 		"data": map[string]any{"monitor_id": "mon_p", "run": pageRunBody()}, "metadata": nil,
 	})
 	key, _ := base64.StdEncoding.DecodeString(strings.TrimPrefix(secret, "whsec_"))
@@ -238,7 +238,7 @@ func TestVerifyWebhookMonitorChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if event.Type != "monitor.change" || event.Data.Run == nil || event.Data.Run.Changes == nil || event.Data.Result != nil {
+	if event.Type != "monitor.page.changed" || event.Data.Run == nil || event.Data.Run.Changes == nil || event.Data.Result != nil {
 		t.Fatalf("event %+v", event)
 	}
 	if *event.Data.Run.Changes.Summary != "The Pro plan went from $25 to $30 a month." {

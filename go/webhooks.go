@@ -32,9 +32,9 @@ type WebhookEventData struct {
 	// Monitor is set on monitor.created, updated, deleted and disabled.
 	Monitor *Monitor `json:"monitor,omitempty"`
 	// Run is set on monitor.run.created, completed and failed, and on
-	// monitor.change (a page monitor's run, with its Changes).
+	// a page monitor's monitor.page.changed (its run, with its Changes).
 	Run *MonitorRun `json:"run,omitempty"`
-	// Result is set on monitor.hit and monitor.update.
+	// Result is set on monitor.result.found and monitor.result.changed.
 	Result *MonitorResult `json:"result,omitempty"`
 	// Reason is why, on monitor.disabled.
 	Reason *string `json:"reason,omitempty"`

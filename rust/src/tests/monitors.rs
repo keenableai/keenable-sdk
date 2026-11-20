@@ -8,7 +8,7 @@ use super::server::{start, Reply, Script};
 use super::*;
 use crate::{
     BulkFilter, Error, MonitorBulkParams, MonitorCreateParams, MonitorListParams,
-    MonitorPageParams, MonitorPageTarget, MonitorPagesParams, MonitorRunOutputError,
+    MonitorPageParams, MonitorPageTarget, MonitorResultsParams, MonitorRunOutputError,
     MonitorScheduleParams, MonitorSearchParams, MonitorUpdateParams, MonitorVersionsParams,
     MonitorWebhookParams,
 };
@@ -18,13 +18,10 @@ fn monitor() -> Value {
         "id": "mon_1", "object": "monitor", "name": "LLM releases", "status": "active",
         "search": {"query": "new open-weights LLM releases", "max_results": 10, "include_domains": null,
                    "exclude_domains": ["example.com"], "content": {"text": true}},
-        "agent_run_id": null, "backfill": null,
         "schedule": {"type": "cron", "value": "0 9 * * 1-5", "timezone": "Europe/Paris"},
         "output_schema": null,
-        "webhook": {"url": "https://hooks.example.com/k", "events": ["monitor.hit"], "secret": "whsec_abc"},
-        "metadata": {"team": "research"}, "memory_scope": null,
-        "estimated_cost_usd": null,
-        "cost_this_month_usd": null,
+        "webhook": {"url": "https://hooks.example.com/k", "events": ["monitor.result.found"], "secret": "whsec_abc"},
+        "metadata": {"team": "research"},
         "last_run_at": null, "next_run_at": "2026-11-18T08:00:00Z",
         "upcoming_runs": ["2026-11-18T08:00:00Z"],
         "created_at": "2026-11-17T10:00:00Z", "updated_at": "2026-11-17T10:00:00Z"
@@ -35,9 +32,9 @@ fn result() -> Value {
     json!({
         "url": "https://example.org/a", "title": "A model", "author": null,
         "published_at": "2026-11-17T09:00:00Z", "acquired_at": "2026-11-17T09:05:00Z",
-        "image": null, "favicon": null, "highlights": null, "matched_at": "2026-11-17T09:10:00Z",
+        "image": null, "matched_at": "2026-11-17T09:10:00Z",
         "published_at_source": "declared", "summary": "A lab released a model.", "importance": 4,
-        "kind": "news", "source_type": "original", "score": 0.7
+        "kind": "news", "source_type": "original"
     })
 }
 
@@ -46,7 +43,7 @@ fn run() -> Value {
         "id": "mrun_1", "object": "monitor_run", "monitor_id": "mon_1", "status": "completed",
         "results": [result()], "changes": null,
         "output": {"structured": {"n": 1}, "text": null, "grounding": []},
-        "error": null, "usage": null, "created_at": "2026-11-17T10:00:00Z",
+        "error": null, "created_at": "2026-11-17T10:00:00Z",
         "started_at": "2026-11-17T10:00:01Z", "ended_at": "2026-11-17T10:00:09Z"
     })
 }
@@ -79,7 +76,7 @@ async fn create_sends_the_body_and_an_idempotency_key() {
             }),
             webhook: Some(MonitorWebhookParams {
                 url: Some("https://hooks.example.com/k".into()),
-                events: Some(vec!["monitor.hit".into()]),
+                events: Some(vec!["monitor.result.found".into()]),
             }),
             metadata: Some(HashMap::from([("team".into(), "research".into())])),
             ..Default::default()
@@ -97,7 +94,7 @@ async fn create_sends_the_body_and_an_idempotency_key() {
             "search": {"query": "new open-weights LLM releases", "exclude_domains": ["x.com"], "content": {"text": true}},
             "name": "LLM releases",
             "schedule": {"type": "cron", "value": "0 9 * * 1-5", "timezone": "Europe/Paris"},
-            "webhook": {"url": "https://hooks.example.com/k", "events": ["monitor.hit"]},
+            "webhook": {"url": "https://hooks.example.com/k", "events": ["monitor.result.found"]},
             "metadata": {"team": "research"}
         })
     );
@@ -116,8 +113,6 @@ async fn create_sends_the_body_and_an_idempotency_key() {
         Some("Europe/Paris")
     );
     assert_eq!(m.metadata.unwrap()["team"], "research");
-    assert_eq!(m.estimated_cost_usd, None);
-    assert_eq!(m.cost_this_month_usd, None);
     assert_eq!(m.raw["id"], json!("mon_1"));
 }
 
@@ -306,7 +301,7 @@ async fn reads() {
     hit["id"] = json!("h1");
     hit["same_story"] = json!(2);
     let delivery = json!({
-        "id": "evt_1", "type": "monitor.hit", "url": "https://hooks.example.com/k",
+        "id": "evt_1", "type": "monitor.result.found", "url": "https://hooks.example.com/k",
         "created_at": "2026-11-17T10:00:00Z", "attempts": 2, "delivered_at": null,
         "last_error": "HTTP 500", "next_attempt_at": null
     });
@@ -333,10 +328,10 @@ async fn reads() {
         .await
         .unwrap();
     let r = monitors.run("mon_1", "mrun_1").await.unwrap();
-    let pages = monitors
-        .pages(
+    let results = monitors
+        .results(
             "mon_1",
-            &MonitorPagesParams {
+            &MonitorResultsParams {
                 min_importance: Some(4),
                 ..Default::default()
             },
@@ -370,7 +365,7 @@ async fn reads() {
         [
             "/v1/monitors/mon_1/runs",
             "/v1/monitors/mon_1/runs/mrun_1",
-            "/v1/monitors/mon_1/pages",
+            "/v1/monitors/mon_1/results",
             "/v1/monitors/mon_1/deliveries",
             "/v1/monitors/stats",
             "/v1/monitors/bulk",
@@ -394,9 +389,9 @@ async fn reads() {
     assert_eq!(runs.data[0].monitor_id, "mon_1");
     assert_eq!(r.results.as_ref().unwrap()[0].importance, Some(4));
     assert_eq!(r.output.as_ref().unwrap().structured, Some(json!({"n": 1})));
-    assert_eq!(pages.data[0].id.as_deref(), Some("h1"));
-    assert_eq!(pages.data[0].same_story, Some(2));
-    assert_eq!(pages.data[0].source_type.as_deref(), Some("original"));
+    assert_eq!(results.data[0].id.as_deref(), Some("h1"));
+    assert_eq!(results.data[0].same_story, Some(2));
+    assert_eq!(results.data[0].source_type.as_deref(), Some("original"));
     assert_eq!(deliveries.data[0].last_error.as_deref(), Some("HTTP 500"));
     assert_eq!(stats.by_status["active"], 2);
     assert!(bulk.dry_run);
@@ -455,7 +450,7 @@ async fn dot_ids_are_refused() {
     assert_eq!(server.count(), 0);
 }
 
-const WEBHOOK_BODY: &str = r#"{"id":"msg_2nY8kTestVector01","type":"monitor.hit","created_at":"2026-11-17T17:20:00Z","data":{"monitor_id":"mon_test01","result":{"url":"https://example.com/news/1","title":"Open weights model released","author":null,"published_at":"2026-11-17T16:00:00Z","acquired_at":"2026-11-17T16:05:00Z","image":null,"favicon":null,"highlights":null,"matched_at":"2026-11-17T16:10:00Z","published_at_source":"declared","summary":"A lab released an open-weights model.","importance":4,"kind":"news","source_type":"original","score":0.82}},"metadata":{"team":"research"}}"#;
+const WEBHOOK_BODY: &str = r#"{"id":"msg_2nY8kTestVector01","type":"monitor.result.found","created_at":"2026-11-17T17:20:00Z","data":{"monitor_id":"mon_test01","result":{"url":"https://example.com/news/1","title":"Open weights model released","author":null,"published_at":"2026-11-17T16:00:00Z","acquired_at":"2026-11-17T16:05:00Z","image":null,"matched_at":"2026-11-17T16:10:00Z","published_at_source":"declared","summary":"A lab released an open-weights model.","importance":4,"kind":"news","source_type":"original"}},"metadata":{"team":"research"}}"#;
 const WEBHOOK_SECRET: &str = "whsec_a2VlbmFibGUtbW9uaXRvcnMtd2ViaG9vay10ZXN0ISE=";
 
 fn webhook_headers() -> reqwest::header::HeaderMap {
@@ -464,7 +459,7 @@ fn webhook_headers() -> reqwest::header::HeaderMap {
     h.insert("webhook-timestamp", "1763400000".parse().unwrap());
     h.insert(
         "webhook-signature",
-        "v1,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4="
+        "v1,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc="
             .parse()
             .unwrap(),
     );
@@ -484,7 +479,7 @@ fn verify_webhook_with_the_known_vector() {
     )
     .unwrap();
     assert_eq!(event.id, "msg_2nY8kTestVector01");
-    assert_eq!(event.event_type, "monitor.hit");
+    assert_eq!(event.event_type, "monitor.result.found");
     assert_eq!(event.data.monitor_id, "mon_test01");
     let result = event.data.result.unwrap();
     assert_eq!(result.url, "https://example.com/news/1");
@@ -731,7 +726,7 @@ async fn a_page_run_has_changes_and_output() {
     );
 
     let search = client.monitors().run("mon_1", "mrun_1").await.unwrap();
-    assert!(search.changes.is_none() && search.usage.is_none());
+    assert!(search.changes.is_none());
     let output = search.output.unwrap();
     assert!(output.fresh && output.error.is_none());
 
@@ -796,11 +791,11 @@ async fn versions() {
 }
 
 #[test]
-fn verify_webhook_reads_a_monitor_change() {
+fn verify_webhook_reads_a_page_changed() {
     use base64::Engine;
     use hmac::Mac;
     let body = json!({
-        "id": "msg_change1", "type": "monitor.change", "created_at": "2026-11-18T08:00:05Z",
+        "id": "msg_change1", "type": "monitor.page.changed", "created_at": "2026-11-18T08:00:05Z",
         "data": {"monitor_id": "mon_p", "run": page_run()}, "metadata": null
     })
     .to_string();
@@ -827,7 +822,7 @@ fn verify_webhook_reads_a_monitor_change() {
         },
     )
     .unwrap();
-    assert_eq!(event.event_type, "monitor.change");
+    assert_eq!(event.event_type, "monitor.page.changed");
     assert!(event.data.result.is_none());
     let changes = event.data.run.unwrap().changes.unwrap();
     assert_eq!(
