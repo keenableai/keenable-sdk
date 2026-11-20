@@ -35,10 +35,10 @@ pub struct WebhookEventData {
     pub monitor_id: String,
     /// On monitor.created, updated, deleted and disabled.
     pub monitor: Option<Monitor>,
-    /// On monitor.run.created, completed and failed, and on monitor.change (a
-    /// page monitor's run, with its `changes`).
+    /// On monitor.run.created, completed and failed, and on a page monitor's
+    /// monitor.page.changed (its run, with its `changes`).
     pub run: Option<MonitorRun>,
-    /// On monitor.hit and monitor.update.
+    /// On monitor.result.found and monitor.result.changed.
     pub result: Option<MonitorResult>,
     /// Why, on monitor.disabled.
     pub reason: Option<String>,
@@ -51,7 +51,7 @@ pub struct WebhookEventData {
 pub struct WebhookEvent {
     /// The delivery's id, the same across retries: use it to drop repeats.
     pub id: String,
-    /// The event's type, such as "monitor.hit".
+    /// The event's type, such as "monitor.result.found".
     #[serde(rename = "type")]
     pub event_type: String,
     /// When the event happened.

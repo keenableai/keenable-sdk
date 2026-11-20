@@ -103,11 +103,11 @@ reference.
 ## Monitors
 
 A search monitor is a standing search: it watches the web for a topic and
-reports every new page that matches, by webhook, in scheduled runs, or when
+reports every new result that matches, by webhook, in scheduled runs, or when
 you poll it. A page monitor watches one page and reports the changes worth
 telling. Every SDK has a `monitors` namespace for
 `https://api.keenable.ai/v1/monitors` (create, list, get, update, pause,
-resume, delete, trigger, runs, pages, versions, deliveries, stats, bulk) and a
+resume, delete, trigger, runs, results, versions, deliveries, stats, bulk) and a
 `verify_webhook` helper for the signed deliveries. Monitors need an API key.
 
 ```python
@@ -115,8 +115,8 @@ from keenable import Keenable
 
 keenable = Keenable()  # reads KEENABLE_API_KEY
 monitor = keenable.monitors.create(search={"query": "new open-weights LLM releases"})
-for page in keenable.monitors.pages(monitor.id):
-    print(page.title, page.url)
+for result in keenable.monitors.results(monitor.id):
+    print(result.title, result.url)
 
 pricing = keenable.monitors.create(
     type="page",

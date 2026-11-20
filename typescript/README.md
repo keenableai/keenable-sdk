@@ -209,13 +209,13 @@ const keenable = new Keenable();
 const monitor = await keenable.monitors.create({
   search: { query: "new open-weights LLM releases", maxResults: 20 },
   schedule: { type: "cron", value: "0 9 * * 1-5", timezone: "Europe/Paris" },
-  webhook: { url: "https://example.com/keenable", events: ["monitor.hit"] },
+  webhook: { url: "https://example.com/keenable", events: ["monitor.result.found"] },
   metadata: { team: "research" },
 });
 const secret = monitor.webhook?.secret; // whsec_..., returned by create() only
 
-const pages = await keenable.monitors.pages(monitor.id, { minImportance: 4 });
-for (const page of pages.data) console.log(page.importance, page.title, page.url);
+const results = await keenable.monitors.results(monitor.id, { minImportance: 4 });
+for (const result of results.data) console.log(result.importance, result.title, result.url);
 ```
 
 A page monitor watches one page, here a pricing page every 6 hours:
@@ -252,7 +252,7 @@ Schedules: `cron` (runs at least 10 minutes apart, in `timezone`), `interval`
 | `pause(id)`, `resume(id)` | `update(id, { status: "paused" / "active" })` |
 | `trigger(id)` | Start a run now; returns the queued `MonitorRun` |
 | `runs(id, { limit, cursor })`, `run(id, runId)` | A monitor's runs |
-| `pages(id, { limit, cursor, minImportance })` | The pages a search monitor accepted, newest first, one per story |
+| `results(id, { limit, cursor, minImportance })` | The results a search monitor accepted, newest first, one per story (`GET /v1/monitors/{id}/results`) |
 | `versions(id, { limit, cursor })` | A page monitor's history, newest first: each version whose text changed, with its `diff` |
 | `deliveries(id, { limit, cursor })` | Webhook events of the last 7 days, with attempts and errors |
 | `stats()` | Counts by status and by kind of schedule |
@@ -281,8 +281,8 @@ import { verifyWebhook, WebhookVerificationError } from "keenable";
 
 try {
   const event = await verifyWebhook(rawBody, request.headers, secret);
-  if (event.type === "monitor.hit") console.log(event.data.result?.url);
-  if (event.type === "monitor.change") console.log(event.data.run?.changes?.summary);
+  if (event.type === "monitor.result.found") console.log(event.data.result?.url);
+  if (event.type === "monitor.page.changed") console.log(event.data.run?.changes?.summary);
 } catch (error) {
   if (error instanceof WebhookVerificationError) return new Response(null, { status: 400 });
   throw error;

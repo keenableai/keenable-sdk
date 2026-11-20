@@ -1,4 +1,4 @@
-"""Watch a pricing page for changes, read its history, and handle monitor.change.
+"""Watch a pricing page for changes, read its history, and handle monitor.page.changed.
 
 Run: pip install keenable && KEENABLE_API_KEY=keen_... python pricing_page.py
 """
@@ -43,7 +43,7 @@ def handle_webhook(raw_body: bytes, headers: dict[str, str], secret: str) -> int
         event = verify_webhook(raw_body, headers, secret)
     except WebhookVerificationError:
         return 400
-    if event.type == "monitor.change" and event.data.run and event.data.run.changes:
+    if event.type == "monitor.page.changed" and event.data.run and event.data.run.changes:
         print("the page changed:", event.data.run.changes.summary)
     return 200
 

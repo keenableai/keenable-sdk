@@ -4,7 +4,7 @@
 //!     KEENABLE_API_KEY=keen_... cargo run --example monitors
 
 use keenable::{
-    MonitorCreateParams, MonitorPageTarget, MonitorPagesParams, MonitorScheduleParams,
+    MonitorCreateParams, MonitorPageTarget, MonitorResultsParams, MonitorScheduleParams,
     MonitorSearchParams, MonitorVersionsParams,
 };
 
@@ -33,17 +33,17 @@ async fn main() -> Result<(), keenable::Error> {
     let run = monitors.trigger(&monitor.id).await?;
     println!("run {} is {}", run.id, run.status);
 
-    let pages = monitors
-        .pages(
+    let results = monitors
+        .results(
             &monitor.id,
-            &MonitorPagesParams {
+            &MonitorResultsParams {
                 min_importance: Some(4),
                 ..Default::default()
             },
         )
         .await?;
-    for page in pages.data {
-        println!("{}", page.url);
+    for result in results.data {
+        println!("{}", result.url);
     }
 
     monitors.delete(&monitor.id).await?;
@@ -94,9 +94,9 @@ fn handle_webhook(
     match keenable::verify_webhook(body, headers, secret) {
         Ok(event) => {
             if let Some(result) = event.data.result {
-                println!("new page: {}", result.url);
+                println!("new result: {}", result.url);
             }
-            if event.event_type == "monitor.change" {
+            if event.event_type == "monitor.page.changed" {
                 let summary = event.data.run.and_then(|r| r.changes?.summary);
                 println!("the page changed: {}", summary.unwrap_or_default());
             }

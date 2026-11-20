@@ -1,13 +1,13 @@
 /**
- * Keenable Monitors: standing searches that report new pages as they appear,
- * and page monitors that report changes to one page.
+ * Keenable Monitors: standing searches that report new results as they
+ * appear, and page monitors that report changes to one page.
  *
  * ```ts
  * const monitor = await keenable.monitors.create({
  *   search: { query: "new open-weights LLM releases" },
  *   schedule: { type: "cron", value: "0 9 * * 1-5", timezone: "Europe/Paris" },
  * });
- * const pages = await keenable.monitors.pages(monitor.id);
+ * const results = await keenable.monitors.results(monitor.id);
  *
  * const pricing = await keenable.monitors.create({
  *   type: "page",
@@ -34,9 +34,9 @@ export type MonitorEvent =
   | "monitor.run.completed"
   | "monitor.run.failed"
   | "monitor.disabled"
-  | "monitor.hit"
-  | "monitor.update"
-  | "monitor.change";
+  | "monitor.result.found"
+  | "monitor.result.changed"
+  | "monitor.page.changed";
 export type BulkAction = "pause" | "resume" | "delete";
 
 /** What a monitor watches for. `query` is required on create. */
@@ -77,10 +77,10 @@ export interface MonitorWebhookParams {
   /** A public HTTPS address. */
   url: string;
   /**
-   * A search monitor's default: the monitor.* and monitor.run.* events; add
-   * "monitor.hit" to get each new page as soon as it is found. A page
-   * monitor's default: monitor.created, updated, deleted, disabled,
-   * run.failed and monitor.change.
+   * A search monitor's default: the monitor.* and monitor.run.* events plus
+   * monitor.result.found (each new result as soon as it is found) and
+   * monitor.result.changed. A page monitor's default: monitor.created,
+   * updated, deleted, disabled, run.failed and monitor.page.changed.
    */
   events?: MonitorEvent[] | null;
 }
@@ -160,8 +160,8 @@ export interface MonitorPageParams extends RequestOptions {
 /** Paging through a page monitor's versions. */
 export type MonitorVersionsParams = MonitorPageParams;
 
-export interface MonitorPagesParams extends MonitorPageParams {
-  /** Keep pages the monitor rated at least this important (1 to 5). */
+export interface MonitorResultsParams extends MonitorPageParams {
+  /** Keep results the monitor rated at least this important (1 to 5). */
   minImportance?: number;
 }
 
@@ -239,16 +239,6 @@ export interface Monitor {
   upcomingRuns: string[];
   createdAt: string;
   updatedAt: string;
-  /** Not available yet: always null. */
-  agentRunId: unknown;
-  /** Not available yet: always null. */
-  backfill: unknown;
-  /** Not available yet: always null. */
-  memoryScope: unknown;
-  /** Null until monitors are priced. */
-  estimatedCostUsd: number | null;
-  /** Null until monitors are priced. */
-  costThisMonthUsd: number | null;
   requestId?: string;
   raw: Record<string, unknown>;
 }
@@ -263,7 +253,7 @@ export interface MonitorResultChange {
   removed: string[] | null;
 }
 
-/** A page a monitor found: in a run, a webhook event or `pages()`. */
+/** A result a monitor found: in a run, a webhook event or `results()`. */
 export interface MonitorResult {
   url: string;
   title: string | null;
@@ -271,10 +261,6 @@ export interface MonitorResult {
   publishedAt: string | null;
   acquiredAt: string | null;
   image: string | null;
-  /** Always null for now. */
-  favicon: string | null;
-  /** Always null for now. */
-  highlights: unknown;
   /** When the monitor accepted the page. */
   matchedAt: string | null;
   /** declared, url, x or text: where the date comes from. */
@@ -286,15 +272,13 @@ export interface MonitorResult {
   kind: string | null;
   /** original or rewrite. */
   sourceType: string | null;
-  /** Uncalibrated relevance, only for ordering one monitor's pages. */
-  score: number | null;
   /** The page's text, when the monitor's search asks for it. */
   text?: string;
-  /** On monitor.update: how the page changed. */
+  /** On monitor.result.changed: how the page changed. */
   change?: MonitorResultChange;
-  /** From `pages()`: identifies the match; also the cursor of the page it ends. */
+  /** From `results()`: identifies the match; also the cursor of the page it ends. */
   id?: string;
-  /** From `pages()`: how many more pages reported the same story and were left out. */
+  /** From `results()`: how many more pages reported the same story and were left out. */
   sameStory?: number;
   raw: Record<string, unknown>;
 }
@@ -332,7 +316,7 @@ export interface MonitorDiff {
 export interface MonitorRunChanges {
   /** The text changed since the previous version (a baseline is not a change). */
   changed: boolean;
-  /** The change is worth telling: monitor.change was sent. */
+  /** The change is worth telling: monitor.page.changed was sent. */
   notified: boolean;
   /** The first reading of the page (or of a new URL). */
   baseline: boolean;
@@ -358,7 +342,7 @@ export interface MonitorVersion {
   title: string | null;
   /** live or stream; versions are compared only with versions of the same source. */
   source: string;
-  /** This version's change was told (monitor.change). */
+  /** This version's change was told (monitor.page.changed). */
   notified: boolean;
   summary: string | null;
   items: string[];
@@ -372,15 +356,13 @@ export interface MonitorRun {
   object: string;
   monitorId: string;
   status: MonitorRunStatus | (string & {});
-  /** New pages; [] when none; null until the run completes. */
+  /** New results; [] when none; null until the run completes. */
   results: MonitorResult[] | null;
   /** A page monitor's completed run: what changed on the page. Null for a search monitor. */
   changes: MonitorRunChanges | null;
   /** When the monitor has an output schema. */
   output: MonitorRunOutput | null;
   error: { code: string; message: string } | null;
-  /** Null until monitors are priced. */
-  usage: unknown;
   createdAt: string | null;
   startedAt: string | null;
   endedAt: string | null;
@@ -433,7 +415,7 @@ export interface ListPage<T> {
 
 export type MonitorList = ListPage<Monitor>;
 export type RunList = ListPage<MonitorRun>;
-export type PageList = ListPage<MonitorResult>;
+export type ResultList = ListPage<MonitorResult>;
 export type DeliveryList = ListPage<MonitorDelivery>;
 export type VersionList = ListPage<MonitorVersion>;
 
@@ -529,11 +511,6 @@ export function toMonitor(data: Json, requestId?: string): Monitor {
     upcomingRuns: strs(data.upcoming_runs) ?? [],
     createdAt: reqStr(data.created_at),
     updatedAt: reqStr(data.updated_at),
-    agentRunId: data.agent_run_id ?? null,
-    backfill: data.backfill ?? null,
-    memoryScope: data.memory_scope ?? null,
-    estimatedCostUsd: num(data.estimated_cost_usd),
-    costThisMonthUsd: num(data.cost_this_month_usd),
     requestId,
     raw: data,
   };
@@ -548,15 +525,12 @@ export function toMonitorResult(data: Json): MonitorResult {
     publishedAt: str(data.published_at),
     acquiredAt: str(data.acquired_at),
     image: str(data.image),
-    favicon: str(data.favicon),
-    highlights: data.highlights ?? null,
     matchedAt: str(data.matched_at),
     publishedAtSource: str(data.published_at_source),
     summary: str(data.summary),
     importance: int(data.importance),
     kind: str(data.kind),
     sourceType: str(data.source_type),
-    score: num(data.score),
     raw: data,
   };
   if (typeof data.text === "string") result.text = data.text;
@@ -644,7 +618,6 @@ export function toMonitorRun(data: Json, requestId?: string): MonitorRun {
         }
       : null,
     error: error ? { code: reqStr(error.code), message: reqStr(error.message) } : null,
-    usage: data.usage ?? null,
     createdAt: str(data.created_at),
     startedAt: str(data.started_at),
     endedAt: str(data.ended_at),
@@ -938,15 +911,15 @@ export class Monitors {
   }
 
   /**
-   * The pages a monitor accepted, newest first, one per story. Poll and stop
-   * at the first `id` already seen; `minImportance: 4` keeps the pages a
-   * reader would not want to miss.
+   * The results a monitor accepted, newest first, one per story. Poll and
+   * stop at the first `id` already seen; `minImportance: 4` keeps the
+   * results a reader would not want to miss.
    */
-  async pages(monitorId: string, params: MonitorPagesParams = {}): Promise<PageList> {
+  async results(monitorId: string, params: MonitorResultsParams = {}): Promise<ResultList> {
     const { data, requestId } = await this.send(
       {
         method: "GET",
-        path: `monitors/${segment("monitorId", monitorId)}/pages`,
+        path: `monitors/${segment("monitorId", monitorId)}/results`,
         query: query({ limit: params.limit, cursor: params.cursor, min_importance: params.minImportance }),
         safe: true,
       },

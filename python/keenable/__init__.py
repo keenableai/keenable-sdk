@@ -57,7 +57,7 @@ from .monitors import (
     MonitorStats,
     MonitorVersion,
     MonitorWebhook,
-    PageList,
+    ResultList,
     RunList,
     VersionList,
 )
@@ -112,8 +112,8 @@ __all__ = [
     "Monitors",
     "NOT_GIVEN",
     "Page",
-    "PageList",
     "RateLimitInfo",
+    "ResultList",
     "RunList",
     "SEARCH_TOOL",
     "SearchResponse",

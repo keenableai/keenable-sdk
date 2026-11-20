@@ -35,19 +35,14 @@ MONITOR: dict[str, Any] = {
         "exclude_domains": ["example.com"],
         "content": {"text": True},
     },
-    "agent_run_id": None,
-    "backfill": None,
     "schedule": {"type": "cron", "value": "0 9 * * 1-5", "timezone": "Europe/Paris"},
     "output_schema": None,
     "webhook": {
         "url": "https://hooks.example.com/k",
-        "events": ["monitor.hit"],
+        "events": ["monitor.result.found"],
         "secret": "whsec_abc",
     },
     "metadata": {"team": "research"},
-    "memory_scope": None,
-    "estimated_cost_usd": None,
-    "cost_this_month_usd": None,
     "last_run_at": None,
     "next_run_at": "2026-11-18T08:00:00Z",
     "upcoming_runs": ["2026-11-18T08:00:00Z", "2026-11-19T08:00:00Z"],
@@ -62,15 +57,12 @@ RESULT: dict[str, Any] = {
     "published_at": "2026-11-17T09:00:00Z",
     "acquired_at": "2026-11-17T09:05:00Z",
     "image": None,
-    "favicon": None,
-    "highlights": None,
     "matched_at": "2026-11-17T09:10:00Z",
     "published_at_source": "declared",
     "summary": "A lab released a model.",
     "importance": 4,
     "kind": "news",
     "source_type": "original",
-    "score": 0.7,
 }
 
 RUN: dict[str, Any] = {
@@ -82,7 +74,6 @@ RUN: dict[str, Any] = {
     "changes": None,
     "output": {"structured": {"n": 1}, "text": None, "grounding": []},
     "error": None,
-    "usage": None,
     "created_at": "2026-11-17T10:00:00Z",
     "started_at": "2026-11-17T10:00:01Z",
     "ended_at": "2026-11-17T10:00:09Z",
@@ -126,7 +117,10 @@ def test_create_sends_the_body_and_an_idempotency_key() -> None:
         },
         name="LLM releases",
         schedule={"type": "cron", "value": "0 9 * * 1-5", "timezone": "Europe/Paris"},
-        webhook={"url": "https://hooks.example.com/k", "events": ["monitor.hit"]},
+        webhook={
+            "url": "https://hooks.example.com/k",
+            "events": ["monitor.result.found"],
+        },
         metadata={"team": "research"},
     )
     request = seen[0]
@@ -145,7 +139,10 @@ def test_create_sends_the_body_and_an_idempotency_key() -> None:
             "value": "0 9 * * 1-5",
             "timezone": "Europe/Paris",
         },
-        "webhook": {"url": "https://hooks.example.com/k", "events": ["monitor.hit"]},
+        "webhook": {
+            "url": "https://hooks.example.com/k",
+            "events": ["monitor.result.found"],
+        },
         "metadata": {"team": "research"},
     }
     assert monitor.id == "mon_1"
@@ -155,8 +152,8 @@ def test_create_sends_the_body_and_an_idempotency_key() -> None:
     assert monitor.webhook is not None and monitor.webhook.secret == "whsec_abc"
     assert monitor.metadata == {"team": "research"}
     assert monitor.upcoming_runs[0] == "2026-11-18T08:00:00Z"
-    assert monitor.estimated_cost_usd is None
-    assert monitor.cost_this_month_usd is None
+    assert not hasattr(monitor, "estimated_cost_usd")
+    assert not hasattr(monitor, "agent_run_id")
 
 
 def test_create_retries_with_the_same_idempotency_key() -> None:
@@ -313,7 +310,7 @@ def test_runs_and_run() -> None:
     assert run.error is None
 
 
-def test_pages_reads_hits() -> None:
+def test_results_reads_results() -> None:
     hit = dict(RESULT, id="h1", same_story=2)
     keenable, seen = _client(
         [
@@ -322,17 +319,18 @@ def test_pages_reads_hits() -> None:
             )
         ]
     )
-    pages = keenable.monitors.pages("mon_1", min_importance=4, limit=10)
-    assert seen[0].url.path == "/v1/monitors/mon_1/pages"
+    results = keenable.monitors.results("mon_1", min_importance=4, limit=10)
+    assert seen[0].url.path == "/v1/monitors/mon_1/results"
     assert dict(seen[0].url.params) == {"limit": "10", "min_importance": "4"}
-    assert pages.data[0].id == "h1" and pages.data[0].same_story == 2
-    assert pages.data[0].source_type == "original"
+    assert results.data[0].id == "h1" and results.data[0].same_story == 2
+    assert results.data[0].source_type == "original"
+    assert not hasattr(results.data[0], "score")
 
 
 def test_deliveries_stats_and_bulk() -> None:
     delivery = {
         "id": "evt_1",
-        "type": "monitor.hit",
+        "type": "monitor.result.found",
         "url": "https://hooks.example.com/k",
         "created_at": "2026-11-17T10:00:00Z",
         "attempts": 2,
@@ -450,27 +448,27 @@ async def test_the_async_client() -> None:
 
 SECRET = "whsec_a2VlbmFibGUtbW9uaXRvcnMtd2ViaG9vay10ZXN0ISE="
 BODY = (
-    '{"id":"msg_2nY8kTestVector01","type":"monitor.hit",'
+    '{"id":"msg_2nY8kTestVector01","type":"monitor.result.found",'
     '"created_at":"2026-11-17T17:20:00Z","data":{"monitor_id":"mon_test01",'
     '"result":{"url":"https://example.com/news/1","title":"Open weights model '
     'released","author":null,"published_at":"2026-11-17T16:00:00Z",'
-    '"acquired_at":"2026-11-17T16:05:00Z","image":null,"favicon":null,'
-    '"highlights":null,"matched_at":"2026-11-17T16:10:00Z",'
+    '"acquired_at":"2026-11-17T16:05:00Z","image":null,'
+    '"matched_at":"2026-11-17T16:10:00Z",'
     '"published_at_source":"declared","summary":"A lab released an '
-    'open-weights model.","importance":4,"kind":"news","source_type":"original",'
-    '"score":0.82}},"metadata":{"team":"research"}}'
+    'open-weights model.","importance":4,"kind":"news","source_type":"original"'
+    '}},"metadata":{"team":"research"}}'
 )
 HEADERS = {
     "webhook-id": "msg_2nY8kTestVector01",
     "webhook-timestamp": "1763400000",
-    "webhook-signature": "v1,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4=",
+    "webhook-signature": "v1,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc=",
 }
 
 
 def test_verify_webhook_with_the_known_vector() -> None:
     event = verify_webhook(BODY.encode(), HEADERS, SECRET, now=1763400000)
     assert event.id == "msg_2nY8kTestVector01"
-    assert event.type == "monitor.hit"
+    assert event.type == "monitor.result.found"
     assert event.data.monitor_id == "mon_test01"
     assert event.data.result is not None
     assert event.data.result.url == "https://example.com/news/1"
@@ -480,7 +478,7 @@ def test_verify_webhook_with_the_known_vector() -> None:
 
 def test_verify_webhook_takes_a_str_and_httpx_headers() -> None:
     event = verify_webhook(BODY, httpx.Headers(HEADERS), SECRET, now=1763400000)
-    assert event.type == "monitor.hit"
+    assert event.type == "monitor.result.found"
 
 
 def test_verify_webhook_refuses_a_stale_delivery_by_the_clock() -> None:
@@ -659,7 +657,7 @@ def test_a_page_run_has_changes_and_output() -> None:
 def test_a_search_run_has_no_changes_and_fresh_output() -> None:
     keenable, _ = _client([httpx.Response(200, json=RUN)])
     run = keenable.monitors.run("mon_1", "mrun_1")
-    assert run.changes is None and run.usage is None
+    assert run.changes is None and not hasattr(run, "usage")
     assert run.output is not None and run.output.fresh and run.output.error is None
 
 
@@ -756,11 +754,11 @@ def _sign(body: str, msg_id: str, stamp: str) -> dict[str, str]:
     }
 
 
-def test_verify_webhook_reads_a_monitor_change() -> None:
+def test_verify_webhook_reads_a_monitor_page_changed() -> None:
     body = json.dumps(
         {
             "id": "msg_change1",
-            "type": "monitor.change",
+            "type": "monitor.page.changed",
             "created_at": "2026-11-18T08:00:05Z",
             "data": {"monitor_id": "mon_p", "run": PAGE_RUN},
             "metadata": None,
@@ -768,7 +766,7 @@ def test_verify_webhook_reads_a_monitor_change() -> None:
     )
     headers = _sign(body, "msg_change1", "1763452805")
     event = verify_webhook(body, headers, SECRET, now=1763452805)
-    assert event.type == "monitor.change"
+    assert event.type == "monitor.page.changed"
     assert event.data.monitor_id == "mon_p"
     assert event.data.run is not None and event.data.run.changes is not None
     assert (

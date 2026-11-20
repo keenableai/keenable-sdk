@@ -22,15 +22,10 @@ const MONITOR = {
     exclude_domains: ["example.com"],
     content: { text: true },
   },
-  agent_run_id: null,
-  backfill: null,
   schedule: { type: "cron", value: "0 9 * * 1-5", timezone: "Europe/Paris" },
   output_schema: null,
-  webhook: { url: "https://hooks.example.com/k", events: ["monitor.hit"], secret: "whsec_abc" },
+  webhook: { url: "https://hooks.example.com/k", events: ["monitor.result.found"], secret: "whsec_abc" },
   metadata: { team: "research" },
-  memory_scope: null,
-  estimated_cost_usd: null,
-  cost_this_month_usd: null,
   last_run_at: null,
   next_run_at: "2026-11-18T08:00:00Z",
   upcoming_runs: ["2026-11-18T08:00:00Z"],
@@ -45,15 +40,12 @@ const RESULT = {
   published_at: "2026-11-17T09:00:00Z",
   acquired_at: "2026-11-17T09:05:00Z",
   image: null,
-  favicon: null,
-  highlights: null,
   matched_at: "2026-11-17T09:10:00Z",
   published_at_source: "declared",
   summary: "A lab released a model.",
   importance: 4,
   kind: "news",
   source_type: "original",
-  score: 0.7,
 };
 
 const RUN = {
@@ -65,7 +57,6 @@ const RUN = {
   changes: null,
   output: { structured: { n: 1 }, text: null, grounding: [] },
   error: null,
-  usage: null,
   created_at: "2026-11-17T10:00:00Z",
   started_at: "2026-11-17T10:00:01Z",
   ended_at: "2026-11-17T10:00:09Z",
@@ -105,7 +96,7 @@ describe("monitors", () => {
       search: { query: "new open-weights LLM releases", excludeDomains: ["x.com"], contentText: true },
       name: "LLM releases",
       schedule: { type: "cron", value: "0 9 * * 1-5", timezone: "Europe/Paris" },
-      webhook: { url: "https://hooks.example.com/k", events: ["monitor.hit"] },
+      webhook: { url: "https://hooks.example.com/k", events: ["monitor.result.found"] },
       metadata: { team: "research" },
     });
     const req = seen[0]!;
@@ -117,7 +108,7 @@ describe("monitors", () => {
       search: { query: "new open-weights LLM releases", exclude_domains: ["x.com"], content: { text: true } },
       name: "LLM releases",
       schedule: { type: "cron", value: "0 9 * * 1-5", timezone: "Europe/Paris" },
-      webhook: { url: "https://hooks.example.com/k", events: ["monitor.hit"] },
+      webhook: { url: "https://hooks.example.com/k", events: ["monitor.result.found"] },
       metadata: { team: "research" },
     });
     expect(monitor.id).toBe("mon_1");
@@ -125,8 +116,8 @@ describe("monitors", () => {
     expect(monitor.search?.excludeDomains).toEqual(["example.com"]);
     expect(monitor.webhook?.secret).toBe("whsec_abc");
     expect(monitor.upcomingRuns).toEqual(["2026-11-18T08:00:00Z"]);
-    expect(monitor.estimatedCostUsd).toBeNull();
-    expect(monitor.costThisMonthUsd).toBeNull();
+    expect("estimatedCostUsd" in monitor).toBe(false);
+    expect("agentRunId" in monitor).toBe(false);
   });
 
   it("retries a create with the same idempotency key", async () => {
@@ -247,7 +238,7 @@ describe("monitors", () => {
   it("reads runs, a run, pages, deliveries and stats", async () => {
     const delivery = {
       id: "evt_1",
-      type: "monitor.hit",
+      type: "monitor.result.found",
       url: "https://hooks.example.com/k",
       created_at: "2026-11-17T10:00:00Z",
       attempts: 2,
@@ -264,13 +255,13 @@ describe("monitors", () => {
     ]);
     const runs = await keenable.monitors.runs("mon_1", { limit: 5, cursor: "r0" });
     const run = await keenable.monitors.run("mon_1", "mrun_1");
-    const pages = await keenable.monitors.pages("mon_1", { minImportance: 4 });
+    const results = await keenable.monitors.results("mon_1", { minImportance: 4 });
     const deliveries = await keenable.monitors.deliveries("mon_1");
     const stats = await keenable.monitors.stats();
     expect(seen.map((r) => r.url.pathname)).toEqual([
       "/v1/monitors/mon_1/runs",
       "/v1/monitors/mon_1/runs/mrun_1",
-      "/v1/monitors/mon_1/pages",
+      "/v1/monitors/mon_1/results",
       "/v1/monitors/mon_1/deliveries",
       "/v1/monitors/stats",
     ]);
@@ -279,9 +270,10 @@ describe("monitors", () => {
     expect(runs.data[0]!.monitorId).toBe("mon_1");
     expect(run.results?.[0]?.importance).toBe(4);
     expect(run.output?.structured).toEqual({ n: 1 });
-    expect(pages.data[0]!.id).toBe("h1");
-    expect(pages.data[0]!.sameStory).toBe(2);
-    expect(pages.data[0]!.sourceType).toBe("original");
+    expect(results.data[0]!.id).toBe("h1");
+    expect("score" in results.data[0]!).toBe(false);
+    expect(results.data[0]!.sameStory).toBe(2);
+    expect(results.data[0]!.sourceType).toBe("original");
     expect(deliveries.data[0]!.lastError).toBe("HTTP 500");
     expect(stats.byStatus.active).toBe(2);
   });
@@ -323,18 +315,18 @@ describe("monitors", () => {
 
 const SECRET = "whsec_a2VlbmFibGUtbW9uaXRvcnMtd2ViaG9vay10ZXN0ISE=";
 const BODY =
-  '{"id":"msg_2nY8kTestVector01","type":"monitor.hit","created_at":"2026-11-17T17:20:00Z","data":{"monitor_id":"mon_test01","result":{"url":"https://example.com/news/1","title":"Open weights model released","author":null,"published_at":"2026-11-17T16:00:00Z","acquired_at":"2026-11-17T16:05:00Z","image":null,"favicon":null,"highlights":null,"matched_at":"2026-11-17T16:10:00Z","published_at_source":"declared","summary":"A lab released an open-weights model.","importance":4,"kind":"news","source_type":"original","score":0.82}},"metadata":{"team":"research"}}';
+  '{"id":"msg_2nY8kTestVector01","type":"monitor.result.found","created_at":"2026-11-17T17:20:00Z","data":{"monitor_id":"mon_test01","result":{"url":"https://example.com/news/1","title":"Open weights model released","author":null,"published_at":"2026-11-17T16:00:00Z","acquired_at":"2026-11-17T16:05:00Z","image":null,"matched_at":"2026-11-17T16:10:00Z","published_at_source":"declared","summary":"A lab released an open-weights model.","importance":4,"kind":"news","source_type":"original"}},"metadata":{"team":"research"}}';
 const HEADERS = {
   "webhook-id": "msg_2nY8kTestVector01",
   "webhook-timestamp": "1763400000",
-  "webhook-signature": "v1,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4=",
+  "webhook-signature": "v1,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc=",
 };
 
 describe("verifyWebhook", () => {
   it("verifies the known vector", async () => {
     const event = await verifyWebhook(BODY, new Headers(HEADERS), SECRET, { now: 1763400000 });
     expect(event.id).toBe("msg_2nY8kTestVector01");
-    expect(event.type).toBe("monitor.hit");
+    expect(event.type).toBe("monitor.result.found");
     expect(event.data.monitorId).toBe("mon_test01");
     expect(event.data.result?.url).toBe("https://example.com/news/1");
     expect(event.data.result?.importance).toBe(4);
@@ -525,7 +517,7 @@ describe("page monitors", () => {
     const { keenable } = client([[200, RUN]]);
     const run = await keenable.monitors.run("mon_1", "mrun_1");
     expect(run.changes).toBeNull();
-    expect(run.usage).toBeNull();
+    expect("usage" in run).toBe(false);
     expect(run.output?.fresh).toBe(true);
     expect(run.output?.error).toBeNull();
   });
@@ -553,11 +545,11 @@ describe("page monitors", () => {
     await expect(keenable.monitors.versions("..")).rejects.toBeInstanceOf(KeenableInvalidRequestError);
   });
 
-  it("verifies a monitor.change event", async () => {
+  it("verifies a monitor.page.changed event", async () => {
     const { createHmac } = await import("node:crypto");
     const body = JSON.stringify({
       id: "msg_change1",
-      type: "monitor.change",
+      type: "monitor.page.changed",
       created_at: "2026-11-18T08:00:05Z",
       data: { monitor_id: "mon_p", run: PAGE_RUN },
       metadata: null,
@@ -570,7 +562,7 @@ describe("page monitors", () => {
       SECRET,
       { now: 1763452805 },
     );
-    expect(event.type).toBe("monitor.change");
+    expect(event.type).toBe("monitor.page.changed");
     expect(event.data.run?.changes?.summary).toBe("The Pro plan went from $25 to $30 a month.");
     expect(event.data.result).toBeUndefined();
   });
