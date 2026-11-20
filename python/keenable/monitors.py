@@ -1378,7 +1378,7 @@ class Monitors:
         """
         call = _Call(
             "GET",
-            _path(_segment("monitor_id", monitor_id), "hits"),
+            _path(_segment("monitor_id", monitor_id), "pages"),
             params=_query(limit=limit, cursor=cursor, min_importance=min_importance),
         )
         data, request_id = self._send(call, timeout, max_retries, extra_headers)
@@ -1732,7 +1732,7 @@ class AsyncMonitors:
         """The pages a monitor accepted. See :meth:`Monitors.pages`."""
         call = _Call(
             "GET",
-            _path(_segment("monitor_id", monitor_id), "hits"),
+            _path(_segment("monitor_id", monitor_id), "pages"),
             params=_query(limit=limit, cursor=cursor, min_importance=min_importance),
         )
         data, request_id = await self._send(call, timeout, max_retries, extra_headers)

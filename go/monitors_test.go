@@ -339,7 +339,7 @@ func TestMonitorsReads(t *testing.T) {
 		paths = append(paths, r.Path)
 	}
 	wantPaths := []string{
-		"/v1/monitors/mon_1/runs", "/v1/monitors/mon_1/runs/mrun_1", "/v1/monitors/mon_1/hits",
+		"/v1/monitors/mon_1/runs", "/v1/monitors/mon_1/runs/mrun_1", "/v1/monitors/mon_1/pages",
 		"/v1/monitors/mon_1/deliveries", "/v1/monitors/stats", "/v1/monitors/bulk",
 	}
 	if !reflect.DeepEqual(paths, wantPaths) {

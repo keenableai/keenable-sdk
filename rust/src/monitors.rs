@@ -1200,7 +1200,7 @@ impl<'a> Monitors<'a> {
     pub async fn pages(&self, monitor_id: &str, params: &MonitorPagesParams) -> Result<PageList> {
         let mut call = Call::new(
             reqwest::Method::GET,
-            monitor_path(monitor_id, &["hits"])?,
+            monitor_path(monitor_id, &["pages"])?,
             true,
         );
         call.query = page_query(params.limit, &params.cursor);

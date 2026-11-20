@@ -270,7 +270,7 @@ describe("monitors", () => {
     expect(seen.map((r) => r.url.pathname)).toEqual([
       "/v1/monitors/mon_1/runs",
       "/v1/monitors/mon_1/runs/mrun_1",
-      "/v1/monitors/mon_1/hits",
+      "/v1/monitors/mon_1/pages",
       "/v1/monitors/mon_1/deliveries",
       "/v1/monitors/stats",
     ]);

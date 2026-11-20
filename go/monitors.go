@@ -1005,7 +1005,7 @@ func (m *MonitorsService) Run(ctx context.Context, monitorID, runID string, opts
 // Pages returns the pages a monitor accepted, newest first, one per story.
 // Poll and stop at the first ID already seen. params may be nil.
 func (m *MonitorsService) Pages(ctx context.Context, monitorID string, params *MonitorPagesParams) (*PageList, error) {
-	path, err := monitorPath(monitorID, "hits")
+	path, err := monitorPath(monitorID, "pages")
 	if err != nil {
 		return nil, err
 	}
