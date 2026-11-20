@@ -946,7 +946,7 @@ export class Monitors {
     const { data, requestId } = await this.send(
       {
         method: "GET",
-        path: `monitors/${segment("monitorId", monitorId)}/hits`,
+        path: `monitors/${segment("monitorId", monitorId)}/pages`,
         query: query({ limit: params.limit, cursor: params.cursor, min_importance: params.minImportance }),
         safe: true,
       },

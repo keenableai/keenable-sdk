@@ -323,7 +323,7 @@ def test_pages_reads_hits() -> None:
         ]
     )
     pages = keenable.monitors.pages("mon_1", min_importance=4, limit=10)
-    assert seen[0].url.path == "/v1/monitors/mon_1/hits"
+    assert seen[0].url.path == "/v1/monitors/mon_1/pages"
     assert dict(seen[0].url.params) == {"limit": "10", "min_importance": "4"}
     assert pages.data[0].id == "h1" and pages.data[0].same_story == 2
     assert pages.data[0].source_type == "original"
