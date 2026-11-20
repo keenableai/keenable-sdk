@@ -93,8 +93,10 @@ fn handle_webhook(
 ) -> u16 {
     match keenable::verify_webhook(body, headers, secret) {
         Ok(event) => {
-            if let Some(result) = event.data.result {
-                println!("new result: {}", result.url);
+            if event.event_type == "monitor.result.found" {
+                if let Some(result) = &event.data.result {
+                    println!("new result: {}", result.url);
+                }
             }
             if event.event_type == "monitor.page.changed" {
                 let summary = event.data.run.and_then(|r| r.changes?.summary);

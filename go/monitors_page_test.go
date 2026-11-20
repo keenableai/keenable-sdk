@@ -221,7 +221,7 @@ func TestMonitorsVersions(t *testing.T) {
 	}
 }
 
-func TestVerifyWebhookMonitorChange(t *testing.T) {
+func TestVerifyWebhookPageChanged(t *testing.T) {
 	const secret = "whsec_a2VlbmFibGUtbW9uaXRvcnMtd2ViaG9vay10ZXN0ISE="
 	body, _ := json.Marshal(map[string]any{
 		"id": "msg_change1", "type": "monitor.page.changed", "created_at": "2026-11-18T08:00:05Z",

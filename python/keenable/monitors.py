@@ -215,7 +215,7 @@ class MonitorSearch:
     query: str
     """The topic in plain words, as written when the monitor was made."""
     max_results: int
-    """Pages a run returns at most."""
+    """Results a run returns at most."""
     include_domains: list[str] | None = None
     """Only pages on these sites."""
     exclude_domains: list[str] | None = None
@@ -340,7 +340,7 @@ class Monitor:
     created_at: str
     updated_at: str
     type: str = "search"
-    """``"search"`` (new pages about a topic) or ``"page"`` (changes to one
+    """``"search"`` (new results about a topic) or ``"page"`` (changes to one
     page)."""
     page: MonitorPageTarget | None = None
     """The page a page monitor watches; None for a search monitor."""
@@ -424,7 +424,7 @@ class MonitorResult:
     summary: str | None = None
     """One line on what the page reports."""
     importance: int | None = None
-    """1 to 5 for the monitor's topic; pages under 3 are not sent."""
+    """1 to 5 for the monitor's topic; results under 3 are not sent."""
     kind: str | None = None
     source_type: str | None = None
     """``"original"`` or ``"rewrite"``."""
@@ -436,7 +436,7 @@ class MonitorResult:
     """Set by :meth:`Monitors.results`: identifies the match, and is the cursor
     of the page of results it ends."""
     same_story: int | None = None
-    """Set by :meth:`Monitors.results`: how many more pages reported the same
+    """Set by :meth:`Monitors.results`: how many more results reported the same
     story and were left out."""
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
@@ -1069,7 +1069,7 @@ class Monitors:
                 ``max_results`` (1 to 100, default 10), ``include_domains``,
                 ``exclude_domains`` and ``content`` (``{"text": True}``
                 returns each page's text). Required unless ``type="page"``.
-            type: ``"search"`` (the API's default: new pages about a topic)
+            type: ``"search"`` (the API's default: new results about a topic)
                 or ``"page"`` (changes to one page).
             page: The page a page monitor watches: ``url`` (required, a
                 public http(s) address), ``watch_for`` (what on the page
@@ -1088,10 +1088,11 @@ class Monitors:
             webhook: ``{"url": "https://...", "events": [...]}``. A search
                 monitor's default events are the ``monitor.*`` and
                 ``monitor.run.*`` ones plus ``monitor.result.found`` (each
-                new result as soon as it is found) and
-                ``monitor.result.changed``. A page monitor's default events
-                are ``monitor.created``, ``updated``, ``deleted``,
-                ``disabled``, ``run.failed`` and ``monitor.page.changed``.
+                new result as soon as it is found), ``monitor.result.changed``
+                and, once a page is attached, ``monitor.page.changed``. A
+                page monitor's default events are ``monitor.created``,
+                ``updated``, ``deleted``, ``disabled``, ``run.failed`` and
+                ``monitor.page.changed``.
             metadata: Your own tags, at most 50, echoed in every webhook.
             idempotency_key: Makes a retry safe: the same key with the same
                 body returns the monitor the first call created, for 24 hours.
@@ -1271,7 +1272,7 @@ class Monitors:
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
     ) -> Monitor:
-        """Delete a monitor and the pages it found, for good. Returns it as it was."""
+        """Delete a monitor and the results it found, for good. Returns it as it was."""
         call = _Call("DELETE", _path(_segment("monitor_id", monitor_id)))
         data, request_id = self._send(call, timeout, max_retries, extra_headers)
         return Monitor._from_json(data, request_id)

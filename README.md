@@ -135,7 +135,7 @@ See each SDK's README for the full list, and [`examples/monitors`](./examples/mo
   live web results, and letting it call Keenable as a tool. Python and Node.
 - [`examples/domain-filters/`](./examples/domain-filters) - keeping sites out
   of the results with `exclude_domains`. Python and TypeScript.
-- [`examples/monitors/`](./examples/monitors) - a monitor that reads new pages
+- [`examples/monitors/`](./examples/monitors) - a monitor that reads new results
   and a webhook receiver that verifies deliveries, and a page monitor that
   watches a pricing page (`pricing_page.py`, `pricing_page.ts`). Python and
   TypeScript; Go

@@ -30,7 +30,7 @@ type MonitorsService struct {
 type MonitorSearchParams struct {
 	// Query is the topic in plain words, e.g. "new open-weights LLM releases".
 	Query string
-	// MaxResults is the pages a run returns at most, 1 to 100. Zero is unset
+	// MaxResults is the results a run returns at most, 1 to 100. Zero is unset
 	// (the API's default is 10).
 	MaxResults int
 	// IncludeDomains keeps only pages on these sites. Nil is unset.
@@ -118,8 +118,9 @@ type MonitorWebhookParams struct {
 	URL string `json:"url,omitempty"`
 	// Events defaults, for a search monitor, to the monitor.* and
 	// monitor.run.* events plus monitor.result.found (each new result as
-	// soon as it is found) and monitor.result.changed. For a page monitor it
-	// defaults to monitor.created, updated, deleted, disabled, run.failed
+	// soon as it is found), monitor.result.changed and, once a page is
+	// attached, monitor.page.changed. For a page monitor it defaults to
+	// monitor.created, updated, deleted, disabled, run.failed
 	// and monitor.page.changed.
 	Events []string `json:"events,omitempty"`
 }
@@ -318,7 +319,7 @@ type Monitor struct {
 	ID     string  `json:"id"`
 	Object string  `json:"object"`
 	Name   *string `json:"name"`
-	// Type is search (new pages about a topic) or page (changes to one page);
+	// Type is search (new results about a topic) or page (changes to one page);
 	// search when the response leaves it out.
 	Type string `json:"type"`
 	// Status is active, paused, disabled or completed.
@@ -389,7 +390,7 @@ type MonitorResult struct {
 	PublishedAtSource *string `json:"published_at_source"`
 	// Summary is one line on what the page reports.
 	Summary *string `json:"summary"`
-	// Importance is 1 to 5 for the monitor's topic; pages under 3 are not sent.
+	// Importance is 1 to 5 for the monitor's topic; results under 3 are not sent.
 	Importance *int    `json:"importance"`
 	Kind       *string `json:"kind"`
 	// SourceType is original or rewrite.
@@ -401,7 +402,7 @@ type MonitorResult struct {
 	// ID is set by Results: identifies the match, and is the cursor of the
 	// page of results it ends.
 	ID *string `json:"id,omitempty"`
-	// SameStory is set by Results: how many more pages reported the same story
+	// SameStory is set by Results: how many more results reported the same story
 	// and were left out.
 	SameStory *int `json:"same_story,omitempty"`
 }
@@ -945,7 +946,7 @@ func (m *MonitorsService) Resume(ctx context.Context, monitorID string, opts *Re
 	return m.Update(ctx, monitorID, &MonitorUpdateParams{RequestOptions: requestOrEmpty(opts), Status: "active"})
 }
 
-// Delete deletes a monitor and the pages it found, for good, and returns it
+// Delete deletes a monitor and the results it found, for good, and returns it
 // as it was.
 func (m *MonitorsService) Delete(ctx context.Context, monitorID string, opts *RequestOptions) (*Monitor, error) {
 	path, err := monitorPath(monitorID)

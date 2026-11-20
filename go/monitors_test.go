@@ -47,7 +47,7 @@ var runBody = map[string]any{
 	"id": "mrun_1", "object": "monitor_run", "monitor_id": "mon_1", "status": "completed",
 	"results": []any{resultBody}, "changes": nil,
 	"output": map[string]any{"structured": map[string]any{"n": 1}, "text": nil, "grounding": []any{}},
-	"error":  nil, "usage": nil, "created_at": "2026-11-17T10:00:00Z",
+	"error":  nil, "created_at": "2026-11-17T10:00:00Z",
 	"started_at": "2026-11-17T10:00:01Z", "ended_at": "2026-11-17T10:00:09Z",
 }
 

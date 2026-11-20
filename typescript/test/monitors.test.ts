@@ -235,7 +235,7 @@ describe("monitors", () => {
     expect(seen).toHaveLength(2);
   });
 
-  it("reads runs, a run, pages, deliveries and stats", async () => {
+  it("reads runs, a run, results, deliveries and stats", async () => {
     const delivery = {
       id: "evt_1",
       type: "monitor.result.found",

@@ -18,7 +18,7 @@ use crate::{types, Client};
 pub struct MonitorSearchParams {
     /// The topic in plain words, e.g. "new open-weights LLM releases".
     pub query: String,
-    /// Pages a run returns at most, 1 to 100 (the API's default is 10).
+    /// Results a run returns at most, 1 to 100 (the API's default is 10).
     pub max_results: Option<u32>,
     /// Only pages on these sites.
     pub include_domains: Option<Vec<String>>,
@@ -112,7 +112,8 @@ pub struct MonitorWebhookParams {
     pub url: Option<String>,
     /// For a search monitor, defaults to the monitor.* and monitor.run.*
     /// events plus monitor.result.found (each new result as soon as it is
-    /// found) and monitor.result.changed. For a page monitor, defaults to
+    /// found), monitor.result.changed and, once a page is attached,
+    /// monitor.page.changed. For a page monitor, defaults to
     /// monitor.created, updated, deleted, disabled, run.failed and
     /// monitor.page.changed.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -256,7 +257,7 @@ struct WireContent {
 pub struct MonitorSearch {
     /// The topic in plain words, as written when the monitor was made.
     pub query: String,
-    /// Pages a run returns at most.
+    /// Results a run returns at most.
     pub max_results: u32,
     /// Only pages on these sites.
     pub include_domains: Option<Vec<String>>,
@@ -352,7 +353,7 @@ pub struct Monitor {
     pub object: String,
     /// Its name.
     pub name: Option<String>,
-    /// search (new pages about a topic) or page (changes to one page).
+    /// search (new results about a topic) or page (changes to one page).
     #[serde(rename = "type", default = "default_type")]
     pub monitor_type: String,
     /// active, paused, disabled or completed.
@@ -431,7 +432,7 @@ pub struct MonitorResult {
     pub published_at_source: Option<String>,
     /// One line on what the page reports.
     pub summary: Option<String>,
-    /// 1 to 5 for the monitor's topic; pages under 3 are not sent.
+    /// 1 to 5 for the monitor's topic; results under 3 are not sent.
     pub importance: Option<u32>,
     /// The kind of page.
     pub kind: Option<String>,
@@ -444,7 +445,7 @@ pub struct MonitorResult {
     /// From [`Monitors::results`]: identifies the match, and is the cursor of
     /// the page of results it ends.
     pub id: Option<String>,
-    /// From [`Monitors::results`]: how many more pages reported the same story
+    /// From [`Monitors::results`]: how many more results reported the same story
     /// and were left out.
     pub same_story: Option<u32>,
 }
@@ -1145,7 +1146,7 @@ impl<'a> Monitors<'a> {
         .await
     }
 
-    /// Deletes a monitor and the pages it found, for good, and returns it as
+    /// Deletes a monitor and the results it found, for good, and returns it as
     /// it was.
     pub async fn delete(&self, monitor_id: &str) -> Result<Monitor> {
         let path = monitor_path(monitor_id, &[])?;

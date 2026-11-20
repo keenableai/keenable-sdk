@@ -791,7 +791,7 @@ async fn versions() {
 }
 
 #[test]
-fn verify_webhook_reads_a_monitor_change() {
+fn verify_webhook_reads_a_page_changed() {
     use base64::Engine;
     use hmac::Mac;
     let body = json!({

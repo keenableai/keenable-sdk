@@ -196,7 +196,7 @@ yourself.
 ## Monitors
 
 A search monitor is a standing search: it watches the web for a topic and
-hands over every new page that matches, by webhook, in scheduled runs, or when
+hands over every new result that matches, by webhook, in scheduled runs, or when
 you poll it. A page monitor (`type: "page"`) reads one page on a schedule and
 reports the changes worth telling. Monitors need an API key
 (`KEENABLE_API_KEY`); without one, every call throws `KeenableAuthError` with
@@ -209,7 +209,7 @@ const keenable = new Keenable();
 const monitor = await keenable.monitors.create({
   search: { query: "new open-weights LLM releases", maxResults: 20 },
   schedule: { type: "cron", value: "0 9 * * 1-5", timezone: "Europe/Paris" },
-  webhook: { url: "https://example.com/keenable", events: ["monitor.result.found"] },
+  webhook: { url: "https://example.com/keenable" },
   metadata: { team: "research" },
 });
 const secret = monitor.webhook?.secret; // whsec_..., returned by create() only

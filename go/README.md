@@ -241,7 +241,7 @@ this SDK created, and does nothing when you passed your own `http.Client`.
 ## Monitors
 
 A search monitor is a standing search: it watches the web for a topic and
-hands over every new page that matches, by webhook, in scheduled runs, or when
+hands over every new result that matches, by webhook, in scheduled runs, or when
 you poll it. A page monitor (`Type: "page"`) reads one page on a schedule and
 reports the changes worth telling. Monitors need an API key
 (`KEENABLE_API_KEY`); without one, every call returns an `*AuthError` with
@@ -252,7 +252,7 @@ ctx := context.Background()
 monitor, err := client.Monitors.Create(ctx, &keenable.MonitorCreateParams{
 	Search:   keenable.MonitorSearchParams{Query: "new open-weights LLM releases", MaxResults: 20},
 	Schedule: &keenable.MonitorScheduleParams{Type: "cron", Value: "0 9 * * 1-5", Timezone: "Europe/Paris"},
-	Webhook:  &keenable.MonitorWebhookParams{URL: "https://example.com/keenable", Events: []string{"monitor.result.found"}},
+	Webhook:  &keenable.MonitorWebhookParams{URL: "https://example.com/keenable"},
 	Metadata: map[string]string{"team": "research"},
 })
 if err != nil {

@@ -284,7 +284,7 @@ impl Client {
         })
     }
 
-    /// Keenable Monitors: standing searches that report new pages as they
+    /// Keenable Monitors: standing searches that report new results as they
     /// appear. Monitors need an API key.
     pub fn monitors(&self) -> crate::monitors::Monitors<'_> {
         crate::monitors::Monitors::new(self)

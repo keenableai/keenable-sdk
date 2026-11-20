@@ -190,7 +190,7 @@ goes only to the configured host.
 ## Monitors
 
 A search monitor is a standing search: it watches the web for a topic and
-hands over every new page that matches, by webhook, in scheduled runs, or when
+hands over every new result that matches, by webhook, in scheduled runs, or when
 you poll it. A page monitor (`monitor_type: Some("page".into())`, sent as
 `type`) reads one page on a schedule and reports the changes worth telling.
 Monitors need an API key (`KEENABLE_API_KEY`); without one, every call returns

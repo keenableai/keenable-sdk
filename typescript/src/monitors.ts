@@ -22,7 +22,7 @@ import { KeenableInvalidRequestError } from "./errors.js";
 import type { RequestOptions } from "./types.js";
 
 export type MonitorStatus = "active" | "paused" | "disabled" | "completed";
-/** search: new pages on the web about a topic. page: changes to one page. */
+/** search: new results on the web about a topic. page: changes to one page. */
 export type MonitorType = "search" | "page";
 export type MonitorPageSensitivity = "meaningful" | "any";
 export type MonitorRunStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
@@ -43,7 +43,7 @@ export type BulkAction = "pause" | "resume" | "delete";
 export interface MonitorSearchParams {
   /** The topic in plain words, e.g. "new open-weights LLM releases". */
   query: string;
-  /** Pages a run returns at most, 1 to 100 (default 10). */
+  /** Results a run returns at most, 1 to 100 (default 10). */
   maxResults?: number;
   /** Only pages on these sites. */
   includeDomains?: string[] | null;
@@ -78,9 +78,10 @@ export interface MonitorWebhookParams {
   url: string;
   /**
    * A search monitor's default: the monitor.* and monitor.run.* events plus
-   * monitor.result.found (each new result as soon as it is found) and
-   * monitor.result.changed. A page monitor's default: monitor.created,
-   * updated, deleted, disabled, run.failed and monitor.page.changed.
+   * monitor.result.found (each new result as soon as it is found),
+   * monitor.result.changed and, once a page is attached, monitor.page.changed.
+   * A page monitor's default: monitor.created, updated, deleted, disabled,
+   * run.failed and monitor.page.changed.
    */
   events?: MonitorEvent[] | null;
 }
@@ -104,7 +105,7 @@ export interface MonitorCreateCommonParams extends RequestOptions {
   idempotencyKey?: string;
 }
 
-/** A search monitor: new pages about a topic. */
+/** A search monitor: new results about a topic. */
 export interface MonitorSearchCreateParams extends MonitorCreateCommonParams {
   /** "search", the API's default. */
   type?: "search";
@@ -267,7 +268,7 @@ export interface MonitorResult {
   publishedAtSource: string | null;
   /** One line on what the page reports. */
   summary: string | null;
-  /** 1 to 5 for the monitor's topic; pages under 3 are not sent. */
+  /** 1 to 5 for the monitor's topic; results under 3 are not sent. */
   importance: number | null;
   kind: string | null;
   /** original or rewrite. */
@@ -278,7 +279,7 @@ export interface MonitorResult {
   change?: MonitorResultChange;
   /** From `results()`: identifies the match; also the cursor of the page it ends. */
   id?: string;
-  /** From `results()`: how many more pages reported the same story and were left out. */
+  /** From `results()`: how many more results reported the same story and were left out. */
   sameStory?: number;
   raw: Record<string, unknown>;
 }
@@ -865,7 +866,7 @@ export class Monitors {
     return this.update(monitorId, { ...requestOptions(options), status: "active" });
   }
 
-  /** Delete a monitor and the pages it found, for good. Returns it as it was. */
+  /** Delete a monitor and the results it found, for good. Returns it as it was. */
   async delete(monitorId: string, options: RequestOptions = {}): Promise<Monitor> {
     const { data, requestId } = await this.send(
       { method: "DELETE", path: `monitors/${segment("monitorId", monitorId)}`, safe: true },

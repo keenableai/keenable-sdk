@@ -216,7 +216,7 @@ keenable = Keenable()
 monitor = keenable.monitors.create(
     search={"query": "new open-weights LLM releases", "max_results": 20},
     schedule={"type": "cron", "value": "0 9 * * 1-5", "timezone": "Europe/Paris"},
-    webhook={"url": "https://example.com/keenable", "events": ["monitor.result.found"]},
+    webhook={"url": "https://example.com/keenable"},
     metadata={"team": "research"},
 )
 secret = monitor.webhook.secret  # whsec_..., returned by create() only
