@@ -19,10 +19,8 @@ import {
   runToolCall,
 } from "../src/index.js";
 import type {
-  FetchManyOptions,
   FetchOptions,
   FetchResponse,
-  FetchResult,
   KeenableOptions,
   Page,
   SearchOptions,
@@ -51,12 +49,7 @@ interface Fixture {
     kind: string | null;
   })[];
   errors: (Reply & { name: string; expect: Record<string, Json> })[];
-  responses: (Reply & {
-    name: string;
-    endpoint: "search" | "fetch";
-    arg: string;
-    expect: Record<string, Json>;
-  })[];
+  responses: (Reply & { name: string; arg: string; expect: Record<string, Json> })[];
   options: {
     name: string;
     option: "max_retries" | "timeout" | "headers" | "query" | "url" | "disable_cards";
@@ -72,22 +65,16 @@ interface Fixture {
     sent: Json;
     skip: Record<string, string>;
   }[];
-  fetch_params: {
-    name: string;
-    url: string;
-    options: { max_chars?: number; live?: boolean; prompt?: string };
-    sent: Record<string, string>;
-    skip: Record<string, string>;
-  }[];
   tool_call: { name: string; arguments: string; sent: Json; invalid: boolean }[];
-  fetch_many_body: {
+  fetch_body: {
     name: string;
     urls: string | string[];
     options: Record<string, Json>;
     sent: Json;
+    invalid: boolean;
     skip: Record<string, string>;
   }[];
-  fetch_many_responses: (Reply & {
+  fetch_responses: (Reply & {
     name: string;
     urls: string | string[];
     expect: Record<string, Json>;
@@ -123,7 +110,11 @@ const SEARCH_OK: Reply = {
   headers: {},
   body: JSON.stringify({ query: "q", results: [] }),
 };
-const PAGE_OK: Reply = { status: 200, headers: {}, body: JSON.stringify({ content: "c" }) };
+const PAGE_OK: Reply = {
+  status: 200,
+  headers: {},
+  body: JSON.stringify({ results: [{ content: "c" }] }),
+};
 /** Fields the SDK reads from an error body but never exposes. */
 const UNEXPOSED = ["docsUrl", "billingUrl", "autoTopUpUrl", "payPerRequest", "raw"];
 
@@ -208,6 +199,7 @@ describe("fetch targets", () => {
     if (c.allowed) {
       expect(outcome.error).toBeUndefined();
       expect(outcome.requests).toHaveLength(1);
+      expect(JSON.parse(String(outcome.requests[0]?.init.body))).toEqual({ urls: [c.url] });
     } else {
       expect(outcome.error).toBeInstanceOf(KeenableInvalidRequestError);
       expect(outcome.requests).toHaveLength(0);
@@ -312,9 +304,7 @@ describe("errors", () => {
 
 describe("success bodies", () => {
   it.each(FIXTURE.responses.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
-    const outcome = await call([c, c], { maxRetries: 0 }, (client) =>
-      c.endpoint === "search" ? client.search(c.arg) : client.fetch(c.arg),
-    );
+    const outcome = await call([c, c], { maxRetries: 0 }, (client) => client.search(c.arg));
     expect(outcome.requests).toHaveLength(1);
     if (c.expect.error !== null) {
       const kind = KINDS[c.expect.error as string];
@@ -324,35 +314,20 @@ describe("success bodies", () => {
     }
     expect(outcome.error).toBeUndefined();
     const { error: _error, ...want } = c.expect;
-    if (c.endpoint === "search") {
-      const r = outcome.result as SearchResponse;
-      expect({
-        query: r.query,
-        mode: r.mode ?? null,
-        request_id: r.requestId ?? null,
-        results: r.results.map((x) => ({
-          title: x.title,
-          url: x.url,
-          snippet: x.snippet,
-          description: x.description ?? null,
-          published_at: x.publishedAt ?? null,
-          acquired_at: x.acquiredAt ?? null,
-        })),
-      }).toEqual(want);
-    } else {
-      const p = outcome.result as Page;
-      expect({
-        url: p.url,
-        title: p.title,
-        content: p.content,
-        description: p.description ?? null,
-        author: p.author ?? null,
-        published_at: p.publishedAt ?? null,
-        request_id: p.requestId ?? null,
-        truncated: p.truncated ?? null,
-        total_chars: p.totalChars ?? null,
-      }).toEqual(want);
-    }
+    const r = outcome.result as SearchResponse;
+    expect({
+      query: r.query,
+      mode: r.mode ?? null,
+      request_id: r.requestId ?? null,
+      results: r.results.map((x) => ({
+        title: x.title,
+        url: x.url,
+        snippet: x.snippet,
+        description: x.description ?? null,
+        published_at: x.publishedAt ?? null,
+        acquired_at: x.acquiredAt ?? null,
+      })),
+    }).toEqual(want);
   });
 });
 
@@ -409,30 +384,6 @@ describe("the search body", () => {
   });
 });
 
-describe("the fetch parameters", () => {
-  const cases = FIXTURE.fetch_params.filter((c) => !("typescript" in c.skip));
-  it.each(cases.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
-    const options: FetchOptions = {};
-    if ("max_chars" in c.options) options.maxChars = c.options.max_chars;
-    if ("live" in c.options) options.live = c.options.live;
-    if ("prompt" in c.options) options.prompt = c.options.prompt;
-    const outcome = await call([PAGE_OK], {}, (client) => client.fetch(c.url, options));
-    expect(outcome.error).toBeUndefined();
-    expect(outcome.requests).toHaveLength(1);
-    const sent = new URL(outcome.requests[0]!.url);
-    expect(sent.pathname).toBe("/v1/fetch");
-    expect([...sent.searchParams.entries()].sort()).toEqual(Object.entries(c.sent).sort());
-  });
-
-  it("a refused URL sends nothing, whatever the options", async () => {
-    const outcome = await call([PAGE_OK], {}, (client) =>
-      client.fetch("http://127.0.0.1/", { maxChars: 10, live: true, prompt: "p" }),
-    );
-    expect(outcome.error).toBeInstanceOf(KeenableInvalidRequestError);
-    expect(outcome.requests).toHaveLength(0);
-  });
-});
-
 describe("tool calls", () => {
   it.each(FIXTURE.tool_call.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
     const outcome = await call([SEARCH_OK], {}, (client) =>
@@ -448,122 +399,110 @@ describe("tool calls", () => {
   });
 });
 
-/** The case's group field names, as fetchMany() spells them. */
-const FETCH_MANY_FIELDS: Record<string, string> = {
+/** The case's option names, as fetch() spells them. */
+const FETCH_OPTIONS: Record<string, keyof FetchOptions> = {
   max_chars: "maxChars",
-  objective: "objective",
+  schema: "schema",
   links: "links",
   images: "images",
   max_age_hours: "maxAgeHours",
-  as_of: "asOf",
-};
-const FETCH_MANY_TOP: Record<string, string> = {
-  content: "content",
-  retrieval: "retrieval",
-  deadline_ms: "deadlineMs",
-  session_id: "sessionId",
 };
 
-function fetchManyOptions(options: Record<string, Json>): FetchManyOptions {
-  const out: Record<string, unknown> = {};
-  for (const [name, value] of Object.entries(options)) {
-    const mapped = FETCH_MANY_TOP[name];
-    if (!mapped) throw new Error(`unknown option ${name}`);
-    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-      const fields: Record<string, unknown> = {};
-      for (const [field, v] of Object.entries(value)) {
-        const f = FETCH_MANY_FIELDS[field];
-        if (!f) throw new Error(`unknown option ${name}.${field}`);
-        fields[f] = v;
-      }
-      out[mapped] = fields;
-    } else {
-      out[mapped] = value;
-    }
-  }
-  return out as FetchManyOptions;
-}
+const orNull = <T>(v: T | undefined): T | null => (v === undefined ? null : v);
 
-const orNull = <T>(value: T | undefined): T | null => (value === undefined ? null : value);
-
-function plainResult(x: FetchResult): Record<string, unknown> {
+function plainPage(p: Page): Record<string, unknown> {
   return {
-    index: x.index,
-    requested_url: x.requestedUrl,
-    url: x.url,
-    status: x.status,
-    title: orNull(x.title),
-    published_at: orNull(x.publishedAt),
-    acquired_at: orNull(x.acquiredAt),
-    image: orNull(x.image),
-    favicon: orNull(x.favicon),
-    retrieved_from: orNull(x.retrievedFrom),
-    error: x.error
+    url: p.url,
+    title: p.title,
+    content: p.content,
+    description: orNull(p.description),
+    author: orNull(p.author),
+    published_at: orNull(p.publishedAt),
+    truncated: orNull(p.truncated),
+    total_chars: orNull(p.totalChars),
+    image: orNull(p.image),
+    favicon: orNull(p.favicon),
+    links: p.links ? p.links.map((l) => ({ url: l.url, text: orNull(l.text) })) : null,
+    images: p.images ? p.images.map((i) => ({ url: i.url, alt: orNull(i.alt) })) : null,
+    structured: orNull(p.structured),
+    answer_error: orNull(p.answerError),
+    stale: orNull(p.stale),
+    usage: p.usage
       ? {
-          type: x.error.type,
-          code: x.error.code,
-          message: x.error.message,
-          fix: orNull(x.error.fix),
-          retryable: x.error.retryable,
-          upstream_status: orNull(x.error.upstreamStatus),
+          sku: p.usage.sku,
+          amount: p.usage.amount,
+          credits: p.usage.credits,
+          paid: p.usage.paid,
+          credits_remaining: orNull(p.usage.creditsRemaining),
         }
       : null,
-    content: {
-      text: orNull(x.content.text),
-      total_chars: orNull(x.content.totalChars),
-      links: x.content.links ? x.content.links.map((l) => ({ url: l.url, text: orNull(l.text) })) : null,
-      images: x.content.images ? x.content.images.map((i) => ({ url: i.url, alt: orNull(i.alt) })) : null,
-    },
   };
+}
+
+function kindOf(error: KeenableAPIError): string {
+  const kind = Object.entries(KINDS).find(([, cls]) => error.constructor === cls)?.[0];
+  if (!kind) throw new Error(`unexpected error class ${error.constructor.name}`);
+  return kind;
 }
 
 function plainResponse(r: FetchResponse): Record<string, unknown> {
   return {
+    error: null,
     request_id: orNull(r.requestId),
-    status: orNull(r.status),
-    summary: r.summary,
-    resolved: r.resolved,
-    results: r.results.map(plainResult),
-    notices: r.notices.map((n) => ({ code: n.code, path: orNull(n.path), message: n.message })),
-    warnings: r.warnings.map((n) => ({ code: n.code, path: orNull(n.path), message: n.message })),
-    session_id: orNull(r.sessionId),
-    latency_ms: orNull(r.latencyMs),
+    results: r.results.map((x) => ({
+      url: x.url,
+      page: x.page ? plainPage(x.page) : null,
+      error: x.error
+        ? {
+            kind: kindOf(x.error),
+            status: x.error.statusCode,
+            type: orNull(x.error.type),
+            code: orNull(x.error.code),
+            detail: orNull(x.error.body),
+            fix: orNull(x.error.fix),
+            retryable: orNull(x.error.retryable),
+            request_id: orNull(x.error.requestId),
+          }
+        : null,
+    })),
   };
 }
 
-const FETCH_MANY_OK: Reply = { status: 200, headers: {}, body: JSON.stringify({ results: [] }) };
-
-describe("the fetchMany body", () => {
-  const cases = FIXTURE.fetch_many_body.filter((c) => !("typescript" in c.skip));
+describe("the fetch body", () => {
+  const cases = FIXTURE.fetch_body.filter((c) => !("typescript" in c.skip));
   it.each(cases.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
-    const outcome = await call([FETCH_MANY_OK], {}, (client) =>
-      client.fetchMany(c.urls, fetchManyOptions(c.options)),
+    const options: Record<string, unknown> = {};
+    for (const [name, v] of Object.entries(c.options)) {
+      const mapped = FETCH_OPTIONS[name];
+      if (!mapped) throw new Error(`unknown option ${name}`);
+      options[mapped] = value(v);
+    }
+    const outcome = await call([SEARCH_OK], {}, (client) =>
+      client.fetch(c.urls, options as FetchOptions),
     );
+    if (c.invalid) {
+      expect(outcome.error).toBeInstanceOf(KeenableInvalidRequestError);
+      expect(outcome.requests).toHaveLength(0);
+      return;
+    }
     expect(outcome.error).toBeUndefined();
     expect(outcome.requests[0]?.init.method).toBe("POST");
     expect(new URL(outcome.requests[0]!.url).pathname).toBe("/v1/fetch");
     expect(JSON.parse(String(outcome.requests[0]?.init.body))).toEqual(c.sent);
   });
-
-  it("a private URL anywhere in the list sends nothing", async () => {
-    const outcome = await call([FETCH_MANY_OK], {}, (client) =>
-      client.fetchMany(["https://example.com/", "http://127.0.0.1/"]),
-    );
-    expect(outcome.error).toBeInstanceOf(KeenableInvalidRequestError);
-    expect(outcome.requests).toHaveLength(0);
-  });
-
-  it("an empty list sends nothing", async () => {
-    const outcome = await call([FETCH_MANY_OK], {}, (client) => client.fetchMany([]));
-    expect(outcome.error).toBeInstanceOf(KeenableInvalidRequestError);
-    expect(outcome.requests).toHaveLength(0);
-  });
 });
 
-describe("fetchMany success bodies", () => {
-  const cases = FIXTURE.fetch_many_responses.filter((c) => !("typescript" in c.skip));
+describe("fetch replies", () => {
+  const cases = FIXTURE.fetch_responses.filter((c) => !("typescript" in c.skip));
   it.each(cases.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
-    const outcome = await call([c], { maxRetries: 0 }, (client) => client.fetchMany(c.urls));
+    const outcome = await call([c, c], { maxRetries: 0 }, (client) => client.fetch(c.urls));
+    expect(outcome.requests).toHaveLength(1);
+    if (c.expect.error !== null) {
+      const kind = KINDS[c.expect.error as string];
+      if (!kind) throw new Error(`unknown kind ${String(c.expect.error)}`);
+      expect(outcome.error).toBeInstanceOf(kind);
+      return;
+    }
     expect(outcome.error).toBeUndefined();
     expect(plainResponse(outcome.result as FetchResponse)).toEqual(c.expect);
   });

@@ -32,6 +32,7 @@ from keenable import (
 )
 from keenable import client as client_module
 from keenable.client import _backoff
+from keenable.models import Page
 
 FIXTURE = Path(__file__).parent / "fixtures" / "error_contract.json"
 CASES: list[dict[str, Any]] = json.loads(FIXTURE.read_text("utf-8"))["cases"]
@@ -247,13 +248,13 @@ async def test_network_failures_and_timeouts_are_retried(
 
 
 async def test_search_and_fetch_are_retried_alike(run: Runner) -> None:
-    # Search is a POST but reads only, so the SDKs retry it like fetch's GET.
-    page = httpx.Response(200, json={"url": "https://e.com", "content": "c"})
+    # Both are POSTs that only read, so the SDKs retry them.
     outcome = await run(
-        [httpx.Response(503), page], method="fetch", arg="https://e.com"
+        [httpx.Response(503), _page()], method="fetch", arg="https://e.com"
     )
     assert outcome.error is None and outcome.attempts == 2
-    assert outcome.requests[0].method == "GET"
+    assert outcome.requests[1].method == "POST"
+    assert outcome.requests[1].content == outcome.requests[0].content
 
     outcome = await run([httpx.Response(503), ok()])
     assert outcome.error is None and outcome.attempts == 2
@@ -508,7 +509,9 @@ async def test_a_bad_timeout_is_rejected_before_sending(run: Runner, bad: Any) -
 
 def _page(headers: dict[str, str] | None = None, **body: Any) -> httpx.Response:
     return httpx.Response(
-        200, json={"url": "https://e.com", "content": "c", **body}, headers=headers
+        200,
+        json={"results": [{"url": "https://e.com", "content": "c"}], **body},
+        headers=headers,
     )
 
 
@@ -711,10 +714,10 @@ async def test_a_lenient_success_body_parses(run: Runner) -> None:
     assert outcome.result.query == "q"
     assert outcome.result.results == []
 
-    page = httpx.Response(200, json={"url": "", "title": None})
+    page = httpx.Response(200, json={"results": [{"url": "", "title": None}]})
     outcome = await run([page], method="fetch", arg="https://e.com/a")
-    assert outcome.result.url == "https://e.com/a"
-    assert outcome.result.title == ""
+    assert outcome.result.results[0].page.url == "https://e.com/a"
+    assert outcome.result.results[0].page.title == ""
 
 
 # --- fetch targets -------------------------------------------------------------
@@ -786,7 +789,7 @@ async def test_fetch_refuses_internal_targets(run: Runner, url: str) -> None:
 async def test_fetch_allows_public_targets(run: Runner, url: str) -> None:
     outcome = await run([_page()], method="fetch", arg=url)
     assert outcome.error is None
-    assert outcome.requests[0].url.params["url"] == url
+    assert json.loads(outcome.requests[0].content) == {"urls": [url]}
 
 
 # --- client setup ----------------------------------------------------------------
@@ -887,13 +890,13 @@ async def test_a_zoneless_retry_after_date_is_not_an_http_date(run: Runner) -> N
 )
 def test_context_cleaning_edge_links(text: str, cleaned: str) -> None:
     assert (
-        client_module.Page(url="https://e.com/a", title="T", content=text).to_context()
+        Page(url="https://e.com/a", title="T", content=text).to_context()
         == f"[1] T (https://e.com/a)\n{cleaned}"
     )
 
 
 def test_a_page_context_too_small_for_any_content_is_the_header() -> None:
-    page = client_module.Page(
+    page = Page(
         url="https://e.com", title="T", content="body", published_at="2024-01-01"
     )
     assert (

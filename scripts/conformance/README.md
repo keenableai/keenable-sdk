@@ -145,7 +145,7 @@ the query the API sent back when it is such a string, else the query asked; a
 page's `url` likewise falls back to the URL asked for. The request id is the
 body's, else the trimmed `X-Request-Id` header.
 
-## Arguments (`options`, `search_body`, `fetch_params`)
+## Arguments (`options`, `search_body`)
 
 - `max_retries` is an integer of 0 or more; unset means the default (client) or
   the client's (call).
@@ -174,13 +174,6 @@ body's, else the trimmed `X-Request-Id` header.
   default, so it is not sent, and unset (or `""`) is not sent either. Any other
   value, such as the string `"true"` or `1`, is the invalid-request error and
   sends nothing (Go's `bool` cannot hold one).
-- fetch() sends its options as query parameters next to `url`, and only the
-  ones that are set: `max_chars` as the number's digits, `live` as `true` and
-  only when it is true (the API reads `true` and `false` and nothing else, and
-  an absent `live` is false), and `prompt` as given. An empty prompt is unset.
-  The URL is checked first (`fetch_url`), so a refused URL sends nothing
-  whatever the options.
-
 ## The whole-attempt deadline (`deadline`)
 
 Each case runs one keyless search, with no retries and the case's timeout,
@@ -214,16 +207,28 @@ are unset, and any other value is the invalid-request error. Arguments JSON
 cannot encode (`NaN`, `Infinity`) are the invalid-request error and send
 nothing.
 
-## fetch_many() (`fetch_many_body`, `fetch_many_responses`)
+## fetch() (`fetch_body`, `fetch_responses`)
 
-`fetch_many(urls, options)` sends one JSON body to `POST /v1/fetch`
-(`/v1/fetch/public` without a key). Every URL is checked against the fetch()
-target rules above before anything is sent; one refused URL refuses the call.
-An empty list is refused. The options are the API's groups, `content` and
-`retrieval`, plus `deadline_ms` and `session_id`, each in the SDK's own naming
-style. A group that is given is sent, even when empty; an unset field is not
-sent; an empty string is unset; `0` is sent where it is a value (`max_chars`,
-`max_age_hours`). The SDK sends conflicting options (`max_age_hours` with
-`as_of`) for the API to reject. The success-body rules are in
-`cases/fetch-many.json`'s `_comment`. A page that failed is its own entry,
-with `error` set, never an exception.
+`fetch(urls, options)` sends one JSON body to `POST /v1/fetch`
+(`/v1/fetch/public` without a key) and nothing else.
+
+- `urls` is a list of 1 to 10 URLs, sent in order; a lone string is one URL
+  (Go and Rust take a list). Every URL is checked against the fetch() target
+  rules above before anything is sent, and one refused URL refuses the call.
+- The options are flat, in the SDK's naming style: `max_chars`, `schema`,
+  `links` and `images` go into the body's `content` object, `max_age_hours`
+  into `retrieval`. An unset option is not sent, and an object with nothing
+  set is left out: the API refuses unknown fields.
+- The SDK refuses what the API would: `max_chars` below 1, `links` outside 1 to
+  1,000, `images` outside 0 to 25, `max_age_hours` outside 0 to 720 or not a
+  finite number (fractions are fine; 0 is a live read), and a `schema` that is
+  not an object whose `type` is `"object"`. Go's `MaxChars` and `Links` are
+  ints whose zero means unset.
+- The reply's `results` has one entry per URL, in order. An entry whose `error`
+  is an object is a failed URL: the SDK builds its API error from that object
+  as from an error body, with the status `error.status` (500 when that is not
+  an integer from 400 to 599), and puts it on the result. It is never raised.
+  Any other entry is a page, read by the success-body rules plus the fields
+  listed in `cases/fetch.json`'s `_comment`.
+- The call raises only when it fails as a whole: a non-2xx reply maps by the
+  `errors` rules, and a body that is not a JSON object is an API error.

@@ -2,19 +2,28 @@
 
 ## Unreleased
 
-`Client.FetchMany(ctx, urls, opts)` reads up to 20 pages in one call with
-`POST /v1/fetch`. `FetchManyOptions` mirrors the
-API's groups: `Content *FetchContentOptions` (`MaxChars`, default 50,000 and
-`keenable.Ptr(0)` for metadata only; `Objective`; `Links`; `Images`),
-`Retrieval *FetchRetrievalOptions` (`MaxAgeHours`, 0 to 720 with fractions,
-`keenable.Ptr(0.0)` always live, nil takes the stored copy; or `AsOf`, "P0D"
-for stored copies only), plus `DeadlineMS` and `SessionID`. A non-nil group is
-sent even when empty. `Results[i]` is the entry for `urls[i]`,
-with the page in `Content` (`Text`, `TotalChars`, `Links`, `Images`)
-and `RetrievedFrom`; a failed page has its `Error` set, not an error. Preview: it works once `POST /v1/fetch` is enabled
-for your organization. `Fetch` and `FetchWithOptions` keep working on
-`GET /v1/fetch`; they are deprecated in favour of `FetchMany` and will be
-removed after the API retires `GET /v1/fetch` (announced with 90 days' notice).
+- **Breaking (1.0.0):** `Fetch` reads up to 10 pages in one call with
+  `POST /v1/fetch`: `Fetch(ctx context.Context, urls []string, opts
+  *FetchOptions) (*FetchResponse, error)`. `FetchWithOptions` is removed.
+  `Results[i]` is for `urls[i]`: its `Page`, or its `Error` when that URL
+  failed. `Error` is the error `Fetch` would return for that status
+  (`*APIError`, `*AuthError`, `*RateLimitError` or
+  `*InsufficientCreditsError`), and it is not returned: `Fetch` returns an
+  error only when the call fails as a whole.
+  - `FetchOptions` applies to every page: `MaxChars` (zero is unset),
+    `Schema` (a JSON Schema whose root has `"type": "object"`; the answer is
+    in `Page.Structured`, or `Page.AnswerError` says why not), `Links` (1 to
+    1000, zero is unset), `Images` (0 to 25, `keenable.Ptr(0)` for none) and
+    `MaxAgeHours` (0 to 720, fractions allowed; `keenable.Ptr(0.0)` reads
+    live), next to the embedded `RequestOptions`. A value outside these
+    limits, or more than 10 URLs, is an `InvalidRequestError` before a request
+    is sent.
+  - `Page` gains `Image`, `Favicon`, `Links`, `Images`, `Structured`,
+    `AnswerError`, `Stale` and `Usage`, and loses `RequestID`: read
+    `FetchResponse.RequestID`.
+  - Removed: `GET /v1/fetch` and its `Live` and `Prompt` options. Pass
+    `MaxAgeHours: keenable.Ptr(0.0)` for a live read; `Schema` returns a typed
+    answer where `Prompt` returned text.
 
 - **Added:** `SearchOptions.Objective`: what the search is for, in two or three natural sentences, up to 1,000 characters. Not sent when empty. The API validates and logs it; it does not change results or price. The search tool offers it to a model.
 

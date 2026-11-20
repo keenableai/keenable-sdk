@@ -108,11 +108,17 @@ func RunToolCall(ctx context.Context, client *Client, name string, arguments any
 		if err != nil {
 			return "", err
 		}
-		page, err := client.Fetch(ctx, pageURL)
+		resp, err := client.Fetch(ctx, []string{pageURL}, nil)
 		if err != nil {
 			return "", err
 		}
-		return page.ToContext(nil), nil
+		for _, result := range resp.Results {
+			if result.Error != nil {
+				return "", result.Error
+			}
+			return result.Page.ToContext(nil), nil
+		}
+		return "", &APIError{StatusCode: 200, code: CodeAPI, msg: "the Keenable API returned no result for the URL"}
 	default:
 		return "", &InvalidRequestError{msg: fmt.Sprintf("unknown Keenable tool: %q. Use keenable_search or keenable_fetch.", name)}
 	}

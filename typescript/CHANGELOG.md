@@ -5,21 +5,26 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
-- `fetchMany(urls, { content, retrieval, deadlineMs, sessionId })`
-  reads up to 20 pages in one call with `POST /v1/fetch`. The option groups mirror the API, in camelCase:
-  - `content`: `maxChars` (default 50,000; `0` returns metadata only),
-    `objective` (up to 1,000 characters), `links`, `images`.
-  - `retrieval`: `maxAgeHours` (0 to 720, fractions allowed; `0` always
-    fetches live; leave it out to take the stored copy), or `asOf` (`"P0D"`
-    for stored copies only).
-  `results[i]` is the entry for `urls[i]`, with the page in `result.content`
-  (`text`, `totalChars`, `links`, `images`) and `retrievedFrom`; a
-  failed page has its `error` set, not a thrown error. An unset option is not
-  sent, an empty string is unset, and `0` is sent where it is a value.
-  Preview: it works once `POST /v1/fetch` is enabled for your organization.
-- `fetch()` keeps working and still calls `GET /v1/fetch`; it is deprecated in
-  favour of `fetchMany()` and will be removed after the API retires
-  `GET /v1/fetch` (announced with 90 days' notice).
+- **Breaking (1.0.0):** `fetch()` reads up to 10 pages in one call with
+  `POST /v1/fetch` and returns a `FetchResponse`, not a `Page`:
+  `fetch(urls: string | readonly string[], options?: FetchOptions)`. A lone
+  string is one URL. `results[i]` is for `urls[i]`: its `page`, or its `error`
+  when that URL failed. `error` is the `KeenableAPIError` (or subclass) the
+  call would throw for that status, and it is not thrown: the call throws only
+  when it fails as a whole.
+  - `FetchOptions` applies to every page: `maxChars` (at least 1), `schema` (a
+    JSON Schema whose root has `type: "object"`; the answer is in
+    `page.structured`, or `page.answerError` says why not), `links` (1 to
+    1000), `images` (0 to 25) and `maxAgeHours` (0 to 720, fractions allowed;
+    `0` reads live), next to `timeoutMs`, `maxRetries`, `headers` and
+    `signal`. A value outside these limits, or more than 10 URLs, throws
+    `KeenableInvalidRequestError` before a request is sent.
+  - `Page` gains `image`, `favicon`, `links`, `images`, `structured`,
+    `answerError`, `stale` and `usage`, and loses `requestId`: read
+    `FetchResponse.requestId`.
+  - Removed: `GET /v1/fetch` and its `live` and `prompt` options. Pass
+    `maxAgeHours: 0` for a live read; `schema` returns a typed answer where
+    `prompt` returned text.
 - **Added:** `objective` option on `search()`: what the search is for, in two or three natural sentences, up to 1,000 characters. Left out of the request when unset or empty. The API validates and logs it; it does not change results or price. The search tool offers it to a model.
 
 - **Security fix:** `baseUrl` and `KEENABLE_API_URL` are refused when the part

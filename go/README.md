@@ -154,35 +154,51 @@ for i, result := range results.Cited(nil) {
 }
 ```
 
-## Read a full page
+## Read full pages
+
+`Fetch` reads up to 10 pages in one call. `Results[i]` is for `urls[i]`: its
+`Page`, or its `Error` when that URL failed. A failed URL is not returned as an
+error; `Fetch` returns an error only when the call fails as a whole.
 
 ```go
-page, err := client.Fetch(context.Background(), "https://cerebras.ai/chip")
+resp, err := client.Fetch(context.Background(), []string{
+	"https://cerebras.ai/chip",
+	"https://cerebras.ai/blog",
+}, nil)
 if err != nil {
 	log.Fatal(err)
 }
-fmt.Println(page.Title)
-fmt.Println(page.Content)       // markdown, boilerplate stripped
-fmt.Println(page.ToContext(nil)) // same citable block shape as search results
+for _, result := range resp.Results {
+	if result.Error != nil {
+		fmt.Println(result.URL, result.Error)
+		continue
+	}
+	fmt.Println(result.Page.Title)
+	fmt.Println(result.Page.Content)       // markdown, boilerplate stripped
+	fmt.Println(result.Page.ToContext(nil)) // same citable block shape as search results
+}
 ```
 
-`FetchWithOptions` takes three optional fields on `FetchOptions`. They ship in the next release after `v0.1.1`, so a released version doesn't have them yet:
+`result.Error` is the error `Fetch` would return for that status (an
+`*APIError`, or an `*AuthError`, `*RateLimitError` or
+`*InsufficientCreditsError` wrapping one), so `errors.As` reads its
+`StatusCode`, `APICode`, `Type` and `Fix`. `FetchOptions` applies to every page:
 
 ```go
-page, err := client.FetchWithOptions(context.Background(), "https://cerebras.ai/chip", &keenable.FetchOptions{
-	MaxChars: 5000,
-	Live:     true,
-})
-answer, err := client.FetchWithOptions(context.Background(), "https://cerebras.ai/chip", &keenable.FetchOptions{
-	Prompt: "List the chip's specs",
+resp, err := client.Fetch(ctx, []string{"https://cerebras.ai/pricing"}, &keenable.FetchOptions{
+	MaxChars:    5000,
+	Schema:      map[string]any{"type": "object", "properties": map[string]any{"price": map[string]any{"type": "number"}}},
+	MaxAgeHours: keenable.Ptr(24.0),
 })
 ```
 
 | Field | What it does |
 |---|---|
-| `MaxChars` | Cap the characters of content returned, a positive integer. Zero means the API default of 50000; `page.Truncated` and `page.TotalChars` say whether the page was cut |
-| `Live` | `true` fetches the page from its source now instead of reading Keenable's indexed copy. `false` is the default and is not sent |
-| `Prompt` | An extraction instruction, up to 2000 characters. `page.Content` is then only the model's output for it, not the page. Empty means unset |
+| `MaxChars` | The most characters of content per page. Zero means the API default of 50000; `page.Truncated` and `page.TotalChars` say whether the page was cut |
+| `Schema` | A JSON Schema whose root has `"type": "object"`. Each page's typed answer is in `page.Structured`, or `page.AnswerError` says why it could not be made |
+| `Links` | The most links per page to return, 1 to 1000, in `page.Links`. Zero means unset |
+| `Images` | The most images per page to return, 0 to 25, in `page.Images`. Nil means unset; `keenable.Ptr(0)` asks for none |
+| `MaxAgeHours` | Use a stored copy only if it is younger than this, 0 to 720 hours (fractions allowed). `keenable.Ptr(0.0)` reads every page live; nil takes a stored copy of any age when there is one |
 
 Internal hosts and private addresses are refused before a request is sent:
 `localhost` and names under `.localhost`, `metadata.google.internal`, and IP
@@ -337,7 +353,7 @@ resp, err := client.Search(ctx, "wafer scale engine", &keenable.SearchOptions{
     RequestOptions: keenable.RequestOptions{MaxRetries: &none},
 })
 minute := time.Minute
-page, err := client.FetchWithOptions(ctx, "https://example.com", &keenable.FetchOptions{
+fetched, err := client.Fetch(ctx, []string{"https://example.com"}, &keenable.FetchOptions{
     RequestOptions: keenable.RequestOptions{
         Timeout: &minute, // nil keeps the client's
         Headers: map[string]string{"X-Trace": "abc"},
@@ -345,13 +361,12 @@ page, err := client.FetchWithOptions(ctx, "https://example.com", &keenable.Fetch
 })
 ```
 
-`RequestOptions` (embedded in `SearchOptions` and in `FetchOptions`, which
-`FetchWithOptions` takes) overrides
+`RequestOptions` (embedded in `SearchOptions` and `FetchOptions`) overrides
 the client's `Timeout`, `MaxRetries` and `Headers` for one call. `Timeout` is a
 pointer: nil keeps the client's, and zero or less is an `InvalidRequestError`.
 A header whose name is not an HTTP token, or whose value has a CR, LF or NUL, is
 an `InvalidRequestError` too, before anything is sent. `X-API-Key`
-always comes from `APIKey`. `SearchResponse.RequestID` and `Page.RequestID`
+always comes from `APIKey`. `SearchResponse.RequestID` and `FetchResponse.RequestID`
 carry the API's request id; quote it when reporting a problem.
 
 ## Configuration

@@ -22,7 +22,7 @@
 mod client;
 mod context_clean;
 mod error;
-mod fetch_many;
+mod fetch;
 mod guard;
 mod json;
 mod models;
@@ -35,16 +35,15 @@ mod test_hooks;
 mod tests;
 
 pub use client::{
-    Client, FetchOptions, Options, RequestOptions, SearchOptions, DEFAULT_BASE_URL,
-    DEFAULT_MAX_RETRIES, DEFAULT_TIMEOUT,
+    Client, Options, RequestOptions, SearchOptions, DEFAULT_BASE_URL, DEFAULT_MAX_RETRIES,
+    DEFAULT_TIMEOUT,
 };
 pub use error::{
     codes, types, ApiError, ConnectionError, Error, InvalidRequestError, RateLimitError,
     RateLimitInfo, Result,
 };
-pub use fetch_many::{
-    FetchContent, FetchContentOptions, FetchError, FetchImage, FetchLink, FetchManyOptions,
-    FetchNotice, FetchResponse, FetchResult, FetchRetrievalOptions, FetchSummary,
+pub use fetch::{
+    FetchAnswerError, FetchImage, FetchLink, FetchOptions, FetchResponse, FetchResult, FetchUsage,
 };
 pub use models::{
     ContextOptions, Page, SearchResponse, SearchResult, DEFAULT_CONTEXT_MAX_CHARS,

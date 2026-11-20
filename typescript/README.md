@@ -141,28 +141,47 @@ results.cited().forEach((result, index) => {
 });
 ```
 
-## Read a full page
+## Read full pages
+
+`fetch()` reads up to 10 pages in one call. `results[i]` is for `urls[i]`: its
+`page`, or its `error` when that URL failed. A failed URL does not throw; the
+call throws only when it fails as a whole.
 
 ```ts
-const page = await keenable.fetch("https://cerebras.ai/chip");
+const response = await keenable.fetch(["https://cerebras.ai/chip", "https://cerebras.ai/blog"]);
 
-console.log(page.title);
-console.log(page.content); // markdown, boilerplate stripped
-console.log(page.toContext()); // same citable block shape as search results
+for (const result of response.results) {
+  if (result.error) {
+    console.log(result.url, result.error.code);
+  } else if (result.page) {
+    console.log(result.page.title);
+    console.log(result.page.content); // markdown, boilerplate stripped
+    console.log(result.page.toContext()); // same citable block shape as search results
+  }
+}
 ```
 
-`fetch()` takes three options (`FetchOptions`), next to the per-request ones. They ship in the next release after 0.1.4, so the version on npm doesn't have them yet:
+A lone string is one URL: `keenable.fetch("https://cerebras.ai/chip")`.
+`result.error` is the error the SDK would throw for that status
+(`KeenableAPIError` or a subclass), with its `statusCode`, `code`, `type` and
+`fix`. The options (`FetchOptions`, next to the per-request ones) apply to
+every page:
 
 ```ts
-const capped = await keenable.fetch("https://cerebras.ai/chip", { maxChars: 5000, live: true });
-const answer = await keenable.fetch("https://cerebras.ai/chip", { prompt: "List the chip's specs" });
+const response = await keenable.fetch("https://cerebras.ai/pricing", {
+  schema: { type: "object", properties: { price: { type: "number" } } },
+  maxAgeHours: 24,
+});
+console.log(response.results[0]?.page?.structured);
 ```
 
 | Option | What it does |
 |---|---|
-| `maxChars` | Cap the characters of content returned, a positive integer. The API default is 50000; `page.truncated` and `page.totalChars` say whether the page was cut |
-| `live` | `true` fetches the page from its source now instead of reading Keenable's indexed copy. Default `false` |
-| `prompt` | An extraction instruction, up to 2000 characters. `page.content` is then only the model's output for it, not the page |
+| `maxChars` | The most characters of content per page, at least 1. The API default is 50000; `page.truncated` and `page.totalChars` say whether the page was cut |
+| `schema` | A JSON Schema whose root has `type: "object"`. Each page's typed answer is in `page.structured`, or `page.answerError` says why it could not be made |
+| `links` | The most links per page to return, 1 to 1000, in `page.links` |
+| `images` | The most images per page to return, 0 to 25, in `page.images` |
+| `maxAgeHours` | Use a stored copy only if it is younger than this, 0 to 720 hours (fractions allowed). `0` reads every page live. Left out, a stored copy of any age is used when there is one |
 
 ## Tool calling
 

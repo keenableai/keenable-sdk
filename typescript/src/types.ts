@@ -93,67 +93,28 @@ export interface SearchOptions extends RequestOptions {
   disableCards?: boolean;
 }
 
-/** Optional arguments for `fetch()`. */
+/** Optional arguments for `fetch()`. Each applies to every page. */
 export interface FetchOptions extends RequestOptions {
   /**
-   * Cap the characters of content returned, a positive integer. The API
-   * default is 50000. `Page.truncated` and `Page.totalChars` say whether the
-   * page was cut and how long it was.
+   * The most characters of content per page, at least 1. The API default is
+   * 50000. `Page.truncated` and `Page.totalChars` say whether a page was cut.
    */
   maxChars?: number;
   /**
-   * `true` fetches the page from its source now instead of reading Keenable's
-   * indexed copy. Default `false`.
+   * A JSON Schema whose root has `type: "object"`. Each page's typed answer is
+   * in `Page.structured`, or `Page.answerError` says why it could not be made.
    */
-  live?: boolean;
-  /**
-   * An extraction instruction, up to 2000 characters, such as
-   * `"list the pricing tiers"`. `Page.content` is then only the model's output
-   * for it, not the page.
-   */
-  prompt?: string;
-}
-
-/** What each `fetchMany()` result carries (`content`). Fields left out are not sent. */
-export interface FetchContentOptions {
-  /** The most characters of text per page, 50,000 by default; `0` leaves the text out (metadata only). */
-  maxChars?: number;
-  /** What you are after on the pages, up to 1,000 characters. Each page's text becomes the passages about it. Needs an API key. */
-  objective?: string;
-  /** The most links per page to return, with their text (1 to 1,000). */
+  schema?: Record<string, unknown>;
+  /** The most links per page to return, 1 to 1000. */
   links?: number;
-  /** The most images per page to return, with their alt text (1 to 1,000). */
+  /** The most images per page to return, 0 to 25. */
   images?: number;
-}
-
-/** Where `fetchMany()` page content comes from (`retrieval`). Give one of the two. */
-export interface FetchRetrievalOptions {
   /**
-   * Use a stored copy only if it is younger than this many hours, from 0 to 720 (fractions
-   * allowed: `0.25` is 15 minutes). `0` always reads live. Left out, a stored copy of any age
-   * is used when there is one.
+   * Use a stored copy only if it is younger than this, 0 to 720 hours
+   * (fractions allowed); `0` reads every page live. Left out, a stored copy of
+   * any age is used when there is one.
    */
   maxAgeHours?: number;
-  /**
-   * Stored data as it stood at this instant, never live: an RFC 3339 date or date-time, or a
-   * duration back from now. `"P0D"` is the latest stored copy.
-   */
-  asOf?: string;
-}
-
-/** Options for `fetchMany()` (POST /v1/fetch). Each group is sent when given. */
-export interface FetchManyOptions extends RequestOptions {
-  /** What each result carries. Left out: each page's text up to 50,000 characters. */
-  content?: FetchContentOptions;
-  /** Where content comes from. Left out: a stored copy of any age when there is one, else a live read. */
-  retrieval?: FetchRetrievalOptions;
-  /**
-   * For the whole call, 1,000 to 55,000 ms (30,000 without a key); 15,000 by default. Pages not
-   * read by then fail with `fetch_timeout`.
-   */
-  deadlineMs?: number;
-  /** Your id for the agent session these calls belong to. */
-  sessionId?: string;
 }
 
 /** Options for rendering results into a prompt block. */

@@ -38,7 +38,7 @@ async fn a_keyed_search_sends_the_key_and_the_sdk_headers() {
 async fn a_keyless_client_calls_the_public_endpoints_without_a_key() {
     let server = start(Script::Replies(vec![
         search_reply(),
-        Reply::new(200, r#"{"content":"c"}"#),
+        Reply::new(200, r#"{"results":[{"content":"c"}]}"#),
     ]))
     .await;
     let client = Client::with_options(Options {
@@ -50,12 +50,18 @@ async fn a_keyless_client_calls_the_public_endpoints_without_a_key() {
     .unwrap();
     assert!(client.is_keyless());
     client.search("q").await.unwrap();
-    let page = client.fetch("https://example.com/a").await.unwrap();
+    let response = client.fetch(&["https://example.com/a"]).await.unwrap();
     let seen = server.requests();
     assert_eq!(seen[0].path, "/v1/search/public");
     assert_eq!(seen[1].path, "/v1/fetch/public");
     assert!(seen.iter().all(|r| r.header("X-API-Key").is_none()));
     assert_eq!(seen[0].header("X-Keenable-Title"), Some("My Agent"));
+    assert_eq!(seen[1].method, "POST");
+    assert_eq!(
+        serde_json::from_slice::<Value>(&seen[1].body).unwrap(),
+        json!({"urls": ["https://example.com/a"]})
+    );
+    let page = response.results[0].page.as_ref().unwrap();
     assert_eq!(page.url, "https://example.com/a");
 }
 
@@ -205,7 +211,7 @@ fn the_tool_definitions_match_the_other_sdks() {
 async fn a_fetch_tool_call_renders_the_page() {
     let server = start(Script::Replies(vec![Reply::new(
         200,
-        r#"{"url":"https://e.com/","title":"T","content":"Body","published_at":1714564800}"#,
+        r#"{"results":[{"url":"https://e.com/","title":"T","content":"Body","published_at":1714564800}]}"#,
     )]))
     .await;
     let text = keyed(&server)
@@ -216,6 +222,40 @@ async fn a_fetch_tool_call_renders_the_page() {
         text,
         "[1] T (https://e.com/) - published 2024-05-01T12:00:00Z\nBody"
     );
+}
+
+#[tokio::test]
+async fn a_failed_url_is_on_its_result_and_the_fetch_tool_returns_it() {
+    let body = r#"{"results":[{"url":"https://e.com/gone","error":{"status":404,"type":"target_error","code":"page_not_found","message":"gone"}}]}"#;
+    let server = start(Script::Replies(vec![
+        Reply::new(200, body),
+        Reply::new(200, body),
+    ]))
+    .await;
+    let client = keyed(&server);
+    let response = client
+        .fetch_with(
+            &["https://e.com/gone"],
+            &crate::FetchOptions {
+                max_chars: Some(100),
+                schema: Some(json!({"type": "object"})),
+                links: Some(5),
+                images: Some(0),
+                max_age_hours: Some(0.5),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    let result = &response.results[0];
+    assert!(result.page.is_none());
+    let api = result.error.as_ref().and_then(Error::api_error).unwrap();
+    assert_eq!(api.status_code, 404);
+    assert_eq!(api.code.as_deref(), Some("page_not_found"));
+    let got = client
+        .run_tool_call("keenable_fetch", json!({"url": "https://e.com/gone"}))
+        .await;
+    assert!(matches!(got, Err(Error::Api(_))), "{got:?}");
 }
 
 #[tokio::test]

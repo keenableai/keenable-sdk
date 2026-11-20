@@ -48,7 +48,7 @@ KINDS: dict[str, type[KeenableError]] = {
     "api": KeenableAPIError,
 }
 SEARCH_OK = (200, {}, b'{"results": []}')
-PAGE_OK = (200, {}, b'{"content": "c"}')
+PAGE_OK = (200, {}, b'{"results": [{"content": "c"}]}')
 
 # One reply: status, headers and the body bytes.
 Reply = tuple[int, dict[str, str], bytes]
@@ -144,7 +144,7 @@ async def test_fetch_url(kind: str, case: dict[str, Any], waits: list[float]) ->
     if case["allowed"]:
         assert outcome.error is None
         assert len(outcome.requests) == 1
-        assert outcome.requests[0].url.params["url"] == case["url"]
+        assert json.loads(outcome.requests[0].content) == {"urls": [case["url"]]}
     else:
         assert isinstance(outcome.error, KeenableInvalidRequestError)
         assert outcome.requests == []
@@ -249,12 +249,7 @@ async def test_errors(kind: str, case: dict[str, Any], waits: list[float]) -> No
 @pytest.mark.parametrize("case", cases("responses"))
 async def test_responses(kind: str, case: dict[str, Any], waits: list[float]) -> None:
     outcome = await run(
-        kind,
-        [reply(case)],
-        waits,
-        method=case["endpoint"],
-        arg=case["arg"],
-        options={"max_retries": 0},
+        kind, [reply(case)], waits, arg=case["arg"], options={"max_retries": 0}
     )
     want = case["expect"]
     assert len(outcome.requests) == 1
@@ -263,35 +258,22 @@ async def test_responses(kind: str, case: dict[str, Any], waits: list[float]) ->
         return
     assert outcome.error is None
     result = outcome.result
-    if case["endpoint"] == "search":
-        got = {
-            "query": result.query,
-            "mode": result.mode,
-            "request_id": result.request_id,
-            "results": [
-                {
-                    "title": r.title,
-                    "url": r.url,
-                    "snippet": r.snippet,
-                    "description": r.description,
-                    "published_at": r.published_at,
-                    "acquired_at": r.acquired_at,
-                }
-                for r in result.results
-            ],
-        }
-    else:
-        got = {
-            "url": result.url,
-            "title": result.title,
-            "content": result.content,
-            "description": result.description,
-            "author": result.author,
-            "published_at": result.published_at,
-            "request_id": result.request_id,
-            "truncated": result.truncated,
-            "total_chars": result.total_chars,
-        }
+    got = {
+        "query": result.query,
+        "mode": result.mode,
+        "request_id": result.request_id,
+        "results": [
+            {
+                "title": r.title,
+                "url": r.url,
+                "snippet": r.snippet,
+                "description": r.description,
+                "published_at": r.published_at,
+                "acquired_at": r.acquired_at,
+            }
+            for r in result.results
+        ],
+    }
     assert got == {key: want[key] for key in got}
 
 
@@ -345,38 +327,6 @@ async def test_search_body(kind: str, case: dict[str, Any], waits: list[float]) 
 
 
 @pytest.mark.parametrize("kind", CLIENTS)
-@pytest.mark.parametrize("case", cases("fetch_params"))
-async def test_fetch_params(
-    kind: str, case: dict[str, Any], waits: list[float]
-) -> None:
-    # The SDK's argument names are the wire names.
-    outcome = await run(
-        kind, [PAGE_OK], waits, method="fetch", arg=case["url"], call=case["options"]
-    )
-    assert outcome.error is None
-    assert len(outcome.requests) == 1
-    assert outcome.requests[0].url.path == "/v1/fetch"
-    assert dict(outcome.requests[0].url.params.multi_items()) == case["sent"]
-    assert len(outcome.requests[0].url.params.multi_items()) == len(case["sent"])
-
-
-@pytest.mark.parametrize("kind", CLIENTS)
-async def test_a_refused_url_sends_nothing_whatever_the_options(
-    kind: str, waits: list[float]
-) -> None:
-    outcome = await run(
-        kind,
-        [PAGE_OK],
-        waits,
-        method="fetch",
-        arg="http://127.0.0.1/",
-        call={"max_chars": 10, "live": True, "prompt": "p"},
-    )
-    assert isinstance(outcome.error, KeenableInvalidRequestError)
-    assert outcome.requests == []
-
-
-@pytest.mark.parametrize("kind", CLIENTS)
 @pytest.mark.parametrize("case", cases("tool_call"))
 async def test_tool_call(kind: str, case: dict[str, Any], waits: list[float]) -> None:
     seen: list[httpx.Request] = []
@@ -406,23 +356,18 @@ async def test_tool_call(kind: str, case: dict[str, Any], waits: list[float]) ->
         assert json.loads(seen[0].content) == case["sent"]
 
 
-FETCH_MANY_OK = (200, {}, b'{"results": []}')
-
-
 @pytest.mark.parametrize("kind", CLIENTS)
-@pytest.mark.parametrize("case", cases("fetch_many_body"))
-async def test_fetch_many_body(
-    kind: str, case: dict[str, Any], waits: list[float]
-) -> None:
+@pytest.mark.parametrize("case", cases("fetch_body"))
+async def test_fetch_body(kind: str, case: dict[str, Any], waits: list[float]) -> None:
     # The SDK's argument names are the case's option names.
+    call = {name: value(given) for name, given in case["options"].items()}
     outcome = await run(
-        kind,
-        [FETCH_MANY_OK],
-        waits,
-        method="fetch_many",
-        arg=case["urls"],
-        call=case["options"],
+        kind, [SEARCH_OK], waits, method="fetch", arg=case["urls"], call=call
     )
+    if case["invalid"]:
+        assert isinstance(outcome.error, KeenableInvalidRequestError)
+        assert outcome.requests == []
+        return
     assert outcome.error is None
     assert outcome.requests[0].method == "POST"
     assert outcome.requests[0].url.path == "/v1/fetch"
@@ -434,45 +379,59 @@ def _plain(value: Any) -> Any:
         return {
             f.name: _plain(getattr(value, f.name))
             for f in dataclasses.fields(value)
-            if f.name not in ("raw", "details", "usage")
+            if f.name != "raw"
         }
     if isinstance(value, list):
         return [_plain(item) for item in value]
     return value
 
 
+def _url_error(error: KeenableAPIError) -> dict[str, Any]:
+    kind = next(name for name, cls in KINDS.items() if type(error) is cls)
+    return {
+        "kind": kind,
+        "status": error.status_code,
+        "type": error.type,
+        "code": error.code,
+        "detail": error.body,
+        "fix": error.fix,
+        "retryable": error.retryable,
+        "request_id": error.request_id,
+    }
+
+
 @pytest.mark.parametrize("kind", CLIENTS)
-@pytest.mark.parametrize("case", cases("fetch_many_responses"))
-async def test_fetch_many_responses(
+@pytest.mark.parametrize("case", cases("fetch_responses"))
+async def test_fetch_responses(
     kind: str, case: dict[str, Any], waits: list[float]
 ) -> None:
     outcome = await run(
-        kind, [reply(case)], waits, method="fetch_many", arg=case["urls"]
-    )
-    assert outcome.error is None
-    assert _plain(outcome.result) == case["expect"]
-
-
-@pytest.mark.parametrize("kind", CLIENTS)
-async def test_fetch_many_refuses_a_private_url_and_sends_nothing(
-    kind: str, waits: list[float]
-) -> None:
-    outcome = await run(
         kind,
-        [FETCH_MANY_OK],
+        [reply(case)],
         waits,
-        method="fetch_many",
-        arg=["https://example.com/", "http://127.0.0.1/"],
+        method="fetch",
+        arg=case["urls"],
+        options={"max_retries": 0},
     )
-    assert isinstance(outcome.error, KeenableInvalidRequestError)
-    assert outcome.requests == []
-
-
-@pytest.mark.parametrize("kind", CLIENTS)
-async def test_fetch_many_refuses_an_empty_list(kind: str, waits: list[float]) -> None:
-    outcome = await run(kind, [FETCH_MANY_OK], waits, method="fetch_many", arg=[])
-    assert isinstance(outcome.error, KeenableInvalidRequestError)
-    assert outcome.requests == []
+    want = case["expect"]
+    assert len(outcome.requests) == 1
+    if want["error"] is not None:
+        assert type(outcome.error) is KINDS[want["error"]]
+        return
+    assert outcome.error is None
+    got = {
+        "error": None,
+        "request_id": outcome.result.request_id,
+        "results": [
+            {
+                "url": r.url,
+                "page": _plain(r.page) if r.page is not None else None,
+                "error": _url_error(r.error) if r.error is not None else None,
+            }
+            for r in outcome.result.results
+        ],
+    }
+    assert got == want
 
 
 def test_the_fixture_has_every_section() -> None:
@@ -486,10 +445,9 @@ def test_the_fixture_has_every_section() -> None:
         "responses",
         "options",
         "search_body",
-        "fetch_params",
         "tool_call",
-        "fetch_many_body",
-        "fetch_many_responses",
+        "fetch_body",
+        "fetch_responses",
         "deadline",
     }
 

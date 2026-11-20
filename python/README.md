@@ -127,27 +127,44 @@ for index, result in enumerate(results.cited(), start=1):
     print(f"[{index}] {result.title} - {result.url}")
 ```
 
-## Read a full page
+## Read full pages
+
+`fetch()` reads up to 10 pages in one call. `results[i]` is for `urls[i]`:
+its `page`, or its `error` when that URL failed. A failed URL does not raise;
+the call raises only when it fails as a whole.
 
 ```python
-page = keenable.fetch("https://cerebras.ai/chip")
-print(page.title)
-print(page.content)  # markdown, boilerplate stripped
-print(page.to_context())  # same citable block shape as search results
+response = keenable.fetch(["https://cerebras.ai/chip", "https://cerebras.ai/blog"])
+for result in response.results:
+    if result.error:
+        print(result.url, result.error.code)
+    else:
+        print(result.page.title)
+        print(result.page.content)  # markdown, boilerplate stripped
+        print(result.page.to_context())  # same citable block as search results
 ```
 
-`fetch()` takes three optional arguments. They ship in the next release after 0.1.3, so the version on PyPI doesn't have them yet:
-
-```python
-page = keenable.fetch("https://cerebras.ai/chip", max_chars=5000, live=True)
-answer = keenable.fetch("https://cerebras.ai/chip", prompt="List the chip's specs")
-```
+A lone string is one URL: `keenable.fetch("https://cerebras.ai/chip")`.
+`result.error` is the error the SDK would raise for that status
+(`KeenableAPIError` or a subclass), with its `status_code`, `code`, `type` and
+`fix`. The options apply to every page:
 
 | Option | What it does |
 |---|---|
-| `max_chars` | Cap the characters of content returned, a positive integer. The API default is 50000; `page.truncated` and `page.total_chars` say whether the page was cut |
-| `live` | `True` fetches the page from its source now instead of reading Keenable's indexed copy. Default `False` |
-| `prompt` | An extraction instruction, up to 2000 characters. `page.content` is then only the model's output for it, not the page |
+| `max_chars` | The most characters of content per page, at least 1. The API default is 50000; `page.truncated` and `page.total_chars` say whether the page was cut |
+| `schema` | A JSON Schema whose root has `"type": "object"`. Each page's typed answer is in `page.structured`, or `page.answer_error` says why it could not be made |
+| `links` | The most links per page to return, 1 to 1000, in `page.links` |
+| `images` | The most images per page to return, 0 to 25, in `page.images` |
+| `max_age_hours` | Use a stored copy only if it is younger than this, 0 to 720 hours (fractions allowed). `0` reads every page live. Left out, a stored copy of any age is used when there is one |
+
+```python
+response = keenable.fetch(
+    "https://cerebras.ai/pricing",
+    schema={"type": "object", "properties": {"price": {"type": "number"}}},
+    max_age_hours=24,
+)
+print(response.results[0].page.structured)
+```
 
 ## Tool calling
 

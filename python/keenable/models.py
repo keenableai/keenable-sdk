@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urljoin, urlsplit
+
+from .errors import KeenableAPIError
 
 # Default budget for the `to_context()` renderers. Roughly 3k tokens: large
 # enough that a handful of results keep their substance, small enough to sit in
@@ -517,88 +519,21 @@ class SearchResponse:
         return header
 
 
-@dataclass
-class Page:
-    """A web page fetched by :meth:`Keenable.fetch`, extracted as markdown."""
-
-    url: str
-    title: str
-    content: str
-    """The page's main content as markdown, with navigation and boilerplate
-    stripped."""
-
-    description: str | None = None
-    """Deprecated: always empty, the API no longer fills it. Read ``content``.
-    Kept for compatibility; see https://docs.keenable.ai/versioning."""
-
-    author: str | None = None
-    published_at: str | None = None
-    """When the page was published, as ISO 8601. The API sends Unix seconds
-    for a fetch; they are given in UTC to the second, such as
-    ``"2024-05-01T12:00:00Z"``, the form search results use. None when
-    unknown."""
-
-    raw: dict[str, Any] = field(default_factory=dict, repr=False)
-    request_id: str | None = None
-    """The API's id for this request. Quote it when reporting a problem."""
-
-    truncated: bool | None = None
-    """True when the page was longer than the API's ``max_chars`` and
-    ``content`` was cut (cut content ends with ``...``). None when the API did
-    not say."""
-
-    total_chars: int | None = None
-    """Length of the full extracted content in Unicode code points, before
-    any cut. None when the API did not say."""
-
-    @classmethod
-    def _from_json(
-        cls, data: dict[str, Any], url: str, request_id: str | None = None
-    ) -> Page:
-        return cls(
-            url=_str_or_none(data.get("url")) or url,
-            title=_str_or_empty(data.get("title")),
-            content=_str_or_empty(data.get("content")),
-            description=_str_or_none(data.get("description")),
-            author=_str_or_none(data.get("author")),
-            published_at=_timestamp_or_none(data.get("published_at")),
-            raw=data,
-            request_id=_str_or_none(data.get("request_id")) or request_id,
-            truncated=_bool_or_none(data.get("truncated")),
-            total_chars=_count_or_none(data.get("total_chars")),
-        )
-
-    def to_context(self, max_chars: int = DEFAULT_CONTEXT_MAX_CHARS) -> str:
-        """Render the page as a citable block for a prompt.
-
-        Same shape as :meth:`SearchResponse.to_context`, so a model can cite a
-        fetched page the way it cites a search result instead of receiving
-        anonymous markdown. Unlike search results the content is one document,
-        so an oversized page is cut at the budget rather than dropped. The
-        content is cleaned the same way before the cut; ``content`` itself is
-        left untouched.
-        """
-        header = f"[1] {self.title} ({self.url})"
-        if self.published_at:
-            header += f" - published {self.published_at}"
-
-        budget = max_chars - len(header) - 1
-        if budget <= 0:
-            return header
-        content = _clean_context_text(self.content, self.url)
-        return _context_block(header, content[:budget].rstrip())
-
-
-def _int_from_zero_or_none(value: Any) -> int | None:
-    """A whole number from 0 to 2**53 - 1, or None for anything else."""
-    return _count_or_none(value)
-
-
 def _objects(value: Any) -> list[dict[str, Any]]:
     """The objects in a JSON list; [] for anything that is not a list."""
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, dict)]
+
+
+def _number_or_none(value: Any) -> float | None:
+    """A finite JSON number, or None for anything else (a boolean included)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        return value if math.isfinite(value) else None
+    except OverflowError:
+        return None
 
 
 @dataclass
@@ -615,6 +550,27 @@ class FetchImage:
 
     url: str
     alt: str | None = None
+
+
+@dataclass
+class FetchAnswerError:
+    """Why the typed answer for ``schema`` could not be made. The page is still read."""
+
+    code: str
+    message: str
+
+
+@dataclass
+class FetchUsage:
+    """What reading one page cost."""
+
+    sku: str
+    amount: int
+    credits: float
+    paid: bool
+    """True when paid credits were spent, False for free ones."""
+
+    credits_remaining: float | None = None
 
 
 def _links(value: Any) -> list[FetchLink] | None:
@@ -639,226 +595,181 @@ def _images(value: Any) -> list[FetchImage] | None:
     ]
 
 
-def _object_or_none(value: Any) -> dict[str, Any] | None:
-    return value if isinstance(value, dict) else None
+def _answer_error(value: Any) -> FetchAnswerError | None:
+    if not isinstance(value, dict):
+        return None
+    return FetchAnswerError(
+        code=_str_or_empty(value.get("code")),
+        message=_str_or_empty(value.get("message")),
+    )
 
 
-def _str_kept_or_none(value: Any) -> str | None:
-    """A string as sent (even empty), or None for anything else."""
-    return value if isinstance(value, str) else None
-
-
-@dataclass
-class FetchError:
-    """Why one URL failed. The call itself succeeded; the URL is not billed."""
-
-    type: str
-    """The broad case, ``target_error`` for a URL that failed."""
-
-    code: str
-    """The exact case, such as ``page_not_found`` or ``fetch_timeout``."""
-
-    message: str
-    fix: str | None = None
-    """One sentence on what to do next, when the API has one."""
-
-    retryable: bool = False
-    """Whether trying this URL again unchanged can help."""
-
-    upstream_status: int | None = None
-    """What the site answered, such as 404, when it answered."""
-
-    details: dict[str, Any] | None = field(default=None, repr=False)
-
-    @classmethod
-    def _from_json(cls, data: Any) -> FetchError | None:
-        if not isinstance(data, dict):
-            return None
-        details = _object_or_none(data.get("details"))
-        status = details.get("upstream_status") if details else None
-        return cls(
-            type=_str_or_empty(data.get("type")),
-            code=_str_or_empty(data.get("code")),
-            message=_str_or_empty(data.get("message")),
-            fix=_str_kept_or_none(data.get("fix")),
-            retryable=data.get("retryable") is True,
-            upstream_status=status
-            if isinstance(status, int) and not isinstance(status, bool)
-            else None,
-            details=details,
-        )
+def _usage(value: Any) -> FetchUsage | None:
+    if not isinstance(value, dict):
+        return None
+    return FetchUsage(
+        sku=_str_or_empty(value.get("sku")),
+        amount=_count_or_none(value.get("amount")) or 0,
+        credits=_number_or_none(value.get("credits")) or 0,
+        paid=value.get("paid") is True,
+        credits_remaining=_number_or_none(value.get("credits_remaining")),
+    )
 
 
 @dataclass
-class FetchContent:
-    """What one page carries: only the parts asked for are filled.
+class Page:
+    """A web page read by :meth:`Keenable.fetch`, extracted as markdown."""
 
-    A part asked for that could not be made is None, with a
-    ``content_unavailable`` notice.
-    """
+    url: str
+    """The page's final address after redirects."""
 
-    text: str | None = None
-    """The page as markdown, cut to ``max_chars``; with ``objective``, the
-    passages about it."""
+    title: str
+    content: str
+    """The page's main content as markdown, with navigation and boilerplate
+    stripped, cut to ``max_chars``."""
+
+    description: str | None = None
+    """Deprecated: always empty, the API no longer fills it. Read ``content``.
+    Kept for compatibility; see https://docs.keenable.ai/versioning."""
+
+    author: str | None = None
+    published_at: str | None = None
+    """When the page was published, as ISO 8601. The API sends Unix seconds
+    for a fetch; they are given in UTC to the second, such as
+    ``"2024-05-01T12:00:00Z"``, the form search results use. None when
+    unknown."""
+
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    truncated: bool | None = None
+    """True when the page was longer than ``max_chars`` and ``content`` was
+    cut (cut content ends with ``...``). None when the API did not say."""
 
     total_chars: int | None = None
-    """The length of the whole page, so you can tell whether ``text`` was cut."""
+    """Length of the full extracted content in Unicode code points, before
+    any cut. None when the API did not say."""
 
+    image: str | None = None
+    """The page's preview image URL."""
+
+    favicon: str | None = None
     links: list[FetchLink] | None = None
+    """The page's links, when ``links`` was asked for."""
+
     images: list[FetchImage] | None = None
+    """The page's images, with their alt text."""
+
+    structured: dict[str, Any] | None = None
+    """The typed answer for ``schema``, when one was asked for and made."""
+
+    answer_error: FetchAnswerError | None = None
+    """Why the answer for ``schema`` could not be made."""
+
+    stale: bool | None = None
+    """True when an older stored copy was returned because a fresh read failed."""
+
+    usage: FetchUsage | None = None
 
     @classmethod
-    def _from_json(cls, data: Any) -> FetchContent:
-        data = data if isinstance(data, dict) else {}
+    def _from_json(cls, data: dict[str, Any], url: str) -> Page:
+        structured = data.get("structured")
         return cls(
-            text=_str_kept_or_none(data.get("text")),
+            url=_str_or_none(data.get("url")) or url,
+            title=_str_or_empty(data.get("title")),
+            content=_str_or_empty(data.get("content")),
+            description=_str_or_none(data.get("description")),
+            author=_str_or_none(data.get("author")),
+            published_at=_timestamp_or_none(data.get("published_at")),
+            raw=data,
+            truncated=_bool_or_none(data.get("truncated")),
             total_chars=_count_or_none(data.get("total_chars")),
+            image=_str_or_none(data.get("image")),
+            favicon=_str_or_none(data.get("favicon")),
             links=_links(data.get("links")),
             images=_images(data.get("images")),
+            structured=structured if isinstance(structured, dict) else None,
+            answer_error=_answer_error(data.get("answer_error")),
+            stale=_bool_or_none(data.get("stale")),
+            usage=_usage(data.get("usage")),
         )
+
+    def to_context(self, max_chars: int = DEFAULT_CONTEXT_MAX_CHARS) -> str:
+        """Render the page as a citable block for a prompt.
+
+        Same shape as :meth:`SearchResponse.to_context`, so a model can cite a
+        fetched page the way it cites a search result instead of receiving
+        anonymous markdown. Unlike search results the content is one document,
+        so an oversized page is cut at the budget rather than dropped. The
+        content is cleaned the same way before the cut; ``content`` itself is
+        left untouched.
+        """
+        header = f"[1] {self.title} ({self.url})"
+        if self.published_at:
+            header += f" - published {self.published_at}"
+
+        budget = max_chars - len(header) - 1
+        if budget <= 0:
+            return header
+        content = _clean_context_text(self.content, self.url)
+        return _context_block(header, content[:budget].rstrip())
 
 
 @dataclass
 class FetchResult:
-    """The result for one URL given to :meth:`Keenable.fetch_many`.
-
-    ``results[i]`` answers ``urls[i]``. ``status`` is ``"ok"`` with the page,
-    or ``"error"`` with ``error`` set and no page.
-    """
-
-    index: int
-    requested_url: str
-    """The URL exactly as sent."""
+    """The result for one URL: ``page`` when it was read, else ``error``."""
 
     url: str
-    """The final address after redirects (the last one reached, on an error)."""
-
-    status: str
-    title: str | None = None
-    published_at: str | None = None
-    acquired_at: str | None = None
-    """When Keenable read this copy of the page."""
-
-    image: str | None = None
-    favicon: str | None = None
-    retrieved_from: str | None = None
-    """``"index"`` (our stored copy), ``"live"`` or ``"cache_fallback"``."""
-
-    error: FetchError | None = None
-    content: FetchContent = field(default_factory=FetchContent)
-    raw: dict[str, Any] = field(default_factory=dict, repr=False)
-
-    @classmethod
-    def _from_json(cls, data: dict[str, Any], position: int) -> FetchResult:
-        index = _count_or_none(data.get("index"))
-        return cls(
-            index=position if index is None else index,
-            requested_url=_str_or_empty(data.get("requested_url")),
-            url=_str_or_empty(data.get("url")),
-            status=_str_or_empty(data.get("status")),
-            title=_str_or_none(data.get("title")),
-            published_at=_str_or_none(data.get("published_at")),
-            acquired_at=_str_or_none(data.get("acquired_at")),
-            image=_str_or_none(data.get("image")),
-            favicon=_str_or_none(data.get("favicon")),
-            retrieved_from=_str_or_none(data.get("retrieved_from")),
-            error=FetchError._from_json(data.get("error")),
-            content=FetchContent._from_json(data.get("content")),
-            raw=data,
-        )
-
-
-@dataclass
-class FetchNotice:
-    """A notice (for the model) or a warning (for the developer)."""
-
-    code: str
-    path: str | None
-    """A JSON Pointer into the response (notices) or the request (warnings)."""
-
-    message: str
-    details: dict[str, Any] | None = field(default=None, repr=False)
-
-    @classmethod
-    def _from_json(cls, data: dict[str, Any]) -> FetchNotice:
-        return cls(
-            code=_str_or_empty(data.get("code")),
-            path=_str_kept_or_none(data.get("path")),
-            message=_str_or_empty(data.get("message")),
-            details=_object_or_none(data.get("details")),
-        )
-
-
-def _int_or_zero(value: Any) -> int:
-    count = _count_or_none(value)
-    return 0 if count is None else count
-
-
-@dataclass
-class FetchSummary:
-    """How many URLs were asked for, read and failed."""
-
-    requested: int = 0
-    succeeded: int = 0
-    failed: int = 0
+    page: Page | None = None
+    error: KeenableAPIError | None = None
+    """Why this URL failed, as the error the call would raise. Not raised."""
 
 
 @dataclass
 class FetchResponse:
-    """What :meth:`Keenable.fetch_many` returns: one result per URL, in order."""
+    """What :meth:`Keenable.fetch` returns: ``results[i]`` is for ``urls[i]``."""
 
+    results: list[FetchResult] = field(default_factory=list)
     request_id: str | None = None
     """The API's id for this request. Quote it when reporting a problem."""
 
-    status: str | None = None
-    """``"ok"`` (every URL read), ``"partial"`` or ``"failed"``."""
+    def __iter__(self) -> Iterator[FetchResult]:
+        return iter(self.results)
 
-    summary: FetchSummary = field(default_factory=FetchSummary)
-    resolved: dict[str, str] = field(default_factory=dict)
-    """Each relative or date-only instant in the request, as the exact time
-    used, keyed by its JSON Pointer."""
+    def __len__(self) -> int:
+        return len(self.results)
 
-    results: list[FetchResult] = field(default_factory=list)
-    notices: list[FetchNotice] = field(default_factory=list)
-    """For the model: how the results were produced."""
-
-    warnings: list[FetchNotice] = field(default_factory=list)
-    """For the developer: request hygiene; never changes results."""
-
-    session_id: str | None = None
-    latency_ms: int | None = None
-    usage: dict[str, Any] | None = field(default=None, repr=False)
-    """What the call cost, as the API sent it."""
-
-    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+    def __getitem__(self, index: int) -> FetchResult:
+        return self.results[index]
 
     @classmethod
     def _from_json(
-        cls, data: dict[str, Any], request_id: str | None = None
+        cls,
+        data: dict[str, Any],
+        urls: list[str],
+        request_id: str | None,
+        to_error: Callable[[int, dict[str, Any]], KeenableAPIError],
     ) -> FetchResponse:
-        summary = _object_or_none(data.get("summary")) or {}
-        resolved = _object_or_none(data.get("resolved")) or {}
+        entries = data.get("results")
+        results: list[FetchResult] = []
+        for position, entry in enumerate(entries if isinstance(entries, list) else []):
+            if not isinstance(entry, dict):
+                continue
+            asked = urls[position] if position < len(urls) else ""
+            error = entry.get("error")
+            if isinstance(error, dict):
+                status = _count_or_none(error.get("status"))
+                if status is None or not 400 <= status <= 599:
+                    status = 500
+                results.append(
+                    FetchResult(
+                        url=_str_or_none(entry.get("url")) or asked,
+                        error=to_error(status, error),
+                    )
+                )
+            else:
+                page = Page._from_json(entry, asked)
+                results.append(FetchResult(url=page.url, page=page))
         return cls(
+            results=results,
             request_id=_str_or_none(data.get("request_id")) or request_id,
-            status=_str_kept_or_none(data.get("status")),
-            summary=FetchSummary(
-                requested=_int_or_zero(summary.get("requested")),
-                succeeded=_int_or_zero(summary.get("succeeded")),
-                failed=_int_or_zero(summary.get("failed")),
-            ),
-            resolved={k: v for k, v in resolved.items() if isinstance(v, str)},
-            results=[
-                FetchResult._from_json(item, position)
-                for position, item in enumerate(_objects(data.get("results")))
-            ],
-            notices=[
-                FetchNotice._from_json(item) for item in _objects(data.get("notices"))
-            ],
-            warnings=[
-                FetchNotice._from_json(item) for item in _objects(data.get("warnings"))
-            ],
-            session_id=_str_or_none(data.get("session_id")),
-            latency_ms=_count_or_none(data.get("latency_ms")),
-            usage=_object_or_none(data.get("usage")),
-            raw=data,
         )

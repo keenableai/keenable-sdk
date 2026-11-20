@@ -130,28 +130,51 @@ for (i, result) in results.cited().iter().enumerate() {
 Pass a `ContextOptions` to `to_context_with` and `cited_with` to change
 `max_chars`, `max_results`, `include_dates` or `max_snippet_chars`.
 
-## Read a full page
+## Read full pages
+
+`fetch` reads up to 10 pages in one call. `results[i]` is for `urls[i]`: its
+`page`, or its `error` when that URL failed. A failed URL is not returned as an
+`Err`; the call fails only as a whole.
 
 ```rust
-let page = client.fetch("https://cerebras.ai/chip").await?;
-println!("{}", page.content); // markdown, boilerplate stripped
-println!("{}", page.to_context()); // same citable block shape as search results
+let response = client
+    .fetch(&["https://cerebras.ai/chip", "https://cerebras.ai/blog"])
+    .await?;
+for result in &response.results {
+    match (&result.page, &result.error) {
+        (Some(page), _) => {
+            println!("{}", page.content); // markdown, boilerplate stripped
+            println!("{}", page.to_context()); // same citable block shape as search results
+        }
+        (_, Some(error)) => println!("{}: {error}", result.url),
+        _ => {}
+    }
+}
 
-let answer = client
+let priced = client
     .fetch_with(
-        "https://cerebras.ai/chip",
+        &["https://cerebras.ai/pricing"],
         &keenable::FetchOptions {
-            prompt: Some("List the chip's specs".into()),
+            schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {"price": {"type": "number"}}
+            })),
+            max_age_hours: Some(24.0),
             ..Default::default()
         },
     )
     .await?;
 ```
 
-`FetchOptions` has `max_chars` (the API default is 50000; `page.truncated` and
-`page.total_chars` say whether the page was cut), `live` (fetch from the source
-now instead of Keenable's indexed copy) and `prompt` (an extraction
-instruction, up to 2000 characters).
+`result.error` is the `Error` the call would return for that status
+(`Error::Api`, `Error::Auth`, `Error::RateLimit` or
+`Error::InsufficientCredits`). `FetchOptions` applies to every page:
+`max_chars` (at least 1; the API default is 50000, and `page.truncated` and
+`page.total_chars` say whether the page was cut), `schema` (a JSON Schema whose
+root has `"type": "object"`; the typed answer is in `page.structured`, or
+`page.answer_error` says why it could not be made), `links` (1 to 1000),
+`images` (0 to 25) and `max_age_hours` (0 to 720, fractions allowed; `Some(0.0)`
+reads every page live, `None` takes a stored copy of any age).
 
 Internal hosts and private addresses are refused before a request is sent:
 `localhost` and names under `.localhost`, `metadata.google.internal`, and IP

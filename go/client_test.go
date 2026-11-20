@@ -37,12 +37,12 @@ var searchBody = map[string]any{
 	},
 }
 
-var fetchBody = map[string]any{
+var fetchBody = map[string]any{"results": []any{map[string]any{
 	"url":         "https://example.com/",
 	"title":       "Example Domain",
 	"content":     "# Example Domain\n\nThis domain is for use in examples.",
 	"description": "",
-}
+}}}
 
 type captured struct {
 	Path   string
@@ -577,7 +577,7 @@ func TestCitedMatchesRendered(t *testing.T) {
 
 func TestFetchReturnsMarkdown(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
-	page, err := c.Fetch(context.Background(), "https://example.com")
+	resp, err := c.Fetch(context.Background(), []string{"https://example.com"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -585,12 +585,13 @@ func TestFetchReturnsMarkdown(t *testing.T) {
 	if req.Path != "/v1/fetch/public" {
 		t.Fatal(req.Path)
 	}
-	if req.Query.Get("url") != "https://example.com" {
-		t.Fatal(req.Query.Get("url"))
+	if string(req.Body) != `{"urls":["https://example.com"]}` {
+		t.Fatal(string(req.Body))
 	}
-	if req.Header.Get("Content-Type") != "" {
+	if req.Header.Get("Content-Type") != "application/json" {
 		t.Fatal(req.Header.Get("Content-Type"))
 	}
+	page := resp.Results[0].Page
 	if page.Title != "Example Domain" || !strings.HasPrefix(page.Content, "# Example Domain") {
 		t.Fatalf("%#v", page)
 	}
@@ -601,7 +602,7 @@ func TestFetchReturnsMarkdown(t *testing.T) {
 
 func TestFetchAllowsPublicAddress(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
-	if _, err := c.Fetch(context.Background(), "https://8.8.8.8/path"); err != nil {
+	if _, err := c.Fetch(context.Background(), []string{"https://8.8.8.8/path"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(*seen) != 1 {
@@ -611,10 +612,11 @@ func TestFetchAllowsPublicAddress(t *testing.T) {
 
 func TestPageToContextCuts(t *testing.T) {
 	c, _ := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
-	page, err := c.Fetch(context.Background(), "https://example.com")
+	resp, err := c.Fetch(context.Background(), []string{"https://example.com"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	page := resp.Results[0].Page
 	context := page.ToContext(nil)
 	if !strings.HasPrefix(context, "[1] Example Domain (https://example.com/)") {
 		t.Fatal(context)
@@ -647,7 +649,7 @@ func TestFetchRefusesInternalTargets(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
 	for _, raw := range urls {
 		before := len(*seen)
-		_, err := c.Fetch(context.Background(), raw)
+		_, err := c.Fetch(context.Background(), []string{raw}, nil)
 		var inv *keenable.InvalidRequestError
 		if !errors.As(err, &inv) {
 			t.Fatalf("%s: %v", raw, err)
@@ -679,7 +681,7 @@ func TestNilContext(t *testing.T) {
 	if _, err := c.Search(nil, "q", nil); !errors.As(err, new(*keenable.InvalidRequestError)) {
 		t.Fatal(err)
 	}
-	if _, err := c.Fetch(nil, "https://example.com"); !errors.As(err, new(*keenable.InvalidRequestError)) {
+	if _, err := c.Fetch(nil, []string{"https://example.com"}, nil); !errors.As(err, new(*keenable.InvalidRequestError)) {
 		t.Fatal(err)
 	}
 	if len(*seen) != 0 {
@@ -960,7 +962,7 @@ func TestNilClientDoesNotPanic(t *testing.T) {
 	if _, err := client.Search(context.Background(), "q", nil); !errors.As(err, new(*keenable.InvalidRequestError)) {
 		t.Fatal(err)
 	}
-	if _, err := client.Fetch(context.Background(), "https://example.com"); !errors.As(err, new(*keenable.InvalidRequestError)) {
+	if _, err := client.Fetch(context.Background(), []string{"https://example.com"}, nil); !errors.As(err, new(*keenable.InvalidRequestError)) {
 		t.Fatal(err)
 	}
 	if (*keenable.SearchResponse)(nil).ToContext(nil) != "" {
@@ -1147,7 +1149,7 @@ func TestLocalErrorsNameTheFix(t *testing.T) {
 	if !strings.Contains(err.Error(), "query argument") {
 		t.Fatal(err)
 	}
-	_, err = c.Fetch(context.Background(), "http://127.0.0.1/")
+	_, err = c.Fetch(context.Background(), []string{"http://127.0.0.1/"}, nil)
 	if !strings.Contains(err.Error(), "public http(s) URL") {
 		t.Fatal(err)
 	}

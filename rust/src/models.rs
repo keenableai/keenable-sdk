@@ -4,6 +4,10 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 
 use crate::context_clean::clean_context_text;
+use crate::fetch::{
+    fetch_answer_error, fetch_images, fetch_links, fetch_usage, FetchAnswerError, FetchImage,
+    FetchLink, FetchUsage,
+};
 use crate::retry::civil_from_days;
 
 /// The `to_context` budget: about 3k tokens, enough for a handful of results
@@ -56,17 +60,17 @@ pub struct SearchResponse {
     pub raw: Map<String, Value>,
 }
 
-/// A URL fetched by [`Client::fetch`](crate::Client::fetch), with its main
+/// A page read by [`Client::fetch`](crate::Client::fetch), with its main
 /// content as markdown.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct Page {
-    /// The page URL.
+    /// The page's final address after redirects.
     pub url: String,
     /// The page title.
     pub title: String,
-    /// The main content as markdown, or the model's answer when a prompt was
-    /// passed.
+    /// The main content as markdown, cut to
+    /// [`FetchOptions::max_chars`](crate::FetchOptions::max_chars).
     pub content: String,
     /// The page's description, when it has one.
     pub description: Option<String>,
@@ -75,14 +79,32 @@ pub struct Page {
     /// When the page was published, as ISO 8601 UTC to the second, such as
     /// `2024-05-01T12:00:00Z`. `None` when unknown.
     pub published_at: Option<String>,
-    /// The API's id for this request. Quote it when reporting a problem.
-    pub request_id: Option<String>,
     /// `true` when the page was longer than `max_chars` and `content` was cut
     /// (cut content ends with "..."). `None` when the API did not say.
     pub truncated: Option<bool>,
     /// The length of the full extracted content in Unicode code points,
     /// before any cut. `None` when the API did not say.
     pub total_chars: Option<u64>,
+    /// The page's preview image URL.
+    pub image: Option<String>,
+    /// The page's favicon URL.
+    pub favicon: Option<String>,
+    /// The page's links, when [`FetchOptions::links`](crate::FetchOptions::links)
+    /// asked for them.
+    pub links: Option<Vec<FetchLink>>,
+    /// The page's images, with their alt text.
+    pub images: Option<Vec<FetchImage>>,
+    /// The typed answer for
+    /// [`FetchOptions::schema`](crate::FetchOptions::schema), when one was
+    /// asked for and made.
+    pub structured: Option<Map<String, Value>>,
+    /// Why the answer for the schema could not be made.
+    pub answer_error: Option<FetchAnswerError>,
+    /// `true` when an older stored copy was returned because a fresh read
+    /// failed.
+    pub stale: Option<bool>,
+    /// What reading this page cost.
+    pub usage: Option<FetchUsage>,
     /// The unmodified JSON body.
     #[serde(skip)]
     pub raw: Map<String, Value>,
@@ -395,11 +417,7 @@ pub(crate) fn search_response_from_json(
     }
 }
 
-pub(crate) fn page_from_json(
-    data: Map<String, Value>,
-    fallback_url: &str,
-    header_request_id: Option<String>,
-) -> Page {
+pub(crate) fn page_from_json(data: Map<String, Value>, fallback_url: &str) -> Page {
     Page {
         url: non_blank(data.get("url")).unwrap_or_else(|| fallback_url.to_string()),
         title: as_string(data.get("title")),
@@ -407,9 +425,16 @@ pub(crate) fn page_from_json(
         description: non_blank(data.get("description")),
         author: non_blank(data.get("author")),
         published_at: timestamp(data.get("published_at")),
-        request_id: non_blank(data.get("request_id")).or(header_request_id),
         truncated: data.get("truncated").and_then(Value::as_bool),
         total_chars: safe_count(data.get("total_chars")),
+        image: non_blank(data.get("image")),
+        favicon: non_blank(data.get("favicon")),
+        links: fetch_links(data.get("links")),
+        images: fetch_images(data.get("images")),
+        structured: data.get("structured").and_then(Value::as_object).cloned(),
+        answer_error: fetch_answer_error(data.get("answer_error")),
+        stale: data.get("stale").and_then(Value::as_bool),
+        usage: fetch_usage(data.get("usage")),
         raw: data,
     }
 }
@@ -495,7 +520,6 @@ mod tests {
                 .unwrap()
                 .clone(),
             "https://e.com/",
-            None,
         );
         let opts = ContextOptions {
             max_chars: 30,

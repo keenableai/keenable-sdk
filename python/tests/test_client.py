@@ -13,6 +13,7 @@ from keenable import (
     TOOLS,
     AsyncKeenable,
     Keenable,
+    KeenableAPIError,
     KeenableAuthError,
     KeenableInvalidRequestError,
     KeenableRateLimitError,
@@ -40,12 +41,13 @@ SEARCH_BODY: dict[str, Any] = {
     ],
 }
 
-FETCH_BODY: dict[str, Any] = {
+PAGE: dict[str, Any] = {
     "url": "https://example.com/",
     "title": "Example Domain",
     "content": "# Example Domain\n\nThis domain is for use in examples.",
     "description": "",
 }
+FETCH_BODY: dict[str, Any] = {"results": [PAGE]}
 
 Handler = Any
 Seen = list[httpx.Request]
@@ -339,17 +341,55 @@ def test_cited_reports_the_results_that_were_rendered() -> None:
 
 def test_fetch_returns_markdown() -> None:
     keenable, seen = _client(_ok(FETCH_BODY))
-    page = keenable.fetch("https://example.com")
+    response = keenable.fetch("https://example.com")
 
+    assert seen[0].method == "POST"
     assert seen[0].url.path == "/v1/fetch/public"
-    assert seen[0].url.params["url"] == "https://example.com"
+    assert json.loads(seen[0].content) == {"urls": ["https://example.com"]}
+    page = response.results[0].page
+    assert page is not None
     assert page.title == "Example Domain"
     assert page.content.startswith("# Example Domain")
 
 
+def test_fetch_puts_a_failed_url_on_its_result() -> None:
+    body = {
+        "results": [
+            PAGE,
+            {
+                "url": "https://example.org/gone",
+                "error": {
+                    "status": 404,
+                    "type": "target_error",
+                    "code": "page_not_found",
+                    "message": "The page does not exist.",
+                },
+            },
+        ]
+    }
+    keenable, _ = _client(_ok(body))
+    response = keenable.fetch(
+        ["https://example.com", "https://example.org/gone"],
+        max_chars=100,
+        schema={"type": "object"},
+        links=5,
+        images=0,
+        max_age_hours=0.5,
+    )
+
+    first, second = response
+    assert first.page is not None and first.error is None
+    assert second.page is None
+    assert isinstance(second.error, KeenableAPIError)
+    assert second.error.status_code == 404
+    assert second.error.code == "page_not_found"
+    assert second.url == "https://example.org/gone"
+
+
 def test_page_to_context_is_citable_like_search_results() -> None:
     keenable, _ = _client(_ok(FETCH_BODY))
-    page = keenable.fetch("https://example.com")
+    page = keenable.fetch("https://example.com").results[0].page
+    assert page is not None
 
     context = page.to_context()
     assert context.startswith("[1] Example Domain (https://example.com/)")

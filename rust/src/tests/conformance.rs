@@ -12,10 +12,7 @@ use super::server::{deadline_server, start, Reply, Script, Server};
 use super::*;
 use crate::retry::retry_after_at;
 use crate::test_hooks::{start_recording, take_waits};
-use crate::{
-    Error, FetchContentOptions, FetchManyOptions, FetchOptions, FetchRetrievalOptions, Options,
-    RequestOptions, SearchOptions,
-};
+use crate::{Error, FetchOptions, FetchResult, Options, RequestOptions, SearchOptions};
 
 fn fixture() -> Value {
     load_fixture("conformance.json")
@@ -37,7 +34,10 @@ fn skipped(case: &Value) -> Option<&str> {
 fn ok_both() -> Script {
     Script::ByPath {
         search: Reply::new(200, r#"{"query":"q","results":[]}"#),
-        fetch: Reply::new(200, r#"{"url":"https://e.com","content":"c"}"#),
+        fetch: Reply::new(
+            200,
+            r#"{"results":[{"url":"https://e.com","content":"c"}]}"#,
+        ),
     }
 }
 
@@ -93,10 +93,10 @@ async fn fetch_url() {
         let server = start(ok_both()).await;
         let client = keyed(&server);
         let url = case["url"].as_str().unwrap();
-        let got = client.fetch(url).await;
+        let got = client.fetch(&[url]).await;
         let allowed = case["allowed"].as_bool().unwrap();
         let ok = if allowed {
-            got.is_ok() && server.count() == 1
+            got.is_ok() && only_body(&server) == serde_json::json!({ "urls": [url] })
         } else {
             is_invalid(&got) && server.count() == 0
         };
@@ -319,52 +319,34 @@ async fn responses() {
         let client = keyed(&server);
         let want = &case["expect"];
         let arg = case["arg"].as_str().unwrap();
-        let problem = if case["endpoint"] == "search" {
-            match (client.search(arg).await, want["error"].as_str()) {
-                (Err(e), Some(kind)) => {
-                    (!kind_matches(&e, kind) || server.count() != 1).then(|| format!("{e:?}"))
-                }
-                (Ok(r), None) => {
-                    let mut got = Map::new();
-                    got.insert("query".into(), r.query.clone().into());
-                    got.insert("mode".into(), r.mode.clone().into());
-                    got.insert("request_id".into(), r.request_id.clone().into());
-                    let results: Vec<Value> = r
-                        .results
-                        .iter()
-                        .map(|x| {
-                            serde_json::json!({
-                                "title": x.title, "url": x.url, "snippet": x.snippet,
-                                // The crate has no deprecated `description` field;
-                                // the API's value stays in `raw`.
-                                "description": x.raw.get("description").and_then(|d| crate::models::non_blank(Some(d))),
-                                "published_at": x.published_at,
-                                "acquired_at": x.acquired_at,
-                            })
+        let problem = match (client.search(arg).await, want["error"].as_str()) {
+            (Err(e), Some(kind)) => {
+                (!kind_matches(&e, kind) || server.count() != 1).then(|| format!("{e:?}"))
+            }
+            (Ok(r), None) => {
+                let mut got = Map::new();
+                got.insert("query".into(), r.query.clone().into());
+                got.insert("mode".into(), r.mode.clone().into());
+                got.insert("request_id".into(), r.request_id.clone().into());
+                let results: Vec<Value> = r
+                    .results
+                    .iter()
+                    .map(|x| {
+                        serde_json::json!({
+                            "title": x.title, "url": x.url, "snippet": x.snippet,
+                            // The crate has no deprecated `description` field;
+                            // the API's value stays in `raw`.
+                            "description": x.raw.get("description").and_then(|d| crate::models::non_blank(Some(d))),
+                            "published_at": x.published_at,
+                            "acquired_at": x.acquired_at,
                         })
-                        .collect();
-                    got.insert("results".into(), results.into());
-                    got.insert("error".into(), Value::Null);
-                    (Value::Object(got) != *want).then(|| format!("got {r:?}"))
-                }
-                (got, _) => Some(format!("{got:?}")),
+                    })
+                    .collect();
+                got.insert("results".into(), results.into());
+                got.insert("error".into(), Value::Null);
+                (Value::Object(got) != *want).then(|| format!("got {r:?}"))
             }
-        } else {
-            match (client.fetch(arg).await, want["error"].as_str()) {
-                (Err(e), Some(kind)) => {
-                    (!kind_matches(&e, kind) || server.count() != 1).then(|| format!("{e:?}"))
-                }
-                (Ok(p), None) => {
-                    let got = serde_json::json!({
-                        "error": null, "url": p.url, "title": p.title, "content": p.content,
-                        "description": p.description, "author": p.author,
-                        "published_at": p.published_at, "request_id": p.request_id,
-                        "truncated": p.truncated, "total_chars": p.total_chars,
-                    });
-                    (got != *want).then(|| format!("got {got}"))
-                }
-                (got, _) => Some(format!("{got:?}")),
-            }
+            (got, _) => Some(format!("{got:?}")),
         };
         if let Some(p) = problem {
             failures.push(format!("{}: {p}, want {want}", name(case)));
@@ -514,45 +496,6 @@ fn only_body(server: &Server) -> Value {
 }
 
 #[tokio::test]
-async fn fetch_params() {
-    let fixture = fixture();
-    let mut failures = Vec::new();
-    for case in cases(&fixture, "fetch_params") {
-        if skipped(case).is_some() {
-            continue;
-        }
-        let mut opts = FetchOptions::default();
-        for (wire, v) in case["options"].as_object().unwrap() {
-            match wire.as_str() {
-                "max_chars" => opts.max_chars = v.as_u64().map(|n| n as u32),
-                "live" => opts.live = v.as_bool().unwrap(),
-                "prompt" => opts.prompt = opt_string(v),
-                other => failures.push(format!("{}: no Rust mapping for {other}", name(case))),
-            }
-        }
-        let server = start(ok_both()).await;
-        let got = keyed(&server)
-            .fetch_with(case["url"].as_str().unwrap(), &opts)
-            .await;
-        let seen = server.requests();
-        let mut sent = Map::new();
-        let mut twice = false;
-        if let [one] = seen.as_slice() {
-            if one.path != "/v1/fetch" {
-                failures.push(format!("{}: path {}", name(case), one.path));
-            }
-            for (k, v) in &one.query {
-                twice |= sent.insert(k.clone(), Value::String(v.clone())).is_some();
-            }
-        }
-        if got.is_err() || twice || Value::Object(sent.clone()) != case["sent"] {
-            failures.push(format!("{}: {:?} sent {sent:?}", name(case), got.err()));
-        }
-    }
-    report("fetch_params", failures);
-}
-
-#[tokio::test]
 async fn tool_call() {
     let fixture = fixture();
     let mut failures = Vec::new();
@@ -576,19 +519,6 @@ async fn tool_call() {
         }
     }
     report("tool_call", failures);
-}
-
-#[tokio::test]
-async fn fetch_options_do_not_bypass_the_url_refusal() {
-    let server = start(ok_both()).await;
-    let opts = FetchOptions {
-        max_chars: Some(10),
-        live: true,
-        prompt: Some("p".into()),
-        ..Default::default()
-    };
-    let got = keyed(&server).fetch_with("http://127.0.0.1/", &opts).await;
-    assert!(is_invalid(&got) && server.count() == 0, "{got:?}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -639,55 +569,23 @@ async fn deadline() {
     report("deadline", failures);
 }
 
-fn fetch_many_group<T: Default>(
-    v: &Value,
-    case: &str,
-    failures: &mut Vec<String>,
-    mut set: impl FnMut(&mut T, &str, &Value) -> bool,
-) -> Option<T> {
-    let fields = v.as_object()?;
-    let mut group = T::default();
-    for (wire, value) in fields {
-        if !set(&mut group, wire, value) {
-            failures.push(format!("{case}: no Rust mapping for {wire}"));
-        }
-    }
-    Some(group)
-}
-
-fn fetch_many_options(case: &Value, failures: &mut Vec<String>) -> FetchManyOptions {
-    let n = name(case);
-    let mut opts = FetchManyOptions::default();
+fn fetch_options(case: &Value, failures: &mut Vec<String>) -> FetchOptions {
+    let mut opts = FetchOptions::default();
     let u32_of = |v: &Value| v.as_u64().map(|n| n as u32);
     for (wire, v) in case["options"].as_object().unwrap() {
         match wire.as_str() {
-            "content" => {
-                opts.content =
-                    fetch_many_group(v, &n, failures, |g: &mut FetchContentOptions, k, v| {
-                        match k {
-                            "max_chars" => g.max_chars = u32_of(v),
-                            "objective" => g.objective = opt_string(v),
-                            "links" => g.links = u32_of(v),
-                            "images" => g.images = u32_of(v),
-                            _ => return false,
-                        }
-                        true
-                    })
+            "max_chars" => opts.max_chars = u32_of(v),
+            "schema" => opts.schema = Some(v.clone()),
+            "links" => opts.links = u32_of(v),
+            "images" => opts.images = u32_of(v),
+            "max_age_hours" => {
+                opts.max_age_hours = if v["$float"] == "NaN" {
+                    Some(f64::NAN)
+                } else {
+                    v.as_f64()
+                }
             }
-            "retrieval" => {
-                opts.retrieval =
-                    fetch_many_group(v, &n, failures, |g: &mut FetchRetrievalOptions, k, v| {
-                        match k {
-                            "max_age_hours" => g.max_age_hours = v.as_f64(),
-                            "as_of" => g.as_of = opt_string(v),
-                            _ => return false,
-                        }
-                        true
-                    })
-            }
-            "deadline_ms" => opts.deadline_ms = u32_of(v),
-            "session_id" => opts.session_id = opt_string(v),
-            other => failures.push(format!("{n}: no Rust mapping for {other}")),
+            other => failures.push(format!("{}: no Rust mapping for {other}", name(case))),
         }
     }
     opts
@@ -698,16 +596,26 @@ fn url_list(case: &Value) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn fetch_many_body() {
+async fn fetch_body() {
     let fixture = fixture();
     let mut failures = Vec::new();
-    for case in cases(&fixture, "fetch_many_body") {
+    for case in cases(&fixture, "fetch_body") {
         if skipped(case).is_some() {
             continue;
         }
-        let opts = fetch_many_options(case, &mut failures);
+        let opts = fetch_options(case, &mut failures);
         let server = start(Script::Replies(vec![Reply::new(200, r#"{"results":[]}"#)])).await;
-        let got = keyed(&server).fetch_many_with(&url_list(case), &opts).await;
+        let got = keyed(&server).fetch_with(&url_list(case), &opts).await;
+        if case["invalid"].as_bool().unwrap() {
+            if !is_invalid(&got) || server.count() != 0 {
+                failures.push(format!(
+                    "{}: {got:?} requests={}",
+                    name(case),
+                    server.count()
+                ));
+            }
+            continue;
+        }
         let seen = server.requests();
         if let [one] = seen.as_slice() {
             if one.path != "/v1/fetch" {
@@ -719,42 +627,82 @@ async fn fetch_many_body() {
             failures.push(format!("{}: {:?} sent {sent}", name(case), got.err()));
         }
     }
-    report("fetch_many_body", failures);
+    report("fetch_body", failures);
+}
+
+fn kind_name(err: &Error) -> &'static str {
+    match err {
+        Error::Auth(_) => "auth",
+        Error::RateLimit(_) => "rate_limit",
+        Error::InsufficientCredits(_) => "insufficient_credits",
+        Error::Api(_) => "api",
+        _ => "other",
+    }
+}
+
+fn plain_result(r: &FetchResult) -> Value {
+    let error = r.error.as_ref().map(|e| {
+        let api = e.api_error().expect("an API error");
+        serde_json::json!({
+            "kind": kind_name(e),
+            "status": api.status_code,
+            "type": api.error_type,
+            "code": api.code,
+            "detail": api.body,
+            "fix": api.fix,
+            "retryable": api.retryable,
+            "request_id": api.request_id,
+        })
+    });
+    serde_json::json!({
+        "url": r.url,
+        "page": r.page.as_ref().map(|p| serde_json::to_value(p).unwrap()),
+        "error": error,
+    })
+}
+
+/// JSON equality with numbers compared by value, so 1 and 1.0 are equal.
+fn same(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => x.as_f64() == y.as_f64(),
+        (Value::Array(x), Value::Array(y)) => {
+            x.len() == y.len() && x.iter().zip(y).all(|(x, y)| same(x, y))
+        }
+        (Value::Object(x), Value::Object(y)) => {
+            x.len() == y.len() && x.iter().all(|(k, v)| y.get(k).is_some_and(|w| same(v, w)))
+        }
+        _ => a == b,
+    }
 }
 
 #[tokio::test]
-async fn fetch_many_responses() {
+async fn fetch_responses() {
     let fixture = fixture();
     let mut failures = Vec::new();
-    for case in cases(&fixture, "fetch_many_responses") {
+    for case in cases(&fixture, "fetch_responses") {
         if skipped(case).is_some() {
             continue;
         }
-        let server = start(Script::Replies(vec![reply_for(case)])).await;
-        match keyed(&server).fetch_many(&url_list(case)).await {
-            Ok(r) => {
-                let got = serde_json::to_value(&r).unwrap();
-                if got != case["expect"] {
-                    failures.push(format!(
-                        "{}: got {got}, want {}",
-                        name(case),
-                        case["expect"]
-                    ));
-                }
+        let server = start(Script::Replies(vec![reply_for(case), reply_for(case)])).await;
+        let want = &case["expect"];
+        let got = keyed(&server).fetch(&url_list(case)).await;
+        let problem = match (got, want["error"].as_str()) {
+            (Err(e), Some(kind)) => {
+                (!kind_matches(&e, kind) || server.count() != 1).then(|| format!("{e:?}"))
             }
-            Err(e) => failures.push(format!("{}: {e:?}", name(case))),
+            (Ok(r), None) => {
+                let got = serde_json::json!({
+                    "error": null,
+                    "request_id": r.request_id,
+                    "results": r.results.iter().map(plain_result).collect::<Vec<_>>(),
+                });
+                (!same(&got, want) || server.count() != 1).then(|| format!("got {got}"))
+            }
+            (got, _) => Some(format!("{got:?}")),
+        };
+        if let Some(p) = problem {
+            failures.push(format!("{}: {p}, want {want}", name(case)));
         }
     }
-    report("fetch_many_responses", failures);
-}
-
-#[tokio::test]
-async fn fetch_many_refuses_a_private_url_and_an_empty_list() {
-    let server = start(Script::Replies(vec![Reply::new(200, "{}")])).await;
-    let client = keyed(&server);
-    let none: [&str; 0] = [];
-    assert!(is_invalid(&client.fetch_many(&none).await));
-    let mixed = ["https://example.com/", "http://127.0.0.1/"];
-    assert!(client.fetch_many(&mixed).await.is_err());
-    assert_eq!(server.count(), 0);
+    report("fetch_responses", failures);
 }

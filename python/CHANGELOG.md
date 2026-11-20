@@ -5,23 +5,27 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
-- `fetch_many(urls, *, content=None, retrieval=None, deadline_ms=None,
-  session_id=None)` (sync and async) reads up to 20 pages
-  in one call with `POST /v1/fetch`. The option
-  groups mirror the API:
-  - `content`: `max_chars` (default 50,000; `0` returns metadata only),
-    `objective` (up to 1,000 characters), `links`, `images`.
-  - `retrieval`: `max_age_hours` (0 to 720, fractions allowed; `0` always
-    fetches live; leave it out to take the stored copy), or `as_of` (`"P0D"`
-    for stored copies only).
-  `results[i]` is the entry for `urls[i]`, with the page in `result.content`
-  (`text`, `total_chars`, `links`, `images`) and `retrieved_from`; a
-  failed page has its `error` set, not an exception. An unset option is not
-  sent, an empty string is unset, and `0` is sent where it is a value.
-  Preview: it works once `POST /v1/fetch` is enabled for your organization.
-- `fetch()` keeps working and still calls `GET /v1/fetch`; it is deprecated in
-  favour of `fetch_many()` and will be removed after the API retires
-  `GET /v1/fetch` (announced with 90 days' notice).
+- **Breaking (1.0.0):** `fetch()` reads up to 10 pages in one call with
+  `POST /v1/fetch` and returns a `FetchResponse`, not a `Page`:
+  `fetch(urls, *, max_chars=None, schema=None, links=None, images=None,
+  max_age_hours=None, timeout=None, max_retries=None, extra_headers=None)`,
+  sync and async. `urls` is a list, or a lone string as one URL.
+  `results[i]` is for `urls[i]`: its `page`, or its `error` when that URL
+  failed. `error` is the `KeenableAPIError` (or subclass) the call would raise
+  for that status, and it is not raised: the call raises only when it fails as
+  a whole.
+  - The options apply to every page: `max_chars` (at least 1), `schema` (a JSON
+    Schema whose root has `"type": "object"`; the answer is in
+    `Page.structured`, or `Page.answer_error` says why not), `links` (1 to
+    1000), `images` (0 to 25) and `max_age_hours` (0 to 720, fractions
+    allowed; `0` reads live). A value outside these limits, or more than 10
+    URLs, raises `KeenableInvalidRequestError` before a request is sent.
+  - `Page` gains `image`, `favicon`, `links`, `images`, `structured`,
+    `answer_error`, `stale` and `usage`, and loses `request_id`: read
+    `FetchResponse.request_id`.
+  - Removed: `GET /v1/fetch` and its `live` and `prompt` options. Pass
+    `max_age_hours=0` for a live read; `schema` returns a typed answer where
+    `prompt` returned text.
 - **Added:** `objective` on `search()` (sync and async): what the search is for, in two or three natural sentences, up to 1,000 characters. Left out of the request when unset or empty. The API validates and logs it; it does not change results or price. The search tool offers it to a model.
 
 - **Changed:** a numeric `timeout` is now the deadline for the whole attempt,

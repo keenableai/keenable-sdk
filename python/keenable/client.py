@@ -18,7 +18,7 @@ from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from os import environ
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal
 from urllib.parse import unquote, urlsplit
 
 import httpcore
@@ -39,7 +39,6 @@ from .errors import (
 )
 from .models import (
     FetchResponse,
-    Page,
     SearchResponse,
 )
 
@@ -315,105 +314,82 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
     return payload
 
 
-def _fetch_params(
-    url: str, max_chars: int | None, live: bool | None, prompt: str | None
-) -> dict[str, str]:
-    """Build fetch's query parameters, dropping options the caller left unset."""
-    params = {"url": url}
-    if max_chars is not None:
-        params["max_chars"] = str(max_chars)
-    # The API reads only "true" and "false", and an absent live is false.
-    if live is True:
-        params["live"] = "true"
-    # An empty string is unset, as in Go, which cannot tell the two apart.
-    if prompt is not None and prompt != "":
-        params["prompt"] = prompt
-    return params
+_FETCH_MAX_URLS = 10
+_FETCH_MAX_LINKS = 1000
+_FETCH_MAX_IMAGES = 25
+_FETCH_MAX_AGE_HOURS = 720
 
 
-def _set(value: str | None) -> bool:
-    """A string option is set unless None or empty (Go cannot tell the two apart)."""
-    return value is not None and value != ""
+def _whole(name: str, value: Any, low: int, high: int | None = None) -> int:
+    """An integer option within its limits, else the invalid-request error."""
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or value < low
+        or (high is not None and value > high)
+    ):
+        span = f"from {low} to {high}" if high is not None else f"of at least {low}"
+        raise KeenableInvalidRequestError(
+            f"fetch() {name} must be an integer {span}, got {value!r}"
+        )
+    return value
 
 
-class FetchContentOptions(TypedDict, total=False):
-    """What each result carries (``content`` on :meth:`Keenable.fetch_many`)."""
-
-    max_chars: int
-    """The most characters of text per page, 50,000 by default; 0 leaves the
-    text out (metadata only)."""
-
-    objective: str
-    """What you are after on the pages, up to 1,000 characters. Each page's
-    text becomes the passages about it. Needs an API key."""
-
-    links: int
-    """The most links per page to return, with their text (1 to 1,000)."""
-
-    images: int
-    """The most images per page to return, with their alt text (1 to 1,000)."""
-
-
-class FetchRetrievalOptions(TypedDict, total=False):
-    """Where page content comes from (``retrieval``). Give one of the two."""
-
-    max_age_hours: float
-    """Use a stored copy only if it is younger than this many hours, from 0 to
-    720 (fractions allowed: 0.25 is 15 minutes). 0 always reads live. Left out,
-    a stored copy of any age is used when there is one."""
-
-    as_of: str
-    """Stored data as it stood at this instant, never live: an RFC 3339 date or
-    date-time, or a duration back from now. ``"P0D"`` is the latest stored copy."""
-
-
-def _fetch_many_group(
-    name: str, value: Mapping[str, Any] | None
-) -> dict[str, Any] | None:
-    """A request group as sent: the fields set, an empty string meaning unset.
-
-    Zero is a value (``max_chars: 0`` asks for metadata only,
-    ``max_age_hours: 0`` for a live read), so it is sent. Unknown keys are sent
-    too, for the API to name in its error.
-    """
-    if value is None:
-        return None
-    if not isinstance(value, Mapping):
-        raise KeenableInvalidRequestError(f"fetch_many() {name} must be a mapping")
-    return {
-        key: dict(item) if isinstance(item, Mapping) else item
-        for key, item in value.items()
-        if item is not None and item != ""
-    }
-
-
-def _fetch_many_payload(
+def _fetch_payload(
     urls: Any,
     *,
-    content: FetchContentOptions | Mapping[str, Any] | None,
-    retrieval: FetchRetrievalOptions | Mapping[str, Any] | None,
-    deadline_ms: int | None,
-    session_id: str | None,
-) -> dict[str, Any]:
-    """The JSON body POST /v1/fetch takes, refusing private targets first."""
+    max_chars: int | None,
+    schema: Mapping[str, Any] | None,
+    links: int | None,
+    images: int | None,
+    max_age_hours: float | None,
+) -> tuple[list[str], dict[str, Any]]:
+    """The URLs asked for and the JSON body POST /v1/fetch takes.
+
+    Every URL is checked and every option held to the API's limits first, so
+    nothing is sent for a call the API would refuse.
+    """
     targets = _as_list(urls)
-    if not isinstance(targets, list) or not targets:
-        raise KeenableInvalidRequestError("fetch_many() needs a non-empty list of URLs")
+    if not isinstance(targets, list) or not 1 <= len(targets) <= _FETCH_MAX_URLS:
+        raise KeenableInvalidRequestError(
+            f"fetch() needs a list of 1 to {_FETCH_MAX_URLS} URLs, got {urls!r}"
+        )
     for target in targets:
         _reject_private_fetch_target(target)
+    content: dict[str, Any] = {}
+    if max_chars is not None:
+        content["max_chars"] = _whole("max_chars", max_chars, 1)
+    if schema is not None:
+        if not isinstance(schema, Mapping) or schema.get("type") != "object":
+            raise KeenableInvalidRequestError(
+                'fetch() schema must be a JSON Schema whose root has "type": "object"'
+            )
+        content["schema"] = dict(schema)
+    if links is not None:
+        content["links"] = _whole("links", links, 1, _FETCH_MAX_LINKS)
+    if images is not None:
+        content["images"] = _whole("images", images, 0, _FETCH_MAX_IMAGES)
     payload: dict[str, Any] = {"urls": targets}
-    for name, value in (
-        ("content", content),
-        ("retrieval", retrieval),
-    ):
-        group = _fetch_many_group(name, value)
-        if group is not None:
-            payload[name] = group
-    if deadline_ms is not None:
-        payload["deadline_ms"] = deadline_ms
-    if _set(session_id):
-        payload["session_id"] = session_id
-    return payload
+    if content:
+        payload["content"] = content
+    if max_age_hours is not None:
+        if (
+            isinstance(max_age_hours, bool)
+            or not isinstance(max_age_hours, (int, float))
+            or not 0 <= max_age_hours <= _FETCH_MAX_AGE_HOURS
+        ):
+            raise KeenableInvalidRequestError(
+                f"fetch() max_age_hours must be a number from 0 to "
+                f"{_FETCH_MAX_AGE_HOURS}, got {max_age_hours!r}"
+            )
+        payload["retrieval"] = {"max_age_hours": max_age_hours}
+    try:
+        jsonlib.dumps(payload, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise KeenableInvalidRequestError(
+            f"could not encode the fetch request: {exc}. Pass a JSON-encodable schema."
+        ) from exc
+    return targets, payload
 
 
 def _as_list(value: Any) -> Any:
@@ -634,7 +610,7 @@ def _limit_max(value: Any) -> int | None:
 
 
 def _error_fields(
-    raw: dict[str, Any] | None, response: httpx.Response
+    raw: dict[str, Any] | None, status: int, headers: httpx.Headers
 ) -> dict[str, Any]:
     """The agent-ready fields of an error body, None where the API left one out.
 
@@ -650,17 +626,15 @@ def _error_fields(
     retryable = body.get("retryable")
     retry_after = _seconds(body.get("retry_after_seconds"))
     if retry_after is None:
-        retry_after = _retry_after_header(response.headers.get("Retry-After"))
+        retry_after = _retry_after_header(headers.get("Retry-After"))
     if retry_after is None:
         retry_after = _seconds(body.get("retryAfter"))
-    header_id = (response.headers.get("X-Request-Id") or "").strip() or None
+    header_id = (headers.get("X-Request-Id") or "").strip() or None
     code = _str_field(body, "code")
-    invalid_filter = (
-        response.status_code == 400 and body.get("error") == "invalid_filter"
-    )
+    invalid_filter = status == 400 and body.get("error") == "invalid_filter"
     return {
         "code": code,
-        "type": _str_field(body, "type") or _derive_type(response.status_code, code),
+        "type": _str_field(body, "type") or _derive_type(status, code),
         "error": _str_field(body, "error"),
         "fix": _str_field(body, "fix"),
         "retryable": retryable if isinstance(retryable, bool) else None,
@@ -757,14 +731,16 @@ def _is_payment_offer(code: str | None, body: dict[str, Any] | None) -> bool:
     return body is not None and ("accepts" in body or "x402Version" in body)
 
 
-def _to_api_error(response: httpx.Response) -> KeenableAPIError:
-    """Map a non-2xx response to the most specific SDK error available."""
+def _to_api_error(
+    status: int, content: bytes, headers: httpx.Headers
+) -> KeenableAPIError:
+    """Map an error status and body to the most specific SDK error available."""
     detail = ""
     body: dict[str, Any] | None = None
     try:
-        decoded = _parse_json(response.content)
+        decoded = _parse_json(content)
     except ValueError:
-        detail = (response.text or "").strip()
+        detail = content.decode("utf-8", "replace").strip()
     else:
         # JSON that is not an object has no fields and no detail.
         if isinstance(decoded, dict):
@@ -777,8 +753,7 @@ def _to_api_error(response: httpx.Response) -> KeenableAPIError:
                     detail = text
                     break
 
-    fields = _error_fields(body, response)
-    status = response.status_code
+    fields = _error_fields(body, status, headers)
     kind = _error_kind(status, _str_field(body or {}, "type"), fields["type"])
     auth = kind == "auth"
     if status == 402:
@@ -815,6 +790,11 @@ def _to_api_error(response: httpx.Response) -> KeenableAPIError:
     return KeenableAPIError(message, status, detail or None, **fields)
 
 
+def _url_error(status: int, body: dict[str, Any]) -> KeenableAPIError:
+    """One failed URL's error, mapped as an error response with that body."""
+    return _to_api_error(status, jsonlib.dumps(body).encode(), httpx.Headers())
+
+
 class _RedirectError(KeenableConnectionError):
     """A redirect this SDK refused to follow; retrying would refuse it again."""
 
@@ -829,7 +809,7 @@ def _decode(response: httpx.Response) -> tuple[dict[str, Any], str | None]:
             "so the API key was not sent. Check KEENABLE_API_URL."
         )
     if not response.is_success:
-        raise _to_api_error(response)
+        raise _to_api_error(response.status_code, response.content, response.headers)
     request_id = (response.headers.get("X-Request-Id") or "").strip() or None
     try:
         data = _parse_json(response.content)
@@ -1286,9 +1266,7 @@ class _BaseClient:
         """True when no API key is configured and the public tier is in use."""
         return self._api_key is None
 
-    def _headers(
-        self, extra: Mapping[str, str] | None = None, *, json: bool = False
-    ) -> httpx.Headers:
+    def _headers(self, extra: Mapping[str, str] | None = None) -> httpx.Headers:
         """The SDK's headers, then ``default_headers``, then the call's.
 
         The API key is always the configured one, so a stray header cannot
@@ -1311,8 +1289,7 @@ class _BaseClient:
                     headers[name] = value
         if self._api_key is not None:
             headers["X-API-Key"] = self._api_key
-        if json:
-            headers["Content-Type"] = "application/json"
+        headers["Content-Type"] = "application/json"
         return headers
 
     def _url(self, endpoint: str) -> str:
@@ -1426,8 +1403,7 @@ class Keenable(_BaseClient):
         self,
         endpoint: str,
         *,
-        json: dict[str, Any] | None = None,
-        params: dict[str, Any] | None = None,
+        json: dict[str, Any],
         timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
@@ -1438,7 +1414,7 @@ class Keenable(_BaseClient):
         timeout, retries, error translation and decoding.
         """
         call_timeout, retries = self._call_settings(timeout, max_retries)
-        headers = self._headers(extra_headers, json=json is not None)
+        headers = self._headers(extra_headers)
         retry = 0
         while True:
             try:
@@ -1448,9 +1424,8 @@ class Keenable(_BaseClient):
                         _attempt_deadline(call_timeout)
                         if self._bounds_attempts
                         else None,
-                        "GET" if json is None else "POST",
+                        "POST",
                         self._url(endpoint),
-                        params=params,
                         json=json,
                         headers=headers,
                         timeout=call_timeout,
@@ -1558,103 +1533,54 @@ class Keenable(_BaseClient):
 
     def fetch(
         self,
-        url: str,
-        *,
-        max_chars: int | None = None,
-        live: bool | None = None,
-        prompt: str | None = None,
-        timeout: float | httpx.Timeout | None = None,
-        max_retries: int | None = None,
-        extra_headers: Mapping[str, str] | None = None,
-    ) -> Page:
-        """Fetch one URL and return its main content as markdown.
-
-        Use this after :meth:`search` when a snippet is not enough and the
-        model needs the full page.
-
-        Args:
-            url: The page to fetch, an ``http`` or ``https`` URL. Internal
-                hosts and private addresses are refused before a request is
-                sent.
-            max_chars: Cap the characters of content returned, a positive
-                integer. The API default is 50000. ``Page.truncated`` and
-                ``Page.total_chars`` say whether the page was cut and how
-                long it was.
-            live: ``True`` fetches the page from its source now instead of
-                reading Keenable's indexed copy. Default ``False``.
-            prompt: An extraction instruction, up to 2000 characters, such
-                as ``"list the pricing tiers"``. ``Page.content`` is then
-                only the model's output for it, not the page.
-            timeout: Deadline for each attempt of this call, as in
-                :meth:`search`.
-            max_retries: Retry budget for this call, as in :meth:`search`.
-            extra_headers: Headers for this call, over ``default_headers``.
-        """
-        _reject_private_fetch_target(url)
-        body, request_id = self._request(
-            _FETCH,
-            params=_fetch_params(url, max_chars, live, prompt),
-            timeout=timeout,
-            max_retries=max_retries,
-            extra_headers=extra_headers,
-        )
-        return Page._from_json(body, url, request_id)
-
-    def fetch_many(
-        self,
         urls: str | Iterable[str],
         *,
-        content: FetchContentOptions | Mapping[str, Any] | None = None,
-        retrieval: FetchRetrievalOptions | Mapping[str, Any] | None = None,
-        deadline_ms: int | None = None,
-        session_id: str | None = None,
+        max_chars: int | None = None,
+        schema: Mapping[str, Any] | None = None,
+        links: int | None = None,
+        images: int | None = None,
+        max_age_hours: float | None = None,
         timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
     ) -> FetchResponse:
-        """Read up to 20 pages in one call with ``POST /v1/fetch``.
+        """Read up to 10 pages as markdown in one call.
 
-        Pages are read in parallel. ``results[i]`` answers ``urls[i]``: its
-        ``status`` is ``"ok"`` with the page, or ``"error"`` with ``error`` set.
-        A failed URL is not billed and does not raise; the call raises only
-        when it fails as a whole. Each group is sent as given, with fields that
-        are None or an empty string left out.
+        ``results[i]`` is for ``urls[i]``: its ``page``, or its ``error`` when
+        that URL failed. A failed URL does not raise; the call raises only
+        when it fails as a whole.
 
         Example:
-            >>> response = keenable.fetch_many(
-            ...     ["https://stripe.com/pricing"],
-            ...     content={"max_chars": 20000, "objective": "pricing"},
-            ...     retrieval={"max_age_hours": 24},
+            >>> response = keenable.fetch(
+            ...     ["https://stripe.com/pricing"], max_chars=20000
             ... )
-            >>> response.results[0].content.text
+            >>> response.results[0].page.content
 
         Args:
-            urls: The pages, ``http`` or ``https`` URLs (a lone string is one
-                page). Internal hosts and private addresses are refused before
-                a request is sent. Keyless calls take up to 20.
-            content: What each result carries: ``max_chars`` (50,000 by
-                default; 0 for metadata only), ``objective``, ``links``,
-                ``images``. See :class:`FetchContentOptions`.
-                Left out: each page's text up to 50,000 characters.
-            retrieval: ``max_age_hours`` (0 to 720, fractions allowed; 0 reads
-                live) or ``as_of`` (``"P0D"`` for stored copies only). See
-                :class:`FetchRetrievalOptions`. Left out: a stored copy of any
-                age when there is one, else a live read.
-            deadline_ms: For the whole call, 1,000 to 55,000 (30,000 without a
-                key); 15,000 by default. Pages not read by then fail with
-                ``fetch_timeout``.
-            session_id: Your id for the agent session these calls belong to.
+            urls: 1 to 10 ``http`` or ``https`` URLs; a lone string is one
+                URL. Internal hosts and private addresses are refused before
+                a request is sent.
+            max_chars: The most characters of content per page, at least 1.
+                The API default is 50000.
+            schema: A JSON Schema whose root has ``"type": "object"``. Each
+                page's typed answer is in ``Page.structured``.
+            links: The most links per page to return, 1 to 1000.
+            images: The most images per page to return, 0 to 25.
+            max_age_hours: Use a stored copy only if it is younger than this,
+                0 to 720 hours (fractions allowed); 0 reads every page live.
+                Left out, a stored copy of any age is used when there is one.
             timeout: Deadline for each attempt of this call, as in
                 :meth:`search`.
             max_retries: Retry budget for this call, as in :meth:`search`.
             extra_headers: Headers for this call, over ``default_headers``.
         """
-        payload = _fetch_many_payload(
+        targets, payload = _fetch_payload(
             urls,
-            content=content,
-            retrieval=retrieval,
-            deadline_ms=deadline_ms,
-            session_id=session_id,
+            max_chars=max_chars,
+            schema=schema,
+            links=links,
+            images=images,
+            max_age_hours=max_age_hours,
         )
         body, request_id = self._request(
             _FETCH,
@@ -1663,7 +1589,7 @@ class Keenable(_BaseClient):
             max_retries=max_retries,
             extra_headers=extra_headers,
         )
-        return FetchResponse._from_json(body, request_id)
+        return FetchResponse._from_json(body, targets, request_id, _url_error)
 
 
 class AsyncKeenable(_BaseClient):
@@ -1722,15 +1648,14 @@ class AsyncKeenable(_BaseClient):
         self,
         endpoint: str,
         *,
-        json: dict[str, Any] | None = None,
-        params: dict[str, Any] | None = None,
+        json: dict[str, Any],
         timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
     ) -> tuple[dict[str, Any], str | None]:
         """Async counterpart of :meth:`Keenable._request`."""
         call_timeout, retries = self._call_settings(timeout, max_retries)
-        headers = self._headers(extra_headers, json=json is not None)
+        headers = self._headers(extra_headers)
         retry = 0
         while True:
             try:
@@ -1738,9 +1663,8 @@ class AsyncKeenable(_BaseClient):
                     # A number bounds the whole attempt, not only each phase.
                     response = await asyncio.wait_for(
                         self._client.request(
-                            "GET" if json is None else "POST",
+                            "POST",
                             self._url(endpoint),
-                            params=params,
                             json=json,
                             headers=headers,
                             timeout=call_timeout,
@@ -1803,45 +1727,25 @@ class AsyncKeenable(_BaseClient):
 
     async def fetch(
         self,
-        url: str,
-        *,
-        max_chars: int | None = None,
-        live: bool | None = None,
-        prompt: str | None = None,
-        timeout: float | httpx.Timeout | None = None,
-        max_retries: int | None = None,
-        extra_headers: Mapping[str, str] | None = None,
-    ) -> Page:
-        """Fetch one URL as markdown. See :meth:`Keenable.fetch` for the arguments."""
-        _reject_private_fetch_target(url)
-        body, request_id = await self._request(
-            _FETCH,
-            params=_fetch_params(url, max_chars, live, prompt),
-            timeout=timeout,
-            max_retries=max_retries,
-            extra_headers=extra_headers,
-        )
-        return Page._from_json(body, url, request_id)
-
-    async def fetch_many(
-        self,
         urls: str | Iterable[str],
         *,
-        content: FetchContentOptions | Mapping[str, Any] | None = None,
-        retrieval: FetchRetrievalOptions | Mapping[str, Any] | None = None,
-        deadline_ms: int | None = None,
-        session_id: str | None = None,
+        max_chars: int | None = None,
+        schema: Mapping[str, Any] | None = None,
+        links: int | None = None,
+        images: int | None = None,
+        max_age_hours: float | None = None,
         timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
     ) -> FetchResponse:
-        """Read up to 20 pages in one call. See :meth:`Keenable.fetch_many`."""
-        payload = _fetch_many_payload(
+        """Read up to 10 pages in one call. See :meth:`Keenable.fetch`."""
+        targets, payload = _fetch_payload(
             urls,
-            content=content,
-            retrieval=retrieval,
-            deadline_ms=deadline_ms,
-            session_id=session_id,
+            max_chars=max_chars,
+            schema=schema,
+            links=links,
+            images=images,
+            max_age_hours=max_age_hours,
         )
         body, request_id = await self._request(
             _FETCH,
@@ -1850,4 +1754,4 @@ class AsyncKeenable(_BaseClient):
             max_retries=max_retries,
             extra_headers=extra_headers,
         )
-        return FetchResponse._from_json(body, request_id)
+        return FetchResponse._from_json(body, targets, request_id, _url_error)

@@ -22,7 +22,6 @@ import {
 } from "./internal.js";
 import type {
   KeenableOptions,
-  FetchManyOptions,
   FetchOptions,
   RequestOptions,
   SearchOptions,
@@ -55,6 +54,11 @@ const MAX_RETRY_AFTER_WAIT_SECONDS = 60;
 // Endpoints are named once; the keyless variant of each is the same path with a
 // `/public` suffix, so a new endpoint is one name rather than two constants.
 type Endpoint = "search" | "fetch";
+
+const FETCH_MAX_URLS = 10;
+const FETCH_MAX_LINKS = 1000;
+const FETCH_MAX_IMAGES = 25;
+const FETCH_MAX_AGE_HOURS = 720;
 
 /** Hosts that must never be fetched, whatever the backend would do. */
 const BLOCKED_HOSTS = new Set(["localhost", "metadata.google.internal"]);
@@ -423,11 +427,40 @@ export class SearchResponse {
   }
 }
 
-/** A web page fetched by `fetch()`, extracted as markdown. */
+/** A link on a fetched page, with the words it was written as. */
+export interface FetchLink {
+  readonly url: string;
+  readonly text?: string;
+}
+
+/** An image on a fetched page, with its alt text. */
+export interface FetchImage {
+  readonly url: string;
+  readonly alt?: string;
+}
+
+/** Why the typed answer for `schema` could not be made. The page is still read. */
+export interface FetchAnswerError {
+  readonly code: string;
+  readonly message: string;
+}
+
+/** What reading one page cost. */
+export interface FetchUsage {
+  readonly sku: string;
+  readonly amount: number;
+  readonly credits: number;
+  /** True when paid credits were spent, false for free ones. */
+  readonly paid: boolean;
+  readonly creditsRemaining?: number;
+}
+
+/** A web page read by `fetch()`, extracted as markdown. */
 export class Page {
+  /** The page's final address after redirects. */
   readonly url: string;
   readonly title: string;
-  /** The page's main content as markdown, with boilerplate stripped. */
+  /** The page's main content as markdown, with boilerplate stripped, cut to `maxChars`. */
   readonly content: string;
   /**
    * @deprecated Always empty: the API no longer fills it. Read `content`.
@@ -442,11 +475,9 @@ export class Page {
    * unknown.
    */
   readonly publishedAt?: string;
-  /** The API's id for this request. Quote it when reporting a problem. */
-  readonly requestId?: string;
   /**
-   * True when the page was longer than the API's `max_chars` and `content`
-   * was cut (cut content ends with `...`). Undefined when the API did not say.
+   * True when the page was longer than `maxChars` and `content` was cut (cut
+   * content ends with `...`). Undefined when the API did not say.
    */
   readonly truncated?: boolean;
   /**
@@ -454,6 +485,20 @@ export class Page {
    * cut. Undefined when the API did not say.
    */
   readonly totalChars?: number;
+  /** The page's preview image URL. */
+  readonly image?: string;
+  readonly favicon?: string;
+  /** The page's links, when `links` was asked for. */
+  readonly links?: FetchLink[];
+  /** The page's images, with their alt text. */
+  readonly images?: FetchImage[];
+  /** The typed answer for `schema`, when one was asked for and made. */
+  readonly structured?: Record<string, unknown>;
+  /** Why the answer for `schema` could not be made. */
+  readonly answerError?: FetchAnswerError;
+  /** True when an older stored copy was returned because a fresh read failed. */
+  readonly stale?: boolean;
+  readonly usage?: FetchUsage;
   readonly raw: Record<string, unknown>;
 
   constructor(init: {
@@ -463,9 +508,16 @@ export class Page {
     description?: string;
     author?: string;
     publishedAt?: string;
-    requestId?: string;
     truncated?: boolean;
     totalChars?: number;
+    image?: string;
+    favicon?: string;
+    links?: FetchLink[];
+    images?: FetchImage[];
+    structured?: Record<string, unknown>;
+    answerError?: FetchAnswerError;
+    stale?: boolean;
+    usage?: FetchUsage;
     raw: Record<string, unknown>;
   }) {
     this.url = init.url;
@@ -474,9 +526,16 @@ export class Page {
     this.description = init.description;
     this.author = init.author;
     this.publishedAt = init.publishedAt;
-    this.requestId = init.requestId;
     this.truncated = init.truncated;
     this.totalChars = init.totalChars;
+    this.image = init.image;
+    this.favicon = init.favicon;
+    this.links = init.links;
+    this.images = init.images;
+    this.structured = init.structured;
+    this.answerError = init.answerError;
+    this.stale = init.stale;
+    this.usage = init.usage;
     this.raw = init.raw;
   }
 
@@ -516,7 +575,32 @@ function toSearchResult(data: Record<string, unknown>): SearchResult {
   };
 }
 
-function toPage(data: Record<string, unknown>, url: string, requestId?: string): Page {
+/** The result for one URL: `page` when it was read, else `error`. */
+export interface FetchResult {
+  readonly url: string;
+  readonly page?: Page;
+  /** Why this URL failed, as the error the call would throw. Not thrown. */
+  readonly error?: KeenableAPIError;
+}
+
+/** What `fetch()` returns: `results[i]` is for `urls[i]`. */
+export interface FetchResponse {
+  readonly results: FetchResult[];
+  /** The API's id for this request. Quote it when reporting a problem. */
+  readonly requestId?: string;
+}
+
+function objects(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function finite(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function toPage(data: Record<string, unknown>, url: string): Page {
+  const answerError = isRecord(data.answer_error) ? data.answer_error : undefined;
+  const usage = isRecord(data.usage) ? data.usage : undefined;
   return new Page({
     // An empty url falls back to the one asked for, as in Python and Go.
     url: nonEmpty(data.url) ?? url,
@@ -525,235 +609,118 @@ function toPage(data: Record<string, unknown>, url: string, requestId?: string):
     description: nonEmpty(data.description),
     author: nonEmpty(data.author),
     publishedAt: timestamp(data.published_at),
-    requestId,
     truncated: bool(data.truncated),
     totalChars: count(data.total_chars),
-    raw: data,
-  });
-}
-
-/** A link on a fetched page, with the words it was written as. */
-export interface FetchLink {
-  readonly url: string;
-  readonly text?: string;
-}
-
-/** An image on a fetched page, with its alt text. */
-export interface FetchImage {
-  readonly url: string;
-  readonly alt?: string;
-}
-
-/** What one page carries: only the parts asked for. A part asked for but unavailable is undefined, with a `content_unavailable` notice. */
-export interface FetchContent {
-  /** The page as markdown, cut to `maxChars`; with `objective`, the passages about it. */
-  readonly text?: string;
-  /** The length of the whole page, so you can tell whether `text` was cut. */
-  readonly totalChars?: number;
-  readonly links?: FetchLink[];
-  readonly images?: FetchImage[];
-}
-
-/** Why one URL failed. The call itself succeeded; the URL is not billed. */
-export interface FetchError {
-  /** The broad case, `target_error` for a URL that failed. */
-  readonly type: string;
-  /** The exact case, such as `page_not_found` or `fetch_timeout`. */
-  readonly code: string;
-  readonly message: string;
-  /** One sentence on what to do next, when the API has one. */
-  readonly fix?: string;
-  /** Whether trying this URL again unchanged can help. */
-  readonly retryable: boolean;
-  /** What the site answered, such as 404, when it answered. */
-  readonly upstreamStatus?: number;
-  readonly details?: Record<string, unknown>;
-}
-
-/**
- * The result for one URL given to `fetchMany()`: `results[i]` answers `urls[i]`. `status` is
- * `"ok"` with the page, or `"error"` with `error` set and no page.
- */
-export interface FetchResult {
-  readonly index: number;
-  /** The URL exactly as sent. */
-  readonly requestedUrl: string;
-  /** The final address after redirects (the last one reached, on an error). */
-  readonly url: string;
-  readonly status: string;
-  readonly title?: string;
-  readonly publishedAt?: string;
-  /** When Keenable read this copy of the page. */
-  readonly acquiredAt?: string;
-  readonly image?: string;
-  readonly favicon?: string;
-  /** `"index"` (our stored copy), `"live"` or `"cache_fallback"`. */
-  readonly retrievedFrom?: string;
-  readonly error?: FetchError;
-  readonly content: FetchContent;
-  readonly raw: Record<string, unknown>;
-}
-
-/** A notice (for the model) or a warning (for the developer). */
-export interface FetchNotice {
-  readonly code: string;
-  /** A JSON Pointer into the response (notices) or the request (warnings). */
-  readonly path?: string;
-  readonly message: string;
-  readonly details?: Record<string, unknown>;
-}
-
-/** What `fetchMany()` returns: one result per URL, in the order given. */
-export interface FetchResponse {
-  /** The API's id for this request. Quote it when reporting a problem. */
-  readonly requestId?: string;
-  /** `"ok"` (every URL read), `"partial"` or `"failed"`. */
-  readonly status?: string;
-  readonly summary: { readonly requested: number; readonly succeeded: number; readonly failed: number };
-  /** Each relative or date-only instant in the request, as the exact time used, keyed by its JSON Pointer. */
-  readonly resolved: Record<string, string>;
-  readonly results: FetchResult[];
-  /** For the model: how the results were produced. */
-  readonly notices: FetchNotice[];
-  /** For the developer: request hygiene; never changes results. */
-  readonly warnings: FetchNotice[];
-  readonly sessionId?: string;
-  readonly latencyMs?: number;
-  /** What the call cost, as the API sent it. */
-  readonly usage?: Record<string, unknown>;
-  readonly raw: Record<string, unknown>;
-}
-
-function objects(value: unknown): Record<string, unknown>[] {
-  return Array.isArray(value) ? value.filter(isRecord) : [];
-}
-
-function record(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined;
-}
-
-function str(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
-function toFetchError(value: unknown): FetchError | undefined {
-  if (!isRecord(value)) return undefined;
-  const details = record(value.details);
-  const status = details?.upstream_status;
-  return {
-    type: text(value.type),
-    code: text(value.code),
-    message: text(value.message),
-    fix: str(value.fix),
-    retryable: value.retryable === true,
-    upstreamStatus: Number.isInteger(status) ? (status as number) : undefined,
-    details,
-  };
-}
-
-function toFetchContent(value: unknown): FetchContent {
-  const data = record(value) ?? {};
-  return {
-    text: str(data.text),
-    totalChars: count(data.total_chars),
+    image: nonEmpty(data.image),
+    favicon: nonEmpty(data.favicon),
     links: Array.isArray(data.links)
       ? objects(data.links).map((item) => ({ url: text(item.url), text: nonEmpty(item.text) }))
       : undefined,
     images: Array.isArray(data.images)
       ? objects(data.images).map((item) => ({ url: text(item.url), alt: nonEmpty(item.alt) }))
       : undefined,
-  };
-}
-
-function toFetchResult(data: Record<string, unknown>, position: number): FetchResult {
-  return {
-    index: count(data.index) ?? position,
-    requestedUrl: text(data.requested_url),
-    url: text(data.url),
-    status: text(data.status),
-    title: nonEmpty(data.title),
-    publishedAt: nonEmpty(data.published_at),
-    acquiredAt: nonEmpty(data.acquired_at),
-    image: nonEmpty(data.image),
-    favicon: nonEmpty(data.favicon),
-    retrievedFrom: nonEmpty(data.retrieved_from),
-    error: toFetchError(data.error),
-    content: toFetchContent(data.content),
-    raw: data,
-  };
-}
-
-function toFetchNotices(value: unknown): FetchNotice[] {
-  return objects(value).map((item) => ({
-    code: text(item.code),
-    path: str(item.path),
-    message: text(item.message),
-    details: record(item.details),
-  }));
-}
-
-function toFetchResponse(data: Record<string, unknown>, requestId?: string): FetchResponse {
-  const summary = record(data.summary) ?? {};
-  const resolved = record(data.resolved) ?? {};
-  return {
-    requestId: nonEmpty(data.request_id) ?? requestId,
-    status: str(data.status),
-    summary: {
-      requested: count(summary.requested) ?? 0,
-      succeeded: count(summary.succeeded) ?? 0,
-      failed: count(summary.failed) ?? 0,
+    structured: isRecord(data.structured) ? data.structured : undefined,
+    answerError: answerError && { code: text(answerError.code), message: text(answerError.message) },
+    stale: bool(data.stale),
+    usage: usage && {
+      sku: text(usage.sku),
+      amount: count(usage.amount) ?? 0,
+      credits: finite(usage.credits) ?? 0,
+      paid: usage.paid === true,
+      creditsRemaining: finite(usage.credits_remaining),
     },
-    resolved: Object.fromEntries(
-      Object.entries(resolved).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
-    ),
-    results: objects(data.results).map(toFetchResult),
-    notices: toFetchNotices(data.notices),
-    warnings: toFetchNotices(data.warnings),
-    sessionId: nonEmpty(data.session_id),
-    latencyMs: count(data.latency_ms),
-    usage: record(data.usage),
     raw: data,
-  };
+  });
 }
 
-/**
- * A request group as sent: the fields given, an empty string or undefined meaning unset. Zero
- * is a value (`maxChars: 0` asks for metadata only, `maxAgeHours: 0` for a live read).
- */
-function group(entries: [string, unknown][]): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of entries) {
-    if (value !== undefined && value !== "") out[key] = value;
+function toFetchResponse(
+  data: Record<string, unknown>,
+  urls: string[],
+  requestId: string | undefined,
+): FetchResponse {
+  const entries: unknown[] = Array.isArray(data.results) ? data.results : [];
+  const results: FetchResult[] = [];
+  entries.forEach((entry, position) => {
+    if (!isRecord(entry)) return;
+    const asked = urls[position] ?? "";
+    if (isRecord(entry.error)) {
+      const sent = count(entry.error.status);
+      const status = sent !== undefined && sent >= 400 && sent <= 599 ? sent : 500;
+      results.push({
+        url: nonEmpty(entry.url) ?? asked,
+        error: toApiError(status, JSON.stringify(entry.error)),
+      });
+    } else {
+      const page = toPage(entry, asked);
+      results.push({ url: page.url, page });
+    }
+  });
+  return { results, requestId };
+}
+
+function wholeNumber(name: string, value: unknown, low: number, high?: number): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < low ||
+    (high !== undefined && value > high)
+  ) {
+    const span = high === undefined ? `of at least ${low}` : `from ${low} to ${high}`;
+    throw new KeenableInvalidRequestError(
+      `fetch() ${name} must be an integer ${span}, got ${String(value)}`,
+    );
   }
-  return out;
+  return value;
 }
 
-/** The JSON body POST /v1/fetch takes, refusing private targets first. */
-function fetchManyBody(urls: string | readonly string[], options: FetchManyOptions): string {
-  const targets = typeof urls === "string" ? [urls] : Array.isArray(urls) ? [...urls] : undefined;
-  if (!targets || targets.length === 0) {
-    throw new KeenableInvalidRequestError("fetchMany() needs a non-empty list of URLs");
+/** The URLs asked for and the JSON body POST /v1/fetch takes, checked against the API's limits. */
+function fetchBody(
+  urls: string | readonly string[],
+  options: FetchOptions,
+): { targets: string[]; body: string } {
+  const targets: unknown[] | undefined =
+    typeof urls === "string" ? [urls] : Array.isArray(urls) ? [...urls] : undefined;
+  if (!targets || targets.length < 1 || targets.length > FETCH_MAX_URLS) {
+    throw new KeenableInvalidRequestError(
+      `fetch() needs a list of 1 to ${FETCH_MAX_URLS} URLs`,
+    );
   }
   for (const target of targets) rejectPrivateFetchTarget(target);
+  const content: Record<string, unknown> = {};
+  if (options.maxChars !== undefined) content.max_chars = wholeNumber("maxChars", options.maxChars, 1);
+  if (options.schema !== undefined) {
+    if (!isRecord(options.schema) || options.schema.type !== "object") {
+      throw new KeenableInvalidRequestError(
+        'fetch() schema must be a JSON Schema whose root has "type": "object"',
+      );
+    }
+    rejectLossyJson(options.schema, "schema", "fetch");
+    content.schema = options.schema;
+  }
+  if (options.links !== undefined) {
+    content.links = wholeNumber("links", options.links, 1, FETCH_MAX_LINKS);
+  }
+  if (options.images !== undefined) {
+    content.images = wholeNumber("images", options.images, 0, FETCH_MAX_IMAGES);
+  }
   const body: Record<string, unknown> = { urls: targets };
-  const { content, retrieval } = options;
-  if (content !== undefined) {
-    body.content = group([
-      ["max_chars", content.maxChars],
-      ["objective", content.objective],
-      ["links", content.links],
-      ["images", content.images],
-    ]);
+  if (Object.keys(content).length > 0) body.content = content;
+  if (options.maxAgeHours !== undefined) {
+    const hours: unknown = options.maxAgeHours;
+    if (typeof hours !== "number" || !(hours >= 0 && hours <= FETCH_MAX_AGE_HOURS)) {
+      throw new KeenableInvalidRequestError(
+        `fetch() maxAgeHours must be a number from 0 to ${FETCH_MAX_AGE_HOURS}, got ${String(hours)}`,
+      );
+    }
+    body.retrieval = { max_age_hours: hours };
   }
-  if (retrieval !== undefined) {
-    body.retrieval = group([
-      ["max_age_hours", retrieval.maxAgeHours],
-      ["as_of", retrieval.asOf],
-    ]);
+  try {
+    return { targets: targets as string[], body: JSON.stringify(body) };
+  } catch (error) {
+    throw new KeenableInvalidRequestError(
+      `could not encode the fetch request: ${(error as Error).message}. Pass a JSON-encodable schema.`,
+    );
   }
-  if (options.deadlineMs !== undefined) body.deadline_ms = options.deadlineMs;
-  if (options.sessionId !== undefined && options.sessionId !== "") body.session_id = options.sessionId;
-  return JSON.stringify(body);
 }
 
 /** Wait `ms`, or reject with the signal's reason as soon as it aborts. */
@@ -903,10 +870,7 @@ export class Keenable {
    * the call's `headers`. The API key is always the configured one, so a
    * stray header cannot send a different key or turn a keyless call keyed.
    */
-  private headers(
-    extra: Record<string, string> | undefined,
-    json: boolean,
-  ): Record<string, string> {
+  private headers(extra: Record<string, string> | undefined): Record<string, string> {
     const headers: Record<string, string> = {
       Accept: "application/json",
       "User-Agent": `keenable-typescript/${VERSION}`,
@@ -926,7 +890,7 @@ export class Keenable {
       }
     }
     if (this.apiKey !== undefined) set("X-API-Key", this.apiKey);
-    if (json) set("Content-Type", "application/json");
+    set("Content-Type", "application/json");
     return headers;
   }
 
@@ -967,7 +931,7 @@ export class Keenable {
       }
       payload[filter.wire] = filter.jsonType === "array" ? asList(value) : value;
     }
-    for (const [name, value] of Object.entries(payload)) rejectLossyJson(value, name);
+    for (const [name, value] of Object.entries(payload)) rejectLossyJson(value, name, "search");
     let body: string;
     try {
       body = JSON.stringify(payload);
@@ -977,7 +941,7 @@ export class Keenable {
       );
     }
 
-    const { data, requestId } = await this.request("search", { method: "POST", body }, options);
+    const { data, requestId } = await this.request("search", body, options);
 
     const rawResults = Array.isArray(data.results) ? data.results : [];
     return new SearchResponse({
@@ -992,60 +956,22 @@ export class Keenable {
   }
 
   /**
-   * Fetch one URL and return its main content as markdown.
+   * Read up to 10 pages as markdown in one call.
    *
-   * Use this after `search()` when a snippet is not enough and the model needs
-   * the full page. `maxChars` caps the content, `live` reads the page from its
-   * source instead of the indexed copy, and `prompt` returns only what the
-   * instruction asks for.
-   */
-  async fetch(url: string, options: FetchOptions = {}): Promise<Page> {
-    rejectPrivateFetchTarget(url);
-
-    const target = new URL(this.url("fetch"));
-    target.searchParams.set("url", url);
-    if (options.maxChars !== undefined) {
-      target.searchParams.set("max_chars", String(options.maxChars));
-    }
-    // The API reads only "true" and "false", and an absent live is false.
-    if (options.live === true) target.searchParams.set("live", "true");
-    // An empty string is unset, as Go cannot tell the two apart.
-    if (options.prompt !== undefined && options.prompt !== "") {
-      target.searchParams.set("prompt", options.prompt);
-    }
-
-    const { data, requestId } = await this.request(
-      "fetch",
-      { method: "GET" },
-      options,
-      target.toString(),
-    );
-    return toPage(data, url, requestId);
-  }
-
-  /**
-   * Read up to 20 pages in one call with `POST /v1/fetch`.
-   *
-   * Pages are read in parallel. `results[i]` answers `urls[i]`: its `status`
-   * is `"ok"` with the page, or `"error"` with `error` set. A failed URL is not
-   * billed and does not throw; the call throws only when it fails as a whole.
-   * Keyless calls take up to 20 URLs.
+   * `results[i]` is for `urls[i]`: its `page`, or its `error` when that URL
+   * failed. A failed URL does not throw; the call throws only when it fails as
+   * a whole. A lone string is one URL. Internal hosts and private addresses
+   * are refused before a request is sent.
    *
    * ```ts
-   * const response = await keenable.fetchMany(["https://stripe.com/pricing"], {
-   *   content: { maxChars: 20000, objective: "pricing" },
-   *   retrieval: { maxAgeHours: 24 },
-   * });
-   * console.log(response.results[0]?.content.text);
+   * const response = await keenable.fetch(["https://stripe.com/pricing"], { maxChars: 20000 });
+   * console.log(response.results[0]?.page?.content);
    * ```
    */
-  async fetchMany(
-    urls: string | readonly string[],
-    options: FetchManyOptions = {},
-  ): Promise<FetchResponse> {
-    const body = fetchManyBody(urls, options);
-    const { data, requestId } = await this.request("fetch", { method: "POST", body }, options);
-    return toFetchResponse(data, requestId);
+  async fetch(urls: string | readonly string[], options: FetchOptions = {}): Promise<FetchResponse> {
+    const { targets, body } = fetchBody(urls, options);
+    const { data, requestId } = await this.request("fetch", body, options);
+    return toFetchResponse(data, targets, requestId);
   }
 
   /**
@@ -1057,9 +983,8 @@ export class Keenable {
    */
   private async request(
     endpoint: Endpoint,
-    init: { method: "GET" | "POST"; body?: string },
+    body: string,
     options: RequestOptions,
-    url: string = this.url(endpoint),
   ): Promise<{ data: Record<string, unknown>; requestId?: string }> {
     const timeoutMs =
       options.timeoutMs === undefined
@@ -1069,14 +994,12 @@ export class Keenable {
       options.maxRetries === undefined
         ? this.maxRetries
         : nonNegativeInteger("maxRetries", options.maxRetries);
-    const headers = this.headers(
-      checkHeaders("headers", options.headers ?? {}),
-      init.body !== undefined,
-    );
+    const headers = this.headers(checkHeaders("headers", options.headers ?? {}));
+    const url = this.url(endpoint);
 
     for (let retry = 0; ; retry += 1) {
       try {
-        return await this.attempt(url, { ...init, headers }, timeoutMs, options.signal);
+        return await this.attempt(url, { method: "POST", body, headers }, timeoutMs, options.signal);
       } catch (error) {
         const delay = retry < maxRetries ? retryDelayMs(error, retry) : undefined;
         if (delay === undefined) throw error;
@@ -1451,10 +1374,15 @@ function asList(value: unknown): unknown {
  * non-finite numbers and undefined, function or symbol array entries become
  * null. Anything else encodable goes to the API as is.
  */
-function rejectLossyJson(value: unknown, path: string, seen = new WeakSet<object>()): void {
+function rejectLossyJson(
+  value: unknown,
+  path: string,
+  request: string,
+  seen = new WeakSet<object>(),
+): void {
   const refuse = (at: string, what: string): never => {
     throw new KeenableInvalidRequestError(
-      `could not encode the search request: ${at} is ${what}, which JSON would send as null. Pass JSON-encodable arguments.`,
+      `could not encode the ${request} request: ${at} is ${what}, which JSON would send as null. Pass JSON-encodable arguments.`,
     );
   };
   if (typeof value === "number") {
@@ -1472,12 +1400,12 @@ function rejectLossyJson(value: unknown, path: string, seen = new WeakSet<object
       if (item === undefined || typeof item === "function" || typeof item === "symbol") {
         refuse(at, item === undefined ? "undefined" : `a ${typeof item}`);
       }
-      rejectLossyJson(item, at, seen);
+      rejectLossyJson(item, at, request, seen);
     }
     return;
   }
   for (const [key, item] of Object.entries(value)) {
-    rejectLossyJson(item, `${path}.${key}`, seen);
+    rejectLossyJson(item, `${path}.${key}`, request, seen);
   }
 }
 

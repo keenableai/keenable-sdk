@@ -8,10 +8,8 @@ use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::{Map, Value};
 
 use crate::error::{ApiError, ConnectionError, Error, RateLimitError, RateLimitInfo, Result};
-use crate::guard::{reject_private_fetch_target, resolve_base_url};
-use crate::models::{
-    non_blank, page_from_json, safe_count, search_response_from_json, Page, SearchResponse,
-};
+use crate::guard::resolve_base_url;
+use crate::models::{non_blank, safe_count, search_response_from_json, SearchResponse};
 use crate::retry::{retry_after_header, retry_delay, seconds};
 use crate::{json, types, VERSION};
 
@@ -146,25 +144,6 @@ pub struct SearchOptions {
     /// facts (their URLs expire after one day). `false`, the API default, is
     /// not sent.
     pub disable_cards: bool,
-    /// This call's timeout, retry budget and headers.
-    pub request: RequestOptions,
-}
-
-/// The optional arguments to [`Client::fetch_with`]. An unset option is not
-/// sent.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct FetchOptions {
-    /// Caps the characters of content returned. `None` means the API's
-    /// default of 50000. [`Page::truncated`] and [`Page::total_chars`] say
-    /// whether the page was cut and how long it was.
-    pub max_chars: Option<u32>,
-    /// Fetches the page from its source now instead of reading Keenable's
-    /// indexed copy. `false` is the API's default and is not sent.
-    pub live: bool,
-    /// An extraction instruction, up to 2000 characters, such as "list the
-    /// pricing tiers". [`Page::content`] is then only the model's output for
-    /// it, not the page. An empty prompt is unset.
-    pub prompt: Option<String>,
     /// This call's timeout, retry budget and headers.
     pub request: RequestOptions,
 }
@@ -349,59 +328,14 @@ impl Client {
                 "could not encode the search request: {e}. Pass JSON-encodable arguments."
             ))
         })?;
-        let (data, id) = self
-            .send(
-                reqwest::Method::POST,
-                "search",
-                Some(body),
-                Vec::new(),
-                request,
-            )
-            .await?;
+        let (data, id) = self.send("search", body, request).await?;
         Ok(search_response_from_json(data, query, id))
     }
 
-    /// Returns one URL's main content as markdown.
-    ///
-    /// Use it after [`Client::search`] when a snippet is not enough. Internal
-    /// hosts and private addresses are refused here, before a request is
-    /// sent.
-    pub async fn fetch(&self, url: &str) -> Result<Page> {
-        self.fetch_with(url, &FetchOptions::default()).await
-    }
-
-    /// [`Client::fetch`] with a content cap, a live fetch, an extraction
-    /// prompt, or per-call settings.
-    pub async fn fetch_with(&self, url: &str, opts: &FetchOptions) -> Result<Page> {
-        reject_private_fetch_target(url)?;
-        let mut query = vec![("url".to_string(), url.to_string())];
-        if let Some(n) = opts.max_chars {
-            query.push(("max_chars".into(), n.to_string()));
-        }
-        // The API reads only "true" and "false", and an absent live is false.
-        if opts.live {
-            query.push(("live".into(), "true".into()));
-        }
-        if let Some(prompt) = opts.prompt.as_deref().filter(|p| !p.is_empty()) {
-            query.push(("prompt".into(), prompt.to_string()));
-        }
-        let (data, id) = self
-            .send(reqwest::Method::GET, "fetch", None, query, &opts.request)
-            .await?;
-        Ok(page_from_json(data, url, id))
-    }
-
-    fn endpoint_url(&self, endpoint: &str, query: &[(String, String)]) -> String {
+    fn endpoint_url(&self, endpoint: &str) -> String {
         let mut url = format!("{}/v1/{endpoint}", self.inner.base_url);
         if self.is_keyless() {
             url.push_str("/public");
-        }
-        if !query.is_empty() {
-            let encoded = url::form_urlencoded::Serializer::new(String::new())
-                .extend_pairs(query)
-                .finish();
-            url.push('?');
-            url.push_str(&encoded);
         }
         url
     }
@@ -409,7 +343,7 @@ impl Client {
     /// The SDK's own headers, then the client's, then the call's. The API key
     /// always comes from the client, so a stray header cannot send a
     /// different key or turn a keyless call keyed.
-    fn headers(&self, json_body: bool, extra: &HashMap<String, String>) -> Result<HeaderMap> {
+    fn headers(&self, extra: &HashMap<String, String>) -> Result<HeaderMap> {
         let mut h = HeaderMap::new();
         let mut set = |name: &str, value: &str| -> Result<()> {
             let name = HeaderName::from_bytes(name.as_bytes())
@@ -436,18 +370,14 @@ impl Client {
         if !self.inner.api_key.is_empty() {
             set("X-API-Key", &self.inner.api_key)?;
         }
-        if json_body {
-            set("Content-Type", "application/json")?;
-        }
+        set("Content-Type", "application/json")?;
         Ok(h)
     }
 
     pub(crate) async fn send(
         &self,
-        method: reqwest::Method,
         endpoint: &str,
-        body: Option<Vec<u8>>,
-        query: Vec<(String, String)>,
+        body: Vec<u8>,
         opts: &RequestOptions,
     ) -> Result<(Map<String, Value>, Option<String>)> {
         let timeout = match opts.timeout {
@@ -462,12 +392,12 @@ impl Client {
         .min(MAX_TIMEOUT);
         let retries = opts.max_retries.unwrap_or(self.inner.max_retries);
         check_headers(&opts.headers)?;
-        let headers = self.headers(body.is_some(), &opts.headers)?;
-        let url = self.endpoint_url(endpoint, &query);
+        let headers = self.headers(&opts.headers)?;
+        let url = self.endpoint_url(endpoint);
         let mut retry = 0;
         loop {
             let err = match self
-                .attempt(method.clone(), &url, body.clone(), headers.clone(), timeout)
+                .attempt(&url, body.clone(), headers.clone(), timeout)
                 .await
             {
                 Ok(done) => return Ok(done),
@@ -488,16 +418,12 @@ impl Client {
     /// decodes the reply.
     async fn attempt(
         &self,
-        method: reqwest::Method,
         url: &str,
-        body: Option<Vec<u8>>,
+        body: Vec<u8>,
         headers: HeaderMap,
         timeout: Duration,
     ) -> Result<(Map<String, Value>, Option<String>)> {
-        let mut req = self.inner.http.request(method, url).headers(headers);
-        if let Some(body) = body {
-            req = req.body(body);
-        }
+        let req = self.inner.http.post(url).headers(headers).body(body);
         let exchange = async {
             let resp = req.send().await?;
             let status = resp.status().as_u16();

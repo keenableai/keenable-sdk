@@ -159,25 +159,16 @@ function errors(): Obj[] {
 function responses(): Obj[] {
   return (load("responses.json").cases as Obj[]).map((item) => {
     const name = item.name as string;
-    if (item.endpoint !== "search" && item.endpoint !== "fetch") {
-      fail(`responses ${name}: endpoint must be search or fetch`);
-    }
-    const given = item.expect as Obj;
-    // A page's truncated and total_chars are unset unless a case says otherwise.
-    const page = item.endpoint === "fetch" && !("error" in given) ? PAGE_DEFAULTS : {};
     return {
       name,
-      endpoint: item.endpoint,
       arg: item.arg as string,
       status: (item.status as number | undefined) ?? 200,
       headers: headers(item),
       body: bodyText(item, `responses ${name}`),
-      expect: { error: null, ...page, ...given },
+      expect: { error: null, ...(item.expect as Obj) },
     };
   });
 }
-
-const PAGE_DEFAULTS: Obj = { truncated: null, total_chars: null };
 
 const OPTIONS = new Set(["max_retries", "timeout", "headers", "query", "url", "disable_cards"]);
 
@@ -207,66 +198,89 @@ function searchBodies(): Obj[] {
   }));
 }
 
-const FETCH_PARAMS = new Set(["max_chars", "live", "prompt"]);
+const FETCH_OPTIONS = new Set(["max_chars", "schema", "links", "images", "max_age_hours"]);
 
-function fetchParams(): Obj[] {
-  return (load("fetch-params.json").cases as Obj[]).map((item) => {
+function fetchBodies(): Obj[] {
+  return (load("fetch.json").body as Obj[]).map((item) => {
     const name = item.name as string;
     for (const key of Object.keys(item.options as Obj)) {
-      if (!FETCH_PARAMS.has(key)) fail(`fetch-params ${name}: unknown option ${key}`);
+      if (!FETCH_OPTIONS.has(key)) fail(`fetch body ${name}: unknown option ${key}`);
     }
-    for (const sent of Object.values(item.sent as Obj)) {
-      if (typeof sent !== "string") fail(`fetch-params ${name}: "sent" values must be strings`);
-    }
-    return {
-      name,
-      url: (item.url as string | undefined) ?? "https://example.com/",
-      options: item.options as Obj,
-      sent: item.sent as Obj,
-      skip: (item.skip as Obj | undefined) ?? {},
-    };
-  });
-}
-
-const FETCH_MANY_OPTIONS: Record<string, Set<string> | null> = {
-  content: new Set(["max_chars", "objective", "links", "images"]),
-  retrieval: new Set(["max_age_hours", "as_of"]),
-  deadline_ms: null,
-  session_id: null,
-};
-
-function fetchManyBodies(): Obj[] {
-  return (load("fetch-many.json").body as Obj[]).map((item) => {
-    const name = item.name as string;
-    for (const [key, value] of Object.entries(item.options as Obj)) {
-      if (!(key in FETCH_MANY_OPTIONS)) fail(`fetch-many body ${name}: unknown option ${key}`);
-      const fields = FETCH_MANY_OPTIONS[key] as Set<string> | null;
-      if (fields === null) continue;
-      if (typeof value !== "object" || value === null || Array.isArray(value)) fail(`fetch-many body ${name}: ${key} must be an object`);
-      for (const field of Object.keys(value as Obj)) {
-        if (!fields.has(field)) fail(`fetch-many body ${name}: unknown option ${key}.${field}`);
-      }
-    }
+    if (("sent" in item) === (item.invalid === true)) fail(`fetch body ${name}: give exactly one of "sent" and "invalid"`);
     return {
       name,
       urls: item.urls as Json,
       options: item.options as Obj,
-      sent: item.sent as Obj,
+      sent: (item.sent as Json | undefined) ?? null,
+      invalid: item.invalid === true,
       skip: (item.skip as Obj | undefined) ?? {},
     };
   });
 }
 
-function fetchManyResponses(): Obj[] {
-  return (load("fetch-many.json").responses as Obj[]).map((item) => {
+const PAGE_DEFAULTS: Obj = {
+  title: "",
+  content: "",
+  description: null,
+  author: null,
+  published_at: null,
+  truncated: null,
+  total_chars: null,
+  image: null,
+  favicon: null,
+  links: null,
+  images: null,
+  structured: null,
+  answer_error: null,
+  stale: null,
+  usage: null,
+};
+const PAGE_ERROR_FIELDS = ["code", "detail", "fix", "retryable", "request_id"] as const;
+const PAGE_ERROR_KEYS = new Set(["kind", "status", "type", ...PAGE_ERROR_FIELDS]);
+
+function fetchResult(item: Obj, where: string): Obj {
+  if (typeof item.url !== "string") fail(`${where}: a result needs a url`);
+  if (("page" in item) === ("error" in item)) fail(`${where}: give exactly one of "page" and "error"`);
+  if ("page" in item) {
+    const page = item.page as Obj;
+    for (const key of Object.keys(page)) {
+      if (key !== "url" && !(key in PAGE_DEFAULTS)) fail(`${where}: unknown page key ${key}`);
+    }
+    if (typeof page.url !== "string") fail(`${where}: a page needs a url`);
+    return { url: item.url, page: { url: page.url, ...PAGE_DEFAULTS, ...page }, error: null };
+  }
+  const given = item.error as Obj;
+  for (const key of Object.keys(given)) {
+    if (!PAGE_ERROR_KEYS.has(key)) fail(`${where}: unknown error key ${key}`);
+  }
+  if (typeof given.kind !== "string" || typeof given.status !== "number" || typeof given.type !== "string") {
+    fail(`${where}: an error needs kind, status and type`);
+  }
+  const error: Obj = { kind: given.kind, status: given.status, type: given.type };
+  for (const key of PAGE_ERROR_FIELDS) error[key] = given[key] ?? null;
+  return { url: item.url, page: null, error };
+}
+
+function fetchResponses(): Obj[] {
+  return (load("fetch.json").responses as Obj[]).map((item) => {
     const name = item.name as string;
+    const where = `fetch responses ${name}`;
+    const given = item.expect as Obj;
+    const expect: Obj =
+      "error" in given
+        ? { error: given.error, request_id: null, results: [] }
+        : {
+            error: null,
+            request_id: (given.request_id as Json | undefined) ?? null,
+            results: (given.results as Obj[]).map((result) => fetchResult(result, where)),
+          };
     return {
       name,
       urls: item.urls as Json,
       status: (item.status as number | undefined) ?? 200,
       headers: headers(item),
-      body: bodyText(item, `fetch-many responses ${name}`),
-      expect: item.expect as Obj,
+      body: bodyText(item, where),
+      expect,
       skip: (item.skip as Obj | undefined) ?? {},
     };
   });
@@ -317,7 +331,7 @@ function deadline(): Obj {
 export function buildConformance(): string {
   const fixture = {
     _comment:
-      "Generated by scripts/conformance/sync.ts from scripts/conformance/cases/*.json; do not edit. Every SDK runs every case: see scripts/conformance/README.md for what each section means. Kept identical in go/testdata, python/tests/fixtures and typescript/test/fixtures.",
+      "Generated by scripts/conformance/sync.ts from scripts/conformance/cases/*.json; do not edit. Every SDK runs every case: see scripts/conformance/README.md for what each section means. Kept identical in go/testdata, python/tests/fixtures, typescript/test/fixtures and rust/tests/fixtures.",
     fetch_url: fetchUrls(),
     base_url: baseUrls(),
     retry_after: retryAfter(),
@@ -326,10 +340,9 @@ export function buildConformance(): string {
     responses: responses(),
     options: options(),
     search_body: searchBodies(),
-    fetch_params: fetchParams(),
     tool_call: toolCalls(),
-    fetch_many_body: fetchManyBodies(),
-    fetch_many_responses: fetchManyResponses(),
+    fetch_body: fetchBodies(),
+    fetch_responses: fetchResponses(),
     deadline: deadline(),
   };
   for (const [section, cases] of Object.entries(fixture)) {

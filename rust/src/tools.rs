@@ -5,7 +5,8 @@ use serde::Serialize;
 use serde_json::{json, Map, Value};
 
 use crate::client::{Client, RequestOptions};
-use crate::error::{Error, Result};
+use crate::error::{ApiError, Error, Result};
+use crate::fetch::FetchResult;
 use crate::json;
 
 /// An OpenAI-compatible function tool. Serialize [`tools`] straight into a
@@ -250,7 +251,20 @@ impl Client {
                     args.get("url"),
                     "keenable_fetch needs a 'url'. Pass a JSON object with an https URL.",
                 )?;
-                Ok(self.fetch(url).await?.to_context())
+                let response = self.fetch(&[url]).await?;
+                match response.results.into_iter().next() {
+                    Some(FetchResult {
+                        error: Some(error), ..
+                    }) => Err(error),
+                    Some(FetchResult {
+                        page: Some(page), ..
+                    }) => Ok(page.to_context()),
+                    _ => Err(Error::Api(Box::new(ApiError::plain(
+                        200,
+                        "the Keenable API returned no result for the URL".into(),
+                        response.request_id,
+                    )))),
+                }
             }
             other => Err(Error::invalid(format!(
                 "unknown Keenable tool: {other:?}. Use keenable_search or keenable_fetch."

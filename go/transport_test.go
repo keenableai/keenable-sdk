@@ -127,17 +127,17 @@ func TestSearchAndFetchAreRetriedAlike(t *testing.T) {
 			raw(503, ``)(w, r)
 			return
 		}
-		raw(200, `{"query":"q","url":"https://e.com","content":"c","results":[]}`)(w, r)
+		raw(200, `{"query":"q","results":[]}`)(w, r)
 	}
 	c, _, seen := scripted(t, nil, h)
 	if _, err := c.Search(context.Background(), "q", nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.Fetch(context.Background(), "https://e.com"); err != nil {
+	if _, err := c.Fetch(context.Background(), []string{"https://e.com"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	got := strings.Join(methods, ",")
-	if got != "POST,POST,GET,GET" {
+	if got != "POST,POST,POST,POST" {
 		t.Fatalf("methods = %s", got)
 	}
 	// The retried POST carries the same body.
@@ -440,19 +440,19 @@ func TestRequestIDOnSuccess(t *testing.T) {
 		{false, raw(200, `{"results":[],"request_id":""}`, "X-Request-Id", "h"), "h"},
 		{false, raw(200, `{"results":[],"request_id":7}`, "X-Request-Id", "h"), "h"},
 		{false, raw(200, `{"results":[]}`), ""},
-		{true, raw(200, `{"url":"https://e.com"}`, "X-Request-Id", "h"), "h"},
-		{true, raw(200, `{"url":"https://e.com","request_id":"b"}`, "X-Request-Id", "h"), "b"},
-		{true, raw(200, `{"url":"https://e.com"}`), ""},
+		{true, raw(200, `{"results":[]}`, "X-Request-Id", "h"), "h"},
+		{true, raw(200, `{"results":[],"request_id":"b"}`, "X-Request-Id", "h"), "b"},
+		{true, raw(200, `{"results":[]}`), ""},
 	}
 	for i, tc := range cases {
 		c, _, _ := scripted(t, nil, tc.h)
 		var got string
 		if tc.fetch {
-			page, err := c.Fetch(context.Background(), "https://e.com")
+			resp, err := c.Fetch(context.Background(), []string{"https://e.com"}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			got = page.RequestID
+			got = resp.RequestID
 		} else {
 			resp, err := c.Search(context.Background(), "q", nil)
 			if err != nil {
@@ -725,10 +725,10 @@ func TestALenientSuccessBodyParses(t *testing.T) {
 	if err != nil || resp.Query != "q" || len(resp.Results) != 0 {
 		t.Fatalf("resp=%+v err=%v", resp, err)
 	}
-	c, _, _ = scripted(t, nil, raw(200, `{"url":"","title":null}`))
-	page, err := c.Fetch(context.Background(), "https://e.com/a")
-	if err != nil || page.URL != "https://e.com/a" || page.Title != "" {
-		t.Fatalf("page=%+v err=%v", page, err)
+	c, _, _ = scripted(t, nil, raw(200, `{"results":[{"url":"","title":null}]}`))
+	fetched, err := c.Fetch(context.Background(), []string{"https://e.com/a"}, nil)
+	if err != nil || fetched.Results[0].Page.URL != "https://e.com/a" || fetched.Results[0].Page.Title != "" {
+		t.Fatalf("fetched=%+v err=%v", fetched, err)
 	}
 }
 
@@ -770,7 +770,7 @@ func TestFetchRefusesInternalTargetSpellings(t *testing.T) {
 		"javascript:alert(1)",
 	} {
 		c, n, _ := scripted(t, nil, okBody)
-		_, err := c.Fetch(context.Background(), u)
+		_, err := c.Fetch(context.Background(), []string{u}, nil)
 		var bad *keenable.InvalidRequestError
 		if !errors.As(err, &bad) || n.Load() != 0 {
 			t.Errorf("%s: err=%v attempts=%d", u, err, n.Load())
@@ -797,13 +797,14 @@ func TestFetchAllowsPublicTargets(t *testing.T) {
 		"https://xn--r8jz45g.jp/",
 		"https://256.0.0.1/",
 	} {
-		c, _, seen := scripted(t, nil, raw(200, `{"url":"x"}`))
-		if _, err := c.Fetch(context.Background(), u); err != nil {
+		c, _, seen := scripted(t, nil, raw(200, `{"results":[]}`))
+		if _, err := c.Fetch(context.Background(), []string{u}, nil); err != nil {
 			t.Errorf("%s: %v", u, err)
 			continue
 		}
-		if got := one(t, seen).Query.Get("url"); got != u {
-			t.Errorf("sent url %q, want %q", got, u)
+		var sent struct{ URLs []string }
+		if err := json.Unmarshal(one(t, seen).Body, &sent); err != nil || len(sent.URLs) != 1 || sent.URLs[0] != u {
+			t.Errorf("sent %s, want %q", one(t, seen).Body, u)
 		}
 	}
 }

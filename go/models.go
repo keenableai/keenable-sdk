@@ -115,28 +115,45 @@ type SearchResponse struct {
 	Raw       map[string]any `json:"-"`
 }
 
-// Page is a URL fetched by [Client.Fetch], with main content as markdown.
+// Page is a page read by [Client.Fetch], with main content as markdown.
 type Page struct {
-	URL         string  `json:"url"`
-	Title       string  `json:"title"`
-	Content     string  `json:"content"`
+	// URL is the page's final address after redirects.
+	URL     string `json:"url"`
+	Title   string `json:"title"`
+	Content string `json:"content"`
+	// Description is deprecated: always nil, the API no longer fills it.
+	// Read Content.
 	Description *string `json:"description,omitempty"`
 	Author      *string `json:"author,omitempty"`
 	// PublishedAt is when the page was published, as ISO 8601. The API sends
 	// Unix seconds for a fetch; they are given in UTC to the second, such as
 	// "2024-05-01T12:00:00Z", the form search results use. Nil when unknown.
-	PublishedAt *string `json:"published_at,omitempty"`
-	// RequestID is the API's id for this request. Quote it when reporting a
-	// problem. Empty when the API sent none.
-	RequestID string         `json:"request_id,omitempty"`
-	Raw       map[string]any `json:"-"`
-	// Truncated is true when the page was longer than the API's max_chars and
-	// Content was cut (cut content ends with "..."). Nil when the API did not
-	// say.
+	PublishedAt *string        `json:"published_at,omitempty"`
+	Raw         map[string]any `json:"-"`
+	// Truncated is true when the page was longer than FetchOptions.MaxChars
+	// and Content was cut (cut content ends with "..."). Nil when the API did
+	// not say.
 	Truncated *bool `json:"truncated,omitempty"`
 	// TotalChars is the length of the full extracted content in Unicode code
 	// points, before any cut. Nil when the API did not say.
 	TotalChars *int `json:"total_chars,omitempty"`
+	// Image is the page's preview image URL.
+	Image   *string `json:"image,omitempty"`
+	Favicon *string `json:"favicon,omitempty"`
+	// Links are the page's links, when FetchOptions.Links asked for them.
+	Links []FetchLink `json:"links,omitempty"`
+	// Images are the page's images, with their alt text.
+	Images []FetchImage `json:"images,omitempty"`
+	// Structured is the typed answer for FetchOptions.Schema, when one was
+	// asked for and made.
+	Structured map[string]any `json:"structured,omitempty"`
+	// AnswerError says why the answer for FetchOptions.Schema could not be
+	// made.
+	AnswerError *FetchAnswerError `json:"answer_error,omitempty"`
+	// Stale is true when an older stored copy was returned because a fresh
+	// read failed.
+	Stale *bool       `json:"stale,omitempty"`
+	Usage *FetchUsage `json:"usage,omitempty"`
 }
 
 // Cited returns the results ToContext would render, in citation order.
@@ -359,7 +376,7 @@ func pageFromJSON(data map[string]any, fallbackURL string) *Page {
 	if s := nonEmptyString(data["url"]); s != nil {
 		pageURL = *s
 	}
-	return &Page{
+	page := &Page{
 		URL:         pageURL,
 		Title:       asString(data["title"]),
 		Content:     asString(data["content"]),
@@ -369,7 +386,18 @@ func pageFromJSON(data map[string]any, fallbackURL string) *Page {
 		Raw:         data,
 		Truncated:   optionalBool(data["truncated"]),
 		TotalChars:  count(data["total_chars"]),
+		Image:       nonEmptyString(data["image"]),
+		Favicon:     nonEmptyString(data["favicon"]),
+		Links:       fetchLinks(data["links"]),
+		Images:      fetchImages(data["images"]),
+		AnswerError: fetchAnswerError(data["answer_error"]),
+		Stale:       optionalBool(data["stale"]),
+		Usage:       fetchUsage(data["usage"]),
 	}
+	if s, ok := data["structured"].(map[string]any); ok {
+		page.Structured = s
+	}
+	return page
 }
 
 // maxUnixSeconds is the last Unix second with a four-digit year,
