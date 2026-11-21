@@ -27,6 +27,7 @@ interface Case {
     kind: "auth" | "rate_limit" | "insufficient_credits" | "api";
     code: string | null;
     type: string;
+    derived_type?: string;
     retryable: boolean | null;
     retry_after_seconds: number | null;
     request_id: string | null;
@@ -121,7 +122,7 @@ describe("backend error bodies", () => {
       const { type: _type, ...body } = c.body;
       const error = await errorFor(reply(c.status, body, c.headers));
 
-      expect(error.type).toBe(c.expect.type);
+      expect(error.type).toBe(c.expect.derived_type);
       expect(error.constructor).toBe(KINDS[c.expect.kind]);
     },
   );

@@ -28,6 +28,7 @@ type contractCase struct {
 		Kind              string   `json:"kind"`
 		Code              *string  `json:"code"`
 		Type              string   `json:"type"`
+		DerivedType       string   `json:"derived_type"`
 		Retryable         *bool    `json:"retryable"`
 		RetryAfterSeconds *float64 `json:"retry_after_seconds"`
 		RequestID         *string  `json:"request_id"`
@@ -241,8 +242,8 @@ func TestAServerWithoutTypeGetsTheCatalogTypeDerived(t *testing.T) {
 			}
 			c, _ := start(t, replyWith(tc.Status, body, tc.Headers), keyed())
 			_, err := c.Search(context.Background(), "q", nil)
-			if got := apiErrorFrom(t, err).Type; got != tc.Expect.Type {
-				t.Fatalf("derived %q, want %q", got, tc.Expect.Type)
+			if got := apiErrorFrom(t, err).Type; got != tc.Expect.DerivedType {
+				t.Fatalf("derived %q, want %q", got, tc.Expect.DerivedType)
 			}
 			if isAuth := errors.As(err, new(*keenable.AuthError)); isAuth != (tc.Expect.Kind == "auth") {
 				t.Fatalf("auth %v, want kind %s", isAuth, tc.Expect.Kind)

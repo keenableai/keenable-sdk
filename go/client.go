@@ -125,6 +125,9 @@ type Client struct {
 	maxRetries    int
 	// defaultHeaders is a copy of Options.Headers.
 	defaultHeaders map[string]string
+	// Monitors is Keenable Monitors: standing searches that report new results
+	// as they appear. It needs an API key.
+	Monitors *MonitorsService
 }
 
 // RequestOptions are per-call transport settings. Each overrides the client's
@@ -230,6 +233,7 @@ func New(opts *Options) (*Client, error) {
 		maxRetries:     maxRetries,
 		defaultHeaders: headers,
 	}
+	c.Monitors = &MonitorsService{client: c}
 	if opts.HTTPClient != nil {
 		c.http = opts.HTTPClient
 		c.clientTimeout = opts.HTTPClient.Timeout
@@ -428,11 +432,24 @@ func retryDelay(err error, retry int, jitter float64) (time.Duration, bool) {
 	return 0, false
 }
 
+// isRateLimited reports a 429: the API refused the request before acting on it.
+func isRateLimited(err error) bool {
+	var api *APIError
+	return errors.As(err, &api) && api.StatusCode == 429
+}
+
 func (c *Client) do(ctx context.Context, method, endpoint string, body []byte, query url.Values, opts *RequestOptions) (map[string]any, string, error) {
 	rawURL, err := c.endpointURL(endpoint, query)
 	if err != nil {
 		return nil, "", err
 	}
+	return c.send(ctx, method, rawURL, body, opts, nil, true)
+}
+
+// send makes the attempts of one call. extraHeaders go under the call's own
+// headers. When safe is false (a call that may act twice), only a 429 is
+// retried: the API sends it before doing anything.
+func (c *Client) send(ctx context.Context, method, rawURL string, body []byte, opts *RequestOptions, extraHeaders map[string]string, safe bool) (map[string]any, string, error) {
 	timeout := c.sdkTimeout
 	retries := c.maxRetries
 	var extra map[string]string
@@ -454,6 +471,21 @@ func (c *Client) do(ctx context.Context, method, endpoint string, body []byte, q
 		}
 		extra = opts.Headers
 	}
+	if len(extraHeaders) > 0 {
+		merged := make(map[string]string, len(extraHeaders)+len(extra))
+		for k, v := range extraHeaders {
+			merged[k] = v
+		}
+		for k, v := range extra {
+			for m := range merged {
+				if strings.EqualFold(m, k) {
+					delete(merged, m)
+				}
+			}
+			merged[k] = v
+		}
+		extra = merged
+	}
 	// The longest wait a JavaScript timer can hold, so every SDK treats a
 	// huge timeout the same way.
 	timeout = min(timeout, maxTimeout)
@@ -463,7 +495,7 @@ func (c *Client) do(ctx context.Context, method, endpoint string, body []byte, q
 		if err == nil {
 			return data, id, nil
 		}
-		if retry >= retries {
+		if retry >= retries || (!safe && !isRateLimited(err)) {
 			return nil, "", err
 		}
 		wait, ok := retryDelay(err, retry, rand.Float64())

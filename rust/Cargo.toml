@@ -1,6 +1,6 @@
 [package]
 name = "keenable"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.80"
 description = "Official Rust SDK for Keenable, the web search API built for AI agents: search, fetch, citable context and tool calling."
@@ -21,11 +21,14 @@ rustls-tls = ["reqwest/rustls-tls"]
 native-tls = ["reqwest/native-tls"]
 
 [dependencies]
+base64 = "0.22"
+hmac = "0.12"
 regex = "1.10"
 rand = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["http2"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+sha2 = "0.10"
 tokio = { version = "1.38", features = ["time"] }
 url = "2.5"
 
@@ -34,6 +37,9 @@ tokio = { version = "1.38", features = ["macros", "rt-multi-thread", "net", "io-
 
 [[example]]
 name = "hello"
+
+[[example]]
+name = "monitors"
 
 [package.metadata.docs.rs]
 all-features = false

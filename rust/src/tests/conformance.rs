@@ -582,3 +582,37 @@ async fn deadline() {
     }
     report("deadline", failures);
 }
+
+#[test]
+fn webhook() {
+    let fixture = fixture();
+    let mut failures = Vec::new();
+    for case in cases(&fixture, "webhook") {
+        let mut headers = reqwest::header::HeaderMap::new();
+        for (k, v) in case["headers"].as_object().unwrap() {
+            headers.insert(
+                reqwest::header::HeaderName::from_bytes(k.as_bytes()).unwrap(),
+                reqwest::header::HeaderValue::from_str(v.as_str().unwrap()).unwrap(),
+            );
+        }
+        let opts = crate::WebhookOptions {
+            tolerance: Some(Duration::from_secs_f64(case["tolerance"].as_f64().unwrap())),
+            now: Some(std::time::UNIX_EPOCH + Duration::from_secs(case["now"].as_u64().unwrap())),
+        };
+        let got = crate::verify_webhook_with(
+            case["body"].as_str().unwrap().as_bytes(),
+            &headers,
+            case["secret"].as_str().unwrap(),
+            &opts,
+        );
+        let ok = match (&got, case["valid"].as_bool().unwrap()) {
+            (Ok(event), true) => case["type"].as_str() == Some(event.event_type.as_str()),
+            (Err(Error::WebhookVerification(_)), false) => true,
+            _ => false,
+        };
+        if !ok {
+            failures.push(format!("{}: {got:?}", name(case)));
+        }
+    }
+    report("webhook", failures);
+}

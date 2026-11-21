@@ -130,7 +130,7 @@ jobs:
       - name: Vet
         run: go vet ./...
       - name: Example builds
-        run: go build -o /dev/null ./example/hello
+        run: go build -o /dev/null ./example/hello ./example/monitors
       - name: gofmt
         run: |
           out=$(gofmt -l .)

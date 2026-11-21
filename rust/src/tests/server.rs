@@ -35,6 +35,7 @@ impl Reply {
 pub struct Seen {
     pub method: String,
     pub path: String,
+    pub query: Vec<(String, String)>,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
 }
@@ -120,13 +121,19 @@ pub async fn read_request(stream: &mut TcpStream) -> std::io::Result<Option<Seen
         .unwrap_or(0);
     let mut body = vec![0u8; length];
     stream.read_exact(&mut body).await?;
-    let path = match target.split_once('?') {
-        Some((p, _)) => p.to_string(),
-        None => target,
+    let (path, query) = match target.split_once('?') {
+        Some((p, q)) => (
+            p.to_string(),
+            url::form_urlencoded::parse(q.as_bytes())
+                .map(|(k, v)| (k.into_owned(), v.into_owned()))
+                .collect(),
+        ),
+        None => (target, Vec::new()),
     };
     Ok(Some(Seen {
         method,
         path,
+        query,
         headers,
         body,
     }))

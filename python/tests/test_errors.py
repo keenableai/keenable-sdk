@@ -106,7 +106,7 @@ def test_a_server_without_type_gets_the_catalog_type_derived(
     body = {k: v for k, v in case["body"].items() if k != "type"}
     err = _raise(httpx.Response(case["status"], json=body, headers=case["headers"]))
 
-    assert err.type == case["expect"]["type"]
+    assert err.type == case["expect"]["derived_type"]
     assert type(err) is KINDS[case["expect"]["kind"]]
 
 

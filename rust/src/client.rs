@@ -283,6 +283,16 @@ impl Client {
         })
     }
 
+    /// Keenable Monitors: standing searches that report new results as they
+    /// appear. Monitors need an API key.
+    pub fn monitors(&self) -> crate::monitors::Monitors<'_> {
+        crate::monitors::Monitors::new(self)
+    }
+
+    pub(crate) fn base_url(&self) -> &str {
+        &self.inner.base_url
+    }
+
     /// Whether the keyless public tier is in use.
     pub fn is_keyless(&self) -> bool {
         self.inner.api_key.is_empty()
@@ -494,6 +504,23 @@ impl Client {
         query: Vec<(String, String)>,
         opts: &RequestOptions,
     ) -> Result<(Map<String, Value>, Option<String>)> {
+        let url = self.endpoint_url(endpoint, &query);
+        self.send_url(method, url, body, &HashMap::new(), opts, true)
+            .await
+    }
+
+    /// Makes the attempts of one call to `url`. `extra` headers go under the
+    /// call's own. When `safe` is false (a call that may act twice), only a
+    /// 429 is retried: the API sends it before doing anything.
+    pub(crate) async fn send_url(
+        &self,
+        method: reqwest::Method,
+        url: String,
+        body: Option<Vec<u8>>,
+        extra: &HashMap<String, String>,
+        opts: &RequestOptions,
+        safe: bool,
+    ) -> Result<(Map<String, Value>, Option<String>)> {
         let timeout = match opts.timeout {
             None => self.inner.timeout,
             Some(t) if t.is_zero() => {
@@ -506,8 +533,13 @@ impl Client {
         .min(MAX_TIMEOUT);
         let retries = opts.max_retries.unwrap_or(self.inner.max_retries);
         check_headers(&opts.headers)?;
-        let headers = self.headers(body.is_some(), &opts.headers)?;
-        let url = self.endpoint_url(endpoint, &query);
+        let mut call_headers: HashMap<String, String> = extra
+            .iter()
+            .filter(|(k, _)| !opts.headers.keys().any(|o| o.eq_ignore_ascii_case(k)))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        call_headers.extend(opts.headers.clone());
+        let headers = self.headers(body.is_some(), &call_headers)?;
         let mut retry = 0;
         loop {
             let err = match self
@@ -517,7 +549,8 @@ impl Client {
                 Ok(done) => return Ok(done),
                 Err(err) => err,
             };
-            if retry >= retries {
+            let rate_limited = matches!(err, Error::RateLimit(_));
+            if retry >= retries || !(safe || rate_limited) {
                 return Err(err);
             }
             let Some(wait) = retry_delay(&err, retry, rand::random::<f64>()) else {

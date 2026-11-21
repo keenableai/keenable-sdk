@@ -17,6 +17,8 @@ import {
   KeenableRateLimitError,
   KeenableTimeoutError,
   runToolCall,
+  verifyWebhook,
+  WebhookVerificationError,
 } from "../src/index.js";
 import type { KeenableOptions, SearchOptions, SearchResponse } from "../src/index.js";
 import { backoffMs, retryAfterHeader } from "../src/client.js";
@@ -76,6 +78,16 @@ interface Fixture {
       skip: Record<string, string>;
     }[];
   };
+  webhook: {
+    name: string;
+    secret: string;
+    headers: Record<string, string>;
+    body: string;
+    now: number;
+    tolerance: number;
+    valid: boolean;
+    type: string | null;
+  }[];
 }
 
 const FIXTURE: Fixture = JSON.parse(
@@ -478,6 +490,20 @@ describe("the whole-attempt deadline", () => {
       }
     } finally {
       server.close();
+    }
+  });
+});
+
+describe("webhook", () => {
+  it.each(FIXTURE.webhook.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
+    const verify = verifyWebhook(new TextEncoder().encode(c.body), c.headers, c.secret, {
+      toleranceSeconds: c.tolerance,
+      now: c.now,
+    });
+    if (c.valid) {
+      expect((await verify).type).toBe(c.type);
+    } else {
+      await expect(verify).rejects.toBeInstanceOf(WebhookVerificationError);
     }
   });
 });

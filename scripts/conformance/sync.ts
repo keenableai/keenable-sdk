@@ -242,6 +242,41 @@ function deadline(): Obj {
   };
 }
 
+const WEBHOOK_HEADERS = ["webhook-id", "webhook-timestamp", "webhook-signature"];
+
+function webhooks(): Obj[] {
+  const source = load("webhook.json");
+  return (source.cases as Obj[]).map((item) => {
+    const name = item.name as string;
+    const given = (item.headers as Record<string, string | null> | undefined) ?? {};
+    for (const key of Object.keys(given)) {
+      if (!WEBHOOK_HEADERS.includes(key)) fail(`webhook ${name}: unknown header ${key}`);
+    }
+    const values: Record<string, string | null> = {
+      "webhook-id": source.id as string,
+      "webhook-timestamp": source.timestamp as string,
+      "webhook-signature": ((item.signature ?? source.signature) as string),
+      ...given,
+    };
+    const upper = item.header_case === "upper";
+    const sent: Record<string, string> = {};
+    for (const [key, value] of Object.entries(values)) {
+      if (value !== null) sent[upper ? key.toUpperCase() : key] = value;
+    }
+    if (item.valid === true && typeof item.type !== "string") fail(`webhook ${name}: a valid case names its type`);
+    return {
+      name,
+      secret: (item.secret ?? source.secret) as string,
+      headers: sent,
+      body: (item.body ?? source.body) as string,
+      now: (item.now ?? source.now) as number,
+      tolerance: (item.tolerance as number | undefined) ?? 300,
+      valid: item.valid as boolean,
+      type: (item.type as string | undefined) ?? null,
+    };
+  });
+}
+
 /** The fixture's exact text for the case files on disk. */
 export function buildConformance(): string {
   const fixture = {
@@ -257,6 +292,7 @@ export function buildConformance(): string {
     search_body: searchBodies(),
     tool_call: toolCalls(),
     deadline: deadline(),
+    webhook: webhooks(),
   };
   for (const [section, cases] of Object.entries(fixture)) {
     if (Array.isArray(cases)) uniqueNames(section, cases as { name: string }[]);

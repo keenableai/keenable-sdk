@@ -9,6 +9,8 @@ import {
 } from "./errors.js";
 import type { KeenableAPIErrorDetails, KeenableErrorType, RateLimitInfo } from "./errors.js";
 import { SEARCH_FILTERS } from "./filters.js";
+import { Monitors } from "./monitors.js";
+import type { MonitorCall } from "./monitors.js";
 import {
   bool,
   capSnippet,
@@ -606,6 +608,11 @@ export function retryDelayMs(error: unknown, retry: number): number | undefined 
   return undefined;
 }
 
+/** A 429: the API refused the request before acting on it. */
+function isRateLimited(error: unknown): boolean {
+  return error instanceof KeenableAPIError && error.statusCode === 429;
+}
+
 function nonNegativeInteger(name: string, value: number): number {
   if (!Number.isInteger(value) || value < 0) {
     throw new KeenableInvalidRequestError(
@@ -671,6 +678,8 @@ export class Keenable {
   private readonly maxRetries: number;
   private readonly defaultHeaders: Record<string, string>;
   private readonly fetchImpl: typeof globalThis.fetch;
+  /** Keenable Monitors: standing searches that report new results. Needs an API key. */
+  readonly monitors: Monitors;
 
   constructor(options: KeenableOptions = {}) {
     this.apiKey = nonEmpty(options.apiKey ?? readEnv("KEENABLE_API_KEY"))?.trim();
@@ -686,6 +695,34 @@ export class Keenable {
       );
     }
     this.fetchImpl = fetchImpl;
+    this.monitors = new Monitors((call, options) => this.monitorsRequest(call, options));
+  }
+
+  /** One Monitors call. Monitors need a key: keyless, nothing is sent. */
+  private async monitorsRequest(
+    call: MonitorCall,
+    options: RequestOptions,
+  ): Promise<{ data: Record<string, unknown>; requestId?: string }> {
+    if (this.keyless) {
+      throw new KeenableAuthError(
+        "Keenable authentication failed (401): Monitors need an API key. Pass apiKey or set KEENABLE_API_KEY; create one at https://keenable.ai/console. (code: missing_api_key)",
+        401,
+        undefined,
+        { code: "missing_api_key", type: "authentication_error", retryable: false },
+      );
+    }
+    const target = new URL(`${this.baseUrl}/v1/${call.path}`);
+    for (const [key, value] of Object.entries(call.query ?? {})) {
+      target.searchParams.set(key, value);
+    }
+    return this.request(
+      "search",
+      { method: call.method, body: call.body === undefined ? undefined : JSON.stringify(call.body) },
+      options,
+      target.toString(),
+      call.headers ?? {},
+      call.safe,
+    );
   }
 
   /** True when no API key is configured and the public tier is in use. */
@@ -827,9 +864,11 @@ export class Keenable {
    */
   private async request(
     endpoint: Endpoint,
-    init: { method: "GET" | "POST"; body?: string },
+    init: { method: "GET" | "POST" | "PATCH" | "DELETE"; body?: string },
     options: RequestOptions,
     url: string = this.url(endpoint),
+    extraHeaders: Record<string, string> = {},
+    safe = true,
   ): Promise<{ data: Record<string, unknown>; requestId?: string }> {
     const timeoutMs =
       options.timeoutMs === undefined
@@ -840,7 +879,7 @@ export class Keenable {
         ? this.maxRetries
         : nonNegativeInteger("maxRetries", options.maxRetries);
     const headers = this.headers(
-      checkHeaders("headers", options.headers ?? {}),
+      { ...extraHeaders, ...checkHeaders("headers", options.headers ?? {}) },
       init.body !== undefined,
     );
 
@@ -848,7 +887,10 @@ export class Keenable {
       try {
         return await this.attempt(url, { ...init, headers }, timeoutMs, options.signal);
       } catch (error) {
-        const delay = retry < maxRetries ? retryDelayMs(error, retry) : undefined;
+        const delay =
+          retry < maxRetries && (safe || isRateLimited(error))
+            ? retryDelayMs(error, retry)
+            : undefined;
         if (delay === undefined) throw error;
         await sleep(delay, options.signal);
       }

@@ -100,12 +100,47 @@ Each SDK exposes the same surface: search, fetch, a `to_context()` /
 definitions for tool calling. See the per-language READMEs for the full
 reference.
 
+## Monitors
+
+A search monitor is a standing search: it watches the web for a topic and
+reports every new result that matches, by webhook, in scheduled runs, or when
+you poll it. A page monitor watches one page and reports the changes worth
+telling. Every SDK has a `monitors` namespace for
+`https://api.keenable.ai/v1/monitors` (create, list, get, update, pause,
+resume, delete, trigger, runs, results, versions, deliveries, stats, bulk) and a
+`verify_webhook` helper for the signed deliveries. Monitors need an API key.
+
+```python
+from keenable import Keenable
+
+keenable = Keenable()  # reads KEENABLE_API_KEY
+monitor = keenable.monitors.create(search={"query": "new open-weights LLM releases"})
+for result in keenable.monitors.results(monitor.id):
+    print(result.title, result.url)
+
+pricing = keenable.monitors.create(
+    type="page",
+    page={"url": "https://example.com/pricing", "watch_for": "plan prices"},
+    schedule={"type": "interval", "value": "6h"},
+)
+for version in keenable.monitors.versions(pricing.id):
+    print(version.version, version.summary)
+```
+
+See each SDK's README for the full list, and [`examples/monitors`](./examples/monitors).
+
 ## Examples
 
 - [`examples/cerebras/`](./examples/cerebras) - grounding a Cerebras model in
   live web results, and letting it call Keenable as a tool. Python and Node.
 - [`examples/domain-filters/`](./examples/domain-filters) - keeping sites out
   of the results with `exclude_domains`. Python and TypeScript.
+- [`examples/monitors/`](./examples/monitors) - a monitor that reads new results
+  and a webhook receiver that verifies deliveries, and a page monitor that
+  watches a pricing page (`pricing_page.py`, `pricing_page.ts`). Python and
+  TypeScript; Go
+  in [`go/example/monitors`](./go/example/monitors), Rust in
+  [`rust/examples/monitors.rs`](./rust/examples/monitors.rs).
 
 ## Documentation for partners
 
