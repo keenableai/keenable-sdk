@@ -579,8 +579,8 @@ func TestCitedMatchesRendered(t *testing.T) {
 
 func TestFetchPostsTheURLsAndOnlyTheOptionsSet(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
-	live := 0.0
-	opts := &keenable.FetchOptions{MaxChars: 500, Prompt: "List the prices", Links: 5, MaxAgeHours: &live}
+	live, images := 0.0, 2
+	opts := &keenable.FetchOptions{MaxChars: 500, Prompt: "List the prices", Schema: map[string]any{"type": "object"}, Links: 5, Images: &images, MaxAgeHours: &live}
 	if _, err := c.FetchWithOptions(context.Background(), []string{"https://example.com"}, opts); err != nil {
 		t.Fatal(err)
 	}
@@ -588,7 +588,7 @@ func TestFetchPostsTheURLsAndOnlyTheOptionsSet(t *testing.T) {
 	if req.Path != "/v1/fetch/public" {
 		t.Fatal(req.Path)
 	}
-	want := `{"content":{"links":5,"max_chars":500,"prompt":"List the prices"},"retrieval":{"max_age_hours":0},"urls":["https://example.com"]}`
+	want := `{"content":{"images":2,"links":5,"max_chars":500,"prompt":"List the prices","schema":{"type":"object"}},"retrieval":{"max_age_hours":0},"urls":["https://example.com"]}`
 	if string(req.Body) != want {
 		t.Fatalf("sent %s, want %s", req.Body, want)
 	}
@@ -804,7 +804,7 @@ func TestRunToolCall(t *testing.T) {
 		t.Fatal(payloadOf(t, (*seen)[0]))
 	}
 
-	fetched, err := keenable.RunToolCall(context.Background(), c, "keenable_fetch", map[string]any{"urls": []any{"https://example.com"}})
+	fetched, err := keenable.RunToolCall(context.Background(), c, "keenable_fetch", map[string]any{"urls": []string{"https://example.com"}})
 	if err != nil {
 		t.Fatal(err)
 	}

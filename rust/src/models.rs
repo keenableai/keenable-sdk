@@ -514,8 +514,29 @@ pub(crate) fn page_from_json(data: Map<String, Value>, fallback_url: &str) -> Pa
         answer_error: typed(data.get("answer_error")),
         stale: data.get("stale").and_then(Value::as_bool),
         usage: typed(data.get("usage")),
-        error: typed(data.get("error")),
+        error: data
+            .get("error")
+            .and_then(Value::as_object)
+            .map(fetch_error),
         raw: data,
+    }
+}
+
+/// A per-URL error from whatever fields it has, so a failed URL never reads
+/// as a successful page.
+fn fetch_error(e: &Map<String, Value>) -> FetchError {
+    FetchError {
+        status: e
+            .get("status")
+            .and_then(Value::as_u64)
+            .and_then(|s| u16::try_from(s).ok())
+            .unwrap_or(0),
+        error: as_string(e.get("error")),
+        code: non_blank(e.get("code")),
+        error_type: non_blank(e.get("type")),
+        message: non_blank(e.get("message")),
+        fix: non_blank(e.get("fix")),
+        retryable: e.get("retryable").and_then(Value::as_bool),
     }
 }
 

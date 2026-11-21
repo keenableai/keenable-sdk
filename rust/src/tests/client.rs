@@ -203,16 +203,31 @@ fn the_tool_definitions_match_the_other_sdks() {
 
 #[tokio::test]
 async fn fetch_posts_the_urls_and_only_the_options_set() {
-    let server = start(Script::Replies(vec![Reply::new(200, r#"{"results":[]}"#)])).await;
+    let server = start(Script::Replies(vec![
+        Reply::new(200, r#"{"results":[]}"#),
+        Reply::new(200, r#"{"results":[]}"#),
+    ]))
+    .await;
     let opts = FetchOptions {
         max_chars: Some(500),
         prompt: Some("List the prices".into()),
+        schema: Some(json!({"type": "object"})),
         links: Some(5),
+        images: Some(2),
         max_age_hours: Some(0.0),
         ..Default::default()
     };
-    keyed(&server)
+    let client = keyed(&server);
+    client
         .fetch_with(["https://example.com"], &opts)
+        .await
+        .unwrap();
+    let empty_prompt = FetchOptions {
+        prompt: Some(String::new()),
+        ..Default::default()
+    };
+    client
+        .fetch_with(["https://example.com"], &empty_prompt)
         .await
         .unwrap();
     let seen = &server.requests()[0];
@@ -225,21 +240,29 @@ async fn fetch_posts_the_urls_and_only_the_options_set() {
         body,
         json!({
             "urls": ["https://example.com"],
-            "content": {"max_chars": 500, "prompt": "List the prices", "links": 5},
+            "content": {
+                "max_chars": 500,
+                "prompt": "List the prices",
+                "schema": {"type": "object"},
+                "links": 5,
+                "images": 2,
+            },
             "retrieval": {"max_age_hours": 0.0},
         })
     );
+    let body: Value = serde_json::from_slice(&server.requests()[1].body).unwrap();
+    assert_eq!(body, json!({"urls": ["https://example.com"]}));
 }
 
 #[tokio::test]
 async fn fetch_parses_a_page_and_a_failed_url() {
     let server = start(Script::Replies(vec![Reply::new(
         200,
-        r#"{"results":[{"url":"https://e.com/","title":"T","content":"Body"},{"url":"https://e.com/x","error":{"status":404,"error":"Not found","code":"page_not_found"}}]}"#,
+        r#"{"results":[{"url":"https://e.com/","title":"T","content":"Body"},{"url":"https://e.com/x","error":{"status":404,"error":"Not found","code":"page_not_found"}},{"url":"https://e.com/y","error":{"message":"gone"}}]}"#,
     )]))
     .await;
     let resp = keyed(&server)
-        .fetch(["https://e.com/", "https://e.com/x"])
+        .fetch(["https://e.com/", "https://e.com/x", "https://e.com/y"])
         .await
         .unwrap();
     let (page, missing) = (&resp.results[0], &resp.results[1]);
@@ -250,6 +273,11 @@ async fn fetch_parses_a_page_and_a_failed_url() {
     assert_eq!(
         (error.status, error.code.as_deref()),
         (404, Some("page_not_found"))
+    );
+    let partial = resp.results[2].error.as_ref().unwrap();
+    assert_eq!(
+        (partial.status, partial.message.as_deref()),
+        (0, Some("gone"))
     );
 }
 

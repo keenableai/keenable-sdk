@@ -138,7 +138,8 @@ def _pages_context(response: FetchResponse, max_chars: Any) -> str:
     if len(failed) == len(pages):
         raise _page_error(failed[0])
     # The API already cut each page to max_chars; leave room for its header.
-    budget = DEFAULT_CONTEXT_MAX_CHARS
+    # Without max_chars, the default budget is split across the pages.
+    budget = max(DEFAULT_CONTEXT_MAX_CHARS // len(pages), 1_000)
     if isinstance(max_chars, int) and not isinstance(max_chars, bool):
         budget = max_chars + 1_000
     blocks = []

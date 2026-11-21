@@ -310,17 +310,27 @@ describe("fetch", () => {
     await client.fetch(["https://example.com"], {
       maxChars: 500,
       prompt: "List the prices",
+      schema: { type: "object" },
       links: 5,
+      images: 2,
       maxAgeHours: 0,
     });
+    await client.fetch("https://example.com", { prompt: "" });
 
     expect(seen[0]?.url).toBe("https://api.keenable.ai/v1/fetch/public");
     expect(seen[0]?.init.method).toBe("POST");
     expect(JSON.parse(String(seen[0]?.init.body))).toEqual({
       urls: ["https://example.com"],
-      content: { max_chars: 500, prompt: "List the prices", links: 5 },
+      content: {
+        max_chars: 500,
+        prompt: "List the prices",
+        schema: { type: "object" },
+        links: 5,
+        images: 2,
+      },
       retrieval: { max_age_hours: 0 },
     });
+    expect(JSON.parse(String(seen[1]?.init.body))).toEqual({ urls: ["https://example.com"] });
   });
 
   it("parses a page and a failed URL", async () => {

@@ -399,7 +399,13 @@ impl Client {
         let mut content = Map::new();
         let options = [
             ("max_chars", opts.max_chars.map(Value::from)),
-            ("prompt", opts.prompt.clone().map(Value::from)),
+            (
+                "prompt",
+                opts.prompt
+                    .clone()
+                    .filter(|p| !p.is_empty())
+                    .map(Value::from),
+            ),
             ("schema", opts.schema.clone()),
             ("links", opts.links.map(Value::from)),
             ("images", opts.images.map(Value::from)),

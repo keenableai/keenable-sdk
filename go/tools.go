@@ -199,8 +199,15 @@ func requireString(v any, message string) (string, error) {
 func toolFetchURLs(args map[string]any) ([]string, error) {
 	raw := args["urls"]
 	bad := &InvalidRequestError{msg: "keenable_fetch needs 'urls': a list of 1 to 20 URLs."}
-	if s, ok := raw.(string); ok {
-		raw = []any{s}
+	switch v := raw.(type) {
+	case string:
+		raw = []any{v}
+	case []string:
+		list := make([]any, len(v))
+		for i, s := range v {
+			list[i] = s
+		}
+		raw = list
 	}
 	list, ok := raw.([]any)
 	if !ok || len(list) == 0 {
@@ -276,9 +283,10 @@ func pagesContext(pages []Page, maxChars int) (string, error) {
 		return "", &APIError{StatusCode: e.Status, APICode: e.Code, Type: e.Type, Title: e.Error, Fix: e.Fix, Retryable: e.Retryable, msg: cmp.Or(e.Message, e.Error)}
 	}
 	// The API already cut each page to max_chars; leave room for its header.
-	var ctxOpts *ContextOptions
+	// Without max_chars, the default budget is split across the pages.
+	ctxOpts := &ContextOptions{MaxChars: max(DefaultContextMaxChars/len(pages), 1_000)}
 	if maxChars > 0 {
-		ctxOpts = &ContextOptions{MaxChars: maxChars + 1_000}
+		ctxOpts.MaxChars = maxChars + 1_000
 	}
 	blocks := make([]string, len(pages))
 	for i := range pages {

@@ -835,7 +835,7 @@ export class Keenable {
     targets.forEach(rejectPrivateFetchTarget);
     const content = {
       max_chars: options.maxChars,
-      prompt: options.prompt,
+      prompt: options.prompt === "" ? undefined : options.prompt,
       schema: options.schema,
       links: options.links,
       images: options.images,
@@ -843,14 +843,20 @@ export class Keenable {
     const payload: Record<string, unknown> = { urls: targets };
     if (Object.values(content).some((value) => value !== undefined)) payload.content = content;
     if (options.maxAgeHours !== undefined) payload.retrieval = { max_age_hours: options.maxAgeHours };
-    const { data, requestId } = await this.request(
-      "fetch",
-      { method: "POST", body: JSON.stringify(payload) },
-      options,
-    );
-    const results = Array.isArray(data.results) ? data.results.filter(isRecord) : [];
+    let body: string;
+    try {
+      body = JSON.stringify(payload);
+    } catch (err) {
+      throw new KeenableInvalidRequestError(
+        `could not encode the fetch request: ${err instanceof Error ? err.message : String(err)}. Pass JSON-encodable options.`,
+      );
+    }
+    const { data, requestId } = await this.request("fetch", { method: "POST", body }, options);
+    const entries: unknown[] = Array.isArray(data.results) ? data.results : [];
     return {
-      results: results.map((entry, i) => toPage(entry, String(targets[i] ?? ""))),
+      results: entries.flatMap((entry, i) =>
+        isRecord(entry) ? [toPage(entry, String(targets[i] ?? ""))] : [],
+      ),
       requestId,
       raw: data,
     };

@@ -482,7 +482,7 @@ the client's `Timeout`, `MaxRetries` and `Headers` for one call. `Timeout` is a
 pointer: nil keeps the client's, and zero or less is an `InvalidRequestError`.
 A header whose name is not an HTTP token, or whose value has a CR, LF or NUL, is
 an `InvalidRequestError` too, before anything is sent. `X-API-Key`
-always comes from `APIKey`. `SearchResponse.RequestID` and `Page.RequestID`
+always comes from `APIKey`. `SearchResponse.RequestID` and `FetchResponse.RequestID`
 carry the API's request id; quote it when reporting a problem.
 
 ## Configuration

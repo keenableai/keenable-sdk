@@ -178,10 +178,11 @@ function pagesContext(pages: Page[], maxChars: unknown): string {
   const failed = pages.filter((page) => page.error);
   if (failed.length === pages.length && failed[0]?.error) throw pageError(failed[0].error);
   // The API already cut each page to max_chars; leave room for its header.
+  // Without max_chars, the default budget is split across the pages.
   const budget =
     typeof maxChars === "number" && Number.isInteger(maxChars)
       ? maxChars + 1_000
-      : DEFAULT_CONTEXT_MAX_CHARS;
+      : Math.max(Math.floor(DEFAULT_CONTEXT_MAX_CHARS / pages.length), 1_000);
   return pages
     .map((page, i) => {
       if (!page.error) {

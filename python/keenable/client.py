@@ -333,12 +333,18 @@ def _fetch_payload(
             ("links", links),
             ("images", images),
         )
-        if value is not None
+        if value is not None and value != ""
     }
     if content:
         payload["content"] = content
     if max_age_hours is not None:
         payload["retrieval"] = {"max_age_hours": max_age_hours}
+    try:
+        jsonlib.dumps(payload, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise KeenableInvalidRequestError(
+            f"could not encode the fetch request: {exc}. Pass JSON-encodable arguments."
+        ) from exc
     return payload
 
 

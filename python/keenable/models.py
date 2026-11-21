@@ -663,11 +663,12 @@ class FetchResponse:
     def _from_json(
         cls, data: dict[str, Any], urls: list[str], request_id: str | None
     ) -> FetchResponse:
-        entries = _dicts(data.get("results")) or []
+        entries = data.get("results")
         return cls(
             results=[
                 Page._from_json(entry, urls[i] if i < len(urls) else "")
-                for i, entry in enumerate(entries)
+                for i, entry in enumerate(entries if isinstance(entries, list) else [])
+                if isinstance(entry, dict)
             ],
             request_id=_str_or_none(data.get("request_id")) or request_id,
         )

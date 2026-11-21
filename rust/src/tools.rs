@@ -320,8 +320,11 @@ fn pages_context(pages: Vec<Page>, max_chars: Option<u32>) -> Result<String> {
         return Err(page_error(first.expect("every page has an error")));
     }
     // The API already cut each page to max_chars; leave room for its header.
+    // Without max_chars, the default budget is split across the pages.
     let opts = ContextOptions {
-        max_chars: max_chars.map_or(DEFAULT_CONTEXT_MAX_CHARS, |n| n as usize + 1_000),
+        max_chars: max_chars.map_or((DEFAULT_CONTEXT_MAX_CHARS / pages.len()).max(1_000), |n| {
+            n as usize + 1_000
+        }),
         ..ContextOptions::default()
     };
     let blocks: Vec<String> = pages
