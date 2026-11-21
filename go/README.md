@@ -154,35 +154,39 @@ for i, result := range results.Cited(nil) {
 }
 ```
 
-## Read a full page
+## Read full pages
 
 ```go
-page, err := client.Fetch(context.Background(), "https://cerebras.ai/chip")
+live := 0.0
+resp, err := client.FetchWithOptions(context.Background(),
+	[]string{"https://cerebras.ai/chip", "https://cerebras.ai/blog"},
+	&keenable.FetchOptions{MaxChars: 5000, MaxAgeHours: &live})
 if err != nil {
 	log.Fatal(err)
 }
-fmt.Println(page.Title)
-fmt.Println(page.Content)       // markdown, boilerplate stripped
-fmt.Println(page.ToContext(nil)) // same citable block shape as search results
+for _, page := range resp.Results {
+	if page.Error != nil {
+		fmt.Println(page.URL, page.Error.Code)
+		continue
+	}
+	fmt.Println(page.Title)
+	fmt.Println(page.Content)        // markdown, boilerplate stripped
+	fmt.Println(page.ToContext(nil)) // same citable block shape as search results
+}
 ```
 
-`FetchWithOptions` takes three optional fields on `FetchOptions`. They ship in the next release after `v0.1.1`, so a released version doesn't have them yet:
-
-```go
-page, err := client.FetchWithOptions(context.Background(), "https://cerebras.ai/chip", &keenable.FetchOptions{
-	MaxChars: 5000,
-	Live:     true,
-})
-answer, err := client.FetchWithOptions(context.Background(), "https://cerebras.ai/chip", &keenable.FetchOptions{
-	Prompt: "List the chip's specs",
-})
-```
+`Fetch` sends one `POST /v1/fetch`. `Results[i]` is for `urls[i]`; a URL that
+failed has `Error` set instead of returning an error. The `FetchOptions`
+fields are sent only when set (the API checks their values):
 
 | Field | What it does |
 |---|---|
-| `MaxChars` | Cap the characters of content returned, a positive integer. Zero means the API default of 50000; `page.Truncated` and `page.TotalChars` say whether the page was cut |
-| `Live` | `true` fetches the page from its source now instead of reading Keenable's indexed copy. `false` is the default and is not sent |
-| `Prompt` | An extraction instruction, up to 2000 characters. `page.Content` is then only the model's output for it, not the page. Empty means unset |
+| `MaxChars` | The most characters of content per page. Zero means the API default of 50000 |
+| `Prompt` | Up to 2,000 characters; each page's `Content` is then only an LLM's answer to it |
+| `Schema` | A JSON Schema; each page's answer is in `page.Structured` |
+| `Links` | The most links per page to return, in `page.Links` |
+| `Images` | The most images per page to return, in `page.Images` |
+| `MaxAgeHours` | Use a stored copy only if younger than this; `0` reads every page live |
 
 Internal hosts and private addresses are refused before a request is sent:
 `localhost` and names under `.localhost`, `metadata.google.internal`, and IP
@@ -457,7 +461,7 @@ resp, err := client.Search(ctx, "wafer scale engine", &keenable.SearchOptions{
     RequestOptions: keenable.RequestOptions{MaxRetries: &none},
 })
 minute := time.Minute
-page, err := client.FetchWithOptions(ctx, "https://example.com", &keenable.FetchOptions{
+resp, err := client.FetchWithOptions(ctx, []string{"https://example.com"}, &keenable.FetchOptions{
     RequestOptions: keenable.RequestOptions{
         Timeout: &minute, // nil keeps the client's
         Headers: map[string]string{"X-Trace": "abc"},

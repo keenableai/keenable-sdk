@@ -63,7 +63,7 @@ const res =
 const ok = (headers: Record<string, string> = {}, extra: Record<string, unknown> = {}) =>
   res(200, { ...SEARCH_BODY, ...extra }, headers);
 const page = (headers: Record<string, string> = {}, extra: Record<string, unknown> = {}) =>
-  res(200, { ...PAGE_BODY, ...extra }, headers);
+  res(200, { results: [PAGE_BODY], ...extra }, headers);
 const networkError: Reply = () => {
   throw new TypeError("fetch failed");
 };
@@ -184,7 +184,7 @@ describe("retry by status, when the API sends no retryable", () => {
   it("retries search and fetch alike, resending the same search body", async () => {
     let outcome = await run([res(503), page()], { method: "fetch", arg: "https://e.com" });
     expect(outcome.error).toBeUndefined();
-    expect(outcome.requests.map((r) => r.init.method)).toEqual(["GET", "GET"]);
+    expect(outcome.requests.map((r) => r.init.method)).toEqual(["POST", "POST"]);
 
     outcome = await run([res(503), ok()]);
     expect(outcome.requests.map((r) => r.init.method)).toEqual(["POST", "POST"]);
@@ -603,10 +603,13 @@ describe("malformed and empty bodies", () => {
     outcome = await run([res(200, { query: 5, results: "x" })]);
     expect((outcome.result as { query: string }).query).toBe("q");
 
-    // Bug: an empty url replaced the one asked for; Python and Go fall back.
-    outcome = await run([res(200, { url: "", title: null })], { method: "fetch", arg: "https://e.com/a" });
-    expect((outcome.result as { url: string; title: string }).url).toBe("https://e.com/a");
-    expect((outcome.result as { title: string }).title).toBe("");
+    outcome = await run([res(200, { results: [{ url: "", title: null }] })], {
+      method: "fetch",
+      arg: "https://e.com/a",
+    });
+    const [result] = (outcome.result as { results: Array<{ url: string; title: string }> }).results;
+    expect(result?.url).toBe("https://e.com/a");
+    expect(result?.title).toBe("");
   });
 });
 
@@ -665,7 +668,7 @@ describe("fetch targets", () => {
   ])("allows %s and sends it unchanged", async (url) => {
     const outcome = await run([page()], { method: "fetch", arg: url });
     expect(outcome.error).toBeUndefined();
-    expect(new URL(outcome.requests[0]!.url).searchParams.get("url")).toBe(url);
+    expect(JSON.parse(String(outcome.requests[0]!.init.body)).urls).toEqual([url]);
   });
 });
 

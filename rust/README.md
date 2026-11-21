@@ -130,28 +130,32 @@ for (i, result) in results.cited().iter().enumerate() {
 Pass a `ContextOptions` to `to_context_with` and `cited_with` to change
 `max_chars`, `max_results`, `include_dates` or `max_snippet_chars`.
 
-## Read a full page
+## Read full pages
 
 ```rust
-let page = client.fetch("https://cerebras.ai/chip").await?;
-println!("{}", page.content); // markdown, boilerplate stripped
-println!("{}", page.to_context()); // same citable block shape as search results
-
-let answer = client
+let response = client
     .fetch_with(
-        "https://cerebras.ai/chip",
+        ["https://cerebras.ai/chip", "https://cerebras.ai/blog"],
         &keenable::FetchOptions {
-            prompt: Some("List the chip's specs".into()),
+            max_chars: Some(5000),
             ..Default::default()
         },
     )
     .await?;
+for page in &response.results {
+    match &page.error {
+        Some(error) => println!("{} failed: {:?}", page.url, error.code),
+        None => println!("{}", page.to_context()), // same citable block as search results
+    }
+}
 ```
 
-`FetchOptions` has `max_chars` (the API default is 50000; `page.truncated` and
-`page.total_chars` say whether the page was cut), `live` (fetch from the source
-now instead of Keenable's indexed copy) and `prompt` (an extraction
-instruction, up to 2000 characters).
+`fetch` sends one `POST /v1/fetch`. `results[i]` is for `urls[i]`; a URL that
+failed has `error` set instead of returning `Err`. `FetchOptions` has
+`max_chars`, `prompt` (each page's `content` is then only an LLM's answer to
+it), `schema` (each page's answer is in `page.structured`), `links`,
+`images` and `max_age_hours` (`Some(0.0)` reads every page live), sent only
+when set; the API checks their values.
 
 Internal hosts and private addresses are refused before a request is sent:
 `localhost` and names under `.localhost`, `metadata.google.internal`, and IP

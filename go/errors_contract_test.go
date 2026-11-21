@@ -295,7 +295,7 @@ func contractCaseNamed(t *testing.T, name string) contractCase {
 func TestBlockedFetchTargetIsNotAnAuthError(t *testing.T) {
 	tc := contractCaseNamed(t, "target_blocked")
 	c, _ := start(t, replyWith(403, tc.Body, nil), keyed())
-	_, err := c.Fetch(context.Background(), "https://example.com")
+	_, err := c.Fetch(context.Background(), []string{"https://example.com"})
 	if errors.As(err, new(*keenable.AuthError)) {
 		t.Fatal("a blocked fetch target is not an auth failure")
 	}

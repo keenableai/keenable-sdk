@@ -141,28 +141,34 @@ results.cited().forEach((result, index) => {
 });
 ```
 
-## Read a full page
+## Read full pages
 
 ```ts
-const page = await keenable.fetch("https://cerebras.ai/chip");
+const response = await keenable.fetch(["https://cerebras.ai/chip", "https://cerebras.ai/blog"]);
 
-console.log(page.title);
-console.log(page.content); // markdown, boilerplate stripped
-console.log(page.toContext()); // same citable block shape as search results
+for (const page of response.results) {
+  if (page.error) {
+    console.log(page.url, page.error.code);
+    continue;
+  }
+  console.log(page.title);
+  console.log(page.content); // markdown, boilerplate stripped
+  console.log(page.toContext()); // same citable block shape as search results
+}
 ```
 
-`fetch()` takes three options (`FetchOptions`), next to the per-request ones. They ship in the next release after 0.1.4, so the version on npm doesn't have them yet:
-
-```ts
-const capped = await keenable.fetch("https://cerebras.ai/chip", { maxChars: 5000, live: true });
-const answer = await keenable.fetch("https://cerebras.ai/chip", { prompt: "List the chip's specs" });
-```
+`fetch()` sends one `POST /v1/fetch`. `results[i]` is for `urls[i]`; a URL
+that failed has `error` set instead of throwing. `FetchOptions`, next to the
+per-request ones, are sent only when set (the API checks their values):
 
 | Option | What it does |
 |---|---|
-| `maxChars` | Cap the characters of content returned, a positive integer. The API default is 50000; `page.truncated` and `page.totalChars` say whether the page was cut |
-| `live` | `true` fetches the page from its source now instead of reading Keenable's indexed copy. Default `false` |
-| `prompt` | An extraction instruction, up to 2000 characters. `page.content` is then only the model's output for it, not the page |
+| `maxChars` | The most characters of content per page. The API default is 50000 |
+| `prompt` | Up to 2,000 characters; each page's `content` is then only an LLM's answer to it |
+| `schema` | A JSON Schema; each page's answer is in `page.structured` |
+| `links` | The most links per page to return, in `page.links` |
+| `images` | The most images per page to return, in `page.images` |
+| `maxAgeHours` | Use a stored copy only if younger than this; `0` reads every page live |
 
 ## Tool calling
 
@@ -375,7 +381,7 @@ const keenable = new Keenable({
   defaultHeaders: { "X-Team": "search" },
 });
 await keenable.search("wafer scale engine", { maxRetries: 0 }); // no retries for this call
-await keenable.fetch("https://example.com", { timeoutMs: 60_000, headers: { "X-Trace": "abc" } });
+await keenable.fetch(["https://example.com"], { timeoutMs: 60_000, headers: { "X-Trace": "abc" } });
 ```
 
 Every call takes `signal`, `timeoutMs`, `maxRetries` and `headers`, which

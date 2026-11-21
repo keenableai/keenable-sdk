@@ -424,12 +424,31 @@ export class SearchResponse {
   }
 }
 
-/** A web page fetched by `fetch()`, extracted as markdown. */
+/** Why one URL of a `fetch()` call failed, as the API sent it. */
+export interface FetchError {
+  status: number;
+  error: string;
+  code?: string;
+  type?: string;
+  message?: string;
+  fix?: string;
+  retryable?: boolean;
+}
+
+/** What `fetch()` returns: `results[i]` is for `urls[i]`. */
+export interface FetchResponse {
+  results: Page[];
+  /** The API's id for this request. Quote it when reporting a problem. */
+  requestId?: string;
+  raw: Record<string, unknown>;
+}
+
+/** One result of `fetch()`: a page as markdown, or `error` when that URL failed. */
 export class Page {
-  readonly url: string;
-  readonly title: string;
+  readonly url!: string;
+  readonly title!: string;
   /** The page's main content as markdown, with boilerplate stripped. */
-  readonly content: string;
+  readonly content!: string;
   /**
    * @deprecated Always empty: the API no longer fills it. Read `content`.
    * Kept for compatibility; see https://docs.keenable.ai/versioning.
@@ -443,8 +462,6 @@ export class Page {
    * unknown.
    */
   readonly publishedAt?: string;
-  /** The API's id for this request. Quote it when reporting a problem. */
-  readonly requestId?: string;
   /**
    * True when the page was longer than the API's `max_chars` and `content`
    * was cut (cut content ends with `...`). Undefined when the API did not say.
@@ -455,30 +472,23 @@ export class Page {
    * cut. Undefined when the API did not say.
    */
   readonly totalChars?: number;
-  readonly raw: Record<string, unknown>;
+  readonly image?: string;
+  readonly favicon?: string;
+  /** The page's links, when `links` was asked for. */
+  readonly links?: { url: string; text: string | null }[];
+  readonly images?: { url: string; alt: string | null }[];
+  /** The answer for `schema`. */
+  readonly structured?: Record<string, unknown>;
+  /** Why the answer for `schema` could not be made. */
+  readonly answerError?: { code: string; message: string };
+  readonly stale?: boolean;
+  readonly usage?: { sku: string; amount: number; credits: number; paid: boolean; credits_remaining?: number };
+  /** Set when this URL failed; the other fields are then empty. */
+  readonly error?: FetchError;
+  readonly raw!: Record<string, unknown>;
 
-  constructor(init: {
-    url: string;
-    title: string;
-    content: string;
-    description?: string;
-    author?: string;
-    publishedAt?: string;
-    requestId?: string;
-    truncated?: boolean;
-    totalChars?: number;
-    raw: Record<string, unknown>;
-  }) {
-    this.url = init.url;
-    this.title = init.title;
-    this.content = init.content;
-    this.description = init.description;
-    this.author = init.author;
-    this.publishedAt = init.publishedAt;
-    this.requestId = init.requestId;
-    this.truncated = init.truncated;
-    this.totalChars = init.totalChars;
-    this.raw = init.raw;
+  constructor(init: Omit<Page, "toContext">) {
+    Object.assign(this, init);
   }
 
   /**
@@ -517,7 +527,9 @@ function toSearchResult(data: Record<string, unknown>): SearchResult {
   };
 }
 
-function toPage(data: Record<string, unknown>, url: string, requestId?: string): Page {
+function toPage(data: Record<string, unknown>, url: string): Page {
+  const record = (value: unknown) => (isRecord(value) ? (value as never) : undefined);
+  const list = (value: unknown) => (Array.isArray(value) ? (value.filter(isRecord) as never) : undefined);
   return new Page({
     // An empty url falls back to the one asked for, as in Python and Go.
     url: nonEmpty(data.url) ?? url,
@@ -526,9 +538,17 @@ function toPage(data: Record<string, unknown>, url: string, requestId?: string):
     description: nonEmpty(data.description),
     author: nonEmpty(data.author),
     publishedAt: timestamp(data.published_at),
-    requestId,
     truncated: bool(data.truncated),
     totalChars: count(data.total_chars),
+    image: nonEmpty(data.image),
+    favicon: nonEmpty(data.favicon),
+    links: list(data.links),
+    images: list(data.images),
+    structured: record(data.structured),
+    answerError: record(data.answer_error),
+    stale: bool(data.stale),
+    usage: record(data.usage),
+    error: record(data.error),
     raw: data,
   });
 }
@@ -804,35 +824,36 @@ export class Keenable {
   }
 
   /**
-   * Fetch one URL and return its main content as markdown.
+   * Read pages as markdown with `POST /v1/fetch`.
    *
-   * Use this after `search()` when a snippet is not enough and the model needs
-   * the full page. `maxChars` caps the content, `live` reads the page from its
-   * source instead of the indexed copy, and `prompt` returns only what the
-   * instruction asks for.
+   * `results[i]` is for `urls[i]`: a `Page`, with `error` set when that URL
+   * failed. Only the options set are sent, and the API checks their values.
+   * Internal hosts and private addresses are refused before sending.
    */
-  async fetch(url: string, options: FetchOptions = {}): Promise<Page> {
-    rejectPrivateFetchTarget(url);
-
-    const target = new URL(this.url("fetch"));
-    target.searchParams.set("url", url);
-    if (options.maxChars !== undefined) {
-      target.searchParams.set("max_chars", String(options.maxChars));
-    }
-    // The API reads only "true" and "false", and an absent live is false.
-    if (options.live === true) target.searchParams.set("live", "true");
-    // An empty string is unset, as Go cannot tell the two apart.
-    if (options.prompt !== undefined && options.prompt !== "") {
-      target.searchParams.set("prompt", options.prompt);
-    }
-
+  async fetch(urls: string | string[], options: FetchOptions = {}): Promise<FetchResponse> {
+    const targets: unknown[] = Array.isArray(urls) ? urls : [urls];
+    targets.forEach(rejectPrivateFetchTarget);
+    const content = {
+      max_chars: options.maxChars,
+      prompt: options.prompt,
+      schema: options.schema,
+      links: options.links,
+      images: options.images,
+    };
+    const payload: Record<string, unknown> = { urls: targets };
+    if (Object.values(content).some((value) => value !== undefined)) payload.content = content;
+    if (options.maxAgeHours !== undefined) payload.retrieval = { max_age_hours: options.maxAgeHours };
     const { data, requestId } = await this.request(
       "fetch",
-      { method: "GET" },
+      { method: "POST", body: JSON.stringify(payload) },
       options,
-      target.toString(),
     );
-    return toPage(data, url, requestId);
+    const results = Array.isArray(data.results) ? data.results.filter(isRecord) : [];
+    return {
+      results: results.map((entry, i) => toPage(entry, String(targets[i] ?? ""))),
+      requestId,
+      raw: data,
+    };
   }
 
   /**

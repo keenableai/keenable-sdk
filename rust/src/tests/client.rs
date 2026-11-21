@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 
 use super::server::{start, Reply, Script};
 use super::*;
-use crate::{Error, RequestOptions, SearchOptions};
+use crate::{Error, FetchOptions, RequestOptions, SearchOptions};
 
 fn search_reply() -> Reply {
     Reply::new(
@@ -38,7 +38,7 @@ async fn a_keyed_search_sends_the_key_and_the_sdk_headers() {
 async fn a_keyless_client_calls_the_public_endpoints_without_a_key() {
     let server = start(Script::Replies(vec![
         search_reply(),
-        Reply::new(200, r#"{"content":"c"}"#),
+        Reply::new(200, r#"{"results":[{"content":"c"}]}"#),
     ]))
     .await;
     let client = Client::with_options(Options {
@@ -50,13 +50,13 @@ async fn a_keyless_client_calls_the_public_endpoints_without_a_key() {
     .unwrap();
     assert!(client.is_keyless());
     client.search("q").await.unwrap();
-    let page = client.fetch("https://example.com/a").await.unwrap();
+    let page = client.fetch(["https://example.com/a"]).await.unwrap();
     let seen = server.requests();
     assert_eq!(seen[0].path, "/v1/search/public");
     assert_eq!(seen[1].path, "/v1/fetch/public");
     assert!(seen.iter().all(|r| r.header("X-API-Key").is_none()));
     assert_eq!(seen[0].header("X-Keenable-Title"), Some("My Agent"));
-    assert_eq!(page.url, "https://example.com/a");
+    assert_eq!(page.results[0].url, "https://example.com/a");
 }
 
 #[tokio::test]
@@ -202,10 +202,62 @@ fn the_tool_definitions_match_the_other_sdks() {
 }
 
 #[tokio::test]
+async fn fetch_posts_the_urls_and_only_the_options_set() {
+    let server = start(Script::Replies(vec![Reply::new(200, r#"{"results":[]}"#)])).await;
+    let opts = FetchOptions {
+        max_chars: Some(500),
+        prompt: Some("List the prices".into()),
+        links: Some(5),
+        max_age_hours: Some(0.0),
+        ..Default::default()
+    };
+    keyed(&server)
+        .fetch_with(["https://example.com"], &opts)
+        .await
+        .unwrap();
+    let seen = &server.requests()[0];
+    assert_eq!(
+        (seen.method.as_str(), seen.path.as_str()),
+        ("POST", "/v1/fetch")
+    );
+    let body: Value = serde_json::from_slice(&seen.body).unwrap();
+    assert_eq!(
+        body,
+        json!({
+            "urls": ["https://example.com"],
+            "content": {"max_chars": 500, "prompt": "List the prices", "links": 5},
+            "retrieval": {"max_age_hours": 0.0},
+        })
+    );
+}
+
+#[tokio::test]
+async fn fetch_parses_a_page_and_a_failed_url() {
+    let server = start(Script::Replies(vec![Reply::new(
+        200,
+        r#"{"results":[{"url":"https://e.com/","title":"T","content":"Body"},{"url":"https://e.com/x","error":{"status":404,"error":"Not found","code":"page_not_found"}}]}"#,
+    )]))
+    .await;
+    let resp = keyed(&server)
+        .fetch(["https://e.com/", "https://e.com/x"])
+        .await
+        .unwrap();
+    let (page, missing) = (&resp.results[0], &resp.results[1]);
+    assert_eq!((page.title.as_str(), page.content.as_str()), ("T", "Body"));
+    assert!(page.error.is_none());
+    assert_eq!(missing.url, "https://e.com/x");
+    let error = missing.error.as_ref().unwrap();
+    assert_eq!(
+        (error.status, error.code.as_deref()),
+        (404, Some("page_not_found"))
+    );
+}
+
+#[tokio::test]
 async fn a_fetch_tool_call_renders_the_page() {
     let server = start(Script::Replies(vec![Reply::new(
         200,
-        r#"{"url":"https://e.com/","title":"T","content":"Body","published_at":1714564800}"#,
+        r#"{"results":[{"url":"https://e.com/","title":"T","content":"Body","published_at":1714564800}]}"#,
     )]))
     .await;
     let text = keyed(&server)

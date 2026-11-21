@@ -44,7 +44,8 @@ pub use error::{
     RateLimitInfo, Result, WebhookVerificationError,
 };
 pub use models::{
-    ContextOptions, Page, SearchResponse, SearchResult, DEFAULT_CONTEXT_MAX_CHARS,
+    AnswerError, ContextOptions, FetchError, FetchResponse, Page, PageImage, PageLink,
+    SearchResponse, SearchResult, Usage, DEFAULT_CONTEXT_MAX_CHARS,
     DEFAULT_CONTEXT_MAX_SNIPPET_CHARS,
 };
 pub use monitors::{

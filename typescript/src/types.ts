@@ -93,25 +93,20 @@ export interface SearchOptions extends RequestOptions {
   disableCards?: boolean;
 }
 
-/** Optional arguments for `fetch()`. */
+/** Optional arguments for `fetch()`. The API checks their values. */
 export interface FetchOptions extends RequestOptions {
-  /**
-   * Cap the characters of content returned, a positive integer. The API
-   * default is 50000. `Page.truncated` and `Page.totalChars` say whether the
-   * page was cut and how long it was.
-   */
+  /** The most characters of content per page. */
   maxChars?: number;
-  /**
-   * `true` fetches the page from its source now instead of reading Keenable's
-   * indexed copy. Default `false`.
-   */
-  live?: boolean;
-  /**
-   * An extraction instruction, up to 2000 characters, such as
-   * `"list the pricing tiers"`. `Page.content` is then only the model's output
-   * for it, not the page.
-   */
+  /** Up to 2,000 characters; each page's `content` is then only an LLM's answer to it. */
   prompt?: string;
+  /** A JSON Schema; each page's answer is in `Page.structured`. */
+  schema?: Record<string, unknown>;
+  /** The most links per page to return. */
+  links?: number;
+  /** The most images per page to return. */
+  images?: number;
+  /** Use a stored copy only if younger than this; 0 reads every page live. */
+  maxAgeHours?: number;
 }
 
 /** Options for rendering results into a prompt block. */

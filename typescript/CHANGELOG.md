@@ -5,6 +5,7 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- **Changed (breaking):** `fetch()` takes a list of URLs (a lone string is one URL) and sends one `POST /v1/fetch`. It returns a `FetchResponse` whose `results[i]` is the `Page` for `urls[i]`, with `error` (a `FetchError`) set when that URL failed. Options: `maxChars`, `prompt`, `schema`, `links`, `images`, `maxAgeHours`, sent only when set; the API checks their values. The `live` option and `Page.requestId` are gone (`FetchResponse.requestId` replaces it), and there is no separate `fetchMany`.
 - **Changed (breaks code):** what a search monitor finds is now called a result. `monitors.pages()` is `monitors.results()` and calls `GET /v1/monitors/{id}/results`; `PageList` is `ResultList` and `MonitorPagesParams` is `MonitorResultsParams`. The old names are gone, with no aliases.
 - **Changed (breaks code):** webhook event names in `MonitorEvent`: `"monitor.hit"` is `"monitor.result.found"`, `"monitor.update"` is `"monitor.result.changed"` and `"monitor.change"` is `"monitor.page.changed"`. `event.data.result` is unchanged. A check against an old name still compiles but never matches, so search your webhook handlers for them.
 - **Removed:** fields the API no longer sends: `MonitorResult.score`, `favicon` and `highlights`; `Monitor.agentRunId`, `backfill`, `memoryScope`, `estimatedCostUsd` and `costThisMonthUsd`; `MonitorRun.usage`.

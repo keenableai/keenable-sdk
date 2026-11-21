@@ -7,7 +7,7 @@
  */
 
 import type { Keenable } from "./client.js";
-import { KeenableInvalidRequestError } from "./errors.js";
+import { KeenableAPIError, KeenableInvalidRequestError } from "./errors.js";
 import { type Filter, TOOL_FILTERS, toolProperties } from "./filters.js";
 import { nonEmpty } from "./internal.js";
 import type { SearchOptions } from "./types.js";
@@ -138,7 +138,12 @@ export async function runToolCall(
 
   if (name === "keenable_fetch") {
     const url = requireString(parsed.url, "keenable_fetch needs a 'url'");
-    const page = await client.fetch(url);
+    const [page] = (await client.fetch(url)).results;
+    if (page?.error) {
+      const { message, error, status, ...details } = page.error;
+      throw new KeenableAPIError(message ?? error, status, undefined, { error, ...details });
+    }
+    if (!page) throw new KeenableAPIError("the Keenable API returned no result for the URL", 200);
     return page.toContext();
   }
 

@@ -1,6 +1,7 @@
 package keenable
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -108,9 +109,16 @@ func RunToolCall(ctx context.Context, client *Client, name string, arguments any
 		if err != nil {
 			return "", err
 		}
-		page, err := client.Fetch(ctx, pageURL)
+		resp, err := client.Fetch(ctx, []string{pageURL})
 		if err != nil {
 			return "", err
+		}
+		if len(resp.Results) == 0 {
+			return "", &APIError{StatusCode: 200, msg: "the Keenable API returned no result for the URL"}
+		}
+		page := resp.Results[0]
+		if e := page.Error; e != nil {
+			return "", &APIError{StatusCode: e.Status, APICode: e.Code, Type: e.Type, Title: e.Error, Fix: e.Fix, Retryable: e.Retryable, msg: cmp.Or(e.Message, e.Error)}
 		}
 		return page.ToContext(nil), nil
 	default:

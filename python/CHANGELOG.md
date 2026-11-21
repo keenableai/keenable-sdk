@@ -5,6 +5,7 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
+- **Changed (breaking):** `fetch()` takes a list of URLs (a lone string is one URL) and sends one `POST /v1/fetch`. It returns a `FetchResponse` whose `results[i]` is the `Page` for `urls[i]`, with `error` (a `FetchError`) set when that URL failed. Options: `max_chars`, `prompt`, `schema`, `links`, `images`, `max_age_hours`, sent only when set; the API checks their values. The `live` option and `Page.request_id` are gone (`FetchResponse.request_id` replaces it), and there is no separate `fetch_many`.
 - **Changed (breaks code):** what a search monitor finds is now called a result. `monitors.pages()` is `monitors.results()` and calls `GET /v1/monitors/{id}/results`; `PageList` is `ResultList`. Both `Monitors` and `AsyncMonitors`. The old names are gone, with no aliases.
 - **Changed (breaks code):** webhook event names. `monitor.hit` is `monitor.result.found`, `monitor.update` is `monitor.result.changed` and `monitor.change` is `monitor.page.changed`. `event.data.result` is unchanged. A check against an old name still compiles but never matches, so search your webhook handlers for them.
 - **Removed:** fields the API no longer sends: `MonitorResult.score`, `favicon` and `highlights`; `Monitor.agent_run_id`, `backfill`, `memory_scope`, `estimated_cost_usd` and `cost_this_month_usd`; `MonitorRun.usage`.

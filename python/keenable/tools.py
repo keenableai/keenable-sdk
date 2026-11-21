@@ -19,7 +19,8 @@ from typing import Any, Callable, NamedTuple
 
 from ._filters import tool_filter_kwargs, tool_properties
 from .client import AsyncKeenable, Keenable
-from .errors import KeenableInvalidRequestError
+from .errors import KeenableAPIError, KeenableInvalidRequestError
+from .models import FetchResponse
 
 __all__ = ["SEARCH_TOOL", "FETCH_TOOL", "TOOLS", "run_tool_call", "arun_tool_call"]
 
@@ -83,6 +84,25 @@ class _Call(NamedTuple):
     render: Callable[[Any], str]
 
 
+def _page_context(response: FetchResponse) -> str:
+    """The page fetched as a citable block; a failed URL is raised."""
+    if not response.results:
+        raise KeenableAPIError("the Keenable API returned no result for the URL", 200)
+    page = response.results[0]
+    if page.error is not None:
+        e = page.error
+        raise KeenableAPIError(
+            e.message or e.error or "the page could not be read",
+            e.status,
+            code=e.code,
+            type=e.type,
+            error=e.error,
+            fix=e.fix,
+            retryable=e.retryable,
+        )
+    return page.to_context()
+
+
 def _parse_arguments(arguments: str | dict[str, Any]) -> dict[str, Any]:
     """Accept the model's raw JSON string or an already-decoded dict.
 
@@ -135,7 +155,7 @@ def _plan(name: str, arguments: str | dict[str, Any]) -> _Call:
         )
     if name == "keenable_fetch":
         url = _require_str(args.get("url"), "keenable_fetch needs a 'url'")
-        return _Call("fetch", (url,), {}, lambda page: page.to_context())
+        return _Call("fetch", (url,), {}, _page_context)
 
     raise KeenableInvalidRequestError(f"unknown Keenable tool: {name!r}")
 
