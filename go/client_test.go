@@ -804,7 +804,7 @@ func TestRunToolCall(t *testing.T) {
 		t.Fatal(payloadOf(t, (*seen)[0]))
 	}
 
-	fetched, err := keenable.RunToolCall(context.Background(), c, "keenable_fetch", map[string]any{"url": "https://example.com"})
+	fetched, err := keenable.RunToolCall(context.Background(), c, "keenable_fetch", map[string]any{"urls": []any{"https://example.com"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -821,6 +821,27 @@ func TestRunToolCall(t *testing.T) {
 	var syntax *json.SyntaxError
 	if _, err := keenable.RunToolCall(context.Background(), c, "keenable_search", "not json"); errors.As(err, &syntax) {
 		t.Fatal("leaked json.SyntaxError")
+	}
+}
+
+func TestFetchToolReadsSeveralURLs(t *testing.T) {
+	failed := map[string]any{"url": "https://e.com/x", "error": map[string]any{"status": 404, "error": "Not found"}}
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, map[string]any{"results": []any{pageBody, failed}}), nil)
+	out, err := keenable.RunToolCall(context.Background(), c, "keenable_fetch",
+		`{"urls":["https://example.com","https://e.com/x"],"max_chars":500,"prompt":"Who runs it?","max_age_hours":0}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{
+		"urls":      []any{"https://example.com", "https://e.com/x"},
+		"content":   map[string]any{"max_chars": float64(500), "prompt": "Who runs it?"},
+		"retrieval": map[string]any{"max_age_hours": float64(0)},
+	}
+	if got := payloadOf(t, (*seen)[0]); !reflect.DeepEqual(got, want) {
+		t.Fatal(got)
+	}
+	if !strings.HasPrefix(out, "[1] Example Domain (https://example.com/)") || !strings.HasSuffix(out, "\n\n[2] https://e.com/x - failed: Not found") {
+		t.Fatal(out)
 	}
 }
 

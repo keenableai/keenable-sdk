@@ -182,6 +182,13 @@ let content = match client.run_tool_call(&call.name, &call.arguments).await {
 model may set `site`, `exclude_domains`, `published_after`, `objective` and
 `disable_cards` on search.
 
+On fetch the model sets `urls` (1 to 20) and may set `max_chars` (per page),
+`prompt` (applied to every page) and `max_age_hours` (0 reads every page
+live), as on the hosted MCP tool. A lone `url`, the shape older models
+learned, still works. Each page comes back as its own numbered block. A URL
+that failed while others were read becomes a `[n] <url> - failed: <reason>`
+block; `run_tool_call` returns its error only when no URL could be read.
+
 ## Retries
 
 Connection errors, timeouts, 408, 429 and 5xx are retried, unless the API says

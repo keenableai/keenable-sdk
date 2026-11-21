@@ -261,12 +261,42 @@ async fn a_fetch_tool_call_renders_the_page() {
     )]))
     .await;
     let text = keyed(&server)
-        .run_tool_call("keenable_fetch", json!({"url": "https://e.com/"}))
+        .run_tool_call("keenable_fetch", json!({"urls": ["https://e.com/"]}))
         .await
         .unwrap();
     assert_eq!(
         text,
         "[1] T (https://e.com/) - published 2024-05-01T12:00:00Z\nBody"
+    );
+}
+
+#[tokio::test]
+async fn a_fetch_tool_call_reads_several_urls_and_keeps_a_failed_one() {
+    let server = start(Script::Replies(vec![Reply::new(
+        200,
+        r#"{"results":[{"url":"https://e.com/","title":"T","content":"Body"},{"url":"https://e.com/x","error":{"status":404,"error":"Not found"}}]}"#,
+    )]))
+    .await;
+    let text = keyed(&server)
+        .run_tool_call(
+            "keenable_fetch",
+            json!({"urls": ["https://e.com/", "https://e.com/x"], "max_chars": 500,
+                   "prompt": "Who runs it?", "max_age_hours": 0}),
+        )
+        .await
+        .unwrap();
+    let body: Value = serde_json::from_slice(&server.requests()[0].body).unwrap();
+    assert_eq!(
+        body,
+        json!({
+            "urls": ["https://e.com/", "https://e.com/x"],
+            "content": {"max_chars": 500, "prompt": "Who runs it?"},
+            "retrieval": {"max_age_hours": 0.0},
+        })
+    );
+    assert_eq!(
+        text,
+        "[1] T (https://e.com/)\nBody\n\n[2] https://e.com/x - failed: Not found"
     );
 }
 

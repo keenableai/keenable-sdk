@@ -446,7 +446,7 @@ describe("runToolCall", () => {
     expect(JSON.parse(String(seen[0]?.init.body)).site).toBe("cerebras.ai");
 
     const fetched = await runToolCall(client, "keenable_fetch", {
-      url: "https://example.com",
+      urls: ["https://example.com"],
     });
     // Both tools render the same citable shape, so a model can cite either.
     expect(fetched.startsWith("[1] Example Domain (https://example.com/)")).toBe(true);
@@ -457,6 +457,24 @@ describe("runToolCall", () => {
     await expect(runToolCall(client, "nope", "{}")).rejects.toBeInstanceOf(
       KeenableInvalidRequestError,
     );
+  });
+
+  it("fetches several URLs in one tool call and keeps a failed one as a block", async () => {
+    const failed = { url: "https://e.com/x", error: { status: 404, error: "Not found" } };
+    const { client, seen } = mockClient(() => json({ results: [PAGE_BODY, failed] }));
+    const out = await runToolCall(client, "keenable_fetch", {
+      urls: ["https://example.com", "https://e.com/x"],
+      max_chars: 500,
+      prompt: "Who runs it?",
+      max_age_hours: 0,
+    });
+    expect(JSON.parse(String(seen[0]?.init.body))).toEqual({
+      urls: ["https://example.com", "https://e.com/x"],
+      content: { max_chars: 500, prompt: "Who runs it?" },
+      retrieval: { max_age_hours: 0 },
+    });
+    expect(out.startsWith("[1] Example Domain (https://example.com/)")).toBe(true);
+    expect(out.endsWith("\n\n[2] https://e.com/x - failed: Not found")).toBe(true);
   });
 
   // A caller catching KeenableError should never see a raw TypeError.

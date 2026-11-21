@@ -26,22 +26,48 @@ type ToolFunction struct {
 // SearchTool is the keenable_search function definition.
 var SearchTool = newSearchTool()
 
-// FetchTool is the keenable_fetch function definition.
+// FetchTool is the keenable_fetch function definition. It takes urls; a lone
+// url, the deprecated shape older models send, is still read.
 var FetchTool = ToolDefinition{
 	Type: "function",
 	Function: ToolFunction{
 		Name: "keenable_fetch",
-		Description: "Fetch one web page and return its main content as markdown. Use " +
-			"after keenable_search when a search snippet is not enough.",
+		Description: "Fetch up to 20 web pages and return each one's main content as markdown. " +
+			"Use after keenable_search when a search snippet is not enough. Add a prompt " +
+			"to get back only the part you need from long pages.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
+				"urls": map[string]any{
+					"type":        "array",
+					"items":       map[string]any{"type": "string"},
+					"minItems":    1,
+					"maxItems":    20,
+					"description": "The URLs of the pages to read, 1 to 20.",
+				},
+				"max_chars": map[string]any{
+					"type":        "integer",
+					"minimum":     1,
+					"description": "The most characters of content to return for each page.",
+				},
+				"prompt": map[string]any{
+					"type": "string",
+					"description": "An instruction applied to every page; each page's content is then only " +
+						"the answer to it. Use it to get one detail from long pages.",
+				},
+				"max_age_hours": map[string]any{
+					"type":    "number",
+					"minimum": 0,
+					"maximum": 720,
+					"description": "How old Keenable's stored copy may be, in hours; an older copy is read " +
+						"again from the source. 0 reads every page live.",
+				},
 				"url": map[string]any{
 					"type":        "string",
-					"description": "The URL of the page to read.",
+					"deprecated":  true,
+					"description": "Deprecated: send urls. A single URL to read.",
 				},
 			},
-			"required": []string{"url"},
 		},
 	},
 }
@@ -80,7 +106,8 @@ func newSearchTool() ToolDefinition {
 // arguments may be a JSON string, []byte, json.RawMessage, or map[string]any.
 // Anything else, including invalid JSON, is an [InvalidRequestError].
 // Both tools render the same numbered block, so a model can cite a fetched
-// page the way it cites a search result.
+// page the way it cites a search result. A URL that failed while others were
+// read becomes an error block; if none was read, its error is returned.
 func RunToolCall(ctx context.Context, client *Client, name string, arguments any) (string, error) {
 	if client == nil {
 		return "", &InvalidRequestError{msg: "RunToolCall needs a client. Call keenable.New and pass that client."}
@@ -105,22 +132,19 @@ func RunToolCall(ctx context.Context, client *Client, name string, arguments any
 		}
 		return resp.ToContext(nil), nil
 	case "keenable_fetch":
-		pageURL, err := requireString(args["url"], "keenable_fetch needs a 'url'. Pass a JSON object with an https URL.")
+		urls, err := toolFetchURLs(args)
 		if err != nil {
 			return "", err
 		}
-		resp, err := client.Fetch(ctx, []string{pageURL})
+		opts, err := toolFetchOptions(args)
 		if err != nil {
 			return "", err
 		}
-		if len(resp.Results) == 0 {
-			return "", &APIError{StatusCode: 200, msg: "the Keenable API returned no result for the URL"}
+		resp, err := client.FetchWithOptions(ctx, urls, opts)
+		if err != nil {
+			return "", err
 		}
-		page := resp.Results[0]
-		if e := page.Error; e != nil {
-			return "", &APIError{StatusCode: e.Status, APICode: e.Code, Type: e.Type, Title: e.Error, Fix: e.Fix, Retryable: e.Retryable, msg: cmp.Or(e.Message, e.Error)}
-		}
-		return page.ToContext(nil), nil
+		return pagesContext(resp.Results, opts.MaxChars)
 	default:
 		return "", &InvalidRequestError{msg: fmt.Sprintf("unknown Keenable tool: %q. Use keenable_search or keenable_fetch.", name)}
 	}
@@ -174,4 +198,104 @@ func requireString(v any, message string) (string, error) {
 		return "", &InvalidRequestError{msg: message}
 	}
 	return s, nil
+}
+
+// toolFetchURLs reads urls, or the deprecated lone url older models still send.
+func toolFetchURLs(args map[string]any) ([]string, error) {
+	raw := args["urls"]
+	if raw == nil {
+		raw = args["url"]
+	}
+	bad := &InvalidRequestError{msg: "keenable_fetch needs 'urls': a list of 1 to 20 URLs."}
+	if s, ok := raw.(string); ok {
+		raw = []any{s}
+	}
+	list, ok := raw.([]any)
+	if !ok || len(list) == 0 {
+		return nil, bad
+	}
+	urls := make([]string, len(list))
+	for i, v := range list {
+		s, err := requireString(v, bad.msg)
+		if err != nil {
+			return nil, err
+		}
+		urls[i] = s
+	}
+	return urls, nil
+}
+
+// toolFetchOptions reads max_chars, prompt and max_age_hours; null and "" are unset.
+func toolFetchOptions(args map[string]any) (*FetchOptions, error) {
+	opts := &FetchOptions{}
+	if v, ok := toolNumber(args["max_chars"]); ok {
+		if v < 1 || v != float64(int(v)) {
+			return nil, &InvalidRequestError{msg: fmt.Sprintf("max_chars must be a positive integer, got %v.", v)}
+		}
+		opts.MaxChars = int(v)
+	} else if !toolUnset(args["max_chars"]) {
+		return nil, &InvalidRequestError{msg: "max_chars must be a positive integer. Pass a JSON number."}
+	}
+	if s, ok := args["prompt"].(string); ok {
+		opts.Prompt = s
+	} else if !toolUnset(args["prompt"]) {
+		return nil, &InvalidRequestError{msg: "prompt must be a string."}
+	}
+	if v, ok := toolNumber(args["max_age_hours"]); ok {
+		opts.MaxAgeHours = &v
+	} else if !toolUnset(args["max_age_hours"]) {
+		return nil, &InvalidRequestError{msg: "max_age_hours must be a number of hours. Pass a JSON number."}
+	}
+	return opts, nil
+}
+
+func toolNumber(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case int:
+		return float64(n), true
+	}
+	return 0, false
+}
+
+func toolUnset(v any) bool {
+	return v == nil || v == ""
+}
+
+// pagesContext renders each page as a numbered, citable block and a failed
+// URL as an error block; it fails only when no URL could be read.
+func pagesContext(pages []Page, maxChars int) (string, error) {
+	if len(pages) == 0 {
+		return "", &APIError{StatusCode: 200, msg: "the Keenable API returned no result for the URL"}
+	}
+	var firstErr *FetchError
+	failed := 0
+	for i := range pages {
+		if e := pages[i].Error; e != nil {
+			failed++
+			if firstErr == nil {
+				firstErr = e
+			}
+		}
+	}
+	if failed == len(pages) {
+		e := firstErr
+		return "", &APIError{StatusCode: e.Status, APICode: e.Code, Type: e.Type, Title: e.Error, Fix: e.Fix, Retryable: e.Retryable, msg: cmp.Or(e.Message, e.Error)}
+	}
+	// The API already cut each page to max_chars; leave room for its header.
+	var ctxOpts *ContextOptions
+	if maxChars > 0 {
+		ctxOpts = &ContextOptions{MaxChars: maxChars + 1_000}
+	}
+	blocks := make([]string, len(pages))
+	for i := range pages {
+		page := &pages[i]
+		if e := page.Error; e != nil {
+			blocks[i] = fmt.Sprintf("[%d] %s - failed: %s", i+1, page.URL, cmp.Or(e.Message, e.Error, "the page could not be read"))
+			continue
+		}
+		blocks[i] = fmt.Sprintf("[%d]%s", i+1, strings.TrimPrefix(page.ToContext(ctxOpts), "[1]"))
+	}
+	return strings.Join(blocks, "\n\n"), nil
 }

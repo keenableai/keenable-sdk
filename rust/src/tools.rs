@@ -4,10 +4,10 @@
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 
-use crate::client::{Client, RequestOptions};
+use crate::client::{Client, FetchOptions, RequestOptions};
 use crate::error::{ApiError, Error, Result};
 use crate::json;
-use crate::models::Page;
+use crate::models::{ContextOptions, FetchError, Page, DEFAULT_CONTEXT_MAX_CHARS};
 
 /// An OpenAI-compatible function tool. Serialize [`tools`] straight into a
 /// chat completion request that speaks that schema.
@@ -98,21 +98,50 @@ pub fn search_tool() -> ToolDefinition {
     }
 }
 
-/// The `keenable_fetch` function definition.
+/// The `keenable_fetch` function definition. It takes `urls`; a lone `url`,
+/// the deprecated shape older models send, is still read.
 pub fn fetch_tool() -> ToolDefinition {
     ToolDefinition {
         kind: "function".into(),
         function: ToolFunction {
             name: FETCH_TOOL_NAME.into(),
-            description: "Fetch one web page and return its main content as markdown. Use after \
-                keenable_search when a search snippet is not enough."
+            description: "Fetch up to 20 web pages and return each one's main content as \
+                markdown. Use after keenable_search when a search snippet is not enough. Add a \
+                prompt to get back only the part you need from long pages."
                 .into(),
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "url": {"type": "string", "description": "The URL of the page to read."},
+                    "urls": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "description": "The URLs of the pages to read, 1 to 20.",
+                    },
+                    "max_chars": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "The most characters of content to return for each page.",
+                    },
+                    "prompt": {
+                        "type": "string",
+                        "description": "An instruction applied to every page; each page's content \
+                            is then only the answer to it. Use it to get one detail from long pages.",
+                    },
+                    "max_age_hours": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 720,
+                        "description": "How old Keenable's stored copy may be, in hours; an older \
+                            copy is read again from the source. 0 reads every page live.",
+                    },
+                    "url": {
+                        "type": "string",
+                        "deprecated": true,
+                        "description": "Deprecated: send urls. A single URL to read.",
+                    },
                 },
-                "required": ["url"],
             }),
         },
     }
@@ -225,13 +254,115 @@ fn tool_filters(args: &Map<String, Value>) -> Result<Map<String, Value>> {
     Ok(payload)
 }
 
+/// `urls`, or the deprecated lone `url` older models still send.
+fn tool_fetch_urls(args: &Map<String, Value>) -> Result<Vec<&str>> {
+    const BAD: &str = "keenable_fetch needs 'urls': a list of 1 to 20 URLs.";
+    let raw = match args.get("urls") {
+        None | Some(Value::Null) => args.get("url"),
+        urls => urls,
+    };
+    match raw {
+        Some(Value::String(_)) => Ok(vec![require_string(raw, BAD)?]),
+        Some(Value::Array(list)) if !list.is_empty() => {
+            list.iter().map(|v| require_string(Some(v), BAD)).collect()
+        }
+        _ => Err(Error::invalid(BAD)),
+    }
+}
+
+/// `max_chars`, `prompt` and `max_age_hours`; null and "" are unset.
+fn tool_fetch_options(args: &Map<String, Value>) -> Result<FetchOptions> {
+    let unset = |v: Option<&Value>| matches!(v, None | Some(Value::Null)) || v == Some(&json!(""));
+    let mut opts = FetchOptions::default();
+    match args.get("max_chars") {
+        Some(Value::Number(n)) if n.as_u64().is_some_and(|n| n >= 1) => {
+            let n = n.as_u64().unwrap_or_default();
+            opts.max_chars = Some(u32::try_from(n).unwrap_or(u32::MAX));
+        }
+        v if unset(v) => {}
+        _ => {
+            return Err(Error::invalid(
+                "max_chars must be a positive integer. Pass a JSON number.",
+            ))
+        }
+    }
+    match args.get("prompt") {
+        Some(Value::String(s)) if !s.is_empty() => opts.prompt = Some(s.clone()),
+        v if unset(v) => {}
+        _ => return Err(Error::invalid("prompt must be a string.")),
+    }
+    match args.get("max_age_hours") {
+        Some(Value::Number(n)) => opts.max_age_hours = n.as_f64(),
+        v if unset(v) => {}
+        _ => {
+            return Err(Error::invalid(
+                "max_age_hours must be a number of hours. Pass a JSON number.",
+            ))
+        }
+    }
+    Ok(opts)
+}
+
+fn page_error(e: FetchError) -> Error {
+    let mut err = ApiError::plain(e.status, e.message.unwrap_or(e.error.clone()), None);
+    err.code = e.code;
+    err.error_type = e.error_type.unwrap_or_default();
+    err.error = Some(e.error);
+    err.fix = e.fix;
+    err.retryable = e.retryable;
+    Error::Api(Box::new(err))
+}
+
+/// Each page as a numbered, citable block and a failed URL as an error block;
+/// an error only when no URL could be read.
+fn pages_context(pages: Vec<Page>, max_chars: Option<u32>) -> Result<String> {
+    if pages.is_empty() {
+        return Err(Error::Api(Box::new(ApiError::plain(
+            200,
+            "the Keenable API returned no result for the URL".into(),
+            None,
+        ))));
+    }
+    if pages.iter().all(|p| p.error.is_some()) {
+        let first = pages.into_iter().find_map(|p| p.error);
+        return Err(page_error(first.expect("every page has an error")));
+    }
+    // The API already cut each page to max_chars; leave room for its header.
+    let opts = ContextOptions {
+        max_chars: max_chars.map_or(DEFAULT_CONTEXT_MAX_CHARS, |n| n as usize + 1_000),
+        ..ContextOptions::default()
+    };
+    let blocks: Vec<String> = pages
+        .iter()
+        .enumerate()
+        .map(|(i, page)| match &page.error {
+            Some(e) => {
+                let message = e.message.as_deref().unwrap_or(&e.error);
+                let message = if message.is_empty() {
+                    "the page could not be read"
+                } else {
+                    message
+                };
+                format!("[{}] {} - failed: {message}", i + 1, page.url)
+            }
+            None => {
+                let block = page.to_context_with(&opts);
+                format!("[{}]{}", i + 1, block.strip_prefix("[1]").unwrap_or(&block))
+            }
+        })
+        .collect();
+    Ok(blocks.join("\n\n"))
+}
+
 impl Client {
     /// Runs one tool call and returns the text for a `role: tool` message.
     ///
     /// `arguments` is the JSON text the model sent, or a parsed
     /// [`serde_json::Value`] or map. Anything that is not a JSON object is an
     /// invalid-request error. Both tools render the same numbered block, so a
-    /// model can cite a fetched page the way it cites a search result.
+    /// model can cite a fetched page the way it cites a search result. A URL
+    /// that failed while others were read becomes an error block; if none was
+    /// read, its error is returned.
     pub async fn run_tool_call(&self, name: &str, arguments: impl ToolArguments) -> Result<String> {
         let args = arguments.into_arguments()?;
         match name {
@@ -247,29 +378,10 @@ impl Client {
                 Ok(resp.to_context())
             }
             FETCH_TOOL_NAME => {
-                let url = require_string(
-                    args.get("url"),
-                    "keenable_fetch needs a 'url'. Pass a JSON object with an https URL.",
-                )?;
-                let page = self.fetch([url]).await?.results.into_iter().next();
-                match page {
-                    Some(Page { error: Some(e), .. }) => {
-                        let mut err =
-                            ApiError::plain(e.status, e.message.unwrap_or(e.error.clone()), None);
-                        err.code = e.code;
-                        err.error_type = e.error_type.unwrap_or_default();
-                        err.error = Some(e.error);
-                        err.fix = e.fix;
-                        err.retryable = e.retryable;
-                        Err(Error::Api(Box::new(err)))
-                    }
-                    Some(page) => Ok(page.to_context()),
-                    None => Err(Error::Api(Box::new(ApiError::plain(
-                        200,
-                        "the Keenable API returned no result for the URL".into(),
-                        None,
-                    )))),
-                }
+                let urls = tool_fetch_urls(&args)?;
+                let opts = tool_fetch_options(&args)?;
+                let resp = self.fetch_with(urls, &opts).await?;
+                pages_context(resp.results, opts.max_chars)
             }
             other => Err(Error::invalid(format!(
                 "unknown Keenable tool: {other:?}. Use keenable_search or keenable_fetch."
