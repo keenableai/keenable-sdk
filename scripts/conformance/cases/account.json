@@ -1,0 +1,92 @@
+{
+  "_comment": "prices() and balance() (retries off): the path each requests, or null when nothing is sent, and what it returns. `keyless` builds the client with no API key. prices() requests /v1/prices with a key and /v1/prices/public without one; balance() needs a key, and keyless it is the auth error with code missing_api_key and sends nothing. Money is {amount, currency}, both kept as the strings sent. A required money field (unit_price, available, purchased) that is not an object, or a money field that is not a string, is \"\"; an optional one (list_unit_price) is null unless it is an object whose amount is a string with more than whitespace. Required text fields are the string sent or \"\"; a price's source is a string with more than whitespace or null. prices skips entries that are not objects. plan is null unless it is an object. request_id is the body's, else the trimmed X-Request-Id header, else null. A body that is not a JSON object is an API error.",
+  "cases": [
+    {
+      "name": "prices with a key",
+      "method": "prices",
+      "json": {"object": "price_list", "price_list_id": "pl_1", "source": "contract", "prices": [
+        {"sku": "search.pro", "product": "search", "description": "One search in pro mode, up to 10 results.", "unit": "request", "unit_price": {"amount": "0.003", "currency": "usd"}, "list_unit_price": {"amount": "0.004", "currency": "usd"}, "source": "contract"},
+        {"sku": "fetch", "product": "fetch", "description": "One fetch.", "unit": "request", "unit_price": {"amount": "0.002", "currency": "usd"}, "source": "list"}
+      ]},
+      "headers": {"X-Request-Id": " req_p "},
+      "expect": {"path": "/v1/prices", "result": {"price_list_id": "pl_1", "source": "contract", "request_id": "req_p", "prices": [
+        {"sku": "search.pro", "product": "search", "description": "One search in pro mode, up to 10 results.", "unit": "request", "unit_price": {"amount": "0.003", "currency": "usd"}, "list_unit_price": {"amount": "0.004", "currency": "usd"}, "source": "contract"},
+        {"sku": "fetch", "product": "fetch", "description": "One fetch.", "unit": "request", "unit_price": {"amount": "0.002", "currency": "usd"}, "list_unit_price": null, "source": "list"}
+      ]}}
+    },
+    {
+      "name": "keyless prices use the public list",
+      "method": "prices",
+      "keyless": true,
+      "json": {"object": "price_list", "price_list_id": "pl_list", "source": "list", "prices": [
+        {"sku": "search.pro", "product": "search", "description": "One search in pro mode, up to 10 results.", "unit": "request", "unit_price": {"amount": "0.004", "currency": "usd"}}
+      ]},
+      "expect": {"path": "/v1/prices/public", "result": {"price_list_id": "pl_list", "source": "list", "request_id": null, "prices": [
+        {"sku": "search.pro", "product": "search", "description": "One search in pro mode, up to 10 results.", "unit": "request", "unit_price": {"amount": "0.004", "currency": "usd"}, "list_unit_price": null, "source": null}
+      ]}}
+    },
+    {
+      "name": "an empty price list",
+      "method": "prices",
+      "json": {},
+      "expect": {"path": "/v1/prices", "result": {"price_list_id": "", "source": "", "request_id": null, "prices": []}}
+    },
+    {
+      "name": "mistyped price fields",
+      "method": "prices",
+      "json": {"price_list_id": 7, "source": null, "request_id": "req_body", "prices": [1, "x", null, [],
+        {"sku": 5, "product": null, "description": true, "unit": [], "unit_price": "0.004", "list_unit_price": {"amount": " ", "currency": "usd"}, "source": " "},
+        {"sku": "s", "unit_price": {"amount": 0.004, "currency": 1}, "list_unit_price": {"amount": 0.004, "currency": "usd"}, "source": 3}
+      ]},
+      "expect": {"path": "/v1/prices", "result": {"price_list_id": "", "source": "", "request_id": "req_body", "prices": [
+        {"sku": "", "product": "", "description": "", "unit": "", "unit_price": {"amount": "", "currency": ""}, "list_unit_price": null, "source": null},
+        {"sku": "s", "product": "", "description": "", "unit": "", "unit_price": {"amount": "", "currency": ""}, "list_unit_price": null, "source": null}
+      ]}}
+    },
+    {
+      "name": "prices as a non-object body",
+      "method": "prices",
+      "body": "[]",
+      "expect": {"path": "/v1/prices", "error": "api"}
+    },
+    {
+      "name": "a balance",
+      "method": "balance",
+      "json": {"object": "balance", "available": {"amount": "42.18", "currency": "usd"}, "purchased": {"amount": "10.00", "currency": "usd"}, "plan": {"name": "Builder", "renews_at": "2026-12-05T00:00:00.000Z"}, "billing_url": "https://keenable.ai/console/billing", "as_of": "2026-11-21T10:00:00.000Z"},
+      "expect": {"path": "/v1/balance", "result": {"available": {"amount": "42.18", "currency": "usd"}, "purchased": {"amount": "10.00", "currency": "usd"}, "plan": {"name": "Builder", "renews_at": "2026-12-05T00:00:00.000Z"}, "billing_url": "https://keenable.ai/console/billing", "as_of": "2026-11-21T10:00:00.000Z", "request_id": null}}
+    },
+    {
+      "name": "a negative balance and no plan",
+      "method": "balance",
+      "json": {"object": "balance", "available": {"amount": "-1.50", "currency": "usd"}, "purchased": {"amount": "0.00", "currency": "usd"}, "plan": null, "billing_url": "https://keenable.ai/console/billing", "as_of": "2026-11-21T10:00:00.000Z"},
+      "headers": {"X-Request-Id": "req_b"},
+      "expect": {"path": "/v1/balance", "result": {"available": {"amount": "-1.50", "currency": "usd"}, "purchased": {"amount": "0.00", "currency": "usd"}, "plan": null, "billing_url": "https://keenable.ai/console/billing", "as_of": "2026-11-21T10:00:00.000Z", "request_id": "req_b"}}
+    },
+    {
+      "name": "mistyped balance fields",
+      "method": "balance",
+      "json": {"available": "42.18", "purchased": {"amount": 10}, "plan": {"name": 1}, "billing_url": null, "as_of": 1700000000},
+      "expect": {"path": "/v1/balance", "result": {"available": {"amount": "", "currency": ""}, "purchased": {"amount": "", "currency": ""}, "plan": {"name": "", "renews_at": ""}, "billing_url": "", "as_of": "", "request_id": null}}
+    },
+    {
+      "name": "a plan that is not an object is null",
+      "method": "balance",
+      "json": {"plan": "Builder"},
+      "expect": {"path": "/v1/balance", "result": {"available": {"amount": "", "currency": ""}, "purchased": {"amount": "", "currency": ""}, "plan": null, "billing_url": "", "as_of": "", "request_id": null}}
+    },
+    {
+      "name": "keyless balance is the missing-key error and sends nothing",
+      "method": "balance",
+      "keyless": true,
+      "json": {"available": {"amount": "1.00", "currency": "usd"}},
+      "expect": {"path": null, "error": "auth"}
+    },
+    {
+      "name": "a balance error body",
+      "method": "balance",
+      "status": 401,
+      "json": {"code": "invalid_api_key", "type": "authentication_error", "detail": "Invalid API key"},
+      "expect": {"path": "/v1/balance", "error": "auth"}
+    }
+  ]
+}

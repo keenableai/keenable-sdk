@@ -164,6 +164,30 @@ const answer = await keenable.fetch("https://cerebras.ai/chip", { prompt: "List 
 | `live` | `true` fetches the page from its source now instead of reading Keenable's indexed copy. Default `false` |
 | `prompt` | An extraction instruction, up to 2000 characters. `page.content` is then only the model's output for it, not the page |
 
+## Prices and balance
+
+```ts
+const prices = await keenable.prices();
+for (const price of prices.prices) {
+  console.log(price.sku, price.unitPrice.amount, price.unitPrice.currency); // search.pro 0.004 usd
+}
+
+const balance = await keenable.balance(); // needs an API key
+console.log(balance.available.amount, balance.billingUrl);
+
+const results = await keenable.search("cerebras inference benchmarks");
+// Set on a billed request, one made with an API key.
+console.log(results.usage?.sku, results.usage?.cost.amount, results.usage?.balance?.amount);
+```
+
+`prices()` works keyless and returns the public list prices; with a key it
+returns your organization's prices, each with `listUnitPrice` beside it.
+`balance()` needs an API key: keyless it throws `KeenableAuthError` with code
+`missing_api_key` and sends nothing. `SearchResponse.usage` and `Page.usage`
+say what a billed call cost and, in `usage.balance`, what is left.
+Prices and balances are `Money` objects (`amount`, `currency`) in USD. The amount
+is a decimal string kept exactly as the API sent it, such as `"0.004"`.
+
 ## Tool calling
 
 The SDK ships OpenAI-compatible tool definitions, so any inference API that

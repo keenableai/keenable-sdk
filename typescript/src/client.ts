@@ -23,12 +23,18 @@ import {
   timestamp,
 } from "./internal.js";
 import type {
+  Balance,
   KeenableOptions,
   FetchOptions,
+  Money,
+  Plan,
+  Price,
+  PriceList,
   RequestOptions,
   SearchOptions,
   SearchResult,
   ToContextOptions,
+  Usage,
 } from "./types.js";
 
 // Replaced at build time with the version from package.json, so a release
@@ -55,7 +61,7 @@ const MAX_RETRY_AFTER_WAIT_SECONDS = 60;
 
 // Endpoints are named once; the keyless variant of each is the same path with a
 // `/public` suffix, so a new endpoint is one name rather than two constants.
-type Endpoint = "search" | "fetch";
+type Endpoint = "search" | "fetch" | "prices" | "balance";
 
 /** Hosts that must never be fetched, whatever the backend would do. */
 const BLOCKED_HOSTS = new Set(["localhost", "metadata.google.internal"]);
@@ -330,6 +336,8 @@ export class SearchResponse {
   readonly results: SearchResult[];
   /** The API's id for this request. Quote it when reporting a problem. */
   readonly requestId?: string;
+  /** What this search cost, when it was billed (made with an API key). */
+  readonly usage?: Usage;
   readonly raw: Record<string, unknown>;
 
   constructor(init: {
@@ -337,12 +345,14 @@ export class SearchResponse {
     mode?: string;
     results: SearchResult[];
     requestId?: string;
+    usage?: Usage;
     raw: Record<string, unknown>;
   }) {
     this.query = init.query;
     this.mode = init.mode;
     this.results = init.results;
     this.requestId = init.requestId;
+    this.usage = init.usage;
     this.raw = init.raw;
   }
 
@@ -455,6 +465,8 @@ export class Page {
    * cut. Undefined when the API did not say.
    */
   readonly totalChars?: number;
+  /** What this fetch cost, when it was billed (made with an API key). */
+  readonly usage?: Usage;
   readonly raw: Record<string, unknown>;
 
   constructor(init: {
@@ -467,6 +479,7 @@ export class Page {
     requestId?: string;
     truncated?: boolean;
     totalChars?: number;
+    usage?: Usage;
     raw: Record<string, unknown>;
   }) {
     this.url = init.url;
@@ -478,6 +491,7 @@ export class Page {
     this.requestId = init.requestId;
     this.truncated = init.truncated;
     this.totalChars = init.totalChars;
+    this.usage = init.usage;
     this.raw = init.raw;
   }
 
@@ -529,8 +543,70 @@ function toPage(data: Record<string, unknown>, url: string, requestId?: string):
     requestId,
     truncated: bool(data.truncated),
     totalChars: count(data.total_chars),
+    usage: toUsage(data.usage),
     raw: data,
   });
+}
+
+/** A required money field: the strings sent, or "" for anything else. */
+function toMoney(value: unknown): Money {
+  const data = isRecord(value) ? value : {};
+  return { amount: text(data.amount), currency: text(data.currency) };
+}
+
+/** An optional money field: undefined unless it carries an amount. */
+function optionalMoney(value: unknown): Money | undefined {
+  return isRecord(value) && nonEmpty(value.amount) !== undefined ? toMoney(value) : undefined;
+}
+
+function toUsage(value: unknown): Usage | undefined {
+  if (!isRecord(value)) return undefined;
+  return {
+    sku: text(value.sku),
+    amount: count(value.amount),
+    cost: toMoney(value.cost),
+    balance: optionalMoney(value.balance),
+  };
+}
+
+function toPrice(data: Record<string, unknown>): Price {
+  return {
+    sku: text(data.sku),
+    product: text(data.product),
+    description: text(data.description),
+    unit: text(data.unit),
+    unitPrice: toMoney(data.unit_price),
+    listUnitPrice: optionalMoney(data.list_unit_price),
+    source: nonEmpty(data.source),
+    raw: data,
+  };
+}
+
+function toPriceList(data: Record<string, unknown>, requestId?: string): PriceList {
+  return {
+    priceListId: text(data.price_list_id),
+    source: text(data.source),
+    prices: (Array.isArray(data.prices) ? data.prices : []).filter(isRecord).map(toPrice),
+    requestId,
+    raw: data,
+  };
+}
+
+function toPlan(value: unknown): Plan | undefined {
+  if (!isRecord(value)) return undefined;
+  return { name: text(value.name), renewsAt: text(value.renews_at) };
+}
+
+function toBalance(data: Record<string, unknown>, requestId?: string): Balance {
+  return {
+    available: toMoney(data.available),
+    purchased: toMoney(data.purchased),
+    plan: toPlan(data.plan),
+    billingUrl: text(data.billing_url),
+    asOf: text(data.as_of),
+    requestId,
+    raw: data,
+  };
 }
 
 /** Wait `ms`, or reject with the signal's reason as soon as it aborts. */
@@ -683,14 +759,7 @@ export class Keenable {
     call: MonitorCall,
     options: RequestOptions,
   ): Promise<{ data: Record<string, unknown>; requestId?: string }> {
-    if (this.keyless) {
-      throw new KeenableAuthError(
-        "Keenable authentication failed (401): Monitors need an API key. Pass apiKey or set KEENABLE_API_KEY; create one at https://keenable.ai/console. (code: missing_api_key)",
-        401,
-        undefined,
-        { code: "missing_api_key", type: "authentication_error", retryable: false },
-      );
-    }
+    this.requireKey("Monitors need");
     const target = new URL(`${this.baseUrl}/v1/${call.path}`);
     for (const [key, value] of Object.entries(call.query ?? {})) {
       target.searchParams.set(key, value);
@@ -703,6 +772,18 @@ export class Keenable {
       call.headers ?? {},
       call.safe,
     );
+  }
+
+  /** Throw the missing-key error, sending nothing, when keyless. */
+  private requireKey(what: string): void {
+    if (this.keyless) {
+      throw new KeenableAuthError(
+        `Keenable authentication failed (401): ${what} an API key. Pass apiKey or set KEENABLE_API_KEY; create one at https://keenable.ai/console. (code: missing_api_key)`,
+        401,
+        undefined,
+        { code: "missing_api_key", type: "authentication_error", retryable: false },
+      );
+    }
   }
 
   /** True when no API key is configured and the public tier is in use. */
@@ -799,6 +880,7 @@ export class Keenable {
         .filter(isRecord)
         .map(toSearchResult),
       requestId,
+      usage: toUsage(data.usage),
       raw: data,
     });
   }
@@ -833,6 +915,30 @@ export class Keenable {
       target.toString(),
     );
     return toPage(data, url, requestId);
+  }
+
+  /**
+   * The price of every SKU, in USD.
+   *
+   * With an API key these are your organization's prices, each with the
+   * public list price beside it; keyless, the public list prices. Use it to
+   * choose a mode or budget a job before making calls.
+   */
+  async prices(options: RequestOptions = {}): Promise<PriceList> {
+    const { data, requestId } = await this.request("prices", { method: "GET" }, options);
+    return toPriceList(data, requestId);
+  }
+
+  /**
+   * How much your organization has left to spend, in USD.
+   *
+   * Needs an API key: keyless, it throws `KeenableAuthError` with code
+   * `missing_api_key` and sends nothing. Free, and not cached.
+   */
+  async balance(options: RequestOptions = {}): Promise<Balance> {
+    this.requireKey("The balance needs");
+    const { data, requestId } = await this.request("balance", { method: "GET" }, options);
+    return toBalance(data, requestId);
   }
 
   /**

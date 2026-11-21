@@ -14,6 +14,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -94,6 +95,19 @@ type conformance struct {
 		Body     string            `json:"body"`
 		Expect   map[string]any    `json:"expect"`
 	} `json:"responses"`
+	Account []struct {
+		Name    string            `json:"name"`
+		Method  string            `json:"method"`
+		Keyless bool              `json:"keyless"`
+		Status  int               `json:"status"`
+		Headers map[string]string `json:"headers"`
+		Body    string            `json:"body"`
+		Expect  struct {
+			Path   *string         `json:"path"`
+			Error  *string         `json:"error"`
+			Result json.RawMessage `json:"result"`
+		} `json:"expect"`
+	} `json:"account"`
 	Options []struct {
 		Name   string            `json:"name"`
 		Option string            `json:"option"`
@@ -467,6 +481,9 @@ func TestConformanceResponses(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if got := usageJSON(usageOf(result)); !reflect.DeepEqual(got, want["usage"]) {
+				t.Fatalf("usage: got %v, want %v", got, want["usage"])
+			}
 			if tc.Endpoint == "fetch" {
 				page := result.(*keenable.Page)
 				if page.URL != want["url"] || page.Title != want["title"] || page.Content != want["content"] ||
@@ -501,6 +518,133 @@ func TestConformanceResponses(t *testing.T) {
 			}
 		})
 	}
+}
+
+func usageOf(result any) *keenable.Usage {
+	if page, ok := result.(*keenable.Page); ok {
+		return page.Usage
+	}
+	return result.(*keenable.SearchResponse).Usage
+}
+
+func moneyJSON(m *keenable.Money) any {
+	if m == nil {
+		return nil
+	}
+	return map[string]any{"amount": m.Amount, "currency": m.Currency}
+}
+
+func usageJSON(u *keenable.Usage) any {
+	if u == nil {
+		return nil
+	}
+	var amount any
+	if u.Amount != nil {
+		amount = float64(*u.Amount)
+	}
+	return map[string]any{"sku": u.SKU, "amount": amount, "cost": moneyJSON(&u.Cost), "balance": moneyJSON(u.Balance)}
+}
+
+func TestConformanceAccount(t *testing.T) {
+	for _, tc := range loadConformance(t).Account {
+		t.Run(tc.Name, func(t *testing.T) {
+			var (
+				mu    sync.Mutex
+				paths []string
+			)
+			reply := raw(tc.Status, tc.Body, headerList(tc.Headers)...)
+			record := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				mu.Lock()
+				paths = append(paths, r.Method+" "+r.URL.Path)
+				mu.Unlock()
+				reply(w, r)
+			})
+			zero := 0
+			opts := &keenable.Options{MaxRetries: &zero}
+			if tc.Keyless {
+				empty := ""
+				opts.APIKey = &empty
+			}
+			c, _ := counted(t, opts, record)
+			var (
+				result any
+				err    error
+			)
+			if tc.Method == "prices" {
+				result, err = c.Prices(context.Background(), nil)
+			} else {
+				result, err = c.Balance(context.Background(), nil)
+			}
+			want := tc.Expect
+			mu.Lock()
+			defer mu.Unlock()
+			if want.Path == nil {
+				if len(paths) != 0 {
+					t.Fatalf("sent %v, want nothing", paths)
+				}
+			} else if len(paths) != 1 || paths[0] != "GET "+*want.Path {
+				t.Fatalf("sent %v, want GET %s", paths, *want.Path)
+			}
+			if want.Error != nil {
+				if err == nil {
+					t.Fatal("want an error")
+				}
+				assertKind(t, err, *want.Error)
+				if tc.Keyless {
+					var auth *keenable.AuthError
+					if !errors.As(err, &auth) || auth.APICode != "missing_api_key" {
+						t.Fatalf("want missing_api_key, got %v", err)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got map[string]any
+			if tc.Method == "prices" {
+				r := result.(*keenable.PriceList)
+				prices := make([]any, 0, len(r.Prices))
+				for _, p := range r.Prices {
+					var source any
+					if p.Source != nil {
+						source = *p.Source
+					}
+					prices = append(prices, map[string]any{
+						"sku": p.SKU, "product": p.Product, "description": p.Description, "unit": p.Unit,
+						"unit_price": moneyJSON(&p.UnitPrice), "list_unit_price": moneyJSON(p.ListUnitPrice),
+						"source": source,
+					})
+				}
+				got = map[string]any{"price_list_id": r.PriceListID, "source": r.Source, "request_id": nullable(r.RequestID), "prices": prices}
+			} else {
+				b := result.(*keenable.Balance)
+				var plan any
+				if b.Plan != nil {
+					plan = map[string]any{"name": b.Plan.Name, "renews_at": b.Plan.RenewsAt}
+				}
+				got = map[string]any{
+					"available": moneyJSON(&b.Available), "purchased": moneyJSON(&b.Purchased), "plan": plan,
+					"billing_url": b.BillingURL, "as_of": b.AsOf, "request_id": nullable(b.RequestID),
+				}
+			}
+			var wantResult map[string]any
+			if err := json.Unmarshal(want.Result, &wantResult); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, wantResult) {
+				t.Fatalf("got %v, want %v", got, wantResult)
+			}
+		})
+	}
+}
+
+// nullable is s, or nil when it is empty.
+func nullable(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 func TestConformanceOptions(t *testing.T) {

@@ -20,7 +20,17 @@ import {
   verifyWebhook,
   WebhookVerificationError,
 } from "../src/index.js";
-import type { FetchOptions, KeenableOptions, Page, SearchOptions, SearchResponse } from "../src/index.js";
+import type {
+  Balance,
+  FetchOptions,
+  KeenableOptions,
+  Money,
+  Page,
+  PriceList,
+  SearchOptions,
+  SearchResponse,
+  Usage,
+} from "../src/index.js";
 import { backoffMs, retryAfterHeader } from "../src/client.js";
 import { SEARCH_FILTERS } from "../src/filters.js";
 
@@ -49,6 +59,12 @@ interface Fixture {
     endpoint: "search" | "fetch";
     arg: string;
     expect: Record<string, Json>;
+  })[];
+  account: (Reply & {
+    name: string;
+    method: "prices" | "balance";
+    keyless: boolean;
+    expect: { path: string | null; error: string | null; result: Json };
   })[];
   options: {
     name: string;
@@ -328,6 +344,7 @@ describe("success bodies", () => {
           published_at: x.publishedAt ?? null,
           acquired_at: x.acquiredAt ?? null,
         })),
+        usage: usageFields(r.usage),
       }).toEqual(want);
     } else {
       const p = outcome.result as Page;
@@ -341,7 +358,73 @@ describe("success bodies", () => {
         request_id: p.requestId ?? null,
         truncated: p.truncated ?? null,
         total_chars: p.totalChars ?? null,
+        usage: usageFields(p.usage),
       }).toEqual(want);
+    }
+  });
+});
+
+function moneyFields(money: Money | undefined): Json {
+  return money ? { amount: money.amount, currency: money.currency } : null;
+}
+
+function usageFields(usage: Usage | undefined): Json {
+  if (!usage) return null;
+  return {
+    sku: usage.sku,
+    amount: usage.amount ?? null,
+    cost: moneyFields(usage.cost),
+    balance: moneyFields(usage.balance),
+  };
+}
+
+describe("account", () => {
+  it.each(FIXTURE.account.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
+    const outcome = await call([c, c], { maxRetries: 0, ...(c.keyless ? { apiKey: "" } : {}) }, (client) =>
+      c.method === "prices" ? client.prices() : client.balance(),
+    );
+    const want = c.expect;
+    if (want.path === null) {
+      expect(outcome.requests).toHaveLength(0);
+    } else {
+      expect(outcome.requests).toHaveLength(1);
+      expect(outcome.requests[0]!.init.method).toBe("GET");
+      expect(new URL(outcome.requests[0]!.url).pathname).toBe(want.path);
+    }
+    if (want.error !== null) {
+      const kind = KINDS[want.error];
+      if (!kind) throw new Error(`unknown kind ${want.error}`);
+      expect(outcome.error).toBeInstanceOf(kind);
+      if (c.keyless) expect((outcome.error as KeenableAuthError).code).toBe("missing_api_key");
+      return;
+    }
+    expect(outcome.error).toBeUndefined();
+    if (c.method === "prices") {
+      const r = outcome.result as PriceList;
+      expect({
+        price_list_id: r.priceListId,
+        source: r.source,
+        request_id: r.requestId ?? null,
+        prices: r.prices.map((p) => ({
+          sku: p.sku,
+          product: p.product,
+          description: p.description,
+          unit: p.unit,
+          unit_price: moneyFields(p.unitPrice),
+          list_unit_price: moneyFields(p.listUnitPrice),
+          source: p.source ?? null,
+        })),
+      }).toEqual(want.result);
+    } else {
+      const b = outcome.result as Balance;
+      expect({
+        available: moneyFields(b.available),
+        purchased: moneyFields(b.purchased),
+        plan: b.plan ? { name: b.plan.name, renews_at: b.plan.renewsAt } : null,
+        billing_url: b.billingUrl,
+        as_of: b.asOf,
+        request_id: b.requestId ?? null,
+      }).toEqual(want.result);
     }
   });
 });

@@ -990,7 +990,7 @@
         "type": "billing_error",
         "code": "insufficient_credits",
         "message": "This month's free requests and the purchased credits are used up.",
-        "fix": "Retrying returns the same 402 until credits are added. Ask a human with console access to buy credits at the URL in this response's billing_url field (the Billing page of the Keenable console), and to turn on auto top-up there so the balance refills itself (https://docs.keenable.ai/auto-top-up.md).",
+        "fix": "Retrying returns the same 402 until credits are added. Ask a human with console access to buy credits at the URL in this response's billing_url field (the Billing page of the Keenable console), and to turn on auto top-up there so the balance refills itself (https://docs.keenable.ai/auto-top-up.md). GET /v1/balance (get_balance over MCP) shows what is left and when the free allowance renews.",
         "docs_url": "https://docs.keenable.ai/errors#insufficient-credits",
         "request_id": "req-insufficient_credits",
         "retryable": false,
@@ -1006,7 +1006,7 @@
         "retry_after_seconds": null,
         "request_id": "req-insufficient_credits",
         "param": null,
-        "fix": "Retrying returns the same 402 until credits are added. Ask a human with console access to buy credits at the URL in this response's billing_url field (the Billing page of the Keenable console), and to turn on auto top-up there so the balance refills itself (https://docs.keenable.ai/auto-top-up.md).",
+        "fix": "Retrying returns the same 402 until credits are added. Ask a human with console access to buy credits at the URL in this response's billing_url field (the Billing page of the Keenable console), and to turn on auto top-up there so the balance refills itself (https://docs.keenable.ai/auto-top-up.md). GET /v1/balance (get_balance over MCP) shows what is left and when the free allowance renews.",
         "limit": null,
         "message_contains": "(402)",
         "absent": [

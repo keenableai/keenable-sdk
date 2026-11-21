@@ -346,6 +346,67 @@ func (c *Client) FetchWithOptions(ctx context.Context, pageURL string, opts *Fet
 	return page, nil
 }
 
+// Prices returns the price of every SKU, in USD.
+//
+// With an API key these are your organization's prices, each with the public
+// list price beside it; keyless, the public list prices. Use it to choose a
+// mode or budget a job before making calls. opts may be nil.
+func (c *Client) Prices(ctx context.Context, opts *RequestOptions) (*PriceList, error) {
+	if err := requireClient(c); err != nil {
+		return nil, err
+	}
+	if err := requireContext(ctx); err != nil {
+		return nil, err
+	}
+	data, id, err := c.do(ctx, http.MethodGet, "prices", nil, nil, opts)
+	if err != nil {
+		return nil, err
+	}
+	prices := priceListFromJSON(data)
+	prices.RequestID = requestID(data, id)
+	return prices, nil
+}
+
+// Balance returns how much your organization has left to spend, in USD.
+//
+// It needs an API key: keyless, it returns an [AuthError] with APICode
+// "missing_api_key" and sends nothing. Free, and not cached. opts may be nil.
+func (c *Client) Balance(ctx context.Context, opts *RequestOptions) (*Balance, error) {
+	if err := requireClient(c); err != nil {
+		return nil, err
+	}
+	if err := requireContext(ctx); err != nil {
+		return nil, err
+	}
+	if err := c.requireKey("The balance needs"); err != nil {
+		return nil, err
+	}
+	data, id, err := c.do(ctx, http.MethodGet, "balance", nil, nil, opts)
+	if err != nil {
+		return nil, err
+	}
+	balance := balanceFromJSON(data)
+	balance.RequestID = requestID(data, id)
+	return balance, nil
+}
+
+// requireKey returns the missing-key error when the client is keyless, so
+// nothing is sent. what starts the message: "Monitors need".
+func (c *Client) requireKey(what string) error {
+	if c.apiKey != "" {
+		return nil
+	}
+	retryable := false
+	return &AuthError{APIError: &APIError{
+		StatusCode: 401,
+		APICode:    "missing_api_key",
+		Type:       TypeAuthenticationError,
+		Retryable:  &retryable,
+		code:       CodeAuth,
+		msg:        "Keenable authentication failed (401): " + what + " an API key. Set Options.APIKey or KEENABLE_API_KEY; create one at https://keenable.ai/console.",
+	}}
+}
+
 func requireClient(c *Client) error {
 	if c == nil || c.http == nil {
 		return &InvalidRequestError{msg: "nil client: call keenable.New and use the client it returns"}

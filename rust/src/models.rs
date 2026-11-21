@@ -51,6 +51,8 @@ pub struct SearchResponse {
     pub results: Vec<SearchResult>,
     /// The API's id for this request. Quote it when reporting a problem.
     pub request_id: Option<String>,
+    /// What this search cost, when it was billed (made with an API key).
+    pub usage: Option<Usage>,
     /// The unmodified JSON body.
     #[serde(skip)]
     pub raw: Map<String, Value>,
@@ -83,6 +85,126 @@ pub struct Page {
     /// The length of the full extracted content in Unicode code points,
     /// before any cut. `None` when the API did not say.
     pub total_chars: Option<u64>,
+    /// What this fetch cost, when it was billed (made with an API key).
+    pub usage: Option<Usage>,
+    /// The unmodified JSON body.
+    #[serde(skip)]
+    pub raw: Map<String, Value>,
+}
+
+/// An amount of money, such as `0.004` `usd`.
+///
+/// `amount` is a decimal string in the currency's major unit (dollars), kept
+/// exactly as the API sent it; parse it with a decimal type rather than `f64`
+/// to keep it exact. It is negative for an organization allowed a negative
+/// balance that is in debt. `currency` is a lowercase ISO 4217 code, always
+/// `usd`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct Money {
+    /// The decimal amount, such as `"0.004"`.
+    pub amount: String,
+    /// The currency code, `"usd"`.
+    pub currency: String,
+}
+
+/// What one billed [`Client::search`](crate::Client::search) or
+/// [`Client::fetch`](crate::Client::fetch) cost. The API sends it for
+/// requests made with an API key, and not for keyless ones.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct Usage {
+    /// What was billed, such as `search.pro` or `fetch.live`. It matches
+    /// [`Price::sku`].
+    pub sku: String,
+    /// Billed units: 1 for a search or a fetch.
+    pub amount: Option<u64>,
+    /// What this request cost.
+    pub cost: Money,
+    /// What the organization has left to spend after this request, the same
+    /// figure as [`Balance::available`]. It can lag the organization's other
+    /// requests by a few seconds. `None` when the API could not read it.
+    pub balance: Option<Money>,
+}
+
+/// The price of one SKU, from [`Client::prices`](crate::Client::prices).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct Price {
+    /// The SKU, as [`Usage::sku`] names it on a billed response, such as
+    /// `search.pro`.
+    pub sku: String,
+    /// `search`, `fetch`, `webql`, `extract` or `agent`.
+    pub product: String,
+    /// What one unit is, such as "One search in pro mode, up to 10 results."
+    pub description: String,
+    /// What is counted: `request`, `result`, `turn` or `run`.
+    pub unit: String,
+    /// The price of one unit.
+    pub unit_price: Money,
+    /// The public list price of one unit. Only with an API key, and `None`
+    /// when the SKU has no list price.
+    pub list_unit_price: Option<Money>,
+    /// `list` when `unit_price` is the public list price, `contract` when the
+    /// organization has its own price. Only with an API key.
+    pub source: Option<String>,
+    /// The unmodified JSON object, so new API fields stay reachable.
+    #[serde(skip)]
+    pub raw: Map<String, Value>,
+}
+
+/// Every SKU's price, returned by [`Client::prices`](crate::Client::prices).
+/// With an API key these are your organization's prices, with the public
+/// list price beside each one; keyless, the public list prices.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct PriceList {
+    /// Identifies the price list. It changes when the prices change.
+    pub price_list_id: String,
+    /// `contract` when any price differs from the public list, else `list`.
+    pub source: String,
+    /// One entry per SKU.
+    pub prices: Vec<Price>,
+    /// The API's id for this request. Quote it when reporting a problem.
+    pub request_id: Option<String>,
+    /// The unmodified JSON body.
+    #[serde(skip)]
+    pub raw: Map<String, Value>,
+}
+
+/// The organization's plan, in [`Balance::plan`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct Plan {
+    /// The plan's name, such as `Builder`.
+    pub name: String,
+    /// When the plan's free allowance renews, as ISO 8601.
+    pub renews_at: String,
+}
+
+/// How much the organization has left to spend, from
+/// [`Client::balance`](crate::Client::balance).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct Balance {
+    /// What the organization can still spend: the plan's unused free
+    /// allowance for this period plus the purchased balance. Calls fail with
+    /// [`Error::InsufficientCredits`](crate::Error::InsufficientCredits) once
+    /// it reaches zero, unless the organization is allowed a negative
+    /// balance.
+    pub available: Money,
+    /// The part of the balance that was bought. It does not expire and is
+    /// spent only after the free allowance.
+    pub purchased: Money,
+    /// The organization's plan. `None` when the API could not read it.
+    pub plan: Option<Plan>,
+    /// The console page where a person can add funds or turn on auto top-up.
+    pub billing_url: String,
+    /// When the balance was read, as ISO 8601. It can lag the organization's
+    /// other requests by a few seconds.
+    pub as_of: String,
+    /// The API's id for this request. Quote it when reporting a problem.
+    pub request_id: Option<String>,
     /// The unmodified JSON body.
     #[serde(skip)]
     pub raw: Map<String, Value>,
@@ -391,6 +513,7 @@ pub(crate) fn search_response_from_json(
         mode: non_blank(data.get("mode")),
         results,
         request_id: non_blank(data.get("request_id")).or(header_request_id),
+        usage: usage(data.get("usage")),
         raw: data,
     }
 }
@@ -410,6 +533,82 @@ pub(crate) fn page_from_json(
         request_id: non_blank(data.get("request_id")).or(header_request_id),
         truncated: data.get("truncated").and_then(Value::as_bool),
         total_chars: safe_count(data.get("total_chars")),
+        usage: usage(data.get("usage")),
+        raw: data,
+    }
+}
+
+/// A required money field: the strings sent, or "" for anything else.
+fn money(v: Option<&Value>) -> Money {
+    let obj = v.and_then(Value::as_object);
+    Money {
+        amount: as_string(obj.and_then(|o| o.get("amount"))),
+        currency: as_string(obj.and_then(|o| o.get("currency"))),
+    }
+}
+
+/// An optional money field: `None` unless it carries an amount.
+fn optional_money(v: Option<&Value>) -> Option<Money> {
+    let obj = v?.as_object()?;
+    non_blank(obj.get("amount"))?;
+    Some(money(v))
+}
+
+fn usage(v: Option<&Value>) -> Option<Usage> {
+    let obj = v?.as_object()?;
+    Some(Usage {
+        sku: as_string(obj.get("sku")),
+        amount: safe_count(obj.get("amount")),
+        cost: money(obj.get("cost")),
+        balance: optional_money(obj.get("balance")),
+    })
+}
+
+pub(crate) fn price_list_from_json(
+    data: Map<String, Value>,
+    header_request_id: Option<String>,
+) -> PriceList {
+    let prices = match data.get("prices") {
+        Some(Value::Array(items)) => items
+            .iter()
+            .filter_map(|item| item.as_object())
+            .map(|obj| Price {
+                sku: as_string(obj.get("sku")),
+                product: as_string(obj.get("product")),
+                description: as_string(obj.get("description")),
+                unit: as_string(obj.get("unit")),
+                unit_price: money(obj.get("unit_price")),
+                list_unit_price: optional_money(obj.get("list_unit_price")),
+                source: non_blank(obj.get("source")),
+                raw: obj.clone(),
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    PriceList {
+        price_list_id: as_string(data.get("price_list_id")),
+        source: as_string(data.get("source")),
+        prices,
+        request_id: non_blank(data.get("request_id")).or(header_request_id),
+        raw: data,
+    }
+}
+
+pub(crate) fn balance_from_json(
+    data: Map<String, Value>,
+    header_request_id: Option<String>,
+) -> Balance {
+    let plan = data.get("plan").and_then(Value::as_object).map(|o| Plan {
+        name: as_string(o.get("name")),
+        renews_at: as_string(o.get("renews_at")),
+    });
+    Balance {
+        available: money(data.get("available")),
+        purchased: money(data.get("purchased")),
+        plan,
+        billing_url: as_string(data.get("billing_url")),
+        as_of: as_string(data.get("as_of")),
+        request_id: non_blank(data.get("request_id")).or(header_request_id),
         raw: data,
     }
 }
@@ -436,6 +635,7 @@ mod tests {
             mode: None,
             results,
             request_id: None,
+            usage: None,
             raw: Map::new(),
         }
     }

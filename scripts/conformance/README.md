@@ -139,6 +139,30 @@ the query the API sent back when it is such a string, else the query asked; a
 page's `url` likewise falls back to the URL asked for. The request id is the
 body's, else the trimmed `X-Request-Id` header.
 
+A billed body's `usage` is null unless it is an object. Its `sku` is the
+string sent or `""`, its `amount` an integer from 0 to 2^53 - 1 or null, its
+`cost` a required money field and its `balance` an optional one (below). The
+deprecated `credits`, `paid` and `credits_remaining` are not read.
+
+## Prices and balance (`account`)
+
+`prices()` sends `GET /v1/prices` with an API key and `GET /v1/prices/public`
+without one. `balance()` sends `GET /v1/balance`; keyless, it is the auth
+error with code `missing_api_key` and sends nothing (there is no public
+balance).
+
+Money is `{amount, currency}`, both kept as the strings sent, never converted
+to a number. A required money field (`unit_price`, `available`, `purchased`,
+`usage.cost`) that is not an object, or a money field that is not a string,
+is `""`; an optional one (`list_unit_price`, `usage.balance`) is null unless
+it is an object whose `amount` is a string with more than whitespace.
+Required text fields (`price_list_id`, the list's `source`, a price's `sku`,
+`product`, `description` and `unit`, `billing_url`, `as_of`, a plan's `name`
+and `renews_at`) are the string sent or `""`; a price's `source` is a string
+with more than whitespace or null. Entries of `prices` that are not objects
+are skipped. `plan` is null unless it is an object. The request id and a body
+that is not a JSON object follow the success-body rules above.
+
 ## Arguments (`options`, `search_body`, `fetch_params`)
 
 - `max_retries` is an integer of 0 or more; unset means the default (client) or

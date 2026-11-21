@@ -9,7 +9,7 @@ use serde_json::{Map, Value};
 
 use crate::client::RequestOptions;
 use crate::error::{ApiError, Error, Result};
-use crate::{types, Client};
+use crate::Client;
 
 /// What a monitor watches for. `query` is required on create; on update the
 /// fields set are merged into the stored search, and an empty `query` is
@@ -905,17 +905,7 @@ impl<'a> Monitors<'a> {
     }
 
     async fn send<T: Response>(&self, call: Call) -> Result<T> {
-        if self.client.is_keyless() {
-            let mut api = ApiError::plain(
-                401,
-                "Keenable authentication failed (401): Monitors need an API key. Set Options::api_key or KEENABLE_API_KEY; create one at https://keenable.ai/console.".into(),
-                None,
-            );
-            api.code = Some("missing_api_key".into());
-            api.error_type = types::AUTHENTICATION_ERROR.into();
-            api.retryable = Some(false);
-            return Err(Error::Auth(Box::new(api)));
-        }
+        self.client.require_key("Monitors need")?;
         let mut url = format!("{}/v1/{}", self.client.base_url(), call.path);
         if !call.query.is_empty() {
             let encoded = url::form_urlencoded::Serializer::new(String::new())

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Added:** `client.prices()` and `prices_with(&RequestOptions)` return a `PriceList` of every SKU's `Price` (`sku`, `product`, `description`, `unit`, `unit_price`, and with an API key `list_unit_price` and `source`). Keyless they call `GET /v1/prices/public` (the public list prices), with a key `GET /v1/prices` (your organization's prices).
+- **Added:** `client.balance()` and `balance_with(&RequestOptions)` return a `Balance` (`available`, `purchased`, `plan` (`Option<Plan>`: `name`, `renews_at`), `billing_url`, `as_of`) from `GET /v1/balance`. It needs an API key: keyless it returns `Error::Auth` (code `missing_api_key`) and sends nothing.
+- **Added:** `SearchResponse::usage` and `Page::usage`, an `Option<Usage>` (`sku`, `amount`, `cost`, `balance`) set on a billed request (one made with an API key). Every amount of money is a `Money` (`amount` a decimal string kept as sent, such as `"0.004"`, and `currency` `"usd"`).
+- **Changed:** the error contract fixtures follow the backend's current catalog, whose `insufficient_credits` fix now points to `GET /v1/balance`.
 - **Changed (breaking):** what a search monitor finds is now called a result. `monitors().pages()` is `monitors().results()` and calls `GET /v1/monitors/{id}/results`; `PageList` is `ResultList` and `MonitorPagesParams` is `MonitorResultsParams`. The old names are gone, with no aliases.
 - **Changed (breaking):** webhook event names: `monitor.hit` is `monitor.result.found`, `monitor.update` is `monitor.result.changed` and `monitor.change` is `monitor.page.changed`. `WebhookEventData::result` is unchanged. A check against an old name still compiles but never matches, so search your webhook handlers for them.
 - **Removed:** fields the API no longer sends: `MonitorResult::score`, `favicon` and `highlights`; `Monitor::agent_run_id`, `backfill`, `memory_scope`, `estimated_cost_usd` and `cost_this_month_usd`; `MonitorRun::usage`.

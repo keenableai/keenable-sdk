@@ -343,6 +343,72 @@ def _context_block(header: str, body: str) -> str:
 
 
 @dataclass
+class Money:
+    """An amount of money, such as ``Money(amount="0.004", currency="usd")``.
+
+    ``amount`` is a decimal string in the currency's major unit (dollars), kept
+    exactly as the API sent it: convert it with ``decimal.Decimal`` rather than
+    ``float`` to keep it exact. It is negative for an organization allowed a
+    negative balance that is in debt. ``currency`` is a lowercase ISO 4217
+    code, always ``"usd"``.
+    """
+
+    amount: str
+    currency: str
+
+    @classmethod
+    def _from_json(cls, value: Any) -> Money:
+        """A required money field: the strings sent, or "" for anything else."""
+        data = value if isinstance(value, dict) else {}
+        return cls(
+            amount=_str_or_empty(data.get("amount")),
+            currency=_str_or_empty(data.get("currency")),
+        )
+
+    @classmethod
+    def _optional(cls, value: Any) -> Money | None:
+        """An optional money field: None unless it carries an amount."""
+        if not isinstance(value, dict) or _str_or_none(value.get("amount")) is None:
+            return None
+        return cls._from_json(value)
+
+
+@dataclass
+class Usage:
+    """What one billed :meth:`Keenable.search` or :meth:`Keenable.fetch` cost.
+
+    The API sends it for requests made with an API key, and not for keyless
+    ones, so it is None on a keyless client.
+    """
+
+    sku: str
+    """What was billed, such as ``"search.pro"`` or ``"fetch.live"``. It
+    matches :attr:`Price.sku` in :meth:`Keenable.prices`."""
+
+    amount: int | None
+    """Billed units: 1 for a search or a fetch."""
+
+    cost: Money
+    """What this request cost."""
+
+    balance: Money | None = None
+    """What the organization has left to spend after this request, the same
+    figure as :attr:`Balance.available`. It can lag the organization's other
+    requests by a few seconds. None when the API could not read it."""
+
+    @classmethod
+    def _optional(cls, value: Any) -> Usage | None:
+        if not isinstance(value, dict):
+            return None
+        return cls(
+            sku=_str_or_empty(value.get("sku")),
+            amount=_count_or_none(value.get("amount")),
+            cost=Money._from_json(value.get("cost")),
+            balance=Money._optional(value.get("balance")),
+        )
+
+
+@dataclass
 class SearchResult:
     """A single web page returned by :meth:`Keenable.search`."""
 
@@ -401,6 +467,9 @@ class SearchResponse:
     request_id: str | None = None
     """The API's id for this request. Quote it when reporting a problem."""
 
+    usage: Usage | None = None
+    """What this search cost, when it was billed (made with an API key)."""
+
     def __iter__(self) -> Iterator[SearchResult]:
         return iter(self.results)
 
@@ -427,6 +496,7 @@ class SearchResponse:
             mode=_str_or_none(data.get("mode")),
             raw=data,
             request_id=_str_or_none(data.get("request_id")) or request_id,
+            usage=Usage._optional(data.get("usage")),
         )
 
     def cited(
@@ -551,6 +621,9 @@ class Page:
     """Length of the full extracted content in Unicode code points, before
     any cut. None when the API did not say."""
 
+    usage: Usage | None = None
+    """What this fetch cost, when it was billed (made with an API key)."""
+
     @classmethod
     def _from_json(
         cls, data: dict[str, Any], url: str, request_id: str | None = None
@@ -566,6 +639,7 @@ class Page:
             request_id=_str_or_none(data.get("request_id")) or request_id,
             truncated=_bool_or_none(data.get("truncated")),
             total_chars=_count_or_none(data.get("total_chars")),
+            usage=Usage._optional(data.get("usage")),
         )
 
     def to_context(self, max_chars: int = DEFAULT_CONTEXT_MAX_CHARS) -> str:
@@ -587,3 +661,154 @@ class Page:
             return header
         content = _clean_context_text(self.content, self.url)
         return _context_block(header, content[:budget].rstrip())
+
+
+@dataclass
+class Price:
+    """The price of one SKU, from :meth:`Keenable.prices`."""
+
+    sku: str
+    """The SKU, as :attr:`Usage.sku` names it on a billed response, such as
+    ``"search.pro"``."""
+
+    product: str
+    """``"search"``, ``"fetch"``, ``"webql"``, ``"extract"`` or ``"agent"``."""
+
+    description: str
+    """What one unit is, such as ``"One search in pro mode, up to 10
+    results."``."""
+
+    unit: str
+    """What is counted: ``"request"``, ``"result"``, ``"turn"`` or ``"run"``."""
+
+    unit_price: Money
+    """The price of one unit."""
+
+    list_unit_price: Money | None = None
+    """The public list price of one unit. Only with an API key, and None when
+    the SKU has no list price."""
+
+    source: str | None = None
+    """``"list"`` when ``unit_price`` is the public list price, ``"contract"``
+    when the organization has its own price. Only with an API key."""
+
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> Price:
+        return cls(
+            sku=_str_or_empty(data.get("sku")),
+            product=_str_or_empty(data.get("product")),
+            description=_str_or_empty(data.get("description")),
+            unit=_str_or_empty(data.get("unit")),
+            unit_price=Money._from_json(data.get("unit_price")),
+            list_unit_price=Money._optional(data.get("list_unit_price")),
+            source=_str_or_none(data.get("source")),
+            raw=data,
+        )
+
+
+@dataclass
+class PriceList:
+    """Every SKU's price, returned by :meth:`Keenable.prices`.
+
+    With an API key these are your organization's prices, with the public list
+    price beside each one; keyless, the public list prices.
+    """
+
+    price_list_id: str
+    """Identifies the price list. It changes when the prices change."""
+
+    source: str
+    """``"contract"`` when any price differs from the public list, else
+    ``"list"``."""
+
+    prices: list[Price]
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+    request_id: str | None = None
+    """The API's id for this request. Quote it when reporting a problem."""
+
+    def __iter__(self) -> Iterator[Price]:
+        return iter(self.prices)
+
+    def __len__(self) -> int:
+        return len(self.prices)
+
+    @classmethod
+    def _from_json(
+        cls, data: dict[str, Any], request_id: str | None = None
+    ) -> PriceList:
+        raw_prices = data.get("prices")
+        prices = (
+            [Price._from_json(p) for p in raw_prices if isinstance(p, dict)]
+            if isinstance(raw_prices, list)
+            else []
+        )
+        return cls(
+            price_list_id=_str_or_empty(data.get("price_list_id")),
+            source=_str_or_empty(data.get("source")),
+            prices=prices,
+            raw=data,
+            request_id=_str_or_none(data.get("request_id")) or request_id,
+        )
+
+
+@dataclass
+class Plan:
+    """The organization's plan, in :attr:`Balance.plan`."""
+
+    name: str
+    """The plan's name, such as ``"Builder"``."""
+
+    renews_at: str
+    """When the plan's free allowance renews, as ISO 8601."""
+
+    @classmethod
+    def _optional(cls, value: Any) -> Plan | None:
+        if not isinstance(value, dict):
+            return None
+        return cls(
+            name=_str_or_empty(value.get("name")),
+            renews_at=_str_or_empty(value.get("renews_at")),
+        )
+
+
+@dataclass
+class Balance:
+    """How much the organization has left to spend, from :meth:`Keenable.balance`."""
+
+    available: Money
+    """What the organization can still spend: the plan's unused free allowance
+    for this period plus the purchased balance. Calls fail with
+    :class:`KeenableInsufficientCreditsError` once it reaches zero, unless the
+    organization is allowed a negative balance."""
+
+    purchased: Money
+    """The part of the balance that was bought. It does not expire and is
+    spent only after the free allowance."""
+
+    plan: Plan | None
+    """The organization's plan. None when the API could not read it."""
+
+    billing_url: str
+    """The console page where a person can add funds or turn on auto top-up."""
+
+    as_of: str
+    """When the balance was read, as ISO 8601. It can lag the organization's
+    other requests by a few seconds."""
+
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+    request_id: str | None = None
+    """The API's id for this request. Quote it when reporting a problem."""
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any], request_id: str | None = None) -> Balance:
+        return cls(
+            available=Money._from_json(data.get("available")),
+            purchased=Money._from_json(data.get("purchased")),
+            plan=Plan._optional(data.get("plan")),
+            billing_url=_str_or_empty(data.get("billing_url")),
+            as_of=_str_or_empty(data.get("as_of")),
+            raw=data,
+            request_id=_str_or_none(data.get("request_id")) or request_id,
+        )

@@ -27,6 +27,111 @@ export interface SearchResult {
 }
 
 /**
+ * An amount of money, such as `{ amount: "0.004", currency: "usd" }`.
+ *
+ * `amount` is a decimal string in the currency's major unit (dollars), kept
+ * exactly as the API sent it; parse it with a decimal library rather than
+ * `Number` to keep it exact. It is negative for an organization allowed a
+ * negative balance that is in debt. `currency` is a lowercase ISO 4217 code,
+ * always `"usd"`.
+ */
+export interface Money {
+  amount: string;
+  currency: string;
+}
+
+/**
+ * What one billed `search()` or `fetch()` cost. The API sends it for requests
+ * made with an API key, and not for keyless ones.
+ */
+export interface Usage {
+  /** What was billed, such as `"search.pro"` or `"fetch.live"`; it matches `Price.sku`. */
+  sku: string;
+  /** Billed units: 1 for a search or a fetch. */
+  amount?: number;
+  /** What this request cost. */
+  cost: Money;
+  /**
+   * What the organization has left to spend after this request, the same
+   * figure as `Balance.available`. It can lag the organization's other
+   * requests by a few seconds. Undefined when the API could not read it.
+   */
+  balance?: Money;
+}
+
+/** The price of one SKU, from `prices()`. */
+export interface Price {
+  /** The SKU, as `Usage.sku` names it on a billed response, such as `"search.pro"`. */
+  sku: string;
+  /** `"search"`, `"fetch"`, `"webql"`, `"extract"` or `"agent"`. */
+  product: string;
+  /** What one unit is, such as "One search in pro mode, up to 10 results." */
+  description: string;
+  /** What is counted: `"request"`, `"result"`, `"turn"` or `"run"`. */
+  unit: string;
+  /** The price of one unit. */
+  unitPrice: Money;
+  /**
+   * The public list price of one unit. Only with an API key, and undefined
+   * when the SKU has no list price.
+   */
+  listUnitPrice?: Money;
+  /**
+   * `"list"` when `unitPrice` is the public list price, `"contract"` when the
+   * organization has its own price. Only with an API key.
+   */
+  source?: string;
+  /** The unmodified JSON object, so new API fields stay reachable. */
+  raw: Record<string, unknown>;
+}
+
+/**
+ * Every SKU's price, returned by `prices()`. With an API key these are your
+ * organization's prices, with the public list price beside each one; keyless,
+ * the public list prices.
+ */
+export interface PriceList {
+  /** Identifies the price list. It changes when the prices change. */
+  priceListId: string;
+  /** `"contract"` when any price differs from the public list, else `"list"`. */
+  source: string;
+  prices: Price[];
+  /** The API's id for this request. Quote it when reporting a problem. */
+  requestId?: string;
+  raw: Record<string, unknown>;
+}
+
+/** The organization's plan, in `Balance.plan`. */
+export interface Plan {
+  /** The plan's name, such as `"Builder"`. */
+  name: string;
+  /** When the plan's free allowance renews, as ISO 8601. */
+  renewsAt: string;
+}
+
+/** How much the organization has left to spend, from `balance()`. */
+export interface Balance {
+  /**
+   * What the organization can still spend: the plan's unused free allowance
+   * for this period plus the purchased balance. Calls fail with
+   * `KeenableInsufficientCreditsError` once it reaches zero, unless the
+   * organization is allowed a negative balance.
+   */
+  available: Money;
+  /** The part of the balance that was bought. It does not expire and is spent only after the free allowance. */
+  purchased: Money;
+  /** The organization's plan. Undefined when the API could not read it. */
+  plan?: Plan;
+  /** The console page where a person can add funds or turn on auto top-up. */
+  billingUrl: string;
+  /** When the balance was read, as ISO 8601. It can lag the organization's other requests by a few seconds. */
+  asOf: string;
+  /** The API's id for this request. Quote it when reporting a problem. */
+  requestId?: string;
+  raw: Record<string, unknown>;
+}
+
+/**
  * Per-call transport settings, accepted by `search()` and `fetch()`. Each one
  * overrides the client's setting for this call only.
  */

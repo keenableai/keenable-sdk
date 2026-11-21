@@ -113,6 +113,9 @@ type SearchResponse struct {
 	// problem. Empty when the API sent none.
 	RequestID string         `json:"request_id,omitempty"`
 	Raw       map[string]any `json:"-"`
+	// Usage is what this search cost, when it was billed (made with an API
+	// key). Nil otherwise.
+	Usage *Usage `json:"usage,omitempty"`
 }
 
 // Page is a URL fetched by [Client.Fetch], with main content as markdown.
@@ -137,6 +140,112 @@ type Page struct {
 	// TotalChars is the length of the full extracted content in Unicode code
 	// points, before any cut. Nil when the API did not say.
 	TotalChars *int `json:"total_chars,omitempty"`
+	// Usage is what this fetch cost, when it was billed (made with an API
+	// key). Nil otherwise.
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+// Money is an amount of money, such as {Amount: "0.004", Currency: "usd"}.
+//
+// Amount is a decimal string in the currency's major unit (dollars), kept
+// exactly as the API sent it; parse it with a decimal type rather than
+// float64 to keep it exact. It is negative for an organization allowed a
+// negative balance that is in debt. Currency is a lowercase ISO 4217 code,
+// always "usd".
+type Money struct {
+	Amount   string `json:"amount"`
+	Currency string `json:"currency"`
+}
+
+// Usage is what one billed [Client.Search] or [Client.Fetch] cost. The API
+// sends it for requests made with an API key, and not for keyless ones.
+type Usage struct {
+	// SKU is what was billed, such as "search.pro" or "fetch.live". It
+	// matches [Price].SKU.
+	SKU string `json:"sku"`
+	// Amount is the billed units: 1 for a search or a fetch.
+	Amount *int `json:"amount,omitempty"`
+	// Cost is what this request cost.
+	Cost Money `json:"cost"`
+	// Balance is what the organization has left to spend after this request,
+	// the same figure as [Balance].Available. It can lag the organization's
+	// other requests by a few seconds. Nil when the API could not read it.
+	Balance *Money `json:"balance,omitempty"`
+}
+
+// Price is the price of one SKU, from [Client.Prices].
+type Price struct {
+	// SKU is the SKU, as [Usage].SKU names it on a billed response, such as
+	// "search.pro".
+	SKU string `json:"sku"`
+	// Product is "search", "fetch", "webql", "extract" or "agent".
+	Product string `json:"product"`
+	// Description says what one unit is, such as "One search in pro mode,
+	// up to 10 results."
+	Description string `json:"description"`
+	// Unit is what is counted: "request", "result", "turn" or "run".
+	Unit string `json:"unit"`
+	// UnitPrice is the price of one unit.
+	UnitPrice Money `json:"unit_price"`
+	// ListUnitPrice is the public list price of one unit. Only with an API
+	// key, and nil when the SKU has no list price.
+	ListUnitPrice *Money `json:"list_unit_price,omitempty"`
+	// Source is "list" when UnitPrice is the public list price and
+	// "contract" when the organization has its own price. Only with an API
+	// key; nil otherwise.
+	Source *string `json:"source,omitempty"`
+	// Raw is the unmodified JSON object, so new API fields stay reachable.
+	Raw map[string]any `json:"-"`
+}
+
+// PriceList is every SKU's price, returned by [Client.Prices]. With an API
+// key these are your organization's prices, with the public list price
+// beside each one; keyless, the public list prices.
+type PriceList struct {
+	// PriceListID identifies the price list. It changes when the prices
+	// change.
+	PriceListID string `json:"price_list_id"`
+	// Source is "contract" when any price differs from the public list, else
+	// "list".
+	Source string  `json:"source"`
+	Prices []Price `json:"prices"`
+	// RequestID is the API's id for this request. Quote it when reporting a
+	// problem. Empty when the API sent none.
+	RequestID string         `json:"request_id,omitempty"`
+	Raw       map[string]any `json:"-"`
+}
+
+// Plan is the organization's plan, in [Balance].Plan.
+type Plan struct {
+	// Name is the plan's name, such as "Builder".
+	Name string `json:"name"`
+	// RenewsAt is when the plan's free allowance renews, as ISO 8601.
+	RenewsAt string `json:"renews_at"`
+}
+
+// Balance is how much the organization has left to spend, from
+// [Client.Balance].
+type Balance struct {
+	// Available is what the organization can still spend: the plan's unused
+	// free allowance for this period plus the purchased balance. Calls fail
+	// with an [InsufficientCreditsError] once it reaches zero, unless the
+	// organization is allowed a negative balance.
+	Available Money `json:"available"`
+	// Purchased is the part of the balance that was bought. It does not
+	// expire and is spent only after the free allowance.
+	Purchased Money `json:"purchased"`
+	// Plan is the organization's plan. Nil when the API could not read it.
+	Plan *Plan `json:"plan"`
+	// BillingURL is the console page where a person can add funds or turn on
+	// auto top-up.
+	BillingURL string `json:"billing_url"`
+	// AsOf is when the balance was read, as ISO 8601. It can lag the
+	// organization's other requests by a few seconds.
+	AsOf string `json:"as_of"`
+	// RequestID is the API's id for this request. Quote it when reporting a
+	// problem. Empty when the API sent none.
+	RequestID string         `json:"request_id,omitempty"`
+	Raw       map[string]any `json:"-"`
 }
 
 // Cited returns the results ToContext would render, in citation order.
@@ -338,6 +447,7 @@ func searchResponseFromJSON(data map[string]any, query string) *SearchResponse {
 		Mode:    nonEmptyString(data["mode"]),
 		Results: results,
 		Raw:     data,
+		Usage:   usageFromJSON(data["usage"]),
 	}
 }
 
@@ -369,6 +479,81 @@ func pageFromJSON(data map[string]any, fallbackURL string) *Page {
 		Raw:         data,
 		Truncated:   optionalBool(data["truncated"]),
 		TotalChars:  count(data["total_chars"]),
+		Usage:       usageFromJSON(data["usage"]),
+	}
+}
+
+// moneyFromJSON reads a required money field: the strings sent, or "" for
+// anything else.
+func moneyFromJSON(v any) Money {
+	data, _ := v.(map[string]any)
+	return Money{Amount: asString(data["amount"]), Currency: asString(data["currency"])}
+}
+
+// optionalMoney reads an optional money field: nil unless it carries an
+// amount.
+func optionalMoney(v any) *Money {
+	data, ok := v.(map[string]any)
+	if !ok || nonEmptyString(data["amount"]) == nil {
+		return nil
+	}
+	m := moneyFromJSON(data)
+	return &m
+}
+
+func usageFromJSON(v any) *Usage {
+	data, ok := v.(map[string]any)
+	if !ok {
+		return nil
+	}
+	return &Usage{
+		SKU:     asString(data["sku"]),
+		Amount:  count(data["amount"]),
+		Cost:    moneyFromJSON(data["cost"]),
+		Balance: optionalMoney(data["balance"]),
+	}
+}
+
+func priceListFromJSON(data map[string]any) *PriceList {
+	prices := make([]Price, 0)
+	if raw, ok := data["prices"].([]any); ok {
+		for _, item := range raw {
+			obj, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			prices = append(prices, Price{
+				SKU:           asString(obj["sku"]),
+				Product:       asString(obj["product"]),
+				Description:   asString(obj["description"]),
+				Unit:          asString(obj["unit"]),
+				UnitPrice:     moneyFromJSON(obj["unit_price"]),
+				ListUnitPrice: optionalMoney(obj["list_unit_price"]),
+				Source:        nonEmptyString(obj["source"]),
+				Raw:           obj,
+			})
+		}
+	}
+	return &PriceList{
+		PriceListID: asString(data["price_list_id"]),
+		Source:      asString(data["source"]),
+		Prices:      prices,
+		Raw:         data,
+	}
+}
+
+func balanceFromJSON(data map[string]any) *Balance {
+	var plan *Plan
+	if obj, ok := data["plan"].(map[string]any); ok {
+		plan = &Plan{Name: asString(obj["name"]), RenewsAt: asString(obj["renews_at"])}
+	}
+	return &Balance{
+		Available:  moneyFromJSON(data["available"]),
+		Purchased:  moneyFromJSON(data["purchased"]),
+		Plan:       plan,
+		BillingURL: asString(data["billing_url"]),
+		AsOf:       asString(data["as_of"]),
+		Raw:        data,
 	}
 }
 
