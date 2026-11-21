@@ -457,6 +457,9 @@ describe("runToolCall", () => {
     await expect(runToolCall(client, "nope", "{}")).rejects.toBeInstanceOf(
       KeenableInvalidRequestError,
     );
+    const noUrls = runToolCall(client, "keenable_fetch", { url: "https://example.com" });
+    await expect(noUrls).rejects.toBeInstanceOf(KeenableInvalidRequestError);
+    await expect(noUrls).rejects.toThrow("'urls'");
   });
 
   it("fetches several URLs in one tool call and keeps a failed one as a block", async () => {

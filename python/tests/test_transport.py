@@ -904,11 +904,21 @@ def test_a_page_context_too_small_for_any_content_is_the_header() -> None:
 
 
 @pytest.mark.parametrize(
-    "arguments", ["[]", "3", '{"query": ""}', '{"query": 5}', '{"url": "  "}']
+    "arguments",
+    [
+        "[]",
+        "3",
+        '{"query": ""}',
+        '{"query": 5}',
+        '{"urls": ["  "]}',
+        '{"url": "https://e.com"}',
+    ],
 )
 def test_tool_arguments_that_are_not_usable_are_rejected(arguments: str) -> None:
     from keenable.tools import run_tool_call
 
     name = "keenable_fetch" if "url" in arguments else "keenable_search"
-    with pytest.raises(KeenableInvalidRequestError):
+    with pytest.raises(KeenableInvalidRequestError) as raised:
         run_tool_call(Keenable("k"), name, arguments)
+    if name == "keenable_fetch":
+        assert "'urls'" in str(raised.value)

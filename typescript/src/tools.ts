@@ -83,12 +83,8 @@ export const FETCH_TOOL: ToolDefinition = {
             "How old Keenable's stored copy may be, in hours; an older copy is read " +
             "again from the source. 0 reads every page live.",
         },
-        url: {
-          type: "string",
-          deprecated: true,
-          description: "Deprecated: send urls. A single URL to read.",
-        },
       },
+      required: ["urls"],
     },
   },
 };
@@ -152,9 +148,9 @@ const FETCH_TOOL_OPTIONS = [
   ["max_age_hours", "maxAgeHours"],
 ] as const;
 
-/** `urls`, or the deprecated lone `url` older models still send. */
+/** The `urls` a model sent: 1 to 20 non-blank strings. */
 function fetchUrls(args: Record<string, unknown>): string[] {
-  const raw = args.urls ?? args.url;
+  const raw = args.urls;
   const urls: unknown = typeof raw === "string" ? [raw] : raw;
   if (
     !Array.isArray(urls) ||

@@ -184,8 +184,8 @@ model may set `site`, `exclude_domains`, `published_after`, `objective` and
 
 On fetch the model sets `urls` (1 to 20) and may set `max_chars` (per page),
 `prompt` (applied to every page) and `max_age_hours` (0 reads every page
-live), as on the hosted MCP tool. A lone `url`, the shape older models
-learned, still works. Each page comes back as its own numbered block. A URL
+live), as on the hosted MCP tool. A call without `urls` is an invalid
+request. Each page comes back as its own numbered block. A URL
 that failed while others were read becomes a `[n] <url> - failed: <reason>`
 block; `run_tool_call` returns its error only when no URL could be read.
 

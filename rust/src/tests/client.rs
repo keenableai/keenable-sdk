@@ -308,10 +308,7 @@ async fn a_bad_tool_call_sends_nothing() {
         ("keenable_search", Value::from("{}")),
         ("keenable_search", Value::from("[1]")),
         ("keenable_search", Value::from("not json")),
-        (
-            "keenable_fetch",
-            Value::from(r#"{"url":"http://localhost/"}"#),
-        ),
+        ("keenable_fetch", Value::from(r#"{"url":"https://e.com/"}"#)),
         ("other_tool", Value::from(r#"{"query":"q"}"#)),
     ] {
         let got = client.run_tool_call(name, args.as_str().unwrap()).await;
@@ -320,6 +317,13 @@ async fn a_bad_tool_call_sends_nothing() {
             "{name} {args}: {got:?}"
         );
     }
+    let got = client
+        .run_tool_call("keenable_fetch", json!({"url": "https://e.com/"}))
+        .await;
+    assert!(
+        matches!(&got, Err(Error::InvalidRequest(m)) if m.to_string().contains("'urls'")),
+        "{got:?}"
+    );
     assert_eq!(server.count(), 0);
 }
 

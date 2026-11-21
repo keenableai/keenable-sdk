@@ -818,6 +818,10 @@ func TestRunToolCall(t *testing.T) {
 	if _, err := keenable.RunToolCall(context.Background(), c, "nope", "{}"); !errors.As(err, new(*keenable.InvalidRequestError)) {
 		t.Fatal(err)
 	}
+	_, err = keenable.RunToolCall(context.Background(), c, "keenable_fetch", map[string]any{"url": "https://example.com"})
+	if !errors.As(err, new(*keenable.InvalidRequestError)) || !strings.Contains(err.Error(), "'urls'") {
+		t.Fatal(err)
+	}
 	var syntax *json.SyntaxError
 	if _, err := keenable.RunToolCall(context.Background(), c, "keenable_search", "not json"); errors.As(err, &syntax) {
 		t.Fatal("leaked json.SyntaxError")

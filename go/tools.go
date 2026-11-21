@@ -26,8 +26,7 @@ type ToolFunction struct {
 // SearchTool is the keenable_search function definition.
 var SearchTool = newSearchTool()
 
-// FetchTool is the keenable_fetch function definition. It takes urls; a lone
-// url, the deprecated shape older models send, is still read.
+// FetchTool is the keenable_fetch function definition. It requires urls.
 var FetchTool = ToolDefinition{
 	Type: "function",
 	Function: ToolFunction{
@@ -62,12 +61,8 @@ var FetchTool = ToolDefinition{
 					"description": "How old Keenable's stored copy may be, in hours; an older copy is read " +
 						"again from the source. 0 reads every page live.",
 				},
-				"url": map[string]any{
-					"type":        "string",
-					"deprecated":  true,
-					"description": "Deprecated: send urls. A single URL to read.",
-				},
 			},
+			"required": []string{"urls"},
 		},
 	},
 }
@@ -200,12 +195,9 @@ func requireString(v any, message string) (string, error) {
 	return s, nil
 }
 
-// toolFetchURLs reads urls, or the deprecated lone url older models still send.
+// toolFetchURLs reads urls: 1 to 20 non-blank strings.
 func toolFetchURLs(args map[string]any) ([]string, error) {
 	raw := args["urls"]
-	if raw == nil {
-		raw = args["url"]
-	}
 	bad := &InvalidRequestError{msg: "keenable_fetch needs 'urls': a list of 1 to 20 URLs."}
 	if s, ok := raw.(string); ok {
 		raw = []any{s}

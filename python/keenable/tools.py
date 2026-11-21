@@ -95,12 +95,8 @@ FETCH_TOOL: dict[str, Any] = {
                         "copy is read again from the source. 0 reads every page live."
                     ),
                 },
-                "url": {
-                    "type": "string",
-                    "deprecated": True,
-                    "description": "Deprecated: send urls. A single URL to read.",
-                },
             },
+            "required": ["urls"],
         },
     },
 }
@@ -157,10 +153,8 @@ def _pages_context(response: FetchResponse, max_chars: Any) -> str:
 
 
 def _fetch_urls(args: dict[str, Any]) -> list[str]:
-    """``urls``, or the deprecated lone ``url`` older models still send."""
+    """The ``urls`` a model sent: 1 to 20 non-blank strings."""
     raw = args.get("urls")
-    if raw is None:
-        raw = args.get("url")
     urls = [raw] if isinstance(raw, str) else raw
     if (
         not isinstance(urls, list)

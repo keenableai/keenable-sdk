@@ -98,8 +98,7 @@ pub fn search_tool() -> ToolDefinition {
     }
 }
 
-/// The `keenable_fetch` function definition. It takes `urls`; a lone `url`,
-/// the deprecated shape older models send, is still read.
+/// The `keenable_fetch` function definition. It requires `urls`.
 pub fn fetch_tool() -> ToolDefinition {
     ToolDefinition {
         kind: "function".into(),
@@ -136,12 +135,8 @@ pub fn fetch_tool() -> ToolDefinition {
                         "description": "How old Keenable's stored copy may be, in hours; an older \
                             copy is read again from the source. 0 reads every page live.",
                     },
-                    "url": {
-                        "type": "string",
-                        "deprecated": true,
-                        "description": "Deprecated: send urls. A single URL to read.",
-                    },
                 },
+                "required": ["urls"],
             }),
         },
     }
@@ -254,13 +249,10 @@ fn tool_filters(args: &Map<String, Value>) -> Result<Map<String, Value>> {
     Ok(payload)
 }
 
-/// `urls`, or the deprecated lone `url` older models still send.
+/// The `urls` a model sent: 1 to 20 non-blank strings.
 fn tool_fetch_urls(args: &Map<String, Value>) -> Result<Vec<&str>> {
     const BAD: &str = "keenable_fetch needs 'urls': a list of 1 to 20 URLs.";
-    let raw = match args.get("urls") {
-        None | Some(Value::Null) => args.get("url"),
-        urls => urls,
-    };
+    let raw = args.get("urls");
     match raw {
         Some(Value::String(_)) => Ok(vec![require_string(raw, BAD)?]),
         Some(Value::Array(list)) if !list.is_empty() => {

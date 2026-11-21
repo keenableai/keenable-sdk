@@ -563,7 +563,7 @@ async def test_async_client_mirrors_the_sync_one() -> None:
     async with keenable:
         response = await keenable.search("wafer scale engine")
         rendered = await arun_tool_call(
-            keenable, "keenable_fetch", {"url": "https://example.com"}
+            keenable, "keenable_fetch", {"urls": ["https://example.com"]}
         )
 
     assert [r.title for r in response] == ["How Cerebras works", "MoE guide"]
