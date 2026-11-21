@@ -159,12 +159,8 @@ function errors(): Obj[] {
 function responses(): Obj[] {
   return (load("responses.json").cases as Obj[]).map((item) => {
     const name = item.name as string;
-    if (item.endpoint !== "search" && item.endpoint !== "fetch") {
-      fail(`responses ${name}: endpoint must be search or fetch`);
-    }
+    if (item.endpoint !== "search") fail(`responses ${name}: endpoint must be search`);
     const given = item.expect as Obj;
-    // A page's truncated and total_chars are unset unless a case says otherwise.
-    const page = item.endpoint === "fetch" && !("error" in given) ? PAGE_DEFAULTS : {};
     return {
       name,
       endpoint: item.endpoint,
@@ -172,12 +168,10 @@ function responses(): Obj[] {
       status: (item.status as number | undefined) ?? 200,
       headers: headers(item),
       body: bodyText(item, `responses ${name}`),
-      expect: { error: null, ...page, ...given },
+      expect: { error: null, ...given },
     };
   });
 }
-
-const PAGE_DEFAULTS: Obj = { truncated: null, total_chars: null };
 
 const OPTIONS = new Set(["max_retries", "timeout", "headers", "query", "url", "disable_cards"]);
 
@@ -205,27 +199,6 @@ function searchBodies(): Obj[] {
     sent: item.sent as Obj,
     skip: (item.skip as Obj | undefined) ?? {},
   }));
-}
-
-const FETCH_PARAMS = new Set(["max_chars", "live", "prompt"]);
-
-function fetchParams(): Obj[] {
-  return (load("fetch-params.json").cases as Obj[]).map((item) => {
-    const name = item.name as string;
-    for (const key of Object.keys(item.options as Obj)) {
-      if (!FETCH_PARAMS.has(key)) fail(`fetch-params ${name}: unknown option ${key}`);
-    }
-    for (const sent of Object.values(item.sent as Obj)) {
-      if (typeof sent !== "string") fail(`fetch-params ${name}: "sent" values must be strings`);
-    }
-    return {
-      name,
-      url: (item.url as string | undefined) ?? "https://example.com/",
-      options: item.options as Obj,
-      sent: item.sent as Obj,
-      skip: (item.skip as Obj | undefined) ?? {},
-    };
-  });
 }
 
 function toolCalls(): Obj[] {
@@ -317,7 +290,6 @@ export function buildConformance(): string {
     responses: responses(),
     options: options(),
     search_body: searchBodies(),
-    fetch_params: fetchParams(),
     tool_call: toolCalls(),
     deadline: deadline(),
     webhook: webhooks(),

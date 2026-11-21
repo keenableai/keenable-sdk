@@ -10,7 +10,7 @@ use serde_json::{Map, Value};
 use crate::error::{ApiError, ConnectionError, Error, RateLimitError, RateLimitInfo, Result};
 use crate::guard::{reject_private_fetch_target, resolve_base_url};
 use crate::models::{
-    non_blank, page_from_json, safe_count, search_response_from_json, Page, SearchResponse,
+    non_blank, page_from_json, safe_count, search_response_from_json, FetchResponse, SearchResponse,
 };
 use crate::retry::{retry_after_header, retry_delay, seconds};
 use crate::{json, types, VERSION};
@@ -150,21 +150,23 @@ pub struct SearchOptions {
     pub request: RequestOptions,
 }
 
-/// The optional arguments to [`Client::fetch_with`]. An unset option is not
-/// sent.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// The optional arguments to [`Client::fetch_with`]. Only the options set are
+/// sent, and the API checks their values.
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct FetchOptions {
-    /// Caps the characters of content returned. `None` means the API's
-    /// default of 50000. [`Page::truncated`] and [`Page::total_chars`] say
-    /// whether the page was cut and how long it was.
+    /// The most characters of content per page.
     pub max_chars: Option<u32>,
-    /// Fetches the page from its source now instead of reading Keenable's
-    /// indexed copy. `false` is the API's default and is not sent.
-    pub live: bool,
-    /// An extraction instruction, up to 2000 characters, such as "list the
-    /// pricing tiers". [`Page::content`] is then only the model's output for
-    /// it, not the page. An empty prompt is unset.
+    /// Up to 2,000 characters; each page's `content` is then only an LLM's
+    /// answer to it.
     pub prompt: Option<String>,
+    /// A JSON Schema; each page's answer is in `Page::structured`.
+    pub schema: Option<Value>,
+    /// The most links per page to return.
+    pub links: Option<u32>,
+    /// The most images per page to return.
+    pub images: Option<u32>,
+    /// Use a stored copy only if younger than this; 0 reads every page live.
+    pub max_age_hours: Option<f64>,
     /// This call's timeout, retry budget and headers.
     pub request: RequestOptions,
 }
@@ -371,34 +373,86 @@ impl Client {
         Ok(search_response_from_json(data, query, id))
     }
 
-    /// Returns one URL's main content as markdown.
-    ///
-    /// Use it after [`Client::search`] when a snippet is not enough. Internal
-    /// hosts and private addresses are refused here, before a request is
-    /// sent.
-    pub async fn fetch(&self, url: &str) -> Result<Page> {
-        self.fetch_with(url, &FetchOptions::default()).await
+    /// Reads pages as markdown with `POST /v1/fetch`. `results[i]` is for
+    /// `urls[i]`: a [`Page`](crate::Page), with `error` set when that URL
+    /// failed. Internal hosts and private addresses are refused here, before
+    /// a request is sent.
+    pub async fn fetch<I>(&self, urls: I) -> Result<FetchResponse>
+    where
+        I: IntoIterator,
+        I::Item: AsRef<str>,
+    {
+        self.fetch_with(urls, &FetchOptions::default()).await
     }
 
-    /// [`Client::fetch`] with a content cap, a live fetch, an extraction
-    /// prompt, or per-call settings.
-    pub async fn fetch_with(&self, url: &str, opts: &FetchOptions) -> Result<Page> {
-        reject_private_fetch_target(url)?;
-        let mut query = vec![("url".to_string(), url.to_string())];
-        if let Some(n) = opts.max_chars {
-            query.push(("max_chars".into(), n.to_string()));
+    /// [`Client::fetch`] with the options in [`FetchOptions`] and per-call
+    /// settings.
+    pub async fn fetch_with<I>(&self, urls: I, opts: &FetchOptions) -> Result<FetchResponse>
+    where
+        I: IntoIterator,
+        I::Item: AsRef<str>,
+    {
+        let urls: Vec<String> = urls.into_iter().map(|u| u.as_ref().to_string()).collect();
+        for url in &urls {
+            reject_private_fetch_target(url)?;
         }
-        // The API reads only "true" and "false", and an absent live is false.
-        if opts.live {
-            query.push(("live".into(), "true".into()));
+        let mut content = Map::new();
+        let options = [
+            ("max_chars", opts.max_chars.map(Value::from)),
+            (
+                "prompt",
+                opts.prompt
+                    .clone()
+                    .filter(|p| !p.is_empty())
+                    .map(Value::from),
+            ),
+            ("schema", opts.schema.clone()),
+            ("links", opts.links.map(Value::from)),
+            ("images", opts.images.map(Value::from)),
+        ];
+        for (name, value) in options {
+            if let Some(value) = value {
+                content.insert(name.into(), value);
+            }
         }
-        if let Some(prompt) = opts.prompt.as_deref().filter(|p| !p.is_empty()) {
-            query.push(("prompt".into(), prompt.to_string()));
+        let mut payload = Map::new();
+        payload.insert("urls".into(), Value::from(urls.clone()));
+        if !content.is_empty() {
+            payload.insert("content".into(), Value::Object(content));
         }
+        if let Some(hours) = opts.max_age_hours {
+            payload.insert(
+                "retrieval".into(),
+                serde_json::json!({ "max_age_hours": hours }),
+            );
+        }
+        let body = serde_json::to_vec(&payload)
+            .map_err(|e| Error::invalid(format!("could not encode the fetch request: {e}")))?;
         let (data, id) = self
-            .send(reqwest::Method::GET, "fetch", None, query, &opts.request)
+            .send(
+                reqwest::Method::POST,
+                "fetch",
+                Some(body),
+                Vec::new(),
+                &opts.request,
+            )
             .await?;
-        Ok(page_from_json(data, url, id))
+        let results = match data.get("results") {
+            Some(Value::Array(items)) => items
+                .iter()
+                .enumerate()
+                .filter_map(|(i, item)| {
+                    let asked = urls.get(i).map_or("", String::as_str);
+                    Some(page_from_json(item.as_object()?.clone(), asked))
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        Ok(FetchResponse {
+            results,
+            request_id: non_blank(data.get("request_id")).or(id),
+            raw: data,
+        })
     }
 
     fn endpoint_url(&self, endpoint: &str, query: &[(String, String)]) -> String {

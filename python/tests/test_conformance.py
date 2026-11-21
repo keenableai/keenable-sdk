@@ -50,7 +50,7 @@ KINDS: dict[str, type[KeenableError]] = {
     "api": KeenableAPIError,
 }
 SEARCH_OK = (200, {}, b'{"results": []}')
-PAGE_OK = (200, {}, b'{"content": "c"}')
+PAGE_OK = (200, {}, b'{"results": [{"content": "c"}]}')
 
 # One reply: status, headers and the body bytes.
 Reply = tuple[int, dict[str, str], bytes]
@@ -146,7 +146,7 @@ async def test_fetch_url(kind: str, case: dict[str, Any], waits: list[float]) ->
     if case["allowed"]:
         assert outcome.error is None
         assert len(outcome.requests) == 1
-        assert outcome.requests[0].url.params["url"] == case["url"]
+        assert json.loads(outcome.requests[0].content)["urls"] == [case["url"]]
     else:
         assert isinstance(outcome.error, KeenableInvalidRequestError)
         assert outcome.requests == []
@@ -265,35 +265,22 @@ async def test_responses(kind: str, case: dict[str, Any], waits: list[float]) ->
         return
     assert outcome.error is None
     result = outcome.result
-    if case["endpoint"] == "search":
-        got = {
-            "query": result.query,
-            "mode": result.mode,
-            "request_id": result.request_id,
-            "results": [
-                {
-                    "title": r.title,
-                    "url": r.url,
-                    "snippet": r.snippet,
-                    "description": r.description,
-                    "published_at": r.published_at,
-                    "acquired_at": r.acquired_at,
-                }
-                for r in result.results
-            ],
-        }
-    else:
-        got = {
-            "url": result.url,
-            "title": result.title,
-            "content": result.content,
-            "description": result.description,
-            "author": result.author,
-            "published_at": result.published_at,
-            "request_id": result.request_id,
-            "truncated": result.truncated,
-            "total_chars": result.total_chars,
-        }
+    got = {
+        "query": result.query,
+        "mode": result.mode,
+        "request_id": result.request_id,
+        "results": [
+            {
+                "title": r.title,
+                "url": r.url,
+                "snippet": r.snippet,
+                "description": r.description,
+                "published_at": r.published_at,
+                "acquired_at": r.acquired_at,
+            }
+            for r in result.results
+        ],
+    }
     assert got == {key: want[key] for key in got}
 
 
@@ -347,22 +334,6 @@ async def test_search_body(kind: str, case: dict[str, Any], waits: list[float]) 
 
 
 @pytest.mark.parametrize("kind", CLIENTS)
-@pytest.mark.parametrize("case", cases("fetch_params"))
-async def test_fetch_params(
-    kind: str, case: dict[str, Any], waits: list[float]
-) -> None:
-    # The SDK's argument names are the wire names.
-    outcome = await run(
-        kind, [PAGE_OK], waits, method="fetch", arg=case["url"], call=case["options"]
-    )
-    assert outcome.error is None
-    assert len(outcome.requests) == 1
-    assert outcome.requests[0].url.path == "/v1/fetch"
-    assert dict(outcome.requests[0].url.params.multi_items()) == case["sent"]
-    assert len(outcome.requests[0].url.params.multi_items()) == len(case["sent"])
-
-
-@pytest.mark.parametrize("kind", CLIENTS)
 async def test_a_refused_url_sends_nothing_whatever_the_options(
     kind: str, waits: list[float]
 ) -> None:
@@ -372,7 +343,7 @@ async def test_a_refused_url_sends_nothing_whatever_the_options(
         waits,
         method="fetch",
         arg="http://127.0.0.1/",
-        call={"max_chars": 10, "live": True, "prompt": "p"},
+        call={"max_chars": 10, "max_age_hours": 0},
     )
     assert isinstance(outcome.error, KeenableInvalidRequestError)
     assert outcome.requests == []
@@ -419,7 +390,6 @@ def test_the_fixture_has_every_section() -> None:
         "responses",
         "options",
         "search_body",
-        "fetch_params",
         "tool_call",
         "deadline",
         "webhook",

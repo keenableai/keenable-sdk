@@ -1,6 +1,6 @@
 //! What `search` and `fetch` return, and the citable block they render.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::context_clean::clean_context_text;
@@ -56,8 +56,90 @@ pub struct SearchResponse {
     pub raw: Map<String, Value>,
 }
 
-/// A URL fetched by [`Client::fetch`](crate::Client::fetch), with its main
-/// content as markdown.
+/// What [`Client::fetch`](crate::Client::fetch) returns: `results[i]` is for
+/// `urls[i]`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct FetchResponse {
+    /// One page per URL asked for.
+    pub results: Vec<Page>,
+    /// The API's id for this request. Quote it when reporting a problem.
+    pub request_id: Option<String>,
+    /// The unmodified JSON body.
+    #[serde(skip)]
+    pub raw: Map<String, Value>,
+}
+
+/// Why one URL of a fetch failed, as the API sent it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct FetchError {
+    /// The HTTP status this URL failed with.
+    pub status: u16,
+    /// The API's short error title.
+    pub error: String,
+    /// The API's machine-readable reason.
+    pub code: Option<String>,
+    /// The error's category.
+    #[serde(rename = "type")]
+    pub error_type: Option<String>,
+    /// The API's message.
+    pub message: Option<String>,
+    /// One sentence on what to do next.
+    pub fix: Option<String>,
+    /// Whether trying this URL again can succeed.
+    pub retryable: Option<bool>,
+}
+
+/// A link on a fetched page.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct PageLink {
+    /// Where the link goes.
+    pub url: String,
+    /// The link's text.
+    pub text: Option<String>,
+}
+
+/// An image on a fetched page.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct PageImage {
+    /// The image URL.
+    pub url: String,
+    /// The image's alt text.
+    pub alt: Option<String>,
+}
+
+/// Why the answer for [`FetchOptions::schema`](crate::FetchOptions::schema)
+/// could not be made.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct AnswerError {
+    /// The machine-readable reason.
+    pub code: String,
+    /// What went wrong.
+    pub message: String,
+}
+
+/// What reading one page cost.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct Usage {
+    /// The billed item.
+    pub sku: String,
+    /// How many were billed.
+    pub amount: u64,
+    /// The credits spent.
+    pub credits: f64,
+    /// `true` when paid credits were spent.
+    pub paid: bool,
+    /// The credits left after this page.
+    pub credits_remaining: Option<f64>,
+}
+
+/// One result of [`Client::fetch`](crate::Client::fetch): a page as markdown,
+/// or [`Page::error`] when that URL failed.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct Page {
@@ -75,15 +157,31 @@ pub struct Page {
     /// When the page was published, as ISO 8601 UTC to the second, such as
     /// `2024-05-01T12:00:00Z`. `None` when unknown.
     pub published_at: Option<String>,
-    /// The API's id for this request. Quote it when reporting a problem.
-    pub request_id: Option<String>,
     /// `true` when the page was longer than `max_chars` and `content` was cut
     /// (cut content ends with "..."). `None` when the API did not say.
     pub truncated: Option<bool>,
     /// The length of the full extracted content in Unicode code points,
     /// before any cut. `None` when the API did not say.
     pub total_chars: Option<u64>,
-    /// The unmodified JSON body.
+    /// The page's preview image URL.
+    pub image: Option<String>,
+    /// The page's favicon URL.
+    pub favicon: Option<String>,
+    /// The page's links, when [`FetchOptions::links`](crate::FetchOptions::links) was set.
+    pub links: Option<Vec<PageLink>>,
+    /// The page's images.
+    pub images: Option<Vec<PageImage>>,
+    /// The answer for [`FetchOptions::schema`](crate::FetchOptions::schema).
+    pub structured: Option<Map<String, Value>>,
+    /// Why the answer for the schema could not be made.
+    pub answer_error: Option<AnswerError>,
+    /// `true` when an older stored copy was returned because a fresh read failed.
+    pub stale: Option<bool>,
+    /// What reading this page cost.
+    pub usage: Option<Usage>,
+    /// Set when this URL failed; the other fields are then empty.
+    pub error: Option<FetchError>,
+    /// The unmodified JSON object.
     #[serde(skip)]
     pub raw: Map<String, Value>,
 }
@@ -395,11 +493,10 @@ pub(crate) fn search_response_from_json(
     }
 }
 
-pub(crate) fn page_from_json(
-    data: Map<String, Value>,
-    fallback_url: &str,
-    header_request_id: Option<String>,
-) -> Page {
+pub(crate) fn page_from_json(data: Map<String, Value>, fallback_url: &str) -> Page {
+    fn typed<T: serde::de::DeserializeOwned>(v: Option<&Value>) -> Option<T> {
+        serde_json::from_value(v?.clone()).ok()
+    }
     Page {
         url: non_blank(data.get("url")).unwrap_or_else(|| fallback_url.to_string()),
         title: as_string(data.get("title")),
@@ -407,10 +504,39 @@ pub(crate) fn page_from_json(
         description: non_blank(data.get("description")),
         author: non_blank(data.get("author")),
         published_at: timestamp(data.get("published_at")),
-        request_id: non_blank(data.get("request_id")).or(header_request_id),
         truncated: data.get("truncated").and_then(Value::as_bool),
         total_chars: safe_count(data.get("total_chars")),
+        image: non_blank(data.get("image")),
+        favicon: non_blank(data.get("favicon")),
+        links: typed(data.get("links")),
+        images: typed(data.get("images")),
+        structured: data.get("structured").and_then(Value::as_object).cloned(),
+        answer_error: typed(data.get("answer_error")),
+        stale: data.get("stale").and_then(Value::as_bool),
+        usage: typed(data.get("usage")),
+        error: data
+            .get("error")
+            .and_then(Value::as_object)
+            .map(fetch_error),
         raw: data,
+    }
+}
+
+/// A per-URL error from whatever fields it has, so a failed URL never reads
+/// as a successful page.
+fn fetch_error(e: &Map<String, Value>) -> FetchError {
+    FetchError {
+        status: e
+            .get("status")
+            .and_then(Value::as_u64)
+            .and_then(|s| u16::try_from(s).ok())
+            .unwrap_or(0),
+        error: as_string(e.get("error")),
+        code: non_blank(e.get("code")),
+        error_type: non_blank(e.get("type")),
+        message: non_blank(e.get("message")),
+        fix: non_blank(e.get("fix")),
+        retryable: e.get("retryable").and_then(Value::as_bool),
     }
 }
 
@@ -495,7 +621,6 @@ mod tests {
                 .unwrap()
                 .clone(),
             "https://e.com/",
-            None,
         );
         let opts = ContextOptions {
             max_chars: 30,

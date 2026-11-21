@@ -518,8 +518,46 @@ class SearchResponse:
 
 
 @dataclass
+class FetchError:
+    """Why one URL of a :meth:`Keenable.fetch` call failed, as the API sent it."""
+
+    status: int
+    error: str
+    code: str | None = None
+    type: str | None = None
+    message: str | None = None
+    fix: str | None = None
+    retryable: bool | None = None
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> FetchError:
+        retryable = data.get("retryable")
+        return cls(
+            status=_count_or_none(data.get("status")) or 0,
+            error=_str_or_empty(data.get("error")),
+            code=_str_or_none(data.get("code")),
+            type=_str_or_none(data.get("type")),
+            message=_str_or_none(data.get("message")),
+            fix=_str_or_none(data.get("fix")),
+            retryable=retryable if isinstance(retryable, bool) else None,
+            raw=data,
+        )
+
+
+def _dicts(value: Any) -> list[dict[str, Any]] | None:
+    if not isinstance(value, list):
+        return None
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _dict_or_none(value: Any) -> dict[str, Any] | None:
+    return value if isinstance(value, dict) else None
+
+
+@dataclass
 class Page:
-    """A web page fetched by :meth:`Keenable.fetch`, extracted as markdown."""
+    """One result of :meth:`Keenable.fetch`: a page as markdown, or ``error``."""
 
     url: str
     title: str
@@ -539,8 +577,6 @@ class Page:
     unknown."""
 
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
-    request_id: str | None = None
-    """The API's id for this request. Quote it when reporting a problem."""
 
     truncated: bool | None = None
     """True when the page was longer than the API's ``max_chars`` and
@@ -551,10 +587,28 @@ class Page:
     """Length of the full extracted content in Unicode code points, before
     any cut. None when the API did not say."""
 
+    image: str | None = None
+    favicon: str | None = None
+    links: list[dict[str, Any]] | None = None
+    """``{"url", "text"}`` for each link, when ``links`` was asked for."""
+
+    images: list[dict[str, Any]] | None = None
+    """``{"url", "alt"}`` for each image."""
+
+    structured: dict[str, Any] | None = None
+    """The answer for ``schema``."""
+
+    answer_error: dict[str, Any] | None = None
+    """``{"code", "message"}`` when the answer for ``schema`` failed."""
+
+    stale: bool | None = None
+    usage: dict[str, Any] | None = None
+    error: FetchError | None = None
+    """Set when this URL failed; the other fields are then empty."""
+
     @classmethod
-    def _from_json(
-        cls, data: dict[str, Any], url: str, request_id: str | None = None
-    ) -> Page:
+    def _from_json(cls, data: dict[str, Any], url: str) -> Page:
+        error = data.get("error")
         return cls(
             url=_str_or_none(data.get("url")) or url,
             title=_str_or_empty(data.get("title")),
@@ -563,9 +617,17 @@ class Page:
             author=_str_or_none(data.get("author")),
             published_at=_timestamp_or_none(data.get("published_at")),
             raw=data,
-            request_id=_str_or_none(data.get("request_id")) or request_id,
             truncated=_bool_or_none(data.get("truncated")),
             total_chars=_count_or_none(data.get("total_chars")),
+            image=_str_or_none(data.get("image")),
+            favicon=_str_or_none(data.get("favicon")),
+            links=_dicts(data.get("links")),
+            images=_dicts(data.get("images")),
+            structured=_dict_or_none(data.get("structured")),
+            answer_error=_dict_or_none(data.get("answer_error")),
+            stale=_bool_or_none(data.get("stale")),
+            usage=_dict_or_none(data.get("usage")),
+            error=FetchError._from_json(error) if isinstance(error, dict) else None,
         )
 
     def to_context(self, max_chars: int = DEFAULT_CONTEXT_MAX_CHARS) -> str:
@@ -587,3 +649,26 @@ class Page:
             return header
         content = _clean_context_text(self.content, self.url)
         return _context_block(header, content[:budget].rstrip())
+
+
+@dataclass
+class FetchResponse:
+    """What :meth:`Keenable.fetch` returns: ``results[i]`` is for ``urls[i]``."""
+
+    results: list[Page] = field(default_factory=list)
+    request_id: str | None = None
+    """The API's id for this request. Quote it when reporting a problem."""
+
+    @classmethod
+    def _from_json(
+        cls, data: dict[str, Any], urls: list[str], request_id: str | None
+    ) -> FetchResponse:
+        entries = data.get("results")
+        return cls(
+            results=[
+                Page._from_json(entry, urls[i] if i < len(urls) else "")
+                for i, entry in enumerate(entries if isinstance(entries, list) else [])
+                if isinstance(entry, dict)
+            ],
+            request_id=_str_or_none(data.get("request_id")) or request_id,
+        )

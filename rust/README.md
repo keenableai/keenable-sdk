@@ -130,28 +130,32 @@ for (i, result) in results.cited().iter().enumerate() {
 Pass a `ContextOptions` to `to_context_with` and `cited_with` to change
 `max_chars`, `max_results`, `include_dates` or `max_snippet_chars`.
 
-## Read a full page
+## Read full pages
 
 ```rust
-let page = client.fetch("https://cerebras.ai/chip").await?;
-println!("{}", page.content); // markdown, boilerplate stripped
-println!("{}", page.to_context()); // same citable block shape as search results
-
-let answer = client
+let response = client
     .fetch_with(
-        "https://cerebras.ai/chip",
+        ["https://cerebras.ai/chip", "https://cerebras.ai/blog"],
         &keenable::FetchOptions {
-            prompt: Some("List the chip's specs".into()),
+            max_chars: Some(5000),
             ..Default::default()
         },
     )
     .await?;
+for page in &response.results {
+    match &page.error {
+        Some(error) => println!("{} failed: {:?}", page.url, error.code),
+        None => println!("{}", page.to_context()), // same citable block as search results
+    }
+}
 ```
 
-`FetchOptions` has `max_chars` (the API default is 50000; `page.truncated` and
-`page.total_chars` say whether the page was cut), `live` (fetch from the source
-now instead of Keenable's indexed copy) and `prompt` (an extraction
-instruction, up to 2000 characters).
+`fetch` sends one `POST /v1/fetch`. `results[i]` is for `urls[i]`; a URL that
+failed has `error` set instead of returning `Err`. `FetchOptions` has
+`max_chars`, `prompt` (each page's `content` is then only an LLM's answer to
+it), `schema` (each page's answer is in `page.structured`), `links`,
+`images` and `max_age_hours` (`Some(0.0)` reads every page live), sent only
+when set; the API checks their values.
 
 Internal hosts and private addresses are refused before a request is sent:
 `localhost` and names under `.localhost`, `metadata.google.internal`, and IP
@@ -177,6 +181,13 @@ let content = match client.run_tool_call(&call.name, &call.arguments).await {
 `arguments` is the JSON text the model sent, or a `serde_json::Value`. The
 model may set `site`, `exclude_domains`, `published_after`, `objective` and
 `disable_cards` on search.
+
+On fetch the model sets `urls` (1 to 20) and may set `max_chars` (per page),
+`prompt` (applied to every page) and `max_age_hours` (0 reads every page
+live), as on the hosted MCP tool. A call without `urls` is an invalid
+request. Each page comes back as its own numbered block. A URL
+that failed while others were read becomes a `[n] <url> - failed: <reason>`
+block; `run_tool_call` returns its error only when no URL could be read.
 
 ## Retries
 

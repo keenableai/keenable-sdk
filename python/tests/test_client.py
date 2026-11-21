@@ -40,12 +40,13 @@ SEARCH_BODY: dict[str, Any] = {
     ],
 }
 
-FETCH_BODY: dict[str, Any] = {
+PAGE_BODY: dict[str, Any] = {
     "url": "https://example.com/",
     "title": "Example Domain",
     "content": "# Example Domain\n\nThis domain is for use in examples.",
     "description": "",
 }
+FETCH_BODY: dict[str, Any] = {"results": [PAGE_BODY]}
 
 Handler = Any
 Seen = list[httpx.Request]
@@ -337,19 +338,55 @@ def test_cited_reports_the_results_that_were_rendered() -> None:
     assert [r.title for r in response.cited(max_chars=120)] == ["How Cerebras works"]
 
 
-def test_fetch_returns_markdown() -> None:
+def test_fetch_posts_the_urls_and_only_the_options_set() -> None:
     keenable, seen = _client(_ok(FETCH_BODY))
-    page = keenable.fetch("https://example.com")
+    keenable.fetch(
+        ["https://example.com"],
+        max_chars=500,
+        prompt="List the prices",
+        schema={"type": "object"},
+        links=5,
+        images=2,
+        max_age_hours=0,
+    )
+    keenable.fetch("https://example.com", prompt="")
 
+    assert seen[0].method == "POST"
     assert seen[0].url.path == "/v1/fetch/public"
-    assert seen[0].url.params["url"] == "https://example.com"
+    assert json.loads(seen[0].content) == {
+        "urls": ["https://example.com"],
+        "content": {
+            "max_chars": 500,
+            "prompt": "List the prices",
+            "schema": {"type": "object"},
+            "links": 5,
+            "images": 2,
+        },
+        "retrieval": {"max_age_hours": 0},
+    }
+    assert json.loads(seen[1].content) == {"urls": ["https://example.com"]}
+
+
+def test_fetch_parses_a_page_and_a_failed_url() -> None:
+    failed = {
+        "url": "https://e.com/x",
+        "error": {"status": 404, "error": "Not found", "code": "page_not_found"},
+    }
+    keenable, _ = _client(_ok({"results": [PAGE_BODY, failed]}))
+    response = keenable.fetch(["https://example.com", "https://e.com/x"])
+
+    page, missing = response.results
     assert page.title == "Example Domain"
     assert page.content.startswith("# Example Domain")
+    assert page.error is None
+    assert missing.url == "https://e.com/x"
+    assert missing.error is not None
+    assert (missing.error.status, missing.error.code) == (404, "page_not_found")
 
 
 def test_page_to_context_is_citable_like_search_results() -> None:
     keenable, _ = _client(_ok(FETCH_BODY))
-    page = keenable.fetch("https://example.com")
+    page = keenable.fetch("https://example.com").results[0]
 
     context = page.to_context()
     assert context.startswith("[1] Example Domain (https://example.com/)")
@@ -418,7 +455,9 @@ def test_run_tool_call_dispatches_search_and_fetch() -> None:
     assert searched.startswith("[1] How Cerebras works")
     assert json.loads(seen[0].content)["site"] == "cerebras.ai"
 
-    fetched = run_tool_call(keenable, "keenable_fetch", {"url": "https://example.com"})
+    fetched = run_tool_call(
+        keenable, "keenable_fetch", {"urls": ["https://example.com"]}
+    )
     # Both tools render the same citable shape, so a model can cite either.
     assert fetched.startswith("[1] Example Domain (https://example.com/)")
 
@@ -426,6 +465,28 @@ def test_run_tool_call_dispatches_search_and_fetch() -> None:
         run_tool_call(keenable, "keenable_search", "not json")
     with pytest.raises(KeenableInvalidRequestError):
         run_tool_call(keenable, "nope", "{}")
+
+
+def test_fetch_tool_reads_several_urls_and_keeps_a_failed_one_as_a_block() -> None:
+    failed = {"url": "https://e.com/x", "error": {"status": 404, "error": "Not found"}}
+    keenable, seen = _client(_ok({"results": [PAGE_BODY, failed]}))
+    out = run_tool_call(
+        keenable,
+        "keenable_fetch",
+        {
+            "urls": ["https://example.com", "https://e.com/x"],
+            "max_chars": 500,
+            "prompt": "Who runs it?",
+            "max_age_hours": 0,
+        },
+    )
+    assert json.loads(seen[0].content) == {
+        "urls": ["https://example.com", "https://e.com/x"],
+        "content": {"max_chars": 500, "prompt": "Who runs it?"},
+        "retrieval": {"max_age_hours": 0},
+    }
+    assert out.startswith("[1] Example Domain (https://example.com/)")
+    assert out.endswith("\n\n[2] https://e.com/x - failed: Not found")
 
 
 @pytest.mark.parametrize("arguments", [123, None, [], b"{}"])
@@ -512,7 +573,7 @@ async def test_async_client_mirrors_the_sync_one() -> None:
     async with keenable:
         response = await keenable.search("wafer scale engine")
         rendered = await arun_tool_call(
-            keenable, "keenable_fetch", {"url": "https://example.com"}
+            keenable, "keenable_fetch", {"urls": ["https://example.com"]}
         )
 
     assert [r.title for r in response] == ["How Cerebras works", "MoE guide"]

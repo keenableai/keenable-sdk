@@ -37,7 +37,7 @@ from .errors import (
     KeenableTimeoutError,
     RateLimitInfo,
 )
-from .models import Page, SearchResponse
+from .models import FetchResponse, SearchResponse
 from .monitors import AsyncMonitors, Monitors, _Call
 
 __all__ = ["Keenable", "AsyncKeenable", "DEFAULT_MAX_RETRIES"]
@@ -308,20 +308,44 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
     return payload
 
 
-def _fetch_params(
-    url: str, max_chars: int | None, live: bool | None, prompt: str | None
-) -> dict[str, str]:
-    """Build fetch's query parameters, dropping options the caller left unset."""
-    params = {"url": url}
-    if max_chars is not None:
-        params["max_chars"] = str(max_chars)
-    # The API reads only "true" and "false", and an absent live is false.
-    if live is True:
-        params["live"] = "true"
-    # An empty string is unset, as in Go, which cannot tell the two apart.
-    if prompt is not None and prompt != "":
-        params["prompt"] = prompt
-    return params
+def _fetch_payload(
+    urls: str | Iterable[str],
+    max_chars: int | None,
+    prompt: str | None,
+    schema: Mapping[str, Any] | None,
+    links: int | None,
+    images: int | None,
+    max_age_hours: float | None,
+) -> dict[str, Any]:
+    """The POST /v1/fetch body: only the options set. The API checks their values."""
+    targets = _as_list(urls)
+    if not isinstance(targets, list):
+        targets = [targets]
+    for target in targets:
+        _reject_private_fetch_target(target)
+    payload: dict[str, Any] = {"urls": targets}
+    content = {
+        name: value
+        for name, value in (
+            ("max_chars", max_chars),
+            ("prompt", prompt),
+            ("schema", schema),
+            ("links", links),
+            ("images", images),
+        )
+        if value is not None and value != ""
+    }
+    if content:
+        payload["content"] = content
+    if max_age_hours is not None:
+        payload["retrieval"] = {"max_age_hours": max_age_hours}
+    try:
+        jsonlib.dumps(payload, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise KeenableInvalidRequestError(
+            f"could not encode the fetch request: {exc}. Pass JSON-encodable arguments."
+        ) from exc
+    return payload
 
 
 def _as_list(value: Any) -> Any:
@@ -1492,47 +1516,52 @@ class Keenable(_BaseClient):
 
     def fetch(
         self,
-        url: str,
+        urls: str | Iterable[str],
         *,
         max_chars: int | None = None,
-        live: bool | None = None,
         prompt: str | None = None,
+        schema: Mapping[str, Any] | None = None,
+        links: int | None = None,
+        images: int | None = None,
+        max_age_hours: float | None = None,
         timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
-    ) -> Page:
-        """Fetch one URL and return its main content as markdown.
+    ) -> FetchResponse:
+        """Read pages as markdown with ``POST /v1/fetch``.
 
-        Use this after :meth:`search` when a snippet is not enough and the
-        model needs the full page.
+        ``results[i]`` is for ``urls[i]``: a :class:`Page`, with ``error`` set
+        when that URL failed. The API checks every option and answers a bad
+        one with a 400.
 
         Args:
-            url: The page to fetch, an ``http`` or ``https`` URL. Internal
-                hosts and private addresses are refused before a request is
-                sent.
-            max_chars: Cap the characters of content returned, a positive
-                integer. The API default is 50000. ``Page.truncated`` and
-                ``Page.total_chars`` say whether the page was cut and how
-                long it was.
-            live: ``True`` fetches the page from its source now instead of
-                reading Keenable's indexed copy. Default ``False``.
-            prompt: An extraction instruction, up to 2000 characters, such
-                as ``"list the pricing tiers"``. ``Page.content`` is then
-                only the model's output for it, not the page.
+            urls: ``http`` or ``https`` URLs; a lone string is one URL.
+                Internal hosts and private addresses are refused before a
+                request is sent.
+            max_chars: The most characters of content per page.
+            prompt: Up to 2,000 characters; each page's ``content`` is then
+                only an LLM's answer to it.
+            schema: A JSON Schema; each page's answer is in ``Page.structured``.
+            links: The most links per page to return.
+            images: The most images per page to return.
+            max_age_hours: Use a stored copy only if younger than this; 0
+                reads every page live.
             timeout: Deadline for each attempt of this call, as in
                 :meth:`search`.
             max_retries: Retry budget for this call, as in :meth:`search`.
             extra_headers: Headers for this call, over ``default_headers``.
         """
-        _reject_private_fetch_target(url)
+        payload = _fetch_payload(
+            urls, max_chars, prompt, schema, links, images, max_age_hours
+        )
         body, request_id = self._request(
             _FETCH,
-            params=_fetch_params(url, max_chars, live, prompt),
+            json=payload,
             timeout=timeout,
             max_retries=max_retries,
             extra_headers=extra_headers,
         )
-        return Page._from_json(body, url, request_id)
+        return FetchResponse._from_json(body, payload["urls"], request_id)
 
 
 class AsyncKeenable(_BaseClient):
@@ -1702,22 +1731,27 @@ class AsyncKeenable(_BaseClient):
 
     async def fetch(
         self,
-        url: str,
+        urls: str | Iterable[str],
         *,
         max_chars: int | None = None,
-        live: bool | None = None,
         prompt: str | None = None,
+        schema: Mapping[str, Any] | None = None,
+        links: int | None = None,
+        images: int | None = None,
+        max_age_hours: float | None = None,
         timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
-    ) -> Page:
-        """Fetch one URL as markdown. See :meth:`Keenable.fetch` for the arguments."""
-        _reject_private_fetch_target(url)
+    ) -> FetchResponse:
+        """Read pages as markdown. See :meth:`Keenable.fetch` for the arguments."""
+        payload = _fetch_payload(
+            urls, max_chars, prompt, schema, links, images, max_age_hours
+        )
         body, request_id = await self._request(
             _FETCH,
-            params=_fetch_params(url, max_chars, live, prompt),
+            json=payload,
             timeout=timeout,
             max_retries=max_retries,
             extra_headers=extra_headers,
         )
-        return Page._from_json(body, url, request_id)
+        return FetchResponse._from_json(body, payload["urls"], request_id)

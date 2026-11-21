@@ -28,6 +28,8 @@ from .errors import (
 from .models import (
     DEFAULT_CONTEXT_MAX_CHARS,
     DEFAULT_CONTEXT_MAX_SNIPPET_CHARS,
+    FetchError,
+    FetchResponse,
     Page,
     SearchResponse,
     SearchResult,
@@ -80,6 +82,8 @@ __all__ = [
     "DEFAULT_WEBHOOK_TOLERANCE",
     "DeliveryList",
     "FETCH_TOOL",
+    "FetchError",
+    "FetchResponse",
     "Keenable",
     "KeenableAPIError",
     "KeenableAuthError",

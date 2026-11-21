@@ -31,12 +31,13 @@ const SEARCH_BODY = {
   ],
 };
 
-const FETCH_BODY = {
+const PAGE_BODY = {
   url: "https://example.com/",
   title: "Example Domain",
   content: "# Example Domain\n\nThis domain is for use in examples.",
   description: "",
 };
+const FETCH_BODY = { results: [PAGE_BODY] };
 
 /** A client whose transport records requests and replays canned responses. */
 function mockClient(
@@ -304,20 +305,53 @@ describe("toContext", () => {
 });
 
 describe("fetch", () => {
-  it("returns markdown", async () => {
+  it("posts the URLs and only the options set", async () => {
     const { client, seen } = mockClient(() => json(FETCH_BODY));
-    const page = await client.fetch("https://example.com");
+    await client.fetch(["https://example.com"], {
+      maxChars: 500,
+      prompt: "List the prices",
+      schema: { type: "object" },
+      links: 5,
+      images: 2,
+      maxAgeHours: 0,
+    });
+    await client.fetch("https://example.com", { prompt: "" });
 
-    expect(seen[0]?.url).toBe(
-      "https://api.keenable.ai/v1/fetch/public?url=https%3A%2F%2Fexample.com",
-    );
-    expect(page.title).toBe("Example Domain");
-    expect(page.content.startsWith("# Example Domain")).toBe(true);
+    expect(seen[0]?.url).toBe("https://api.keenable.ai/v1/fetch/public");
+    expect(seen[0]?.init.method).toBe("POST");
+    expect(JSON.parse(String(seen[0]?.init.body))).toEqual({
+      urls: ["https://example.com"],
+      content: {
+        max_chars: 500,
+        prompt: "List the prices",
+        schema: { type: "object" },
+        links: 5,
+        images: 2,
+      },
+      retrieval: { max_age_hours: 0 },
+    });
+    expect(JSON.parse(String(seen[1]?.init.body))).toEqual({ urls: ["https://example.com"] });
+  });
+
+  it("parses a page and a failed URL", async () => {
+    const failed = {
+      url: "https://e.com/x",
+      error: { status: 404, error: "Not found", code: "page_not_found" },
+    };
+    const { client } = mockClient(() => json({ results: [PAGE_BODY, failed] }));
+    const [page, missing] = (await client.fetch(["https://example.com", "https://e.com/x"]))
+      .results;
+
+    expect(page?.title).toBe("Example Domain");
+    expect(page?.error).toBeUndefined();
+    expect(missing?.url).toBe("https://e.com/x");
+    expect(missing?.error).toMatchObject({ status: 404, code: "page_not_found" });
   });
 
   it("renders a citable block like search results do", async () => {
     const { client } = mockClient(() => json(FETCH_BODY));
-    const page = await client.fetch("https://example.com");
+    const [page] = (await client.fetch("https://example.com")).results;
+    if (!page) throw new Error("no page");
 
     expect(page.toContext().startsWith("[1] Example Domain (https://example.com/)")).toBe(
       true,
@@ -422,7 +456,7 @@ describe("runToolCall", () => {
     expect(JSON.parse(String(seen[0]?.init.body)).site).toBe("cerebras.ai");
 
     const fetched = await runToolCall(client, "keenable_fetch", {
-      url: "https://example.com",
+      urls: ["https://example.com"],
     });
     // Both tools render the same citable shape, so a model can cite either.
     expect(fetched.startsWith("[1] Example Domain (https://example.com/)")).toBe(true);
@@ -433,6 +467,27 @@ describe("runToolCall", () => {
     await expect(runToolCall(client, "nope", "{}")).rejects.toBeInstanceOf(
       KeenableInvalidRequestError,
     );
+    const noUrls = runToolCall(client, "keenable_fetch", { url: "https://example.com" });
+    await expect(noUrls).rejects.toBeInstanceOf(KeenableInvalidRequestError);
+    await expect(noUrls).rejects.toThrow("'urls'");
+  });
+
+  it("fetches several URLs in one tool call and keeps a failed one as a block", async () => {
+    const failed = { url: "https://e.com/x", error: { status: 404, error: "Not found" } };
+    const { client, seen } = mockClient(() => json({ results: [PAGE_BODY, failed] }));
+    const out = await runToolCall(client, "keenable_fetch", {
+      urls: ["https://example.com", "https://e.com/x"],
+      max_chars: 500,
+      prompt: "Who runs it?",
+      max_age_hours: 0,
+    });
+    expect(JSON.parse(String(seen[0]?.init.body))).toEqual({
+      urls: ["https://example.com", "https://e.com/x"],
+      content: { max_chars: 500, prompt: "Who runs it?" },
+      retrieval: { max_age_hours: 0 },
+    });
+    expect(out.startsWith("[1] Example Domain (https://example.com/)")).toBe(true);
+    expect(out.endsWith("\n\n[2] https://e.com/x - failed: Not found")).toBe(true);
   });
 
   // A caller catching KeenableError should never see a raw TypeError.

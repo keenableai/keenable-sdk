@@ -148,14 +148,14 @@ full page as markdown.
 
 <CodeGroup>
 ```python Python theme={null}
-page = keenable.fetch("https://cerebras.ai/chip")
+page = keenable.fetch(["https://cerebras.ai/chip"]).results[0]
 
 print(page.title)
 print(page.content)  # markdown, boilerplate stripped
 ```
 
 ```javascript Node.js theme={null}
-const page = await keenable.fetch('https://cerebras.ai/chip');
+const [page] = (await keenable.fetch(['https://cerebras.ai/chip'])).results;
 
 console.log(page.title);
 console.log(page.content); // markdown, boilerplate stripped

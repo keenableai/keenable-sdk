@@ -115,7 +115,55 @@ type SearchResponse struct {
 	Raw       map[string]any `json:"-"`
 }
 
-// Page is a URL fetched by [Client.Fetch], with main content as markdown.
+// FetchResponse is what [Client.Fetch] returns: Results[i] is for urls[i].
+type FetchResponse struct {
+	Results []Page `json:"results"`
+	// RequestID is the API's id for this request. Quote it when reporting a
+	// problem. Empty when the API sent none.
+	RequestID string         `json:"request_id,omitempty"`
+	Raw       map[string]any `json:"-"`
+}
+
+// FetchError is why one URL of a [Client.Fetch] call failed, as the API sent it.
+type FetchError struct {
+	Status    int    `json:"status"`
+	Error     string `json:"error"`
+	Code      string `json:"code,omitempty"`
+	Type      string `json:"type,omitempty"`
+	Message   string `json:"message,omitempty"`
+	Fix       string `json:"fix,omitempty"`
+	Retryable *bool  `json:"retryable,omitempty"`
+}
+
+// PageLink is a link on a fetched page.
+type PageLink struct {
+	URL  string  `json:"url"`
+	Text *string `json:"text"`
+}
+
+// PageImage is an image on a fetched page.
+type PageImage struct {
+	URL string  `json:"url"`
+	Alt *string `json:"alt"`
+}
+
+// AnswerError is why the answer for Schema could not be made.
+type AnswerError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// Usage is what reading one page cost.
+type Usage struct {
+	SKU              string   `json:"sku"`
+	Amount           int      `json:"amount"`
+	Credits          float64  `json:"credits"`
+	Paid             bool     `json:"paid"`
+	CreditsRemaining *float64 `json:"credits_remaining,omitempty"`
+}
+
+// Page is one result of [Client.Fetch]: a page as markdown, or Error when
+// that URL failed.
 type Page struct {
 	URL         string  `json:"url"`
 	Title       string  `json:"title"`
@@ -125,18 +173,27 @@ type Page struct {
 	// PublishedAt is when the page was published, as ISO 8601. The API sends
 	// Unix seconds for a fetch; they are given in UTC to the second, such as
 	// "2024-05-01T12:00:00Z", the form search results use. Nil when unknown.
-	PublishedAt *string `json:"published_at,omitempty"`
-	// RequestID is the API's id for this request. Quote it when reporting a
-	// problem. Empty when the API sent none.
-	RequestID string         `json:"request_id,omitempty"`
-	Raw       map[string]any `json:"-"`
+	PublishedAt *string        `json:"published_at,omitempty"`
+	Raw         map[string]any `json:"-"`
 	// Truncated is true when the page was longer than the API's max_chars and
 	// Content was cut (cut content ends with "..."). Nil when the API did not
 	// say.
 	Truncated *bool `json:"truncated,omitempty"`
 	// TotalChars is the length of the full extracted content in Unicode code
 	// points, before any cut. Nil when the API did not say.
-	TotalChars *int `json:"total_chars,omitempty"`
+	TotalChars *int    `json:"total_chars,omitempty"`
+	Image      *string `json:"image,omitempty"`
+	Favicon    *string `json:"favicon,omitempty"`
+	// Links are the page's links, when FetchOptions.Links was set.
+	Links  []PageLink  `json:"links,omitempty"`
+	Images []PageImage `json:"images,omitempty"`
+	// Structured is the answer for FetchOptions.Schema.
+	Structured  map[string]any `json:"structured,omitempty"`
+	AnswerError *AnswerError   `json:"answer_error,omitempty"`
+	Stale       *bool          `json:"stale,omitempty"`
+	Usage       *Usage         `json:"usage,omitempty"`
+	// Error is set when this URL failed; the other fields are then empty.
+	Error *FetchError `json:"error,omitempty"`
 }
 
 // Cited returns the results ToContext would render, in citation order.
@@ -359,7 +416,7 @@ func pageFromJSON(data map[string]any, fallbackURL string) *Page {
 	if s := nonEmptyString(data["url"]); s != nil {
 		pageURL = *s
 	}
-	return &Page{
+	page := &Page{
 		URL:         pageURL,
 		Title:       asString(data["title"]),
 		Content:     asString(data["content"]),
@@ -369,6 +426,27 @@ func pageFromJSON(data map[string]any, fallbackURL string) *Page {
 		Raw:         data,
 		Truncated:   optionalBool(data["truncated"]),
 		TotalChars:  count(data["total_chars"]),
+		Image:       nonEmptyString(data["image"]),
+		Favicon:     nonEmptyString(data["favicon"]),
+		Stale:       optionalBool(data["stale"]),
+	}
+	page.Structured, _ = data["structured"].(map[string]any)
+	decodeField(data["links"], &page.Links)
+	decodeField(data["images"], &page.Images)
+	decodeField(data["answer_error"], &page.AnswerError)
+	decodeField(data["usage"], &page.Usage)
+	decodeField(data["error"], &page.Error)
+	return page
+}
+
+// decodeField fills out from a decoded JSON value, leaving it unset when the
+// value is missing or has another shape.
+func decodeField(value, out any) {
+	if value == nil {
+		return
+	}
+	if raw, err := json.Marshal(value); err == nil {
+		_ = json.Unmarshal(raw, out)
 	}
 }
 

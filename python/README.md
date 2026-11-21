@@ -127,27 +127,31 @@ for index, result in enumerate(results.cited(), start=1):
     print(f"[{index}] {result.title} - {result.url}")
 ```
 
-## Read a full page
+## Read full pages
 
 ```python
-page = keenable.fetch("https://cerebras.ai/chip")
-print(page.title)
-print(page.content)  # markdown, boilerplate stripped
-print(page.to_context())  # same citable block shape as search results
+response = keenable.fetch(["https://cerebras.ai/chip", "https://cerebras.ai/blog"])
+for page in response.results:
+    if page.error:
+        print(page.url, page.error.code)
+        continue
+    print(page.title)
+    print(page.content)  # markdown, boilerplate stripped
+    print(page.to_context())  # same citable block shape as search results
 ```
 
-`fetch()` takes three optional arguments. They ship in the next release after 0.1.3, so the version on PyPI doesn't have them yet:
-
-```python
-page = keenable.fetch("https://cerebras.ai/chip", max_chars=5000, live=True)
-answer = keenable.fetch("https://cerebras.ai/chip", prompt="List the chip's specs")
-```
+`fetch()` sends one `POST /v1/fetch`. `results[i]` is for `urls[i]`; a URL
+that failed has `error` set instead of raising. Optional arguments, sent only
+when set (the API checks their values):
 
 | Option | What it does |
 |---|---|
-| `max_chars` | Cap the characters of content returned, a positive integer. The API default is 50000; `page.truncated` and `page.total_chars` say whether the page was cut |
-| `live` | `True` fetches the page from its source now instead of reading Keenable's indexed copy. Default `False` |
-| `prompt` | An extraction instruction, up to 2000 characters. `page.content` is then only the model's output for it, not the page |
+| `max_chars` | The most characters of content per page. The API default is 50000 |
+| `prompt` | Up to 2,000 characters; each page's `content` is then only an LLM's answer to it |
+| `schema` | A JSON Schema; each page's answer is in `page.structured` |
+| `links` | The most links per page to return, in `page.links` |
+| `images` | The most images per page to return, in `page.images` |
+| `max_age_hours` | Use a stored copy only if younger than this; `0` reads every page live |
 
 ## Tool calling
 
@@ -181,6 +185,13 @@ counterpart, for use with `AsyncKeenable`.
 The model may set `site`, `exclude_domains`, `published_after` and
 `disable_cards` on search. The other filters stay on `search()` for you to set
 yourself.
+
+On fetch the model sets `urls` (1 to 20) and may set `max_chars` (per page),
+`prompt` (applied to every page) and `max_age_hours` (0 reads every page
+live), as on the hosted MCP tool. A call without `urls` is an invalid
+request. Each page comes back as its own numbered block. A URL
+that failed while others were read becomes a `[n] <url> - failed: <reason>`
+block; `run_tool_call` raises its error only when no URL could be read.
 
 ## Async
 
@@ -383,7 +394,7 @@ way.
 ```python
 keenable = Keenable(max_retries=4, timeout=10, default_headers={"X-Team": "search"})
 keenable.search("wafer scale engine", max_retries=0)  # no retries for this call
-keenable.fetch("https://example.com", timeout=60, extra_headers={"X-Trace": "abc"})
+keenable.fetch(["https://example.com"], timeout=60, extra_headers={"X-Trace": "abc"})
 ```
 
 Every call takes `timeout`, `max_retries` and `extra_headers`, which override
