@@ -164,6 +164,7 @@ per-request ones, are sent only when set (the API checks their values):
 | Option | What it does |
 |---|---|
 | `maxChars` | The most characters of content per page. The API default is 50000 |
+| `objective` | Up to 2,000 characters; each page's `content` is then only an LLM's answer to it |
 | `schema` | A JSON Schema; each page's answer is in `page.structured` |
 | `links` | The most links per page to return, in `page.links` |
 | `images` | The most images per page to return, in `page.images` |

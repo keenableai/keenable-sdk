@@ -340,13 +340,19 @@ def test_cited_reports_the_results_that_were_rendered() -> None:
 
 def test_fetch_posts_the_urls_and_only_the_options_set() -> None:
     keenable, seen = _client(_ok(FETCH_BODY))
-    keenable.fetch(["https://example.com"], max_chars=500, links=5, max_age_hours=0)
+    keenable.fetch(
+        ["https://example.com"],
+        max_chars=500,
+        objective="List the prices",
+        links=5,
+        max_age_hours=0,
+    )
 
     assert seen[0].method == "POST"
     assert seen[0].url.path == "/v1/fetch/public"
     assert json.loads(seen[0].content) == {
         "urls": ["https://example.com"],
-        "content": {"max_chars": 500, "links": 5},
+        "content": {"max_chars": 500, "objective": "List the prices", "links": 5},
         "retrieval": {"max_age_hours": 0},
     }
 

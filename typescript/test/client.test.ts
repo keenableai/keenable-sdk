@@ -307,13 +307,18 @@ describe("toContext", () => {
 describe("fetch", () => {
   it("posts the URLs and only the options set", async () => {
     const { client, seen } = mockClient(() => json(FETCH_BODY));
-    await client.fetch(["https://example.com"], { maxChars: 500, links: 5, maxAgeHours: 0 });
+    await client.fetch(["https://example.com"], {
+      maxChars: 500,
+      objective: "List the prices",
+      links: 5,
+      maxAgeHours: 0,
+    });
 
     expect(seen[0]?.url).toBe("https://api.keenable.ai/v1/fetch/public");
     expect(seen[0]?.init.method).toBe("POST");
     expect(JSON.parse(String(seen[0]?.init.body))).toEqual({
       urls: ["https://example.com"],
-      content: { max_chars: 500, links: 5 },
+      content: { max_chars: 500, objective: "List the prices", links: 5 },
       retrieval: { max_age_hours: 0 },
     });
   });

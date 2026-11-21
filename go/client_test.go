@@ -580,7 +580,7 @@ func TestCitedMatchesRendered(t *testing.T) {
 func TestFetchPostsTheURLsAndOnlyTheOptionsSet(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
 	live := 0.0
-	opts := &keenable.FetchOptions{MaxChars: 500, Links: 5, MaxAgeHours: &live}
+	opts := &keenable.FetchOptions{MaxChars: 500, Objective: "List the prices", Links: 5, MaxAgeHours: &live}
 	if _, err := c.FetchWithOptions(context.Background(), []string{"https://example.com"}, opts); err != nil {
 		t.Fatal(err)
 	}
@@ -588,7 +588,7 @@ func TestFetchPostsTheURLsAndOnlyTheOptionsSet(t *testing.T) {
 	if req.Path != "/v1/fetch/public" {
 		t.Fatal(req.Path)
 	}
-	want := `{"content":{"links":5,"max_chars":500},"retrieval":{"max_age_hours":0},"urls":["https://example.com"]}`
+	want := `{"content":{"links":5,"max_chars":500,"objective":"List the prices"},"retrieval":{"max_age_hours":0},"urls":["https://example.com"]}`
 	if string(req.Body) != want {
 		t.Fatalf("sent %s, want %s", req.Body, want)
 	}
