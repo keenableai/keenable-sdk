@@ -147,6 +147,52 @@ type RequestOptions struct {
 	Headers map[string]string
 }
 
+// FetchOptions are the optional arguments to [Client.FetchWithOptions].
+// Only the options set are sent, and the API checks their values.
+type FetchOptions struct {
+	// RequestOptions holds this call's timeout, retry budget and headers.
+	RequestOptions
+	// MaxChars is the most characters of content per page. Zero means unset.
+	MaxChars int
+	// Schema is a JSON Schema; each page's answer is in Page.Structured.
+	Schema map[string]any
+	// Links is the most links per page to return. Zero means unset.
+	Links int
+	// Images is the most images per page to return. Nil means unset.
+	Images *int
+	// MaxAgeHours uses a stored copy only if younger than this; 0 reads
+	// every page live. Nil means unset.
+	MaxAgeHours *float64
+}
+
+// body is the POST /v1/fetch request, unset options and empty groups left out.
+func (o *FetchOptions) body(urls []string) map[string]any {
+	payload := map[string]any{"urls": urls}
+	if o == nil {
+		return payload
+	}
+	content := map[string]any{}
+	if o.MaxChars != 0 {
+		content["max_chars"] = o.MaxChars
+	}
+	if o.Schema != nil {
+		content["schema"] = o.Schema
+	}
+	if o.Links != 0 {
+		content["links"] = o.Links
+	}
+	if o.Images != nil {
+		content["images"] = *o.Images
+	}
+	if len(content) > 0 {
+		payload["content"] = content
+	}
+	if o.MaxAgeHours != nil {
+		payload["retrieval"] = map[string]any{"max_age_hours": *o.MaxAgeHours}
+	}
+	return payload
+}
+
 // New builds a client. A nil opts reads the environment and uses the defaults.
 func New(opts *Options) (*Client, error) {
 	if opts == nil {
@@ -249,7 +295,7 @@ func (c *Client) Search(ctx context.Context, query string, opts *SearchOptions) 
 	if opts != nil {
 		req = &opts.RequestOptions
 	}
-	data, id, err := c.do(ctx, "search", body, req)
+	data, id, err := c.do(ctx, http.MethodPost, "search", body, nil, req)
 	if err != nil {
 		return nil, err
 	}
@@ -264,6 +310,55 @@ func requestID(data map[string]any, header string) string {
 		return id
 	}
 	return header
+}
+
+// Fetch reads pages as markdown with POST /v1/fetch. Results[i] is for
+// urls[i]: a [Page], with Error set when that URL failed. Internal hosts and
+// private addresses are refused here, before a request is sent.
+func (c *Client) Fetch(ctx context.Context, urls []string) (*FetchResponse, error) {
+	return c.FetchWithOptions(ctx, urls, nil)
+}
+
+// FetchWithOptions is [Client.Fetch] with the options in [FetchOptions] and
+// per-call settings. opts may be nil.
+func (c *Client) FetchWithOptions(ctx context.Context, urls []string, opts *FetchOptions) (*FetchResponse, error) {
+	if err := requireClient(c); err != nil {
+		return nil, err
+	}
+	if err := requireContext(ctx); err != nil {
+		return nil, err
+	}
+	for _, u := range urls {
+		if err := rejectPrivateFetchTarget(u); err != nil {
+			return nil, err
+		}
+	}
+	body, err := json.Marshal(opts.body(urls))
+	if err != nil {
+		return nil, &InvalidRequestError{msg: "could not encode the fetch request: " + err.Error()}
+	}
+	var req *RequestOptions
+	if opts != nil {
+		req = &opts.RequestOptions
+	}
+	data, id, err := c.do(ctx, http.MethodPost, "fetch", body, nil, req)
+	if err != nil {
+		return nil, err
+	}
+	resp := &FetchResponse{RequestID: requestID(data, id), Raw: data}
+	entries, _ := data["results"].([]any)
+	for i, entry := range entries {
+		obj, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		asked := ""
+		if i < len(urls) {
+			asked = urls[i]
+		}
+		resp.Results = append(resp.Results, *pageFromJSON(obj, asked))
+	}
+	return resp, nil
 }
 
 func requireClient(c *Client) error {
@@ -333,8 +428,8 @@ func retryDelay(err error, retry int, jitter float64) (time.Duration, bool) {
 	return 0, false
 }
 
-func (c *Client) do(ctx context.Context, endpoint string, body []byte, opts *RequestOptions) (map[string]any, string, error) {
-	rawURL, err := c.endpointURL(endpoint)
+func (c *Client) do(ctx context.Context, method, endpoint string, body []byte, query url.Values, opts *RequestOptions) (map[string]any, string, error) {
+	rawURL, err := c.endpointURL(endpoint, query)
 	if err != nil {
 		return nil, "", err
 	}
@@ -362,9 +457,9 @@ func (c *Client) do(ctx context.Context, endpoint string, body []byte, opts *Req
 	// The longest wait a JavaScript timer can hold, so every SDK treats a
 	// huge timeout the same way.
 	timeout = min(timeout, maxTimeout)
-	header := c.headers(extra)
+	header := c.headers(body != nil, extra)
 	for retry := 0; ; retry++ {
-		data, id, err := c.attempt(ctx, rawURL, body, header, timeout)
+		data, id, err := c.attempt(ctx, method, rawURL, body, header, timeout)
 		if err == nil {
 			return data, id, nil
 		}
@@ -388,14 +483,18 @@ func (c *Client) do(ctx context.Context, endpoint string, body []byte, opts *Req
 }
 
 // attempt sends one request with its own deadline and decodes the reply.
-func (c *Client) attempt(ctx context.Context, rawURL string, body []byte, header http.Header, timeout time.Duration) (map[string]any, string, error) {
+func (c *Client) attempt(ctx context.Context, method, rawURL string, body []byte, header http.Header, timeout time.Duration) (map[string]any, string, error) {
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
 	reqCtx := ctx
 	if timeout > 0 {
 		var stop context.CancelFunc
 		reqCtx, stop = context.WithTimeout(ctx, timeout)
 		defer stop()
 	}
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, rawURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(reqCtx, method, rawURL, reader)
 	if err != nil {
 		return nil, "", &InvalidRequestError{msg: "could not build the request: " + err.Error() + ". Check Options.BaseURL or KEENABLE_API_URL."}
 	}
@@ -509,7 +608,7 @@ func isTokenRune(r rune) bool {
 // headers are the SDK's own, then Options.Headers, then the call's. The API
 // key always comes from the client, so a stray header cannot send a
 // different key or turn a keyless call keyed.
-func (c *Client) headers(extra map[string]string) http.Header {
+func (c *Client) headers(jsonBody bool, extra map[string]string) http.Header {
 	h := make(http.Header)
 	h.Set("Accept", "application/json")
 	h.Set("User-Agent", "keenable-go/"+Version)
@@ -525,11 +624,13 @@ func (c *Client) headers(extra map[string]string) http.Header {
 	if c.apiKey != "" {
 		h.Set("X-API-Key", c.apiKey)
 	}
-	h.Set("Content-Type", "application/json")
+	if jsonBody {
+		h.Set("Content-Type", "application/json")
+	}
 	return h
 }
 
-func (c *Client) endpointURL(endpoint string) (string, error) {
+func (c *Client) endpointURL(endpoint string, query url.Values) (string, error) {
 	u, err := url.Parse(c.baseURL)
 	if err != nil || u.Host == "" {
 		return "", &InvalidRequestError{msg: fmt.Sprintf("baseURL %q is not a valid URL. Pass an https URL with a host.", c.baseURL)}
@@ -540,6 +641,7 @@ func (c *Client) endpointURL(endpoint string) (string, error) {
 	}
 	u.RawQuery = ""
 	u.Fragment = ""
+	u.RawQuery = query.Encode()
 	return u.String(), nil
 }
 
@@ -906,8 +1008,8 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 		api.Reason = stringField(obj, "reason")
 	}
 
-	kind := kindOf(status, stringField(obj, "type"), api.Type)
-	auth := kind == kindAuth
+	// A 401/403 about the page being fetched is not an authentication failure.
+	auth := (status == 401 || status == 403) && api.Type != TypeTargetError
 	label, ok := statusLabels[status]
 	if !ok || ((status == 401 || status == 403) && !auth) {
 		label = fmt.Sprintf("Keenable API error (%d)", status)
@@ -916,7 +1018,7 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 		// The API's text for a 402 points at billing pages and payment
 		// offers, which the SDKs do not pass on; the next step is the SDK's.
 		api.msg = paymentMessage(obj, api.APICode)
-		return classify(api, kind, header)
+		return classifyStatus(api, auth, header)
 	}
 	msg := label
 	if detail != "" {
@@ -951,7 +1053,7 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 		}
 	}
 	api.msg = msg
-	return classify(api, kind, header)
+	return classifyStatus(api, auth, header)
 }
 
 // paymentMessage is a 402's message, the same in every SDK. A pay-per-request
@@ -974,48 +1076,13 @@ func sentence(msg, more string) string {
 	return msg + ". " + more
 }
 
-type errorKind int
-
-const (
-	kindAPI errorKind = iota
-	kindAuth
-	kindRateLimit
-	kindCredits
-)
-
-var typeKinds = map[string]errorKind{
-	TypeAuthenticationError: kindAuth,
-	TypePermissionError:     kindAuth,
-	TypeBillingError:        kindCredits,
-	TypeRateLimitError:      kindRateLimit,
-	TypeInvalidRequestError: kindAPI,
-	TypeTargetError:         kindAPI,
-	TypeAPIError:            kindAPI,
-}
-
-func kindOf(status int, sentType, typ string) errorKind {
-	if kind, ok := typeKinds[sentType]; ok {
-		return kind
-	}
-	switch {
-	case (status == 401 || status == 403) && typ != TypeTargetError:
-		return kindAuth
-	case status == 402:
-		return kindCredits
-	case status == 429:
-		return kindRateLimit
-	default:
-		return kindAPI
-	}
-}
-
-func classify(api *APIError, kind errorKind, header http.Header) error {
+func classifyStatus(api *APIError, auth bool, header http.Header) error {
 	api.code = CodeAPI
-	switch kind {
-	case kindAuth:
+	switch {
+	case auth:
 		api.code = CodeAuth
 		return &AuthError{APIError: api}
-	case kindRateLimit:
+	case api.StatusCode == 429:
 		api.code = CodeRateLimit
 		return &RateLimitError{
 			APIError:  api,
@@ -1023,7 +1090,7 @@ func classify(api *APIError, kind errorKind, header http.Header) error {
 			Remaining: headerInt(header, "X-RateLimit-Remaining"),
 			Reset:     headerValue(header, "X-RateLimit-Reset"),
 		}
-	case kindCredits:
+	case api.StatusCode == 402:
 		return &InsufficientCreditsError{APIError: api}
 	default:
 		return api

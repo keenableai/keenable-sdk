@@ -138,10 +138,13 @@ export async function runToolCall(
 
   if (name === "keenable_fetch") {
     const url = requireString(parsed.url, "keenable_fetch needs a 'url'");
-    const [result] = (await client.fetch(url)).results;
-    if (result?.error) throw result.error;
-    if (!result?.page) throw new KeenableAPIError("the Keenable API returned no result for the URL", 200);
-    return result.page.toContext();
+    const [page] = (await client.fetch(url)).results;
+    if (page?.error) {
+      const { message, error, status, ...details } = page.error;
+      throw new KeenableAPIError(message ?? error, status, undefined, { error, ...details });
+    }
+    if (!page) throw new KeenableAPIError("the Keenable API returned no result for the URL", 200);
+    return page.toContext();
   }
 
   throw new KeenableInvalidRequestError(`unknown Keenable tool: ${JSON.stringify(name)}`);

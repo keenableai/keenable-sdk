@@ -129,42 +129,28 @@ for index, result in enumerate(results.cited(), start=1):
 
 ## Read full pages
 
-`fetch()` reads up to 10 pages in one call. `results[i]` is for `urls[i]`:
-its `page`, or its `error` when that URL failed. A failed URL does not raise;
-the call raises only when it fails as a whole.
-
 ```python
 response = keenable.fetch(["https://cerebras.ai/chip", "https://cerebras.ai/blog"])
-for result in response.results:
-    if result.error:
-        print(result.url, result.error.code)
-    else:
-        print(result.page.title)
-        print(result.page.content)  # markdown, boilerplate stripped
-        print(result.page.to_context())  # same citable block as search results
+for page in response.results:
+    if page.error:
+        print(page.url, page.error.code)
+        continue
+    print(page.title)
+    print(page.content)  # markdown, boilerplate stripped
+    print(page.to_context())  # same citable block shape as search results
 ```
 
-A lone string is one URL: `keenable.fetch("https://cerebras.ai/chip")`.
-`result.error` is the error the SDK would raise for that status
-(`KeenableAPIError` or a subclass), with its `status_code`, `code`, `type` and
-`fix`. The options apply to every page:
+`fetch()` sends one `POST /v1/fetch`. `results[i]` is for `urls[i]`; a URL
+that failed has `error` set instead of raising. Optional arguments, sent only
+when set (the API checks their values):
 
 | Option | What it does |
 |---|---|
-| `max_chars` | The most characters of content per page, at least 1. The API default is 50000; `page.truncated` and `page.total_chars` say whether the page was cut |
-| `schema` | A JSON Schema whose root has `"type": "object"`. Each page's typed answer is in `page.structured`, or `page.answer_error` says why it could not be made |
-| `links` | The most links per page to return, 1 to 1000, in `page.links` |
-| `images` | The most images per page to return, 0 to 25, in `page.images` |
-| `max_age_hours` | Use a stored copy only if it is younger than this, 0 to 720 hours (fractions allowed). `0` reads every page live. Left out, a stored copy of any age is used when there is one |
-
-```python
-response = keenable.fetch(
-    "https://cerebras.ai/pricing",
-    schema={"type": "object", "properties": {"price": {"type": "number"}}},
-    max_age_hours=24,
-)
-print(response.results[0].page.structured)
-```
+| `max_chars` | The most characters of content per page. The API default is 50000 |
+| `schema` | A JSON Schema; each page's answer is in `page.structured` |
+| `links` | The most links per page to return, in `page.links` |
+| `images` | The most images per page to return, in `page.images` |
+| `max_age_hours` | Use a stored copy only if younger than this; `0` reads every page live |
 
 ## Tool calling
 
@@ -223,9 +209,9 @@ All errors subclass `KeenableError`:
 
 | Exception | When |
 |---|---|
-| `KeenableRateLimitError` | Type `rate_limit_error` (HTTP 429 when the API sends no type). Set `KEENABLE_API_KEY` to lift the keyless cap |
-| `KeenableAuthError` | Type `authentication_error` or `permission_error` (HTTP 401/403 when the API sends no type), the key was rejected |
-| `KeenableInsufficientCreditsError` (alias `KeenableCreditsError`) | Type `billing_error` (HTTP 402 when the API sends no type), no credits left; retrying will not help |
+| `KeenableRateLimitError` | HTTP 429. Set `KEENABLE_API_KEY` to lift the keyless cap |
+| `KeenableAuthError` | HTTP 401/403, the key was rejected |
+| `KeenableInsufficientCreditsError` (alias `KeenableCreditsError`) | HTTP 402, no credits left; retrying will not help |
 | `KeenableAPIError` | Any other non-2xx response; carries `status_code` |
 | `KeenableConnectionError` | The API could not be reached |
 | `KeenableTimeoutError` | A `KeenableConnectionError`: the API did not answer within `timeout` |
@@ -300,7 +286,7 @@ way.
 ```python
 keenable = Keenable(max_retries=4, timeout=10, default_headers={"X-Team": "search"})
 keenable.search("wafer scale engine", max_retries=0)  # no retries for this call
-keenable.fetch("https://example.com", timeout=60, extra_headers={"X-Trace": "abc"})
+keenable.fetch(["https://example.com"], timeout=60, extra_headers={"X-Trace": "abc"})
 ```
 
 Every call takes `timeout`, `max_retries` and `extra_headers`, which override

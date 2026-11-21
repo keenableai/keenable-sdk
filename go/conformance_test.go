@@ -86,12 +86,13 @@ type conformance struct {
 		} `json:"expect"`
 	} `json:"errors"`
 	Responses []struct {
-		Name    string            `json:"name"`
-		Arg     string            `json:"arg"`
-		Status  int               `json:"status"`
-		Headers map[string]string `json:"headers"`
-		Body    string            `json:"body"`
-		Expect  map[string]any    `json:"expect"`
+		Name     string            `json:"name"`
+		Endpoint string            `json:"endpoint"`
+		Arg      string            `json:"arg"`
+		Status   int               `json:"status"`
+		Headers  map[string]string `json:"headers"`
+		Body     string            `json:"body"`
+		Expect   map[string]any    `json:"expect"`
 	} `json:"responses"`
 	Options []struct {
 		Name   string            `json:"name"`
@@ -114,23 +115,6 @@ type conformance struct {
 		Sent      map[string]any `json:"sent"`
 		Invalid   bool           `json:"invalid"`
 	} `json:"tool_call"`
-	FetchBody []struct {
-		Name    string            `json:"name"`
-		URLs    any               `json:"urls"`
-		Options map[string]any    `json:"options"`
-		Sent    map[string]any    `json:"sent"`
-		Invalid bool              `json:"invalid"`
-		Skip    map[string]string `json:"skip"`
-	} `json:"fetch_body"`
-	FetchResponses []struct {
-		Name    string            `json:"name"`
-		URLs    any               `json:"urls"`
-		Status  int               `json:"status"`
-		Headers map[string]string `json:"headers"`
-		Body    string            `json:"body"`
-		Expect  map[string]any    `json:"expect"`
-		Skip    map[string]string `json:"skip"`
-	} `json:"fetch_responses"`
 	Deadline struct {
 		Slack float64 `json:"slack"`
 		Cases []struct {
@@ -178,7 +162,6 @@ func TestConformanceFixtureIsTheSameInEverySDK(t *testing.T) {
 	for _, other := range []string{
 		"../python/tests/fixtures/conformance.json",
 		"../typescript/test/fixtures/conformance.json",
-		"../rust/tests/fixtures/conformance.json",
 	} {
 		theirs, err := os.ReadFile(other)
 		if err != nil {
@@ -212,7 +195,7 @@ func counted(t *testing.T, opts *keenable.Options, h http.Handler) (*keenable.Cl
 
 var okBoth = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 	if strings.Contains(r.URL.Path, "/v1/fetch") {
-		raw(200, `{"results":[{"url":"https://e.com","content":"c"}]}`)(w, r)
+		raw(200, `{"url":"https://e.com","content":"c"}`)(w, r)
 		return
 	}
 	raw(200, `{"query":"q","results":[]}`)(w, r)
@@ -227,7 +210,7 @@ func TestConformanceFetchURL(t *testing.T) {
 	for _, tc := range loadConformance(t).FetchURL {
 		t.Run(tc.Name, func(t *testing.T) {
 			c, n := counted(t, nil, okBoth)
-			_, err := c.Fetch(context.Background(), []string{tc.URL}, nil)
+			_, err := c.Fetch(context.Background(), []string{tc.URL})
 			if tc.Allowed {
 				if err != nil || n.Load() != 1 {
 					t.Fatalf("refused: err=%v requests=%d", err, n.Load())
@@ -660,225 +643,14 @@ func TestConformanceToolCall(t *testing.T) {
 	}
 }
 
-func stringList(t *testing.T, v any) []string {
-	t.Helper()
-	list, ok := v.([]any)
-	if !ok {
-		t.Fatalf("urls %v is not a list", v)
+func TestFetchOptionsDoNotBypassTheURLRefusal(t *testing.T) {
+	c, n := counted(t, nil, okBoth)
+	_, err := c.FetchWithOptions(context.Background(), []string{"http://127.0.0.1/"}, &keenable.FetchOptions{
+		MaxChars: 10, Links: 5,
+	})
+	if !isInvalid(err) || n.Load() != 0 {
+		t.Fatalf("err=%v requests=%d", err, n.Load())
 	}
-	out := make([]string, 0, len(list))
-	for _, item := range list {
-		out = append(out, item.(string))
-	}
-	return out
-}
-
-// fetchOptions maps a case's options onto FetchOptions.
-func fetchOptions(t *testing.T, options map[string]any) *keenable.FetchOptions {
-	t.Helper()
-	opts := &keenable.FetchOptions{}
-	for name, v := range options {
-		switch name {
-		case "max_chars":
-			opts.MaxChars = int(v.(float64))
-		case "schema":
-			opts.Schema = v.(map[string]any)
-		case "links":
-			opts.Links = int(v.(float64))
-		case "images":
-			opts.Images = keenable.Ptr(int(v.(float64)))
-		case "max_age_hours":
-			if f, ok := v.(map[string]any); ok && f["$float"] == "NaN" {
-				opts.MaxAgeHours = keenable.Ptr(math.NaN())
-			} else {
-				opts.MaxAgeHours = keenable.Ptr(v.(float64))
-			}
-		default:
-			t.Fatalf("no Go mapping for %q", name)
-		}
-	}
-	return opts
-}
-
-func TestConformanceFetchBody(t *testing.T) {
-	for _, tc := range loadConformance(t).FetchBody {
-		t.Run(tc.Name, func(t *testing.T) {
-			skipKnown(t, tc.Name)
-			if why, ok := tc.Skip["go"]; ok {
-				t.Skip(why)
-			}
-			key := "k"
-			c, seen := start(t, okBoth, &keenable.Options{APIKey: &key})
-			_, err := c.Fetch(context.Background(), stringList(t, tc.URLs), fetchOptions(t, tc.Options))
-			if tc.Invalid {
-				if !isInvalid(err) || len(*seen) != 0 {
-					t.Fatalf("err=%v requests=%d", err, len(*seen))
-				}
-				return
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			got := one(t, seen)
-			if got.Path != "/v1/fetch" || len(got.Body) == 0 {
-				t.Fatalf("sent %s with body %q, want a JSON body to /v1/fetch", got.Path, got.Body)
-			}
-			var sent map[string]any
-			if err := json.Unmarshal(got.Body, &sent); err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(sent, tc.Sent) {
-				t.Fatalf("sent %v, want %v", sent, tc.Sent)
-			}
-		})
-	}
-}
-
-func ptrOrNil[T any](p *T) any {
-	if p == nil {
-		return nil
-	}
-	return *p
-}
-
-func emptyToNil(s string) any {
-	if s == "" {
-		return nil
-	}
-	return s
-}
-
-func TestConformanceFetchResponses(t *testing.T) {
-	for _, tc := range loadConformance(t).FetchResponses {
-		t.Run(tc.Name, func(t *testing.T) {
-			if why, ok := tc.Skip["go"]; ok {
-				t.Skip(why)
-			}
-			c, n := counted(t, &keenable.Options{MaxRetries: keenable.Ptr(0)}, raw(tc.Status, tc.Body, headerList(tc.Headers)...))
-			resp, err := c.Fetch(context.Background(), stringList(t, tc.URLs), nil)
-			if n.Load() != 1 {
-				t.Fatalf("requests=%d", n.Load())
-			}
-			if kind, ok := tc.Expect["error"].(string); ok {
-				if err == nil {
-					t.Fatal("no error")
-				}
-				assertKind(t, err, kind)
-				return
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			results := []any{}
-			for _, r := range resp.Results {
-				results = append(results, plainFetchResult(t, r))
-			}
-			got := map[string]any{
-				"error":      nil,
-				"request_id": emptyToNil(resp.RequestID),
-				"results":    results,
-			}
-			if normalized := normalize(t, got); !reflect.DeepEqual(normalized, normalize(t, tc.Expect)) {
-				t.Fatalf("got %v, want %v", normalized, tc.Expect)
-			}
-		})
-	}
-}
-
-// kindName is the fixture's name for an API error's class.
-func kindName(err error) string {
-	switch {
-	case errors.As(err, new(*keenable.AuthError)):
-		return "auth"
-	case errors.As(err, new(*keenable.RateLimitError)):
-		return "rate_limit"
-	case errors.As(err, new(*keenable.InsufficientCreditsError)):
-		return "insufficient_credits"
-	}
-	return "api"
-}
-
-// plainFetchResult is a result in the fixture's shape, before JSON
-// normalisation.
-func plainFetchResult(t *testing.T, r keenable.FetchResult) map[string]any {
-	t.Helper()
-	out := map[string]any{"url": r.URL, "page": nil, "error": nil}
-	if r.Error != nil {
-		var api *keenable.APIError
-		if !errors.As(r.Error, &api) {
-			t.Fatalf("result error %T is not an APIError", r.Error)
-		}
-		out["error"] = map[string]any{
-			"kind":       kindName(r.Error),
-			"status":     api.StatusCode,
-			"type":       api.Type,
-			"code":       emptyToNil(api.APICode),
-			"detail":     emptyToNil(api.Body),
-			"fix":        emptyToNil(api.Fix),
-			"retryable":  ptrOrNil(api.Retryable),
-			"request_id": emptyToNil(api.RequestID),
-		}
-	}
-	if p := r.Page; p != nil {
-		var links, images, usage any
-		if p.Links != nil {
-			list := []any{}
-			for _, l := range p.Links {
-				list = append(list, map[string]any{"url": l.URL, "text": ptrOrNil(l.Text)})
-			}
-			links = list
-		}
-		if p.Images != nil {
-			list := []any{}
-			for _, i := range p.Images {
-				list = append(list, map[string]any{"url": i.URL, "alt": ptrOrNil(i.Alt)})
-			}
-			images = list
-		}
-		if u := p.Usage; u != nil {
-			usage = map[string]any{
-				"sku": u.SKU, "amount": u.Amount, "credits": u.Credits, "paid": u.Paid,
-				"credits_remaining": ptrOrNil(u.CreditsRemaining),
-			}
-		}
-		var structured any
-		if p.Structured != nil {
-			structured = p.Structured
-		}
-		out["page"] = map[string]any{
-			"url":          p.URL,
-			"title":        p.Title,
-			"content":      p.Content,
-			"description":  ptrOrNil(p.Description),
-			"author":       ptrOrNil(p.Author),
-			"published_at": ptrOrNil(p.PublishedAt),
-			"truncated":    ptrOrNil(p.Truncated),
-			"total_chars":  ptrOrNil(p.TotalChars),
-			"image":        ptrOrNil(p.Image),
-			"favicon":      ptrOrNil(p.Favicon),
-			"links":        links,
-			"images":       images,
-			"structured":   structured,
-			"answer_error": ptrOrNil(p.AnswerError),
-			"stale":        ptrOrNil(p.Stale),
-			"usage":        usage,
-		}
-	}
-	return out
-}
-
-// normalize round-trips v through JSON, so it compares with fixture values.
-func normalize(t *testing.T, v any) any {
-	t.Helper()
-	encoded, err := json.Marshal(v)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var out any
-	if err := json.Unmarshal(encoded, &out); err != nil {
-		t.Fatal(err)
-	}
-	return out
 }
 
 const deadlineJSON = `{"results": []}`

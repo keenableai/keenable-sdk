@@ -156,49 +156,36 @@ for i, result := range results.Cited(nil) {
 
 ## Read full pages
 
-`Fetch` reads up to 10 pages in one call. `Results[i]` is for `urls[i]`: its
-`Page`, or its `Error` when that URL failed. A failed URL is not returned as an
-error; `Fetch` returns an error only when the call fails as a whole.
-
 ```go
-resp, err := client.Fetch(context.Background(), []string{
-	"https://cerebras.ai/chip",
-	"https://cerebras.ai/blog",
-}, nil)
+live := 0.0
+resp, err := client.FetchWithOptions(context.Background(),
+	[]string{"https://cerebras.ai/chip", "https://cerebras.ai/blog"},
+	&keenable.FetchOptions{MaxChars: 5000, MaxAgeHours: &live})
 if err != nil {
 	log.Fatal(err)
 }
-for _, result := range resp.Results {
-	if result.Error != nil {
-		fmt.Println(result.URL, result.Error)
+for _, page := range resp.Results {
+	if page.Error != nil {
+		fmt.Println(page.URL, page.Error.Code)
 		continue
 	}
-	fmt.Println(result.Page.Title)
-	fmt.Println(result.Page.Content)       // markdown, boilerplate stripped
-	fmt.Println(result.Page.ToContext(nil)) // same citable block shape as search results
+	fmt.Println(page.Title)
+	fmt.Println(page.Content)        // markdown, boilerplate stripped
+	fmt.Println(page.ToContext(nil)) // same citable block shape as search results
 }
 ```
 
-`result.Error` is the error `Fetch` would return for that status (an
-`*APIError`, or an `*AuthError`, `*RateLimitError` or
-`*InsufficientCreditsError` wrapping one), so `errors.As` reads its
-`StatusCode`, `APICode`, `Type` and `Fix`. `FetchOptions` applies to every page:
-
-```go
-resp, err := client.Fetch(ctx, []string{"https://cerebras.ai/pricing"}, &keenable.FetchOptions{
-	MaxChars:    5000,
-	Schema:      map[string]any{"type": "object", "properties": map[string]any{"price": map[string]any{"type": "number"}}},
-	MaxAgeHours: keenable.Ptr(24.0),
-})
-```
+`Fetch` sends one `POST /v1/fetch`. `Results[i]` is for `urls[i]`; a URL that
+failed has `Error` set instead of returning an error. The `FetchOptions`
+fields are sent only when set (the API checks their values):
 
 | Field | What it does |
 |---|---|
-| `MaxChars` | The most characters of content per page. Zero means the API default of 50000; `page.Truncated` and `page.TotalChars` say whether the page was cut |
-| `Schema` | A JSON Schema whose root has `"type": "object"`. Each page's typed answer is in `page.Structured`, or `page.AnswerError` says why it could not be made |
-| `Links` | The most links per page to return, 1 to 1000, in `page.Links`. Zero means unset |
-| `Images` | The most images per page to return, 0 to 25, in `page.Images`. Nil means unset; `keenable.Ptr(0)` asks for none |
-| `MaxAgeHours` | Use a stored copy only if it is younger than this, 0 to 720 hours (fractions allowed). `keenable.Ptr(0.0)` reads every page live; nil takes a stored copy of any age when there is one |
+| `MaxChars` | The most characters of content per page. Zero means the API default of 50000 |
+| `Schema` | A JSON Schema; each page's answer is in `page.Structured` |
+| `Links` | The most links per page to return, in `page.Links` |
+| `Images` | The most images per page to return, in `page.Images` |
+| `MaxAgeHours` | Use a stored copy only if younger than this; `0` reads every page live |
 
 Internal hosts and private addresses are refused before a request is sent:
 `localhost` and names under `.localhost`, `metadata.google.internal`, and IP
@@ -276,9 +263,9 @@ if errors.As(err, &sdk) {
 
 | Type | Code | When |
 |---|---|---|
-| `RateLimitError` | `rate_limit` | Type `rate_limit_error` (HTTP 429 when the API sends no type). The message names `X-RateLimit-Reset` when the API sent it. A keyless call is told to set `KEENABLE_API_KEY`. A keyed call is told to wait for the window |
-| `AuthError` | `auth` | Type `authentication_error` or `permission_error` (HTTP 401/403 when the API sends no type), the key was rejected |
-| `InsufficientCreditsError` (alias `CreditsError`) | `api_error` | Type `billing_error` (HTTP 402 when the API sends no type), no credits left, or a pay-per-request (x402) payment this SDK cannot make; retrying will not help. The message starts "Keenable: insufficient credits (402)" or "Keenable: payment required (402)" |
+| `RateLimitError` | `rate_limit` | HTTP 429. The message names `X-RateLimit-Reset` when the API sent it. A keyless call is told to set `KEENABLE_API_KEY`. A keyed call is told to wait for the window |
+| `AuthError` | `auth` | HTTP 401/403, the key was rejected |
+| `InsufficientCreditsError` (alias `CreditsError`) | `api_error` | HTTP 402, no credits left, or a pay-per-request (x402) payment this SDK cannot make; retrying will not help. The message starts "Keenable: insufficient credits (402)" or "Keenable: payment required (402)" |
 | `APIError` | `api_error` | Any other non-2xx response; carries `StatusCode`, `Body`, and `RequestID` when the API sent `X-Request-Id` |
 | `ConnectionError` | `connection` | The API could not be reached, or the client deadline elapsed (`Timeout()` reports which) |
 | `InvalidRequestError` | `invalid_request` | Bad arguments; no request was sent |
@@ -353,7 +340,7 @@ resp, err := client.Search(ctx, "wafer scale engine", &keenable.SearchOptions{
     RequestOptions: keenable.RequestOptions{MaxRetries: &none},
 })
 minute := time.Minute
-fetched, err := client.Fetch(ctx, []string{"https://example.com"}, &keenable.FetchOptions{
+resp, err := client.FetchWithOptions(ctx, []string{"https://example.com"}, &keenable.FetchOptions{
     RequestOptions: keenable.RequestOptions{
         Timeout: &minute, // nil keeps the client's
         Headers: map[string]string{"X-Trace": "abc"},
@@ -361,12 +348,13 @@ fetched, err := client.Fetch(ctx, []string{"https://example.com"}, &keenable.Fet
 })
 ```
 
-`RequestOptions` (embedded in `SearchOptions` and `FetchOptions`) overrides
+`RequestOptions` (embedded in `SearchOptions` and in `FetchOptions`, which
+`FetchWithOptions` takes) overrides
 the client's `Timeout`, `MaxRetries` and `Headers` for one call. `Timeout` is a
 pointer: nil keeps the client's, and zero or less is an `InvalidRequestError`.
 A header whose name is not an HTTP token, or whose value has a CR, LF or NUL, is
 an `InvalidRequestError` too, before anything is sent. `X-API-Key`
-always comes from `APIKey`. `SearchResponse.RequestID` and `FetchResponse.RequestID`
+always comes from `APIKey`. `SearchResponse.RequestID` and `Page.RequestID`
 carry the API's request id; quote it when reporting a problem.
 
 ## Configuration

@@ -93,27 +93,17 @@ export interface SearchOptions extends RequestOptions {
   disableCards?: boolean;
 }
 
-/** Optional arguments for `fetch()`. Each applies to every page. */
+/** Optional arguments for `fetch()`. The API checks their values. */
 export interface FetchOptions extends RequestOptions {
-  /**
-   * The most characters of content per page, at least 1. The API default is
-   * 50000. `Page.truncated` and `Page.totalChars` say whether a page was cut.
-   */
+  /** The most characters of content per page. */
   maxChars?: number;
-  /**
-   * A JSON Schema whose root has `type: "object"`. Each page's typed answer is
-   * in `Page.structured`, or `Page.answerError` says why it could not be made.
-   */
+  /** A JSON Schema; each page's answer is in `Page.structured`. */
   schema?: Record<string, unknown>;
-  /** The most links per page to return, 1 to 1000. */
+  /** The most links per page to return. */
   links?: number;
-  /** The most images per page to return, 0 to 25. */
+  /** The most images per page to return. */
   images?: number;
-  /**
-   * Use a stored copy only if it is younger than this, 0 to 720 hours
-   * (fractions allowed); `0` reads every page live. Left out, a stored copy of
-   * any age is used when there is one.
-   */
+  /** Use a stored copy only if younger than this; 0 reads every page live. */
   maxAgeHours?: number;
 }
 

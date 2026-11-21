@@ -1,13 +1,9 @@
 //! What `search` and `fetch` return, and the citable block they render.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::context_clean::clean_context_text;
-use crate::fetch::{
-    fetch_answer_error, fetch_images, fetch_links, fetch_usage, FetchAnswerError, FetchImage,
-    FetchLink, FetchUsage,
-};
 use crate::retry::civil_from_days;
 
 /// The `to_context` budget: about 3k tokens, enough for a handful of results
@@ -60,17 +56,99 @@ pub struct SearchResponse {
     pub raw: Map<String, Value>,
 }
 
-/// A page read by [`Client::fetch`](crate::Client::fetch), with its main
-/// content as markdown.
+/// What [`Client::fetch`](crate::Client::fetch) returns: `results[i]` is for
+/// `urls[i]`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct FetchResponse {
+    /// One page per URL asked for.
+    pub results: Vec<Page>,
+    /// The API's id for this request. Quote it when reporting a problem.
+    pub request_id: Option<String>,
+    /// The unmodified JSON body.
+    #[serde(skip)]
+    pub raw: Map<String, Value>,
+}
+
+/// Why one URL of a fetch failed, as the API sent it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct FetchError {
+    /// The HTTP status this URL failed with.
+    pub status: u16,
+    /// The API's short error title.
+    pub error: String,
+    /// The API's machine-readable reason.
+    pub code: Option<String>,
+    /// The error's category.
+    #[serde(rename = "type")]
+    pub error_type: Option<String>,
+    /// The API's message.
+    pub message: Option<String>,
+    /// One sentence on what to do next.
+    pub fix: Option<String>,
+    /// Whether trying this URL again can succeed.
+    pub retryable: Option<bool>,
+}
+
+/// A link on a fetched page.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct PageLink {
+    /// Where the link goes.
+    pub url: String,
+    /// The link's text.
+    pub text: Option<String>,
+}
+
+/// An image on a fetched page.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct PageImage {
+    /// The image URL.
+    pub url: String,
+    /// The image's alt text.
+    pub alt: Option<String>,
+}
+
+/// Why the answer for [`FetchOptions::schema`](crate::FetchOptions::schema)
+/// could not be made.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct AnswerError {
+    /// The machine-readable reason.
+    pub code: String,
+    /// What went wrong.
+    pub message: String,
+}
+
+/// What reading one page cost.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct Usage {
+    /// The billed item.
+    pub sku: String,
+    /// How many were billed.
+    pub amount: u64,
+    /// The credits spent.
+    pub credits: f64,
+    /// `true` when paid credits were spent.
+    pub paid: bool,
+    /// The credits left after this page.
+    pub credits_remaining: Option<f64>,
+}
+
+/// One result of [`Client::fetch`](crate::Client::fetch): a page as markdown,
+/// or [`Page::error`] when that URL failed.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct Page {
-    /// The page's final address after redirects.
+    /// The page URL.
     pub url: String,
     /// The page title.
     pub title: String,
-    /// The main content as markdown, cut to
-    /// [`FetchOptions::max_chars`](crate::FetchOptions::max_chars).
+    /// The main content as markdown, or the model's answer when a prompt was
+    /// passed.
     pub content: String,
     /// The page's description, when it has one.
     pub description: Option<String>,
@@ -89,23 +167,21 @@ pub struct Page {
     pub image: Option<String>,
     /// The page's favicon URL.
     pub favicon: Option<String>,
-    /// The page's links, when [`FetchOptions::links`](crate::FetchOptions::links)
-    /// asked for them.
-    pub links: Option<Vec<FetchLink>>,
-    /// The page's images, with their alt text.
-    pub images: Option<Vec<FetchImage>>,
-    /// The typed answer for
-    /// [`FetchOptions::schema`](crate::FetchOptions::schema), when one was
-    /// asked for and made.
+    /// The page's links, when [`FetchOptions::links`](crate::FetchOptions::links) was set.
+    pub links: Option<Vec<PageLink>>,
+    /// The page's images.
+    pub images: Option<Vec<PageImage>>,
+    /// The answer for [`FetchOptions::schema`](crate::FetchOptions::schema).
     pub structured: Option<Map<String, Value>>,
     /// Why the answer for the schema could not be made.
-    pub answer_error: Option<FetchAnswerError>,
-    /// `true` when an older stored copy was returned because a fresh read
-    /// failed.
+    pub answer_error: Option<AnswerError>,
+    /// `true` when an older stored copy was returned because a fresh read failed.
     pub stale: Option<bool>,
     /// What reading this page cost.
-    pub usage: Option<FetchUsage>,
-    /// The unmodified JSON body.
+    pub usage: Option<Usage>,
+    /// Set when this URL failed; the other fields are then empty.
+    pub error: Option<FetchError>,
+    /// The unmodified JSON object.
     #[serde(skip)]
     pub raw: Map<String, Value>,
 }
@@ -418,6 +494,9 @@ pub(crate) fn search_response_from_json(
 }
 
 pub(crate) fn page_from_json(data: Map<String, Value>, fallback_url: &str) -> Page {
+    fn typed<T: serde::de::DeserializeOwned>(v: Option<&Value>) -> Option<T> {
+        serde_json::from_value(v?.clone()).ok()
+    }
     Page {
         url: non_blank(data.get("url")).unwrap_or_else(|| fallback_url.to_string()),
         title: as_string(data.get("title")),
@@ -429,12 +508,13 @@ pub(crate) fn page_from_json(data: Map<String, Value>, fallback_url: &str) -> Pa
         total_chars: safe_count(data.get("total_chars")),
         image: non_blank(data.get("image")),
         favicon: non_blank(data.get("favicon")),
-        links: fetch_links(data.get("links")),
-        images: fetch_images(data.get("images")),
+        links: typed(data.get("links")),
+        images: typed(data.get("images")),
         structured: data.get("structured").and_then(Value::as_object).cloned(),
-        answer_error: fetch_answer_error(data.get("answer_error")),
+        answer_error: typed(data.get("answer_error")),
         stale: data.get("stale").and_then(Value::as_bool),
-        usage: fetch_usage(data.get("usage")),
+        usage: typed(data.get("usage")),
+        error: typed(data.get("error")),
         raw: data,
     }
 }

@@ -132,49 +132,29 @@ Pass a `ContextOptions` to `to_context_with` and `cited_with` to change
 
 ## Read full pages
 
-`fetch` reads up to 10 pages in one call. `results[i]` is for `urls[i]`: its
-`page`, or its `error` when that URL failed. A failed URL is not returned as an
-`Err`; the call fails only as a whole.
-
 ```rust
 let response = client
-    .fetch(&["https://cerebras.ai/chip", "https://cerebras.ai/blog"])
-    .await?;
-for result in &response.results {
-    match (&result.page, &result.error) {
-        (Some(page), _) => {
-            println!("{}", page.content); // markdown, boilerplate stripped
-            println!("{}", page.to_context()); // same citable block shape as search results
-        }
-        (_, Some(error)) => println!("{}: {error}", result.url),
-        _ => {}
-    }
-}
-
-let priced = client
     .fetch_with(
-        &["https://cerebras.ai/pricing"],
+        ["https://cerebras.ai/chip", "https://cerebras.ai/blog"],
         &keenable::FetchOptions {
-            schema: Some(serde_json::json!({
-                "type": "object",
-                "properties": {"price": {"type": "number"}}
-            })),
-            max_age_hours: Some(24.0),
+            max_chars: Some(5000),
             ..Default::default()
         },
     )
     .await?;
+for page in &response.results {
+    match &page.error {
+        Some(error) => println!("{} failed: {:?}", page.url, error.code),
+        None => println!("{}", page.to_context()), // same citable block as search results
+    }
+}
 ```
 
-`result.error` is the `Error` the call would return for that status
-(`Error::Api`, `Error::Auth`, `Error::RateLimit` or
-`Error::InsufficientCredits`). `FetchOptions` applies to every page:
-`max_chars` (at least 1; the API default is 50000, and `page.truncated` and
-`page.total_chars` say whether the page was cut), `schema` (a JSON Schema whose
-root has `"type": "object"`; the typed answer is in `page.structured`, or
-`page.answer_error` says why it could not be made), `links` (1 to 1000),
-`images` (0 to 25) and `max_age_hours` (0 to 720, fractions allowed; `Some(0.0)`
-reads every page live, `None` takes a stored copy of any age).
+`fetch` sends one `POST /v1/fetch`. `results[i]` is for `urls[i]`; a URL that
+failed has `error` set instead of returning `Err`. `FetchOptions` has
+`max_chars`, `schema` (each page's answer is in `page.structured`), `links`,
+`images` and `max_age_hours` (`Some(0.0)` reads every page live), sent only
+when set; the API checks their values.
 
 Internal hosts and private addresses are refused before a request is sent:
 `localhost` and names under `.localhost`, `metadata.google.internal`, and IP
@@ -216,9 +196,9 @@ Every call returns `keenable::Error`:
 
 | Variant | When |
 |---|---|
-| `Error::RateLimit` | Type `rate_limit_error` (HTTP 429 when the API sends no type), rate limit exceeded |
-| `Error::Auth` | Type `authentication_error` or `permission_error` (HTTP 401 or 403 when the API sends no type), key rejected |
-| `Error::InsufficientCredits` | Type `billing_error` (HTTP 402 when the API sends no type), out of credits |
+| `Error::RateLimit` | HTTP 429, rate limit exceeded |
+| `Error::Auth` | HTTP 401 or 403, key rejected |
+| `Error::InsufficientCredits` | HTTP 402, out of credits |
 | `Error::Api` | Any other non-2xx response |
 | `Error::Connection` | API could not be reached, or the deadline elapsed (`is_timeout()`) |
 | `Error::InvalidRequest` | Bad arguments, no request sent |

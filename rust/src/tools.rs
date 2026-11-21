@@ -6,8 +6,8 @@ use serde_json::{json, Map, Value};
 
 use crate::client::{Client, RequestOptions};
 use crate::error::{ApiError, Error, Result};
-use crate::fetch::FetchResult;
 use crate::json;
+use crate::models::Page;
 
 /// An OpenAI-compatible function tool. Serialize [`tools`] straight into a
 /// chat completion request that speaks that schema.
@@ -251,18 +251,23 @@ impl Client {
                     args.get("url"),
                     "keenable_fetch needs a 'url'. Pass a JSON object with an https URL.",
                 )?;
-                let response = self.fetch(&[url]).await?;
-                match response.results.into_iter().next() {
-                    Some(FetchResult {
-                        error: Some(error), ..
-                    }) => Err(error),
-                    Some(FetchResult {
-                        page: Some(page), ..
-                    }) => Ok(page.to_context()),
-                    _ => Err(Error::Api(Box::new(ApiError::plain(
+                let page = self.fetch([url]).await?.results.into_iter().next();
+                match page {
+                    Some(Page { error: Some(e), .. }) => {
+                        let mut err =
+                            ApiError::plain(e.status, e.message.unwrap_or(e.error.clone()), None);
+                        err.code = e.code;
+                        err.error_type = e.error_type.unwrap_or_default();
+                        err.error = Some(e.error);
+                        err.fix = e.fix;
+                        err.retryable = e.retryable;
+                        Err(Error::Api(Box::new(err)))
+                    }
+                    Some(page) => Ok(page.to_context()),
+                    None => Err(Error::Api(Box::new(ApiError::plain(
                         200,
                         "the Keenable API returned no result for the URL".into(),
-                        response.request_id,
+                        None,
                     )))),
                 }
             }

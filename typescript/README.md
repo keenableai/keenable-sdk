@@ -143,45 +143,31 @@ results.cited().forEach((result, index) => {
 
 ## Read full pages
 
-`fetch()` reads up to 10 pages in one call. `results[i]` is for `urls[i]`: its
-`page`, or its `error` when that URL failed. A failed URL does not throw; the
-call throws only when it fails as a whole.
-
 ```ts
 const response = await keenable.fetch(["https://cerebras.ai/chip", "https://cerebras.ai/blog"]);
 
-for (const result of response.results) {
-  if (result.error) {
-    console.log(result.url, result.error.code);
-  } else if (result.page) {
-    console.log(result.page.title);
-    console.log(result.page.content); // markdown, boilerplate stripped
-    console.log(result.page.toContext()); // same citable block shape as search results
+for (const page of response.results) {
+  if (page.error) {
+    console.log(page.url, page.error.code);
+    continue;
   }
+  console.log(page.title);
+  console.log(page.content); // markdown, boilerplate stripped
+  console.log(page.toContext()); // same citable block shape as search results
 }
 ```
 
-A lone string is one URL: `keenable.fetch("https://cerebras.ai/chip")`.
-`result.error` is the error the SDK would throw for that status
-(`KeenableAPIError` or a subclass), with its `statusCode`, `code`, `type` and
-`fix`. The options (`FetchOptions`, next to the per-request ones) apply to
-every page:
-
-```ts
-const response = await keenable.fetch("https://cerebras.ai/pricing", {
-  schema: { type: "object", properties: { price: { type: "number" } } },
-  maxAgeHours: 24,
-});
-console.log(response.results[0]?.page?.structured);
-```
+`fetch()` sends one `POST /v1/fetch`. `results[i]` is for `urls[i]`; a URL
+that failed has `error` set instead of throwing. `FetchOptions`, next to the
+per-request ones, are sent only when set (the API checks their values):
 
 | Option | What it does |
 |---|---|
-| `maxChars` | The most characters of content per page, at least 1. The API default is 50000; `page.truncated` and `page.totalChars` say whether the page was cut |
-| `schema` | A JSON Schema whose root has `type: "object"`. Each page's typed answer is in `page.structured`, or `page.answerError` says why it could not be made |
-| `links` | The most links per page to return, 1 to 1000, in `page.links` |
-| `images` | The most images per page to return, 0 to 25, in `page.images` |
-| `maxAgeHours` | Use a stored copy only if it is younger than this, 0 to 720 hours (fractions allowed). `0` reads every page live. Left out, a stored copy of any age is used when there is one |
+| `maxChars` | The most characters of content per page. The API default is 50000 |
+| `schema` | A JSON Schema; each page's answer is in `page.structured` |
+| `links` | The most links per page to return, in `page.links` |
+| `images` | The most images per page to return, in `page.images` |
+| `maxAgeHours` | Use a stored copy only if younger than this; `0` reads every page live |
 
 ## Tool calling
 
@@ -218,9 +204,9 @@ All errors extend `KeenableError`:
 
 | Error | When |
 |---|---|
-| `KeenableRateLimitError` | Type `rate_limit_error` (HTTP 429 when the API sends no type). Set `KEENABLE_API_KEY` to lift the keyless cap |
-| `KeenableAuthError` | Type `authentication_error` or `permission_error` (HTTP 401/403 when the API sends no type), the key was rejected |
-| `KeenableInsufficientCreditsError` (alias `KeenableCreditsError`) | Type `billing_error` (HTTP 402 when the API sends no type), no credits left; retrying will not help |
+| `KeenableRateLimitError` | HTTP 429. Set `KEENABLE_API_KEY` to lift the keyless cap |
+| `KeenableAuthError` | HTTP 401/403, the key was rejected |
+| `KeenableInsufficientCreditsError` (alias `KeenableCreditsError`) | HTTP 402, no credits left; retrying will not help |
 | `KeenableAPIError` | Any other non-2xx response; carries `statusCode` |
 | `KeenableConnectionError` | The API could not be reached |
 | `KeenableTimeoutError` | A `KeenableConnectionError`: the API did not answer within `timeoutMs` |
@@ -293,7 +279,7 @@ const keenable = new Keenable({
   defaultHeaders: { "X-Team": "search" },
 });
 await keenable.search("wafer scale engine", { maxRetries: 0 }); // no retries for this call
-await keenable.fetch("https://example.com", { timeoutMs: 60_000, headers: { "X-Trace": "abc" } });
+await keenable.fetch(["https://example.com"], { timeoutMs: 60_000, headers: { "X-Trace": "abc" } });
 ```
 
 Every call takes `signal`, `timeoutMs`, `maxRetries` and `headers`, which

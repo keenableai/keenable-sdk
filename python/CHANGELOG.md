@@ -5,27 +5,7 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
-- **Breaking (1.0.0):** `fetch()` reads up to 10 pages in one call with
-  `POST /v1/fetch` and returns a `FetchResponse`, not a `Page`:
-  `fetch(urls, *, max_chars=None, schema=None, links=None, images=None,
-  max_age_hours=None, timeout=None, max_retries=None, extra_headers=None)`,
-  sync and async. `urls` is a list, or a lone string as one URL.
-  `results[i]` is for `urls[i]`: its `page`, or its `error` when that URL
-  failed. `error` is the `KeenableAPIError` (or subclass) the call would raise
-  for that status, and it is not raised: the call raises only when it fails as
-  a whole.
-  - The options apply to every page: `max_chars` (at least 1), `schema` (a JSON
-    Schema whose root has `"type": "object"`; the answer is in
-    `Page.structured`, or `Page.answer_error` says why not), `links` (1 to
-    1000), `images` (0 to 25) and `max_age_hours` (0 to 720, fractions
-    allowed; `0` reads live). A value outside these limits, or more than 10
-    URLs, raises `KeenableInvalidRequestError` before a request is sent.
-  - `Page` gains `image`, `favicon`, `links`, `images`, `structured`,
-    `answer_error`, `stale` and `usage`, and loses `request_id`: read
-    `FetchResponse.request_id`.
-  - Removed: `GET /v1/fetch` and its `live` and `prompt` options. Pass
-    `max_age_hours=0` for a live read; `schema` returns a typed answer where
-    `prompt` returned text.
+- **Changed (breaking):** `fetch()` takes a list of URLs (a lone string is one URL) and sends one `POST /v1/fetch`. It returns a `FetchResponse` whose `results[i]` is the `Page` for `urls[i]`, with `error` (a `FetchError`) set when that URL failed. Options: `max_chars`, `schema`, `links`, `images`, `max_age_hours`, sent only when set; the API checks their values. The `live` and `prompt` options and `Page.request_id` are gone (`FetchResponse.request_id` replaces it), and there is no separate `fetch_many`.
 - **Added:** `objective` on `search()` (sync and async): what the search is for, in two or three natural sentences, up to 1,000 characters. Left out of the request when unset or empty. The API validates and logs it; it does not change results or price. The search tool offers it to a model.
 
 - **Changed:** a numeric `timeout` is now the deadline for the whole attempt,
@@ -50,7 +30,6 @@ All notable changes to the `keenable` Python package. Versions follow
 - **Changed:** `fetch()` refuses a host with an empty label before sending: two
   dots in a row (`a..b`, `127.0.0..1`, `example.com..`) or a leading dot
   (`.example.com`). One trailing dot is still fine.
-- **Changed:** the error class follows the body's `type`, not the status: `authentication_error` and `permission_error` raise `KeenableAuthError`, `rate_limit_error` `KeenableRateLimitError`, `billing_error` `KeenableInsufficientCreditsError`, and a 429 about the fetched page (`target_error`) `KeenableAPIError`. A body without a known type still maps by status.
 
 ## 0.1.5
 

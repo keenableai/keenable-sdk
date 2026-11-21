@@ -8,8 +8,10 @@ use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::{Map, Value};
 
 use crate::error::{ApiError, ConnectionError, Error, RateLimitError, RateLimitInfo, Result};
-use crate::guard::resolve_base_url;
-use crate::models::{non_blank, safe_count, search_response_from_json, SearchResponse};
+use crate::guard::{reject_private_fetch_target, resolve_base_url};
+use crate::models::{
+    non_blank, page_from_json, safe_count, search_response_from_json, FetchResponse, SearchResponse,
+};
 use crate::retry::{retry_after_header, retry_delay, seconds};
 use crate::{json, types, VERSION};
 
@@ -144,6 +146,24 @@ pub struct SearchOptions {
     /// facts (their URLs expire after one day). `false`, the API default, is
     /// not sent.
     pub disable_cards: bool,
+    /// This call's timeout, retry budget and headers.
+    pub request: RequestOptions,
+}
+
+/// The optional arguments to [`Client::fetch_with`]. Only the options set are
+/// sent, and the API checks their values.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct FetchOptions {
+    /// The most characters of content per page.
+    pub max_chars: Option<u32>,
+    /// A JSON Schema; each page's answer is in `Page::structured`.
+    pub schema: Option<Value>,
+    /// The most links per page to return.
+    pub links: Option<u32>,
+    /// The most images per page to return.
+    pub images: Option<u32>,
+    /// Use a stored copy only if younger than this; 0 reads every page live.
+    pub max_age_hours: Option<f64>,
     /// This call's timeout, retry budget and headers.
     pub request: RequestOptions,
 }
@@ -328,14 +348,104 @@ impl Client {
                 "could not encode the search request: {e}. Pass JSON-encodable arguments."
             ))
         })?;
-        let (data, id) = self.send("search", body, request).await?;
+        let (data, id) = self
+            .send(
+                reqwest::Method::POST,
+                "search",
+                Some(body),
+                Vec::new(),
+                request,
+            )
+            .await?;
         Ok(search_response_from_json(data, query, id))
     }
 
-    fn endpoint_url(&self, endpoint: &str) -> String {
+    /// Reads pages as markdown with `POST /v1/fetch`. `results[i]` is for
+    /// `urls[i]`: a [`Page`](crate::Page), with `error` set when that URL
+    /// failed. Internal hosts and private addresses are refused here, before
+    /// a request is sent.
+    pub async fn fetch<I>(&self, urls: I) -> Result<FetchResponse>
+    where
+        I: IntoIterator,
+        I::Item: AsRef<str>,
+    {
+        self.fetch_with(urls, &FetchOptions::default()).await
+    }
+
+    /// [`Client::fetch`] with the options in [`FetchOptions`] and per-call
+    /// settings.
+    pub async fn fetch_with<I>(&self, urls: I, opts: &FetchOptions) -> Result<FetchResponse>
+    where
+        I: IntoIterator,
+        I::Item: AsRef<str>,
+    {
+        let urls: Vec<String> = urls.into_iter().map(|u| u.as_ref().to_string()).collect();
+        for url in &urls {
+            reject_private_fetch_target(url)?;
+        }
+        let mut content = Map::new();
+        let options = [
+            ("max_chars", opts.max_chars.map(Value::from)),
+            ("schema", opts.schema.clone()),
+            ("links", opts.links.map(Value::from)),
+            ("images", opts.images.map(Value::from)),
+        ];
+        for (name, value) in options {
+            if let Some(value) = value {
+                content.insert(name.into(), value);
+            }
+        }
+        let mut payload = Map::new();
+        payload.insert("urls".into(), Value::from(urls.clone()));
+        if !content.is_empty() {
+            payload.insert("content".into(), Value::Object(content));
+        }
+        if let Some(hours) = opts.max_age_hours {
+            payload.insert(
+                "retrieval".into(),
+                serde_json::json!({ "max_age_hours": hours }),
+            );
+        }
+        let body = serde_json::to_vec(&payload)
+            .map_err(|e| Error::invalid(format!("could not encode the fetch request: {e}")))?;
+        let (data, id) = self
+            .send(
+                reqwest::Method::POST,
+                "fetch",
+                Some(body),
+                Vec::new(),
+                &opts.request,
+            )
+            .await?;
+        let results = match data.get("results") {
+            Some(Value::Array(items)) => items
+                .iter()
+                .enumerate()
+                .filter_map(|(i, item)| {
+                    let asked = urls.get(i).map_or("", String::as_str);
+                    Some(page_from_json(item.as_object()?.clone(), asked))
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        Ok(FetchResponse {
+            results,
+            request_id: non_blank(data.get("request_id")).or(id),
+            raw: data,
+        })
+    }
+
+    fn endpoint_url(&self, endpoint: &str, query: &[(String, String)]) -> String {
         let mut url = format!("{}/v1/{endpoint}", self.inner.base_url);
         if self.is_keyless() {
             url.push_str("/public");
+        }
+        if !query.is_empty() {
+            let encoded = url::form_urlencoded::Serializer::new(String::new())
+                .extend_pairs(query)
+                .finish();
+            url.push('?');
+            url.push_str(&encoded);
         }
         url
     }
@@ -343,7 +453,7 @@ impl Client {
     /// The SDK's own headers, then the client's, then the call's. The API key
     /// always comes from the client, so a stray header cannot send a
     /// different key or turn a keyless call keyed.
-    fn headers(&self, extra: &HashMap<String, String>) -> Result<HeaderMap> {
+    fn headers(&self, json_body: bool, extra: &HashMap<String, String>) -> Result<HeaderMap> {
         let mut h = HeaderMap::new();
         let mut set = |name: &str, value: &str| -> Result<()> {
             let name = HeaderName::from_bytes(name.as_bytes())
@@ -370,14 +480,18 @@ impl Client {
         if !self.inner.api_key.is_empty() {
             set("X-API-Key", &self.inner.api_key)?;
         }
-        set("Content-Type", "application/json")?;
+        if json_body {
+            set("Content-Type", "application/json")?;
+        }
         Ok(h)
     }
 
-    pub(crate) async fn send(
+    async fn send(
         &self,
+        method: reqwest::Method,
         endpoint: &str,
-        body: Vec<u8>,
+        body: Option<Vec<u8>>,
+        query: Vec<(String, String)>,
         opts: &RequestOptions,
     ) -> Result<(Map<String, Value>, Option<String>)> {
         let timeout = match opts.timeout {
@@ -392,12 +506,12 @@ impl Client {
         .min(MAX_TIMEOUT);
         let retries = opts.max_retries.unwrap_or(self.inner.max_retries);
         check_headers(&opts.headers)?;
-        let headers = self.headers(&opts.headers)?;
-        let url = self.endpoint_url(endpoint);
+        let headers = self.headers(body.is_some(), &opts.headers)?;
+        let url = self.endpoint_url(endpoint, &query);
         let mut retry = 0;
         loop {
             let err = match self
-                .attempt(&url, body.clone(), headers.clone(), timeout)
+                .attempt(method.clone(), &url, body.clone(), headers.clone(), timeout)
                 .await
             {
                 Ok(done) => return Ok(done),
@@ -418,12 +532,16 @@ impl Client {
     /// decodes the reply.
     async fn attempt(
         &self,
+        method: reqwest::Method,
         url: &str,
-        body: Vec<u8>,
+        body: Option<Vec<u8>>,
         headers: HeaderMap,
         timeout: Duration,
     ) -> Result<(Map<String, Value>, Option<String>)> {
-        let req = self.inner.http.post(url).headers(headers).body(body);
+        let mut req = self.inner.http.request(method, url).headers(headers);
+        if let Some(body) = body {
+            req = req.body(body);
+        }
         let exchange = async {
             let resp = req.send().await?;
             let status = resp.status().as_u16();
@@ -570,29 +688,6 @@ fn derive_type(status: u16, code: Option<&str>) -> &'static str {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Kind {
-    Api,
-    Auth,
-    RateLimit,
-    Credits,
-}
-
-fn kind_of(status: u16, sent_type: Option<&str>, error_type: &str) -> Kind {
-    match sent_type {
-        Some(types::AUTHENTICATION_ERROR | types::PERMISSION_ERROR) => Kind::Auth,
-        Some(types::BILLING_ERROR) => Kind::Credits,
-        Some(types::RATE_LIMIT_ERROR) => Kind::RateLimit,
-        Some(types::INVALID_REQUEST_ERROR | types::TARGET_ERROR | types::API_ERROR) => Kind::Api,
-        _ => match status {
-            401 | 403 if error_type != types::TARGET_ERROR => Kind::Auth,
-            402 => Kind::Credits,
-            429 => Kind::RateLimit,
-            _ => Kind::Api,
-        },
-    }
-}
-
 /// 429 codes for a limit that is not the caller's own (ours or the fetched
 /// site's), so a key would not lift it.
 fn not_your_limit(code: Option<&str>) -> bool {
@@ -683,13 +778,13 @@ fn build_api_error(
     }
     api.code = code;
 
-    let kind = kind_of(status, field("type").as_deref(), &api.error_type);
-    let auth = kind == Kind::Auth;
+    // A 401/403 about the page being fetched is not an authentication failure.
+    let auth = (status == 401 || status == 403) && api.error_type != types::TARGET_ERROR;
     if status == 402 {
         // The API's text for a 402 points at billing pages and payment
         // offers, which the SDKs do not pass on; the next step is the SDK's.
         api.msg = payment_message(obj, api.code.as_deref());
-        return classify(api, kind, headers);
+        return Error::InsufficientCredits(Box::new(api));
     }
     let label = match status {
         401 | 403 if auth => format!("Keenable authentication failed ({status})"),
@@ -726,19 +821,16 @@ fn build_api_error(
         }
     }
     api.msg = msg;
-    classify(api, kind, headers)
-}
-
-fn classify(api: ApiError, kind: Kind, headers: &HeaderMap) -> Error {
-    match kind {
-        Kind::Auth => Error::Auth(Box::new(api)),
-        Kind::Credits => Error::InsufficientCredits(Box::new(api)),
-        Kind::RateLimit => Error::RateLimit(Box::new(RateLimitError {
+    if auth {
+        return Error::Auth(Box::new(api));
+    }
+    if status == 429 {
+        return Error::RateLimit(Box::new(RateLimitError {
             api,
             header_limit: header_u64(headers, "X-RateLimit-Limit"),
             header_remaining: header_u64(headers, "X-RateLimit-Remaining"),
             header_reset: header_value(headers, "X-RateLimit-Reset"),
-        })),
-        Kind::Api => Error::Api(Box::new(api)),
+        }));
     }
+    Error::Api(Box::new(api))
 }

@@ -129,14 +129,11 @@ export class KeenableAPIError extends KeenableError implements KeenableAPIErrorD
   }
 }
 
-/**
- * The API key was rejected: type `authentication_error` or `permission_error`,
- * or HTTP 401/403 from a server that sends no type.
- */
+/** The API key was rejected (HTTP 401/403). */
 export class KeenableAuthError extends KeenableAPIError {}
 
 /**
- * The rate limit was exceeded (type `rate_limit_error`, or HTTP 429).
+ * The rate limit was exceeded (HTTP 429).
  *
  * Keyless requests share a lower hourly cap. Setting `KEENABLE_API_KEY` lifts
  * it; a key is never required to make a request. Wait `retryAfterSeconds`
@@ -146,7 +143,7 @@ export class KeenableRateLimitError extends KeenableAPIError {}
 
 /**
  * The organization has no credits left, or the API asked for a payment this
- * SDK cannot make (type `billing_error`, or HTTP 402).
+ * SDK cannot make (HTTP 402).
  *
  * Retrying returns the same error until a human with console access adds
  * credits. The SDK does not expose billing, checkout or payment-offer details.

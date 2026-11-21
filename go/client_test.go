@@ -37,12 +37,14 @@ var searchBody = map[string]any{
 	},
 }
 
-var fetchBody = map[string]any{"results": []any{map[string]any{
+var pageBody = map[string]any{
 	"url":         "https://example.com/",
 	"title":       "Example Domain",
 	"content":     "# Example Domain\n\nThis domain is for use in examples.",
 	"description": "",
-}}}
+}
+
+var fetchBody = map[string]any{"results": []any{pageBody}}
 
 type captured struct {
 	Path   string
@@ -575,34 +577,45 @@ func TestCitedMatchesRendered(t *testing.T) {
 	}
 }
 
-func TestFetchReturnsMarkdown(t *testing.T) {
+func TestFetchPostsTheURLsAndOnlyTheOptionsSet(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
-	resp, err := c.Fetch(context.Background(), []string{"https://example.com"}, nil)
-	if err != nil {
+	live := 0.0
+	opts := &keenable.FetchOptions{MaxChars: 500, Links: 5, MaxAgeHours: &live}
+	if _, err := c.FetchWithOptions(context.Background(), []string{"https://example.com"}, opts); err != nil {
 		t.Fatal(err)
 	}
 	req := one(t, seen)
 	if req.Path != "/v1/fetch/public" {
 		t.Fatal(req.Path)
 	}
-	if string(req.Body) != `{"urls":["https://example.com"]}` {
-		t.Fatal(string(req.Body))
+	want := `{"content":{"links":5,"max_chars":500},"retrieval":{"max_age_hours":0},"urls":["https://example.com"]}`
+	if string(req.Body) != want {
+		t.Fatalf("sent %s, want %s", req.Body, want)
 	}
-	if req.Header.Get("Content-Type") != "application/json" {
-		t.Fatal(req.Header.Get("Content-Type"))
+}
+
+func TestFetchParsesAPageAndAFailedURL(t *testing.T) {
+	failed := map[string]any{
+		"url":   "https://e.com/x",
+		"error": map[string]any{"status": 404, "error": "Not found", "code": "page_not_found"},
 	}
-	page := resp.Results[0].Page
-	if page.Title != "Example Domain" || !strings.HasPrefix(page.Content, "# Example Domain") {
+	c, _ := startKeyless(t, jsonHandler(http.StatusOK, map[string]any{"results": []any{pageBody, failed}}), nil)
+	resp, err := c.Fetch(context.Background(), []string{"https://example.com", "https://e.com/x"})
+	if err != nil || len(resp.Results) != 2 {
+		t.Fatalf("resp=%+v err=%v", resp, err)
+	}
+	page, missing := resp.Results[0], resp.Results[1]
+	if page.Title != "Example Domain" || !strings.HasPrefix(page.Content, "# Example Domain") || page.Error != nil {
 		t.Fatalf("%#v", page)
 	}
-	if page.URL != "https://example.com/" {
-		t.Fatal(page.URL)
+	if missing.URL != "https://e.com/x" || missing.Error == nil || missing.Error.Status != 404 || missing.Error.Code != "page_not_found" {
+		t.Fatalf("%#v", missing)
 	}
 }
 
 func TestFetchAllowsPublicAddress(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
-	if _, err := c.Fetch(context.Background(), []string{"https://8.8.8.8/path"}, nil); err != nil {
+	if _, err := c.Fetch(context.Background(), []string{"https://8.8.8.8/path"}); err != nil {
 		t.Fatal(err)
 	}
 	if len(*seen) != 1 {
@@ -612,11 +625,11 @@ func TestFetchAllowsPublicAddress(t *testing.T) {
 
 func TestPageToContextCuts(t *testing.T) {
 	c, _ := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
-	resp, err := c.Fetch(context.Background(), []string{"https://example.com"}, nil)
+	resp, err := c.Fetch(context.Background(), []string{"https://example.com"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	page := resp.Results[0].Page
+	page := resp.Results[0]
 	context := page.ToContext(nil)
 	if !strings.HasPrefix(context, "[1] Example Domain (https://example.com/)") {
 		t.Fatal(context)
@@ -649,7 +662,7 @@ func TestFetchRefusesInternalTargets(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
 	for _, raw := range urls {
 		before := len(*seen)
-		_, err := c.Fetch(context.Background(), []string{raw}, nil)
+		_, err := c.Fetch(context.Background(), []string{raw})
 		var inv *keenable.InvalidRequestError
 		if !errors.As(err, &inv) {
 			t.Fatalf("%s: %v", raw, err)
@@ -681,7 +694,7 @@ func TestNilContext(t *testing.T) {
 	if _, err := c.Search(nil, "q", nil); !errors.As(err, new(*keenable.InvalidRequestError)) {
 		t.Fatal(err)
 	}
-	if _, err := c.Fetch(nil, []string{"https://example.com"}, nil); !errors.As(err, new(*keenable.InvalidRequestError)) {
+	if _, err := c.Fetch(nil, []string{"https://example.com"}); !errors.As(err, new(*keenable.InvalidRequestError)) {
 		t.Fatal(err)
 	}
 	if len(*seen) != 0 {
@@ -962,7 +975,7 @@ func TestNilClientDoesNotPanic(t *testing.T) {
 	if _, err := client.Search(context.Background(), "q", nil); !errors.As(err, new(*keenable.InvalidRequestError)) {
 		t.Fatal(err)
 	}
-	if _, err := client.Fetch(context.Background(), []string{"https://example.com"}, nil); !errors.As(err, new(*keenable.InvalidRequestError)) {
+	if _, err := client.Fetch(context.Background(), []string{"https://example.com"}); !errors.As(err, new(*keenable.InvalidRequestError)) {
 		t.Fatal(err)
 	}
 	if (*keenable.SearchResponse)(nil).ToContext(nil) != "" {
@@ -1149,7 +1162,7 @@ func TestLocalErrorsNameTheFix(t *testing.T) {
 	if !strings.Contains(err.Error(), "query argument") {
 		t.Fatal(err)
 	}
-	_, err = c.Fetch(context.Background(), []string{"http://127.0.0.1/"}, nil)
+	_, err = c.Fetch(context.Background(), []string{"http://127.0.0.1/"})
 	if !strings.Contains(err.Error(), "public http(s) URL") {
 		t.Fatal(err)
 	}

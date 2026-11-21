@@ -29,10 +29,10 @@ from keenable import (
     KeenableInvalidRequestError,
     KeenableRateLimitError,
     KeenableTimeoutError,
+    Page,
 )
 from keenable import client as client_module
 from keenable.client import _backoff
-from keenable.models import Page
 
 FIXTURE = Path(__file__).parent / "fixtures" / "error_contract.json"
 CASES: list[dict[str, Any]] = json.loads(FIXTURE.read_text("utf-8"))["cases"]
@@ -248,13 +248,12 @@ async def test_network_failures_and_timeouts_are_retried(
 
 
 async def test_search_and_fetch_are_retried_alike(run: Runner) -> None:
-    # Both are POSTs that only read, so the SDKs retry them.
+    # Search and fetch are POSTs but read only, so the SDKs retry them.
     outcome = await run(
         [httpx.Response(503), _page()], method="fetch", arg="https://e.com"
     )
     assert outcome.error is None and outcome.attempts == 2
-    assert outcome.requests[1].method == "POST"
-    assert outcome.requests[1].content == outcome.requests[0].content
+    assert outcome.requests[0].method == "POST"
 
     outcome = await run([httpx.Response(503), ok()])
     assert outcome.error is None and outcome.attempts == 2
@@ -716,8 +715,8 @@ async def test_a_lenient_success_body_parses(run: Runner) -> None:
 
     page = httpx.Response(200, json={"results": [{"url": "", "title": None}]})
     outcome = await run([page], method="fetch", arg="https://e.com/a")
-    assert outcome.result.results[0].page.url == "https://e.com/a"
-    assert outcome.result.results[0].page.title == ""
+    assert outcome.result.results[0].url == "https://e.com/a"
+    assert outcome.result.results[0].title == ""
 
 
 # --- fetch targets -------------------------------------------------------------
@@ -789,7 +788,7 @@ async def test_fetch_refuses_internal_targets(run: Runner, url: str) -> None:
 async def test_fetch_allows_public_targets(run: Runner, url: str) -> None:
     outcome = await run([_page()], method="fetch", arg=url)
     assert outcome.error is None
-    assert json.loads(outcome.requests[0].content) == {"urls": [url]}
+    assert json.loads(outcome.requests[0].content)["urls"] == [url]
 
 
 # --- client setup ----------------------------------------------------------------

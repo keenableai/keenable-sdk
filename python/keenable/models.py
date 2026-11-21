@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urljoin, urlsplit
-
-from .errors import KeenableAPIError
 
 # Default budget for the `to_context()` renderers. Roughly 3k tokens: large
 # enough that a handful of results keep their substance, small enough to sit in
@@ -519,114 +517,53 @@ class SearchResponse:
         return header
 
 
-def _objects(value: Any) -> list[dict[str, Any]]:
-    """The objects in a JSON list; [] for anything that is not a list."""
+@dataclass
+class FetchError:
+    """Why one URL of a :meth:`Keenable.fetch` call failed, as the API sent it."""
+
+    status: int
+    error: str
+    code: str | None = None
+    type: str | None = None
+    message: str | None = None
+    fix: str | None = None
+    retryable: bool | None = None
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> FetchError:
+        retryable = data.get("retryable")
+        return cls(
+            status=_count_or_none(data.get("status")) or 0,
+            error=_str_or_empty(data.get("error")),
+            code=_str_or_none(data.get("code")),
+            type=_str_or_none(data.get("type")),
+            message=_str_or_none(data.get("message")),
+            fix=_str_or_none(data.get("fix")),
+            retryable=retryable if isinstance(retryable, bool) else None,
+            raw=data,
+        )
+
+
+def _dicts(value: Any) -> list[dict[str, Any]] | None:
     if not isinstance(value, list):
-        return []
+        return None
     return [item for item in value if isinstance(item, dict)]
 
 
-def _number_or_none(value: Any) -> float | None:
-    """A finite JSON number, or None for anything else (a boolean included)."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    try:
-        return value if math.isfinite(value) else None
-    except OverflowError:
-        return None
-
-
-@dataclass
-class FetchLink:
-    """A link on a fetched page, with the words it was written as."""
-
-    url: str
-    text: str | None = None
-
-
-@dataclass
-class FetchImage:
-    """An image on a fetched page, with its alt text."""
-
-    url: str
-    alt: str | None = None
-
-
-@dataclass
-class FetchAnswerError:
-    """Why the typed answer for ``schema`` could not be made. The page is still read."""
-
-    code: str
-    message: str
-
-
-@dataclass
-class FetchUsage:
-    """What reading one page cost."""
-
-    sku: str
-    amount: int
-    credits: float
-    paid: bool
-    """True when paid credits were spent, False for free ones."""
-
-    credits_remaining: float | None = None
-
-
-def _links(value: Any) -> list[FetchLink] | None:
-    if not isinstance(value, list):
-        return None
-    return [
-        FetchLink(
-            url=_str_or_empty(item.get("url")), text=_str_or_none(item.get("text"))
-        )
-        for item in _objects(value)
-    ]
-
-
-def _images(value: Any) -> list[FetchImage] | None:
-    if not isinstance(value, list):
-        return None
-    return [
-        FetchImage(
-            url=_str_or_empty(item.get("url")), alt=_str_or_none(item.get("alt"))
-        )
-        for item in _objects(value)
-    ]
-
-
-def _answer_error(value: Any) -> FetchAnswerError | None:
-    if not isinstance(value, dict):
-        return None
-    return FetchAnswerError(
-        code=_str_or_empty(value.get("code")),
-        message=_str_or_empty(value.get("message")),
-    )
-
-
-def _usage(value: Any) -> FetchUsage | None:
-    if not isinstance(value, dict):
-        return None
-    return FetchUsage(
-        sku=_str_or_empty(value.get("sku")),
-        amount=_count_or_none(value.get("amount")) or 0,
-        credits=_number_or_none(value.get("credits")) or 0,
-        paid=value.get("paid") is True,
-        credits_remaining=_number_or_none(value.get("credits_remaining")),
-    )
+def _dict_or_none(value: Any) -> dict[str, Any] | None:
+    return value if isinstance(value, dict) else None
 
 
 @dataclass
 class Page:
-    """A web page read by :meth:`Keenable.fetch`, extracted as markdown."""
+    """One result of :meth:`Keenable.fetch`: a page as markdown, or ``error``."""
 
     url: str
-    """The page's final address after redirects."""
-
     title: str
     content: str
     """The page's main content as markdown, with navigation and boilerplate
-    stripped, cut to ``max_chars``."""
+    stripped."""
 
     description: str | None = None
     """Deprecated: always empty, the API no longer fills it. Read ``content``.
@@ -642,37 +579,36 @@ class Page:
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
     truncated: bool | None = None
-    """True when the page was longer than ``max_chars`` and ``content`` was
-    cut (cut content ends with ``...``). None when the API did not say."""
+    """True when the page was longer than the API's ``max_chars`` and
+    ``content`` was cut (cut content ends with ``...``). None when the API did
+    not say."""
 
     total_chars: int | None = None
     """Length of the full extracted content in Unicode code points, before
     any cut. None when the API did not say."""
 
     image: str | None = None
-    """The page's preview image URL."""
-
     favicon: str | None = None
-    links: list[FetchLink] | None = None
-    """The page's links, when ``links`` was asked for."""
+    links: list[dict[str, Any]] | None = None
+    """``{"url", "text"}`` for each link, when ``links`` was asked for."""
 
-    images: list[FetchImage] | None = None
-    """The page's images, with their alt text."""
+    images: list[dict[str, Any]] | None = None
+    """``{"url", "alt"}`` for each image."""
 
     structured: dict[str, Any] | None = None
-    """The typed answer for ``schema``, when one was asked for and made."""
+    """The answer for ``schema``."""
 
-    answer_error: FetchAnswerError | None = None
-    """Why the answer for ``schema`` could not be made."""
+    answer_error: dict[str, Any] | None = None
+    """``{"code", "message"}`` when the answer for ``schema`` failed."""
 
     stale: bool | None = None
-    """True when an older stored copy was returned because a fresh read failed."""
-
-    usage: FetchUsage | None = None
+    usage: dict[str, Any] | None = None
+    error: FetchError | None = None
+    """Set when this URL failed; the other fields are then empty."""
 
     @classmethod
     def _from_json(cls, data: dict[str, Any], url: str) -> Page:
-        structured = data.get("structured")
+        error = data.get("error")
         return cls(
             url=_str_or_none(data.get("url")) or url,
             title=_str_or_empty(data.get("title")),
@@ -685,12 +621,13 @@ class Page:
             total_chars=_count_or_none(data.get("total_chars")),
             image=_str_or_none(data.get("image")),
             favicon=_str_or_none(data.get("favicon")),
-            links=_links(data.get("links")),
-            images=_images(data.get("images")),
-            structured=structured if isinstance(structured, dict) else None,
-            answer_error=_answer_error(data.get("answer_error")),
+            links=_dicts(data.get("links")),
+            images=_dicts(data.get("images")),
+            structured=_dict_or_none(data.get("structured")),
+            answer_error=_dict_or_none(data.get("answer_error")),
             stale=_bool_or_none(data.get("stale")),
-            usage=_usage(data.get("usage")),
+            usage=_dict_or_none(data.get("usage")),
+            error=FetchError._from_json(error) if isinstance(error, dict) else None,
         )
 
     def to_context(self, max_chars: int = DEFAULT_CONTEXT_MAX_CHARS) -> str:
@@ -715,61 +652,22 @@ class Page:
 
 
 @dataclass
-class FetchResult:
-    """The result for one URL: ``page`` when it was read, else ``error``."""
-
-    url: str
-    page: Page | None = None
-    error: KeenableAPIError | None = None
-    """Why this URL failed, as the error the call would raise. Not raised."""
-
-
-@dataclass
 class FetchResponse:
     """What :meth:`Keenable.fetch` returns: ``results[i]`` is for ``urls[i]``."""
 
-    results: list[FetchResult] = field(default_factory=list)
+    results: list[Page] = field(default_factory=list)
     request_id: str | None = None
     """The API's id for this request. Quote it when reporting a problem."""
 
-    def __iter__(self) -> Iterator[FetchResult]:
-        return iter(self.results)
-
-    def __len__(self) -> int:
-        return len(self.results)
-
-    def __getitem__(self, index: int) -> FetchResult:
-        return self.results[index]
-
     @classmethod
     def _from_json(
-        cls,
-        data: dict[str, Any],
-        urls: list[str],
-        request_id: str | None,
-        to_error: Callable[[int, dict[str, Any]], KeenableAPIError],
+        cls, data: dict[str, Any], urls: list[str], request_id: str | None
     ) -> FetchResponse:
-        entries = data.get("results")
-        results: list[FetchResult] = []
-        for position, entry in enumerate(entries if isinstance(entries, list) else []):
-            if not isinstance(entry, dict):
-                continue
-            asked = urls[position] if position < len(urls) else ""
-            error = entry.get("error")
-            if isinstance(error, dict):
-                status = _count_or_none(error.get("status"))
-                if status is None or not 400 <= status <= 599:
-                    status = 500
-                results.append(
-                    FetchResult(
-                        url=_str_or_none(entry.get("url")) or asked,
-                        error=to_error(status, error),
-                    )
-                )
-            else:
-                page = Page._from_json(entry, asked)
-                results.append(FetchResult(url=page.url, page=page))
+        entries = _dicts(data.get("results")) or []
         return cls(
-            results=results,
+            results=[
+                Page._from_json(entry, urls[i] if i < len(urls) else "")
+                for i, entry in enumerate(entries)
+            ],
             request_id=_str_or_none(data.get("request_id")) or request_id,
         )

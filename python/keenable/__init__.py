@@ -11,12 +11,7 @@ the hourly rate limit.
 """
 
 from ._version import __version__
-from .client import (
-    DEFAULT_BASE_URL,
-    DEFAULT_MAX_RETRIES,
-    AsyncKeenable,
-    Keenable,
-)
+from .client import DEFAULT_BASE_URL, DEFAULT_MAX_RETRIES, AsyncKeenable, Keenable
 from .errors import (
     KeenableAPIError,
     KeenableAuthError,
@@ -32,12 +27,8 @@ from .errors import (
 from .models import (
     DEFAULT_CONTEXT_MAX_CHARS,
     DEFAULT_CONTEXT_MAX_SNIPPET_CHARS,
-    FetchAnswerError,
-    FetchImage,
-    FetchLink,
+    FetchError,
     FetchResponse,
-    FetchResult,
-    FetchUsage,
     Page,
     SearchResponse,
     SearchResult,
@@ -51,12 +42,8 @@ __all__ = [
     "DEFAULT_CONTEXT_MAX_SNIPPET_CHARS",
     "DEFAULT_MAX_RETRIES",
     "FETCH_TOOL",
-    "FetchAnswerError",
-    "FetchImage",
-    "FetchLink",
+    "FetchError",
     "FetchResponse",
-    "FetchResult",
-    "FetchUsage",
     "Keenable",
     "KeenableAPIError",
     "KeenableAuthError",

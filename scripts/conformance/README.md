@@ -100,15 +100,9 @@ with a caller's own `httpx` client, `http.Client` or `fetch` too.
 
 ## Errors (`errors`)
 
-- The class follows the `type` the body sends, as the backend's error catalog
-  defines it: `authentication_error` and `permission_error` are authentication
-  errors, `billing_error` the insufficient-credits error, `rate_limit_error`
-  the rate-limit error, and `invalid_request_error`, `target_error` and
-  `api_error` the API error, whatever the status. A body without one of these
-  types (older servers send none) maps by status: 401/403 are authentication
-  errors unless the derived type is `target_error`, 402 is the
-  insufficient-credits error, 429 the rate-limit error, anything else the API
-  error.
+- The class follows the status: 401/403 are authentication errors unless the
+  type is `target_error`, 402 is the insufficient-credits error, 429 the
+  rate-limit error, anything else the API error.
 - The detail (`body`) is the first of the body's `message`, `error` and `detail`
   that is a string with more than whitespace. Other types are skipped, never
   stringified. A body that is JSON but not an object gives no detail and no
@@ -133,17 +127,15 @@ with a caller's own `httpx` client, `http.Client` or `fetch` too.
 ## Success bodies (`responses`)
 
 A body that is not a JSON object is an API error and is not retried. Required
-text fields (`title`, `url`, `snippet`, `content`) are the string sent or `""`;
-optional ones are a string with more than whitespace or null. A date
-(`published_at`, `acquired_at`) is such a string, kept as sent, or a number of
-Unix seconds, which fetch sends: it becomes ISO 8601 UTC to the second,
-`2024-05-01T12:00:00Z`, with any fraction dropped. A number below 1, past
-`253402300799` (the end of the year 9999, so a millisecond value too) or not
-finite is null, as is a boolean or any other type. A page's `truncated` is a
-boolean and its `total_chars` an integer from 0 to 2^53 - 1, else null. A search echoes
-the query the API sent back when it is such a string, else the query asked; a
-page's `url` likewise falls back to the URL asked for. The request id is the
-body's, else the trimmed `X-Request-Id` header.
+text fields (`title`, `url`, `snippet`) are the string sent or `""`; optional
+ones are a string with more than whitespace or null. A date (`published_at`,
+`acquired_at`) is such a string, kept as sent, or a number of Unix seconds: it
+becomes ISO 8601 UTC to the second, `2024-05-01T12:00:00Z`, with any fraction
+dropped. A number below 1, past `253402300799` (the end of the year 9999, so a
+millisecond value too) or not finite is null, as is a boolean or any other
+type. A search echoes the query the API sent back when it is such a string,
+else the query asked. The request id is the body's, else the trimmed
+`X-Request-Id` header.
 
 ## Arguments (`options`, `search_body`)
 
@@ -174,6 +166,7 @@ body's, else the trimmed `X-Request-Id` header.
   default, so it is not sent, and unset (or `""`) is not sent either. Any other
   value, such as the string `"true"` or `1`, is the invalid-request error and
   sends nothing (Go's `bool` cannot hold one).
+
 ## The whole-attempt deadline (`deadline`)
 
 Each case runs one keyless search, with no retries and the case's timeout,
@@ -206,29 +199,3 @@ sent unchanged. `disable_cards` is sent only as `true`; `false`, `""` and null
 are unset, and any other value is the invalid-request error. Arguments JSON
 cannot encode (`NaN`, `Infinity`) are the invalid-request error and send
 nothing.
-
-## fetch() (`fetch_body`, `fetch_responses`)
-
-`fetch(urls, options)` sends one JSON body to `POST /v1/fetch`
-(`/v1/fetch/public` without a key) and nothing else.
-
-- `urls` is a list of 1 to 10 URLs, sent in order; a lone string is one URL
-  (Go and Rust take a list). Every URL is checked against the fetch() target
-  rules above before anything is sent, and one refused URL refuses the call.
-- The options are flat, in the SDK's naming style: `max_chars`, `schema`,
-  `links` and `images` go into the body's `content` object, `max_age_hours`
-  into `retrieval`. An unset option is not sent, and an object with nothing
-  set is left out: the API refuses unknown fields.
-- The SDK refuses what the API would: `max_chars` below 1, `links` outside 1 to
-  1,000, `images` outside 0 to 25, `max_age_hours` outside 0 to 720 or not a
-  finite number (fractions are fine; 0 is a live read), and a `schema` that is
-  not an object whose `type` is `"object"`. Go's `MaxChars` and `Links` are
-  ints whose zero means unset.
-- The reply's `results` has one entry per URL, in order. An entry whose `error`
-  is an object is a failed URL: the SDK builds its API error from that object
-  as from an error body, with the status `error.status` (500 when that is not
-  an integer from 400 to 599), and puts it on the result. It is never raised.
-  Any other entry is a page, read by the success-body rules plus the fields
-  listed in `cases/fetch.json`'s `_comment`.
-- The call raises only when it fails as a whole: a non-2xx reply maps by the
-  `errors` rules, and a body that is not a JSON object is an API error.

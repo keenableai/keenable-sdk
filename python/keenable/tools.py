@@ -84,6 +84,25 @@ class _Call(NamedTuple):
     render: Callable[[Any], str]
 
 
+def _page_context(response: FetchResponse) -> str:
+    """The page fetched as a citable block; a failed URL is raised."""
+    if not response.results:
+        raise KeenableAPIError("the Keenable API returned no result for the URL", 200)
+    page = response.results[0]
+    if page.error is not None:
+        e = page.error
+        raise KeenableAPIError(
+            e.message or e.error or "the page could not be read",
+            e.status,
+            code=e.code,
+            type=e.type,
+            error=e.error,
+            fix=e.fix,
+            retryable=e.retryable,
+        )
+    return page.to_context()
+
+
 def _parse_arguments(arguments: str | dict[str, Any]) -> dict[str, Any]:
     """Accept the model's raw JSON string or an already-decoded dict.
 
@@ -111,16 +130,6 @@ def _parse_arguments(arguments: str | dict[str, Any]) -> dict[str, Any]:
     return parsed
 
 
-def _page_context(response: FetchResponse) -> str:
-    """The one page fetched, as a citable block; its failure is raised."""
-    for result in response:
-        if result.error is not None:
-            raise result.error
-        if result.page is not None:
-            return result.page.to_context()
-    raise KeenableAPIError("the Keenable API returned no result for the URL", 200)
-
-
 def _require_str(value: Any, message: str) -> str:
     """Read a required string argument the model was supposed to supply."""
     if not isinstance(value, str) or not value.strip():
@@ -146,7 +155,7 @@ def _plan(name: str, arguments: str | dict[str, Any]) -> _Call:
         )
     if name == "keenable_fetch":
         url = _require_str(args.get("url"), "keenable_fetch needs a 'url'")
-        return _Call("fetch", ([url],), {}, _page_context)
+        return _Call("fetch", (url,), {}, _page_context)
 
     raise KeenableInvalidRequestError(f"unknown Keenable tool: {name!r}")
 

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   Keenable,
-  KeenableAPIError,
   KeenableAuthError,
   KeenableConnectionError,
   KeenableInvalidRequestError,
@@ -32,13 +31,13 @@ const SEARCH_BODY = {
   ],
 };
 
-const PAGE = {
+const PAGE_BODY = {
   url: "https://example.com/",
   title: "Example Domain",
   content: "# Example Domain\n\nThis domain is for use in examples.",
   description: "",
 };
-const FETCH_BODY = { results: [PAGE] };
+const FETCH_BODY = { results: [PAGE_BODY] };
 
 /** A client whose transport records requests and replays canned responses. */
 function mockClient(
@@ -306,50 +305,38 @@ describe("toContext", () => {
 });
 
 describe("fetch", () => {
-  it("returns markdown", async () => {
+  it("posts the URLs and only the options set", async () => {
     const { client, seen } = mockClient(() => json(FETCH_BODY));
-    const response = await client.fetch("https://example.com");
+    await client.fetch(["https://example.com"], { maxChars: 500, links: 5, maxAgeHours: 0 });
 
     expect(seen[0]?.url).toBe("https://api.keenable.ai/v1/fetch/public");
     expect(seen[0]?.init.method).toBe("POST");
-    expect(JSON.parse(String(seen[0]?.init.body))).toEqual({ urls: ["https://example.com"] });
-    const page = response.results[0]?.page;
-    expect(page?.title).toBe("Example Domain");
-    expect(page?.content.startsWith("# Example Domain")).toBe(true);
+    expect(JSON.parse(String(seen[0]?.init.body))).toEqual({
+      urls: ["https://example.com"],
+      content: { max_chars: 500, links: 5 },
+      retrieval: { max_age_hours: 0 },
+    });
   });
 
-  it("puts a failed URL's error on its result", async () => {
-    const body = {
-      results: [
-        PAGE,
-        {
-          url: "https://example.org/gone",
-          error: { status: 404, type: "target_error", code: "page_not_found", message: "gone" },
-        },
-      ],
+  it("parses a page and a failed URL", async () => {
+    const failed = {
+      url: "https://e.com/x",
+      error: { status: 404, error: "Not found", code: "page_not_found" },
     };
-    const { client } = mockClient(() => json(body));
-    const response = await client.fetch(["https://example.com", "https://example.org/gone"], {
-      maxChars: 100,
-      schema: { type: "object" },
-      links: 5,
-      images: 0,
-      maxAgeHours: 0.5,
-    });
+    const { client } = mockClient(() => json({ results: [PAGE_BODY, failed] }));
+    const [page, missing] = (await client.fetch(["https://example.com", "https://e.com/x"]))
+      .results;
 
-    const [first, second] = response.results;
-    expect(first?.page).toBeDefined();
-    expect(first?.error).toBeUndefined();
-    expect(second?.page).toBeUndefined();
-    expect(second?.error).toBeInstanceOf(KeenableAPIError);
-    expect(second?.error?.statusCode).toBe(404);
-    expect(second?.error?.code).toBe("page_not_found");
-    expect(second?.url).toBe("https://example.org/gone");
+    expect(page?.title).toBe("Example Domain");
+    expect(page?.error).toBeUndefined();
+    expect(missing?.url).toBe("https://e.com/x");
+    expect(missing?.error).toMatchObject({ status: 404, code: "page_not_found" });
   });
 
   it("renders a citable block like search results do", async () => {
     const { client } = mockClient(() => json(FETCH_BODY));
-    const page = (await client.fetch("https://example.com")).results[0]!.page!;
+    const [page] = (await client.fetch("https://example.com")).results;
+    if (!page) throw new Error("no page");
 
     expect(page.toContext().startsWith("[1] Example Domain (https://example.com/)")).toBe(
       true,

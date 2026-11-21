@@ -5,26 +5,7 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
-- **Breaking (1.0.0):** `fetch()` reads up to 10 pages in one call with
-  `POST /v1/fetch` and returns a `FetchResponse`, not a `Page`:
-  `fetch(urls: string | readonly string[], options?: FetchOptions)`. A lone
-  string is one URL. `results[i]` is for `urls[i]`: its `page`, or its `error`
-  when that URL failed. `error` is the `KeenableAPIError` (or subclass) the
-  call would throw for that status, and it is not thrown: the call throws only
-  when it fails as a whole.
-  - `FetchOptions` applies to every page: `maxChars` (at least 1), `schema` (a
-    JSON Schema whose root has `type: "object"`; the answer is in
-    `page.structured`, or `page.answerError` says why not), `links` (1 to
-    1000), `images` (0 to 25) and `maxAgeHours` (0 to 720, fractions allowed;
-    `0` reads live), next to `timeoutMs`, `maxRetries`, `headers` and
-    `signal`. A value outside these limits, or more than 10 URLs, throws
-    `KeenableInvalidRequestError` before a request is sent.
-  - `Page` gains `image`, `favicon`, `links`, `images`, `structured`,
-    `answerError`, `stale` and `usage`, and loses `requestId`: read
-    `FetchResponse.requestId`.
-  - Removed: `GET /v1/fetch` and its `live` and `prompt` options. Pass
-    `maxAgeHours: 0` for a live read; `schema` returns a typed answer where
-    `prompt` returned text.
+- **Changed (breaking):** `fetch()` takes a list of URLs (a lone string is one URL) and sends one `POST /v1/fetch`. It returns a `FetchResponse` whose `results[i]` is the `Page` for `urls[i]`, with `error` (a `FetchError`) set when that URL failed. Options: `maxChars`, `schema`, `links`, `images`, `maxAgeHours`, sent only when set; the API checks their values. The `live` and `prompt` options and `Page.requestId` are gone (`FetchResponse.requestId` replaces it), and there is no separate `fetchMany`.
 - **Added:** `objective` option on `search()`: what the search is for, in two or three natural sentences, up to 1,000 characters. Left out of the request when unset or empty. The API validates and logs it; it does not change results or price. The search tool offers it to a model.
 
 - **Security fix:** `baseUrl` and `KEENABLE_API_URL` are refused when the part
@@ -41,7 +22,6 @@ All notable changes to the `keenable` npm package. Versions follow
 - **Behaviour change:** `fetch()` refuses a host with an empty label before
   sending: two dots in a row (`a..b`, `example.com..`) or a leading dot
   (`.example.com`). One trailing dot is still fine.
-- **Behaviour change:** the error class follows the body's `type`, not the status: `authentication_error` and `permission_error` throw `KeenableAuthError`, `rate_limit_error` `KeenableRateLimitError`, `billing_error` `KeenableInsufficientCreditsError`, and a 429 about the fetched page (`target_error`) `KeenableAPIError`. A body without a known type still maps by status.
 
 ## 0.1.5
 

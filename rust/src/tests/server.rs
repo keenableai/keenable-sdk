@@ -120,9 +120,10 @@ pub async fn read_request(stream: &mut TcpStream) -> std::io::Result<Option<Seen
         .unwrap_or(0);
     let mut body = vec![0u8; length];
     stream.read_exact(&mut body).await?;
-    let path = target
-        .split_once('?')
-        .map_or(target.clone(), |(p, _)| p.to_string());
+    let path = match target.split_once('?') {
+        Some((p, _)) => p.to_string(),
+        None => target,
+    };
     Ok(Some(Seen {
         method,
         path,

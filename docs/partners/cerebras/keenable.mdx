@@ -143,22 +143,19 @@ results = keenable.search(
 ## Get page contents
 
 Every search result already carries the page text in `snippet`, so a separate
-call is usually unnecessary. Reach for `fetch` when you have URLs and want the
-full pages as markdown. It takes up to 10 URLs and returns one result per URL,
-in order: the page, or that URL's error.
+call is usually unnecessary. Reach for `fetch` when you have a URL and want the
+full page as markdown.
 
 <CodeGroup>
 ```python Python theme={null}
-response = keenable.fetch("https://cerebras.ai/chip")
-page = response.results[0].page
+page = keenable.fetch(["https://cerebras.ai/chip"]).results[0]
 
 print(page.title)
 print(page.content)  # markdown, boilerplate stripped
 ```
 
 ```javascript Node.js theme={null}
-const response = await keenable.fetch('https://cerebras.ai/chip');
-const page = response.results[0].page;
+const [page] = (await keenable.fetch(['https://cerebras.ai/chip'])).results;
 
 console.log(page.title);
 console.log(page.content); // markdown, boilerplate stripped

@@ -91,7 +91,7 @@ func TestPerCallMaxRetriesZero(t *testing.T) {
 	}
 	c, n, _ = scripted(t, nil, busy)
 	fo := &keenable.FetchOptions{RequestOptions: keenable.RequestOptions{MaxRetries: intPtr(0)}}
-	if _, err := c.Fetch(context.Background(), []string{"https://example.com"}, fo); err == nil {
+	if _, err := c.FetchWithOptions(context.Background(), []string{"https://example.com"}, fo); err == nil {
 		t.Fatal("want an error")
 	}
 	if n.Load() != 1 {
@@ -221,10 +221,10 @@ func TestRequestID(t *testing.T) {
 	if err != nil || resp.RequestID != "s" {
 		t.Fatalf("resp=%+v err=%v", resp, err)
 	}
-	c, _, _ = scripted(t, nil, reply(200, `{"results":[],"request_id":"body"}`, "X-Request-Id", "h"))
-	fetched, err := c.Fetch(context.Background(), []string{"https://e.com"}, nil)
-	if err != nil || fetched.RequestID != "body" {
-		t.Fatalf("fetched=%+v err=%v", fetched, err)
+	c, _, _ = scripted(t, nil, reply(200, `{"url":"https://e.com","request_id":"body"}`, "X-Request-Id", "h"))
+	page, err := c.Fetch(context.Background(), []string{"https://e.com"})
+	if err != nil || page.RequestID != "body" {
+		t.Fatalf("page=%+v err=%v", page, err)
 	}
 }
 

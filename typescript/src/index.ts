@@ -21,14 +21,7 @@ export {
   Page,
   SearchResponse,
 } from "./client.js";
-export type {
-  FetchAnswerError,
-  FetchImage,
-  FetchLink,
-  FetchResponse,
-  FetchResult,
-  FetchUsage,
-} from "./client.js";
+export type { FetchError, FetchResponse } from "./client.js";
 export {
   KeenableAPIError,
   KeenableAuthError,

@@ -37,16 +37,9 @@ from .errors import (
     KeenableTimeoutError,
     RateLimitInfo,
 )
-from .models import (
-    FetchResponse,
-    SearchResponse,
-)
+from .models import FetchResponse, SearchResponse
 
-__all__ = [
-    "AsyncKeenable",
-    "DEFAULT_MAX_RETRIES",
-    "Keenable",
-]
+__all__ = ["Keenable", "AsyncKeenable", "DEFAULT_MAX_RETRIES"]
 
 DEFAULT_BASE_URL = "https://api.keenable.ai"
 DEFAULT_TIMEOUT = 30.0
@@ -314,82 +307,36 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
     return payload
 
 
-_FETCH_MAX_URLS = 10
-_FETCH_MAX_LINKS = 1000
-_FETCH_MAX_IMAGES = 25
-_FETCH_MAX_AGE_HOURS = 720
-
-
-def _whole(name: str, value: Any, low: int, high: int | None = None) -> int:
-    """An integer option within its limits, else the invalid-request error."""
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int)
-        or value < low
-        or (high is not None and value > high)
-    ):
-        span = f"from {low} to {high}" if high is not None else f"of at least {low}"
-        raise KeenableInvalidRequestError(
-            f"fetch() {name} must be an integer {span}, got {value!r}"
-        )
-    return value
-
-
 def _fetch_payload(
-    urls: Any,
-    *,
+    urls: str | Iterable[str],
     max_chars: int | None,
     schema: Mapping[str, Any] | None,
     links: int | None,
     images: int | None,
     max_age_hours: float | None,
-) -> tuple[list[str], dict[str, Any]]:
-    """The URLs asked for and the JSON body POST /v1/fetch takes.
-
-    Every URL is checked and every option held to the API's limits first, so
-    nothing is sent for a call the API would refuse.
-    """
+) -> dict[str, Any]:
+    """The POST /v1/fetch body: only the options set. The API checks their values."""
     targets = _as_list(urls)
-    if not isinstance(targets, list) or not 1 <= len(targets) <= _FETCH_MAX_URLS:
-        raise KeenableInvalidRequestError(
-            f"fetch() needs a list of 1 to {_FETCH_MAX_URLS} URLs, got {urls!r}"
-        )
+    if not isinstance(targets, list):
+        targets = [targets]
     for target in targets:
         _reject_private_fetch_target(target)
-    content: dict[str, Any] = {}
-    if max_chars is not None:
-        content["max_chars"] = _whole("max_chars", max_chars, 1)
-    if schema is not None:
-        if not isinstance(schema, Mapping) or schema.get("type") != "object":
-            raise KeenableInvalidRequestError(
-                'fetch() schema must be a JSON Schema whose root has "type": "object"'
-            )
-        content["schema"] = dict(schema)
-    if links is not None:
-        content["links"] = _whole("links", links, 1, _FETCH_MAX_LINKS)
-    if images is not None:
-        content["images"] = _whole("images", images, 0, _FETCH_MAX_IMAGES)
     payload: dict[str, Any] = {"urls": targets}
+    content = {
+        name: value
+        for name, value in (
+            ("max_chars", max_chars),
+            ("schema", schema),
+            ("links", links),
+            ("images", images),
+        )
+        if value is not None
+    }
     if content:
         payload["content"] = content
     if max_age_hours is not None:
-        if (
-            isinstance(max_age_hours, bool)
-            or not isinstance(max_age_hours, (int, float))
-            or not 0 <= max_age_hours <= _FETCH_MAX_AGE_HOURS
-        ):
-            raise KeenableInvalidRequestError(
-                f"fetch() max_age_hours must be a number from 0 to "
-                f"{_FETCH_MAX_AGE_HOURS}, got {max_age_hours!r}"
-            )
         payload["retrieval"] = {"max_age_hours": max_age_hours}
-    try:
-        jsonlib.dumps(payload, allow_nan=False)
-    except (TypeError, ValueError) as exc:
-        raise KeenableInvalidRequestError(
-            f"could not encode the fetch request: {exc}. Pass a JSON-encodable schema."
-        ) from exc
-    return targets, payload
+    return payload
 
 
 def _as_list(value: Any) -> Any:
@@ -430,29 +377,6 @@ def _derive_type(status: int, code: str | None) -> str:
     if 400 <= status < 500:
         return "invalid_request_error"
     return "api_error"
-
-
-_TYPE_KINDS = {
-    "authentication_error": "auth",
-    "permission_error": "auth",
-    "billing_error": "insufficient_credits",
-    "rate_limit_error": "rate_limit",
-    "invalid_request_error": "api",
-    "target_error": "api",
-    "api_error": "api",
-}
-
-
-def _error_kind(status: int, sent_type: str | None, type_: str) -> str:
-    if sent_type in _TYPE_KINDS:
-        return _TYPE_KINDS[sent_type]
-    if status in (401, 403) and type_ != "target_error":
-        return "auth"
-    if status == 402:
-        return "insufficient_credits"
-    if status == 429:
-        return "rate_limit"
-    return "api"
 
 
 def _str_field(body: dict[str, Any], key: str) -> str | None:
@@ -610,7 +534,7 @@ def _limit_max(value: Any) -> int | None:
 
 
 def _error_fields(
-    raw: dict[str, Any] | None, status: int, headers: httpx.Headers
+    raw: dict[str, Any] | None, response: httpx.Response
 ) -> dict[str, Any]:
     """The agent-ready fields of an error body, None where the API left one out.
 
@@ -626,15 +550,17 @@ def _error_fields(
     retryable = body.get("retryable")
     retry_after = _seconds(body.get("retry_after_seconds"))
     if retry_after is None:
-        retry_after = _retry_after_header(headers.get("Retry-After"))
+        retry_after = _retry_after_header(response.headers.get("Retry-After"))
     if retry_after is None:
         retry_after = _seconds(body.get("retryAfter"))
-    header_id = (headers.get("X-Request-Id") or "").strip() or None
+    header_id = (response.headers.get("X-Request-Id") or "").strip() or None
     code = _str_field(body, "code")
-    invalid_filter = status == 400 and body.get("error") == "invalid_filter"
+    invalid_filter = (
+        response.status_code == 400 and body.get("error") == "invalid_filter"
+    )
     return {
         "code": code,
-        "type": _str_field(body, "type") or _derive_type(status, code),
+        "type": _str_field(body, "type") or _derive_type(response.status_code, code),
         "error": _str_field(body, "error"),
         "fix": _str_field(body, "fix"),
         "retryable": retryable if isinstance(retryable, bool) else None,
@@ -731,16 +657,14 @@ def _is_payment_offer(code: str | None, body: dict[str, Any] | None) -> bool:
     return body is not None and ("accepts" in body or "x402Version" in body)
 
 
-def _to_api_error(
-    status: int, content: bytes, headers: httpx.Headers
-) -> KeenableAPIError:
-    """Map an error status and body to the most specific SDK error available."""
+def _to_api_error(response: httpx.Response) -> KeenableAPIError:
+    """Map a non-2xx response to the most specific SDK error available."""
     detail = ""
     body: dict[str, Any] | None = None
     try:
-        decoded = _parse_json(content)
+        decoded = _parse_json(response.content)
     except ValueError:
-        detail = content.decode("utf-8", "replace").strip()
+        detail = (response.text or "").strip()
     else:
         # JSON that is not an object has no fields and no detail.
         if isinstance(decoded, dict):
@@ -753,9 +677,10 @@ def _to_api_error(
                     detail = text
                     break
 
-    fields = _error_fields(body, status, headers)
-    kind = _error_kind(status, _str_field(body or {}, "type"), fields["type"])
-    auth = kind == "auth"
+    fields = _error_fields(body, response)
+    status = response.status_code
+    # A 401/403 about the page being fetched is not an authentication failure.
+    auth = status in (401, 403) and fields["type"] != "target_error"
     if status == 402:
         message = (
             _PAYMENT_REQUIRED
@@ -781,18 +706,13 @@ def _to_api_error(
 
     if auth:
         return KeenableAuthError(message, status, detail or None, **fields)
-    if kind == "insufficient_credits":
+    if status == 402:
         return KeenableInsufficientCreditsError(
             message, status, detail or None, **fields
         )
-    if kind == "rate_limit":
+    if status == 429:
         return KeenableRateLimitError(message, status, detail or None, **fields)
     return KeenableAPIError(message, status, detail or None, **fields)
-
-
-def _url_error(status: int, body: dict[str, Any]) -> KeenableAPIError:
-    """One failed URL's error, mapped as an error response with that body."""
-    return _to_api_error(status, jsonlib.dumps(body).encode(), httpx.Headers())
 
 
 class _RedirectError(KeenableConnectionError):
@@ -809,7 +729,7 @@ def _decode(response: httpx.Response) -> tuple[dict[str, Any], str | None]:
             "so the API key was not sent. Check KEENABLE_API_URL."
         )
     if not response.is_success:
-        raise _to_api_error(response.status_code, response.content, response.headers)
+        raise _to_api_error(response)
     request_id = (response.headers.get("X-Request-Id") or "").strip() or None
     try:
         data = _parse_json(response.content)
@@ -1544,44 +1464,28 @@ class Keenable(_BaseClient):
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
     ) -> FetchResponse:
-        """Read up to 10 pages as markdown in one call.
+        """Read pages as markdown with ``POST /v1/fetch``.
 
-        ``results[i]`` is for ``urls[i]``: its ``page``, or its ``error`` when
-        that URL failed. A failed URL does not raise; the call raises only
-        when it fails as a whole.
-
-        Example:
-            >>> response = keenable.fetch(
-            ...     ["https://stripe.com/pricing"], max_chars=20000
-            ... )
-            >>> response.results[0].page.content
+        ``results[i]`` is for ``urls[i]``: a :class:`Page`, with ``error`` set
+        when that URL failed. The API checks every option and answers a bad
+        one with a 400.
 
         Args:
-            urls: 1 to 10 ``http`` or ``https`` URLs; a lone string is one
-                URL. Internal hosts and private addresses are refused before
-                a request is sent.
-            max_chars: The most characters of content per page, at least 1.
-                The API default is 50000.
-            schema: A JSON Schema whose root has ``"type": "object"``. Each
-                page's typed answer is in ``Page.structured``.
-            links: The most links per page to return, 1 to 1000.
-            images: The most images per page to return, 0 to 25.
-            max_age_hours: Use a stored copy only if it is younger than this,
-                0 to 720 hours (fractions allowed); 0 reads every page live.
-                Left out, a stored copy of any age is used when there is one.
+            urls: ``http`` or ``https`` URLs; a lone string is one URL.
+                Internal hosts and private addresses are refused before a
+                request is sent.
+            max_chars: The most characters of content per page.
+            schema: A JSON Schema; each page's answer is in ``Page.structured``.
+            links: The most links per page to return.
+            images: The most images per page to return.
+            max_age_hours: Use a stored copy only if younger than this; 0
+                reads every page live.
             timeout: Deadline for each attempt of this call, as in
                 :meth:`search`.
             max_retries: Retry budget for this call, as in :meth:`search`.
             extra_headers: Headers for this call, over ``default_headers``.
         """
-        targets, payload = _fetch_payload(
-            urls,
-            max_chars=max_chars,
-            schema=schema,
-            links=links,
-            images=images,
-            max_age_hours=max_age_hours,
-        )
+        payload = _fetch_payload(urls, max_chars, schema, links, images, max_age_hours)
         body, request_id = self._request(
             _FETCH,
             json=payload,
@@ -1589,7 +1493,7 @@ class Keenable(_BaseClient):
             max_retries=max_retries,
             extra_headers=extra_headers,
         )
-        return FetchResponse._from_json(body, targets, request_id, _url_error)
+        return FetchResponse._from_json(body, payload["urls"], request_id)
 
 
 class AsyncKeenable(_BaseClient):
@@ -1738,15 +1642,8 @@ class AsyncKeenable(_BaseClient):
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
     ) -> FetchResponse:
-        """Read up to 10 pages in one call. See :meth:`Keenable.fetch`."""
-        targets, payload = _fetch_payload(
-            urls,
-            max_chars=max_chars,
-            schema=schema,
-            links=links,
-            images=images,
-            max_age_hours=max_age_hours,
-        )
+        """Read pages as markdown. See :meth:`Keenable.fetch` for the arguments."""
+        payload = _fetch_payload(urls, max_chars, schema, links, images, max_age_hours)
         body, request_id = await self._request(
             _FETCH,
             json=payload,
@@ -1754,4 +1651,4 @@ class AsyncKeenable(_BaseClient):
             max_retries=max_retries,
             extra_headers=extra_headers,
         )
-        return FetchResponse._from_json(body, targets, request_id, _url_error)
+        return FetchResponse._from_json(body, payload["urls"], request_id)

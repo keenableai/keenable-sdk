@@ -30,6 +30,7 @@ from keenable import (
 
 FIXTURE = Path(__file__).parent / "fixtures" / "error_contract.json"
 CASES: list[dict[str, Any]] = json.loads(FIXTURE.read_text("utf-8"))["cases"]
+CATALOG_CASES = [c for c in CASES if "type" in c["body"]]
 
 KINDS: dict[str, type[KeenableAPIError]] = {
     "auth": KeenableAuthError,
@@ -96,6 +97,17 @@ def test_the_three_sdks_test_the_same_fixture() -> None:
         assert other.read_bytes() == FIXTURE.read_bytes(), (
             f"{other} differs; run: node scripts/error-contract/sync.ts"
         )
+
+
+@pytest.mark.parametrize("case", CATALOG_CASES, ids=[c["name"] for c in CATALOG_CASES])
+def test_a_server_without_type_gets_the_catalog_type_derived(
+    case: dict[str, Any],
+) -> None:
+    body = {k: v for k, v in case["body"].items() if k != "type"}
+    err = _raise(httpx.Response(case["status"], json=body, headers=case["headers"]))
+
+    assert err.type == case["expect"]["type"]
+    assert type(err) is KINDS[case["expect"]["kind"]]
 
 
 def test_the_type_the_api_sends_is_kept_as_sent() -> None:

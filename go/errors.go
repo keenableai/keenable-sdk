@@ -167,8 +167,7 @@ func (e *APIError) Code() string {
 }
 func (e *APIError) keenableError() {}
 
-// AuthError means the API key was rejected: type authentication_error or
-// permission_error, or HTTP 401 or 403 from a server that sends no type.
+// AuthError means the API key was rejected (HTTP 401 or 403).
 type AuthError struct {
 	*APIError
 }
@@ -180,8 +179,7 @@ func (e *AuthError) Unwrap() error {
 	return e.APIError
 }
 
-// RateLimitError means the rate limit was exceeded: type rate_limit_error, or
-// HTTP 429 from a server that sends no type.
+// RateLimitError means the rate limit was exceeded (HTTP 429).
 //
 // Keyless calls share a lower hourly cap. Set KEENABLE_API_KEY to lift it.
 // A key is never required to make a request.
@@ -201,9 +199,8 @@ func (e *RateLimitError) Unwrap() error {
 	return e.APIError
 }
 
-// InsufficientCreditsError is a billing_error (a 402 from a server that sends
-// no type): the organization has no credits left, or the API asked for a
-// per-request (x402) payment, which this SDK cannot make.
+// InsufficientCreditsError is a 402: the organization has no credits left, or
+// the API asked for a per-request (x402) payment, which this SDK cannot make.
 // Retrying returns the same error until a human with console access adds
 // credits; with x402, call the API with a key instead. Code() stays CodeAPI,
 // as it was before this type existed.
