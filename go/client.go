@@ -157,8 +157,8 @@ type FetchOptions struct {
 	RequestOptions
 	// MaxChars is the most characters of content per page. Zero means unset.
 	MaxChars int
-	// Objective, when set, makes each page's content only an LLM's answer to it.
-	Objective string
+	// Prompt, when set, makes each page's content only an LLM's answer to it.
+	Prompt string
 	// Schema is a JSON Schema; each page's answer is in Page.Structured.
 	Schema map[string]any
 	// Links is the most links per page to return. Zero means unset.
@@ -180,8 +180,8 @@ func (o *FetchOptions) body(urls []string) map[string]any {
 	if o.MaxChars != 0 {
 		content["max_chars"] = o.MaxChars
 	}
-	if o.Objective != "" {
-		content["objective"] = o.Objective
+	if o.Prompt != "" {
+		content["prompt"] = o.Prompt
 	}
 	if o.Schema != nil {
 		content["schema"] = o.Schema

@@ -309,7 +309,7 @@ describe("fetch", () => {
     const { client, seen } = mockClient(() => json(FETCH_BODY));
     await client.fetch(["https://example.com"], {
       maxChars: 500,
-      objective: "List the prices",
+      prompt: "List the prices",
       links: 5,
       maxAgeHours: 0,
     });
@@ -318,7 +318,7 @@ describe("fetch", () => {
     expect(seen[0]?.init.method).toBe("POST");
     expect(JSON.parse(String(seen[0]?.init.body))).toEqual({
       urls: ["https://example.com"],
-      content: { max_chars: 500, objective: "List the prices", links: 5 },
+      content: { max_chars: 500, prompt: "List the prices", links: 5 },
       retrieval: { max_age_hours: 0 },
     });
   });

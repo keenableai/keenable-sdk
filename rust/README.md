@@ -152,8 +152,8 @@ for page in &response.results {
 
 `fetch` sends one `POST /v1/fetch`. `results[i]` is for `urls[i]`; a URL that
 failed has `error` set instead of returning `Err`. `FetchOptions` has
-`max_chars`, `objective` (each page's `content` is then only an LLM's answer
-to it), `schema` (each page's answer is in `page.structured`), `links`,
+`max_chars`, `prompt` (each page's `content` is then only an LLM's answer to
+it), `schema` (each page's answer is in `page.structured`), `links`,
 `images` and `max_age_hours` (`Some(0.0)` reads every page live), sent only
 when set; the API checks their values.
 

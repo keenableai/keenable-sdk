@@ -206,7 +206,7 @@ async fn fetch_posts_the_urls_and_only_the_options_set() {
     let server = start(Script::Replies(vec![Reply::new(200, r#"{"results":[]}"#)])).await;
     let opts = FetchOptions {
         max_chars: Some(500),
-        objective: Some("List the prices".into()),
+        prompt: Some("List the prices".into()),
         links: Some(5),
         max_age_hours: Some(0.0),
         ..Default::default()
@@ -225,7 +225,7 @@ async fn fetch_posts_the_urls_and_only_the_options_set() {
         body,
         json!({
             "urls": ["https://example.com"],
-            "content": {"max_chars": 500, "objective": "List the prices", "links": 5},
+            "content": {"max_chars": 500, "prompt": "List the prices", "links": 5},
             "retrieval": {"max_age_hours": 0.0},
         })
     );

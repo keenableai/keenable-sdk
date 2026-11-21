@@ -311,7 +311,7 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
 def _fetch_payload(
     urls: str | Iterable[str],
     max_chars: int | None,
-    objective: str | None,
+    prompt: str | None,
     schema: Mapping[str, Any] | None,
     links: int | None,
     images: int | None,
@@ -328,7 +328,7 @@ def _fetch_payload(
         name: value
         for name, value in (
             ("max_chars", max_chars),
-            ("objective", objective),
+            ("prompt", prompt),
             ("schema", schema),
             ("links", links),
             ("images", images),
@@ -1513,7 +1513,7 @@ class Keenable(_BaseClient):
         urls: str | Iterable[str],
         *,
         max_chars: int | None = None,
-        objective: str | None = None,
+        prompt: str | None = None,
         schema: Mapping[str, Any] | None = None,
         links: int | None = None,
         images: int | None = None,
@@ -1533,7 +1533,7 @@ class Keenable(_BaseClient):
                 Internal hosts and private addresses are refused before a
                 request is sent.
             max_chars: The most characters of content per page.
-            objective: Up to 2,000 characters; each page's ``content`` is then
+            prompt: Up to 2,000 characters; each page's ``content`` is then
                 only an LLM's answer to it.
             schema: A JSON Schema; each page's answer is in ``Page.structured``.
             links: The most links per page to return.
@@ -1546,7 +1546,7 @@ class Keenable(_BaseClient):
             extra_headers: Headers for this call, over ``default_headers``.
         """
         payload = _fetch_payload(
-            urls, max_chars, objective, schema, links, images, max_age_hours
+            urls, max_chars, prompt, schema, links, images, max_age_hours
         )
         body, request_id = self._request(
             _FETCH,
@@ -1728,7 +1728,7 @@ class AsyncKeenable(_BaseClient):
         urls: str | Iterable[str],
         *,
         max_chars: int | None = None,
-        objective: str | None = None,
+        prompt: str | None = None,
         schema: Mapping[str, Any] | None = None,
         links: int | None = None,
         images: int | None = None,
@@ -1739,7 +1739,7 @@ class AsyncKeenable(_BaseClient):
     ) -> FetchResponse:
         """Read pages as markdown. See :meth:`Keenable.fetch` for the arguments."""
         payload = _fetch_payload(
-            urls, max_chars, objective, schema, links, images, max_age_hours
+            urls, max_chars, prompt, schema, links, images, max_age_hours
         )
         body, request_id = await self._request(
             _FETCH,

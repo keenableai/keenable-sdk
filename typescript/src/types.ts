@@ -98,7 +98,7 @@ export interface FetchOptions extends RequestOptions {
   /** The most characters of content per page. */
   maxChars?: number;
   /** Up to 2,000 characters; each page's `content` is then only an LLM's answer to it. */
-  objective?: string;
+  prompt?: string;
   /** A JSON Schema; each page's answer is in `Page.structured`. */
   schema?: Record<string, unknown>;
   /** The most links per page to return. */

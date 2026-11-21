@@ -158,7 +158,7 @@ pub struct FetchOptions {
     pub max_chars: Option<u32>,
     /// Up to 2,000 characters; each page's `content` is then only an LLM's
     /// answer to it.
-    pub objective: Option<String>,
+    pub prompt: Option<String>,
     /// A JSON Schema; each page's answer is in `Page::structured`.
     pub schema: Option<Value>,
     /// The most links per page to return.
@@ -399,7 +399,7 @@ impl Client {
         let mut content = Map::new();
         let options = [
             ("max_chars", opts.max_chars.map(Value::from)),
-            ("objective", opts.objective.clone().map(Value::from)),
+            ("prompt", opts.prompt.clone().map(Value::from)),
             ("schema", opts.schema.clone()),
             ("links", opts.links.map(Value::from)),
             ("images", opts.images.map(Value::from)),

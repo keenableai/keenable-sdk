@@ -343,7 +343,7 @@ def test_fetch_posts_the_urls_and_only_the_options_set() -> None:
     keenable.fetch(
         ["https://example.com"],
         max_chars=500,
-        objective="List the prices",
+        prompt="List the prices",
         links=5,
         max_age_hours=0,
     )
@@ -352,7 +352,7 @@ def test_fetch_posts_the_urls_and_only_the_options_set() -> None:
     assert seen[0].url.path == "/v1/fetch/public"
     assert json.loads(seen[0].content) == {
         "urls": ["https://example.com"],
-        "content": {"max_chars": 500, "objective": "List the prices", "links": 5},
+        "content": {"max_chars": 500, "prompt": "List the prices", "links": 5},
         "retrieval": {"max_age_hours": 0},
     }
 

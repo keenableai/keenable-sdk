@@ -182,7 +182,7 @@ fields are sent only when set (the API checks their values):
 | Field | What it does |
 |---|---|
 | `MaxChars` | The most characters of content per page. Zero means the API default of 50000 |
-| `Objective` | Up to 2,000 characters; each page's `Content` is then only an LLM's answer to it |
+| `Prompt` | Up to 2,000 characters; each page's `Content` is then only an LLM's answer to it |
 | `Schema` | A JSON Schema; each page's answer is in `page.Structured` |
 | `Links` | The most links per page to return, in `page.Links` |
 | `Images` | The most images per page to return, in `page.Images` |

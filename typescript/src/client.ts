@@ -835,7 +835,7 @@ export class Keenable {
     targets.forEach(rejectPrivateFetchTarget);
     const content = {
       max_chars: options.maxChars,
-      objective: options.objective,
+      prompt: options.prompt,
       schema: options.schema,
       links: options.links,
       images: options.images,
