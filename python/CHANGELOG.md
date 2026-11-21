@@ -5,6 +5,10 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
+- **Added:** `prices()` returns a `PriceList` of every SKU's `Price` (`sku`, `product`, `description`, `unit`, `unit_price`, and with an API key `list_unit_price` and `source`). Keyless it calls `GET /v1/prices/public` (the public list prices), with a key `GET /v1/prices` (your organization's prices). Both `Keenable` and `AsyncKeenable`.
+- **Added:** `balance()` returns a `Balance` (`available`, `purchased`, `plan` (`Plan`: `name`, `renews_at`) or None, `billing_url`, `as_of`) from `GET /v1/balance`. It needs an API key: keyless it raises `KeenableAuthError` (`code="missing_api_key"`) and sends nothing. Both `Keenable` and `AsyncKeenable`.
+- **Added:** `SearchResponse.usage` and `Page.usage`, a `Usage` (`sku`, `amount`, `cost`, `balance`) on a billed request (one made with an API key), else None. Every amount of money is a `Money` (`amount` a decimal string kept as sent, such as `"0.004"`, and `currency` `"usd"`).
+- **Changed:** the error contract fixtures follow the backend's current catalog, whose `insufficient_credits` fix now points to `GET /v1/balance`.
 - **Changed (breaks code):** what a search monitor finds is now called a result. `monitors.pages()` is `monitors.results()` and calls `GET /v1/monitors/{id}/results`; `PageList` is `ResultList`. Both `Monitors` and `AsyncMonitors`. The old names are gone, with no aliases.
 - **Changed (breaks code):** webhook event names. `monitor.hit` is `monitor.result.found`, `monitor.update` is `monitor.result.changed` and `monitor.change` is `monitor.page.changed`. `event.data.result` is unchanged. A check against an old name still compiles but never matches, so search your webhook handlers for them.
 - **Removed:** fields the API no longer sends: `MonitorResult.score`, `favicon` and `highlights`; `Monitor.agent_run_id`, `backfill`, `memory_scope`, `estimated_cost_usd` and `cost_this_month_usd`; `MonitorRun.usage`.

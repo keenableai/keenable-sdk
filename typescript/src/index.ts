@@ -37,12 +37,18 @@ export type { KeenableAPIErrorDetails, KeenableErrorType, RateLimitInfo } from "
 export { FETCH_TOOL, SEARCH_TOOL, TOOLS, runToolCall } from "./tools.js";
 export type { ToolDefinition } from "./tools.js";
 export type {
+  Balance,
   KeenableOptions,
   FetchOptions,
+  Money,
+  Plan,
+  Price,
+  PriceList,
   RequestOptions,
   SearchOptions,
   SearchResult,
   ToContextOptions,
+  Usage,
 } from "./types.js";
 export { Monitors } from "./monitors.js";
 export type {

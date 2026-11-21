@@ -5,6 +5,10 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- **Added:** `prices(options?)` resolves to a `PriceList` of every SKU's `Price` (`sku`, `product`, `description`, `unit`, `unitPrice`, and with an API key `listUnitPrice` and `source`). Keyless it calls `GET /v1/prices/public` (the public list prices), with a key `GET /v1/prices` (your organization's prices).
+- **Added:** `balance(options?)` resolves to a `Balance` (`available`, `purchased`, `plan` (`Plan`: `name`, `renewsAt`) or undefined, `billingUrl`, `asOf`) from `GET /v1/balance`. It needs an API key: keyless it throws `KeenableAuthError` (`code: "missing_api_key"`) and sends nothing.
+- **Added:** `SearchResponse.usage` and `Page.usage`, a `Usage` (`sku`, `amount`, `cost`, `balance`) on a billed request (one made with an API key), else undefined. Every amount of money is a `Money` (`amount` a decimal string kept as sent, such as `"0.004"`, and `currency` `"usd"`). New exported types `Money`, `Usage`, `Price`, `PriceList`, `Plan` and `Balance`.
+- **Changed:** the error contract fixtures follow the backend's current catalog, whose `insufficient_credits` fix now points to `GET /v1/balance`.
 - **Changed (breaks code):** what a search monitor finds is now called a result. `monitors.pages()` is `monitors.results()` and calls `GET /v1/monitors/{id}/results`; `PageList` is `ResultList` and `MonitorPagesParams` is `MonitorResultsParams`. The old names are gone, with no aliases.
 - **Changed (breaks code):** webhook event names in `MonitorEvent`: `"monitor.hit"` is `"monitor.result.found"`, `"monitor.update"` is `"monitor.result.changed"` and `"monitor.change"` is `"monitor.page.changed"`. `event.data.result` is unchanged. A check against an old name still compiles but never matches, so search your webhook handlers for them.
 - **Removed:** fields the API no longer sends: `MonitorResult.score`, `favicon` and `highlights`; `Monitor.agentRunId`, `backfill`, `memoryScope`, `estimatedCostUsd` and `costThisMonthUsd`; `MonitorRun.usage`.

@@ -341,6 +341,7 @@ async fn responses() {
                         })
                         .collect();
                     got.insert("results".into(), results.into());
+                    got.insert("usage".into(), usage_json(&r.usage));
                     got.insert("error".into(), Value::Null);
                     (Value::Object(got) != *want).then(|| format!("got {r:?}"))
                 }
@@ -357,6 +358,7 @@ async fn responses() {
                         "description": p.description, "author": p.author,
                         "published_at": p.published_at, "request_id": p.request_id,
                         "truncated": p.truncated, "total_chars": p.total_chars,
+                        "usage": usage_json(&p.usage),
                     });
                     (got != *want).then(|| format!("got {got}"))
                 }
@@ -368,6 +370,105 @@ async fn responses() {
         }
     }
     report("responses", failures);
+}
+
+fn money_json(m: Option<&crate::Money>) -> Value {
+    m.map_or(
+        Value::Null,
+        |m| serde_json::json!({"amount": m.amount, "currency": m.currency}),
+    )
+}
+
+fn usage_json(u: &Option<crate::Usage>) -> Value {
+    u.as_ref().map_or(Value::Null, |u| {
+        serde_json::json!({
+            "sku": u.sku, "amount": u.amount,
+            "cost": money_json(Some(&u.cost)), "balance": money_json(u.balance.as_ref()),
+        })
+    })
+}
+
+#[tokio::test]
+async fn account() {
+    let fixture = fixture();
+    let mut failures = Vec::new();
+    for case in cases(&fixture, "account") {
+        let server = start(Script::Replies(vec![reply_for(case)])).await;
+        crate::test_hooks::start_recording();
+        let client = Client::with_options(Options {
+            api_key: Some(if case["keyless"] == true { "" } else { "k" }.into()),
+            base_url: Some(server.base_url.clone()),
+            max_retries: Some(0),
+            ..Default::default()
+        })
+        .unwrap();
+        let want = &case["expect"];
+        let got: Result<Value, Error> = if case["method"] == "prices" {
+            client.prices().await.map(|r| {
+                let prices: Vec<Value> = r
+                    .prices
+                    .iter()
+                    .map(|p| {
+                        serde_json::json!({
+                            "sku": p.sku, "product": p.product, "description": p.description,
+                            "unit": p.unit, "unit_price": money_json(Some(&p.unit_price)),
+                            "list_unit_price": money_json(p.list_unit_price.as_ref()),
+                            "source": p.source,
+                        })
+                    })
+                    .collect();
+                serde_json::json!({
+                    "price_list_id": r.price_list_id, "source": r.source,
+                    "request_id": r.request_id, "prices": prices,
+                })
+            })
+        } else {
+            client.balance().await.map(|b| {
+                serde_json::json!({
+                    "available": money_json(Some(&b.available)),
+                    "purchased": money_json(Some(&b.purchased)),
+                    "plan": b.plan.as_ref().map(|p| serde_json::json!({"name": p.name, "renews_at": p.renews_at})),
+                    "billing_url": b.billing_url, "as_of": b.as_of, "request_id": b.request_id,
+                })
+            })
+        };
+        let seen: Vec<String> = server
+            .requests()
+            .iter()
+            .map(|r| format!("{} {}", r.method, r.path))
+            .collect();
+        let want_seen: Vec<String> = want["path"]
+            .as_str()
+            .map(|p| vec![format!("GET {p}")])
+            .unwrap_or_default();
+        let mut problems = Vec::new();
+        if seen != want_seen {
+            problems.push(format!("sent {seen:?}, want {want_seen:?}"));
+        }
+        match (got, want["error"].as_str()) {
+            (Err(e), Some(kind)) => {
+                if !kind_matches(&e, kind) {
+                    problems.push(format!("{e:?}"));
+                }
+                if case["keyless"] == true {
+                    match &e {
+                        Error::Auth(api) if api.code.as_deref() == Some("missing_api_key") => {}
+                        other => problems.push(format!("want missing_api_key, got {other:?}")),
+                    }
+                }
+            }
+            (Ok(got), None) => {
+                if got != want["result"] {
+                    problems.push(format!("got {got}"));
+                }
+            }
+            (got, _) => problems.push(format!("{got:?}")),
+        }
+        if !problems.is_empty() {
+            failures.push(format!("{}: {}", name(case), problems.join("; ")));
+        }
+    }
+    report("account", failures);
 }
 
 #[tokio::test]

@@ -10,7 +10,8 @@ use serde_json::{Map, Value};
 use crate::error::{ApiError, ConnectionError, Error, RateLimitError, RateLimitInfo, Result};
 use crate::guard::{reject_private_fetch_target, resolve_base_url};
 use crate::models::{
-    non_blank, page_from_json, safe_count, search_response_from_json, Page, SearchResponse,
+    balance_from_json, non_blank, page_from_json, price_list_from_json, safe_count,
+    search_response_from_json, Balance, Page, PriceList, SearchResponse,
 };
 use crate::retry::{retry_after_header, retry_delay, seconds};
 use crate::{json, types, VERSION};
@@ -399,6 +400,57 @@ impl Client {
             .send(reqwest::Method::GET, "fetch", None, query, &opts.request)
             .await?;
         Ok(page_from_json(data, url, id))
+    }
+
+    /// The price of every SKU, in USD.
+    ///
+    /// With an API key these are your organization's prices, each with the
+    /// public list price beside it; keyless, the public list prices. Use it
+    /// to choose a mode or budget a job before making calls.
+    pub async fn prices(&self) -> Result<PriceList> {
+        self.prices_with(&RequestOptions::default()).await
+    }
+
+    /// [`Client::prices`] with per-call settings.
+    pub async fn prices_with(&self, opts: &RequestOptions) -> Result<PriceList> {
+        let (data, id) = self
+            .send(reqwest::Method::GET, "prices", None, Vec::new(), opts)
+            .await?;
+        Ok(price_list_from_json(data, id))
+    }
+
+    /// How much your organization has left to spend, in USD.
+    ///
+    /// Needs an API key: keyless, it returns [`Error::Auth`] with code
+    /// `missing_api_key` and sends nothing. Free, and not cached.
+    pub async fn balance(&self) -> Result<Balance> {
+        self.balance_with(&RequestOptions::default()).await
+    }
+
+    /// [`Client::balance`] with per-call settings.
+    pub async fn balance_with(&self, opts: &RequestOptions) -> Result<Balance> {
+        self.require_key("The balance needs")?;
+        let (data, id) = self
+            .send(reqwest::Method::GET, "balance", None, Vec::new(), opts)
+            .await?;
+        Ok(balance_from_json(data, id))
+    }
+
+    /// The missing-key error when the client is keyless, so nothing is sent.
+    /// `what` starts the message: "Monitors need".
+    pub(crate) fn require_key(&self, what: &str) -> Result<()> {
+        if !self.is_keyless() {
+            return Ok(());
+        }
+        let mut api = ApiError::plain(
+            401,
+            format!("Keenable authentication failed (401): {what} an API key. Set Options::api_key or KEENABLE_API_KEY; create one at https://keenable.ai/console."),
+            None,
+        );
+        api.code = Some("missing_api_key".into());
+        api.error_type = types::AUTHENTICATION_ERROR.into();
+        api.retryable = Some(false);
+        Err(Error::Auth(Box::new(api)))
     }
 
     fn endpoint_url(&self, endpoint: &str, query: &[(String, String)]) -> String {

@@ -149,6 +149,29 @@ answer = keenable.fetch("https://cerebras.ai/chip", prompt="List the chip's spec
 | `live` | `True` fetches the page from its source now instead of reading Keenable's indexed copy. Default `False` |
 | `prompt` | An extraction instruction, up to 2000 characters. `page.content` is then only the model's output for it, not the page |
 
+## Prices and balance
+
+```python
+for price in keenable.prices():
+    print(price.sku, price.unit_price.amount)  # search.pro 0.004
+
+balance = keenable.balance()  # needs an API key
+print(balance.available.amount, balance.billing_url)
+
+results = keenable.search("cerebras inference benchmarks")
+if results.usage:  # set on a billed request, one made with an API key
+    print(results.usage.sku, results.usage.cost.amount, results.usage.balance)
+```
+
+`prices()` works keyless and returns the public list prices; with a key it
+returns your organization's prices, each with `list_unit_price` beside it.
+`balance()` needs an API key: keyless it raises `KeenableAuthError` with code
+`missing_api_key` and sends nothing. `SearchResponse.usage` and `Page.usage`
+say what a billed call cost and, in `usage.balance`, what is left.
+Prices and balances are `Money` objects (`amount`, `currency`) in USD. The amount
+is a decimal string kept exactly as the API sent it, such as `"0.004"`: use
+`decimal.Decimal(price.unit_price.amount)`, not `float`, to keep it exact.
+
 ## Tool calling
 
 The SDK ships OpenAI-compatible tool definitions, so any inference API that

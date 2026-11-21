@@ -190,6 +190,33 @@ addresses in private, loopback, link-local, carrier-grade NAT, documentation,
 benchmarking, multicast and reserved ranges, however the address is spelled.
 The rules are the same in every SDK (`scripts/conformance/README.md`).
 
+## Prices and balance
+
+```go
+prices, err := client.Prices(context.Background(), nil)
+if err != nil {
+	log.Fatal(err)
+}
+for _, p := range prices.Prices {
+	fmt.Println(p.SKU, p.UnitPrice.Amount, p.UnitPrice.Currency) // search.pro 0.004 usd
+}
+
+balance, err := client.Balance(context.Background(), nil) // needs an API key
+if err != nil {
+	log.Fatal(err)
+}
+fmt.Println(balance.Available.Amount, balance.BillingURL)
+```
+
+`Prices` works keyless and returns the public list prices; with a key it
+returns your organization's prices, each with `ListUnitPrice` beside it.
+`Balance` needs an API key: keyless it returns an `*AuthError` with `APICode`
+`missing_api_key` and sends nothing. `SearchResponse.Usage` and `Page.Usage`
+say what a billed call (one made with an API key) cost and, in
+`Usage.Balance`, what is left; they are nil otherwise.
+Prices and balances are `Money` values (`Amount`, `Currency`) in USD. The amount
+is a decimal string kept exactly as the API sent it, such as `"0.004"`.
+
 ## Tool calling
 
 The SDK ships OpenAI-compatible tool definitions, so any inference API that

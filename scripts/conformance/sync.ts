@@ -164,7 +164,10 @@ function responses(): Obj[] {
     }
     const given = item.expect as Obj;
     // A page's truncated and total_chars are unset unless a case says otherwise.
-    const page = item.endpoint === "fetch" && !("error" in given) ? PAGE_DEFAULTS : {};
+    const success = !("error" in given);
+    const page = item.endpoint === "fetch" && success ? PAGE_DEFAULTS : {};
+    // Usage is null unless a case says otherwise.
+    const usage: Obj = success ? { usage: null } : {};
     return {
       name,
       endpoint: item.endpoint,
@@ -172,7 +175,30 @@ function responses(): Obj[] {
       status: (item.status as number | undefined) ?? 200,
       headers: headers(item),
       body: bodyText(item, `responses ${name}`),
-      expect: { error: null, ...page, ...given },
+      expect: { error: null, ...page, ...usage, ...given },
+    };
+  });
+}
+
+const ACCOUNT_METHODS = new Set(["prices", "balance"]);
+
+function account(): Obj[] {
+  return (load("account.json").cases as Obj[]).map((item) => {
+    const name = item.name as string;
+    if (!ACCOUNT_METHODS.has(item.method as string)) fail(`account ${name}: unknown method`);
+    const given = item.expect as Obj;
+    if (!("path" in given)) fail(`account ${name}: expect needs a path`);
+    if (("error" in given) === ("result" in given)) {
+      fail(`account ${name}: expect needs exactly one of "error" and "result"`);
+    }
+    return {
+      name,
+      method: item.method as string,
+      keyless: item.keyless === true,
+      status: (item.status as number | undefined) ?? 200,
+      headers: headers(item),
+      body: bodyText(item, `account ${name}`),
+      expect: { path: given.path, error: given.error ?? null, result: given.result ?? null },
     };
   });
 }
@@ -315,6 +341,7 @@ export function buildConformance(): string {
     retry: retries(),
     errors: errors(),
     responses: responses(),
+    account: account(),
     options: options(),
     search_body: searchBodies(),
     fetch_params: fetchParams(),

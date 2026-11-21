@@ -32,6 +32,8 @@ from keenable import (
     KeenableInvalidRequestError,
     KeenableRateLimitError,
     KeenableTimeoutError,
+    Money,
+    Usage,
     WebhookVerificationError,
     arun_tool_call,
     run_tool_call,
@@ -51,6 +53,9 @@ KINDS: dict[str, type[KeenableError]] = {
 }
 SEARCH_OK = (200, {}, b'{"results": []}')
 PAGE_OK = (200, {}, b'{"content": "c"}')
+
+# run()'s arg for a method that takes none.
+NO_ARG = object()
 
 # One reply: status, headers and the body bytes.
 Reply = tuple[int, dict[str, str], bytes]
@@ -121,16 +126,17 @@ async def run(
         return httpx.Response(status, headers=headers, content=body)
 
     transport = httpx.MockTransport(handler)
+    positional = () if arg is NO_ARG else (arg,)
     settings = {"api_key": "k", **(options or {})}
     try:
         if kind == "sync":
             with Keenable(client=httpx.Client(transport=transport), **settings) as c:
-                outcome.result = getattr(c, method)(arg, **(call or {}))
+                outcome.result = getattr(c, method)(*positional, **(call or {}))
         else:
             async with AsyncKeenable(
                 client=httpx.AsyncClient(transport=transport), **settings
             ) as ac:
-                outcome.result = await getattr(ac, method)(arg, **(call or {}))
+                outcome.result = await getattr(ac, method)(*positional, **(call or {}))
     except KeenableError as error:
         outcome.error = error
     return outcome
@@ -281,6 +287,7 @@ async def test_responses(kind: str, case: dict[str, Any], waits: list[float]) ->
                 }
                 for r in result.results
             ],
+            "usage": _usage(result.usage),
         }
     else:
         got = {
@@ -293,8 +300,82 @@ async def test_responses(kind: str, case: dict[str, Any], waits: list[float]) ->
             "request_id": result.request_id,
             "truncated": result.truncated,
             "total_chars": result.total_chars,
+            "usage": _usage(result.usage),
         }
     assert got == {key: want[key] for key in got}
+
+
+def _money(money: Money | None) -> dict[str, str] | None:
+    if money is None:
+        return None
+    return {"amount": money.amount, "currency": money.currency}
+
+
+def _usage(usage: Usage | None) -> dict[str, Any] | None:
+    if usage is None:
+        return None
+    return {
+        "sku": usage.sku,
+        "amount": usage.amount,
+        "cost": _money(usage.cost),
+        "balance": _money(usage.balance),
+    }
+
+
+@pytest.mark.parametrize("kind", CLIENTS)
+@pytest.mark.parametrize("case", cases("account"))
+async def test_account(kind: str, case: dict[str, Any], waits: list[float]) -> None:
+    options: dict[str, Any] = {"max_retries": 0}
+    if case["keyless"]:
+        options["api_key"] = ""
+    outcome = await run(
+        kind, [reply(case)], waits, method=case["method"], arg=NO_ARG, options=options
+    )
+    want = case["expect"]
+    if want["path"] is None:
+        assert outcome.requests == []
+    else:
+        assert len(outcome.requests) == 1
+        assert outcome.requests[0].method == "GET"
+        assert outcome.requests[0].url.path == want["path"]
+    if want["error"] is not None:
+        assert type(outcome.error) is KINDS[want["error"]]
+        if case["keyless"]:
+            assert isinstance(outcome.error, KeenableAuthError)
+            assert outcome.error.code == "missing_api_key"
+        return
+    assert outcome.error is None
+    result = outcome.result
+    if case["method"] == "prices":
+        got: dict[str, Any] = {
+            "price_list_id": result.price_list_id,
+            "source": result.source,
+            "request_id": result.request_id,
+            "prices": [
+                {
+                    "sku": p.sku,
+                    "product": p.product,
+                    "description": p.description,
+                    "unit": p.unit,
+                    "unit_price": _money(p.unit_price),
+                    "list_unit_price": _money(p.list_unit_price),
+                    "source": p.source,
+                }
+                for p in result.prices
+            ],
+        }
+    else:
+        got = {
+            "available": _money(result.available),
+            "purchased": _money(result.purchased),
+            "plan": None
+            if result.plan is None
+            else {"name": result.plan.name, "renews_at": result.plan.renews_at},
+            "billing_url": result.billing_url,
+            "as_of": result.as_of,
+            "request_id": result.request_id,
+        }
+    assert got == want["result"]
 
 
 # --- arguments ---------------------------------------------------------------
@@ -417,6 +498,7 @@ def test_the_fixture_has_every_section() -> None:
         "retry",
         "errors",
         "responses",
+        "account",
         "options",
         "search_body",
         "fetch_params",

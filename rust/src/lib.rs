@@ -44,8 +44,8 @@ pub use error::{
     RateLimitInfo, Result, WebhookVerificationError,
 };
 pub use models::{
-    ContextOptions, Page, SearchResponse, SearchResult, DEFAULT_CONTEXT_MAX_CHARS,
-    DEFAULT_CONTEXT_MAX_SNIPPET_CHARS,
+    Balance, ContextOptions, Money, Page, Plan, Price, PriceList, SearchResponse, SearchResult,
+    Usage, DEFAULT_CONTEXT_MAX_CHARS, DEFAULT_CONTEXT_MAX_SNIPPET_CHARS,
 };
 pub use monitors::{
     BulkFilter, BulkResult, DeliveryList, List, Monitor, MonitorBulkParams, MonitorCreateParams,

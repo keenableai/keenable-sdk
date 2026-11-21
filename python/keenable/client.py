@@ -37,7 +37,7 @@ from .errors import (
     KeenableTimeoutError,
     RateLimitInfo,
 )
-from .models import Page, SearchResponse
+from .models import Balance, Page, PriceList, SearchResponse
 from .monitors import AsyncMonitors, Monitors, _Call
 
 __all__ = ["Keenable", "AsyncKeenable", "DEFAULT_MAX_RETRIES"]
@@ -56,6 +56,8 @@ _MAX_RETRY_AFTER_WAIT = 60.0
 # `/public` suffix, so a new endpoint is one name rather than two constants.
 _SEARCH = "search"
 _FETCH = "fetch"
+_PRICES = "prices"
+_BALANCE = "balance"
 
 _BLOCKED_HOSTS = frozenset({"localhost", "metadata.google.internal"})
 _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -1210,11 +1212,11 @@ class _BaseClient:
         suffix = "/public" if self.keyless else ""
         return f"{self._base_url}/v1/{endpoint}{suffix}"
 
-    def _monitors_url(self, path: str) -> str:
-        """A Monitors URL. Monitors need a key: keyless, nothing is sent."""
+    def _require_key(self, what: str) -> None:
+        """Raise the missing-key error, sending nothing, when keyless."""
         if self.keyless:
             raise KeenableAuthError(
-                "Keenable authentication failed (401): Monitors need an API key. "
+                f"Keenable authentication failed (401): {what} an API key. "
                 "Pass api_key or set KEENABLE_API_KEY; create one at "
                 "https://keenable.ai/console. (code: missing_api_key)",
                 401,
@@ -1222,7 +1224,16 @@ class _BaseClient:
                 type="authentication_error",
                 retryable=False,
             )
+
+    def _monitors_url(self, path: str) -> str:
+        """A Monitors URL. Monitors need a key: keyless, nothing is sent."""
+        self._require_key("Monitors need")
         return f"{self._base_url}/v1/{path}"
+
+    def _balance_url(self) -> str:
+        """The balance URL. It needs a key: keyless, nothing is sent."""
+        self._require_key("The balance needs")
+        return self._url(_BALANCE)
 
     def _call_settings(
         self, timeout: float | httpx.Timeout | None, max_retries: int | None
@@ -1534,6 +1545,60 @@ class Keenable(_BaseClient):
         )
         return Page._from_json(body, url, request_id)
 
+    def prices(
+        self,
+        *,
+        timeout: float | httpx.Timeout | None = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> PriceList:
+        """The price of every SKU, in USD.
+
+        With an API key these are your organization's prices, each with the
+        public list price beside it; keyless, the public list prices. Use it
+        to choose a mode or budget a job before making calls.
+
+        Args:
+            timeout: Deadline for each attempt of this call, as in
+                :meth:`search`.
+            max_retries: Retry budget for this call, as in :meth:`search`.
+            extra_headers: Headers for this call, over ``default_headers``.
+        """
+        body, request_id = self._request(
+            _PRICES,
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+        )
+        return PriceList._from_json(body, request_id)
+
+    def balance(
+        self,
+        *,
+        timeout: float | httpx.Timeout | None = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> Balance:
+        """How much your organization has left to spend, in USD.
+
+        Needs an API key: keyless, it raises :class:`KeenableAuthError` with
+        code ``missing_api_key`` and sends nothing. Free, and not cached.
+
+        Args:
+            timeout: Deadline for each attempt of this call, as in
+                :meth:`search`.
+            max_retries: Retry budget for this call, as in :meth:`search`.
+            extra_headers: Headers for this call, over ``default_headers``.
+        """
+        body, request_id = self._request(
+            _BALANCE,
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+            url=self._balance_url(),
+        )
+        return Balance._from_json(body, request_id)
+
 
 class AsyncKeenable(_BaseClient):
     """Asynchronous client for the Keenable web search API.
@@ -1721,3 +1786,57 @@ class AsyncKeenable(_BaseClient):
             extra_headers=extra_headers,
         )
         return Page._from_json(body, url, request_id)
+
+    async def prices(
+        self,
+        *,
+        timeout: float | httpx.Timeout | None = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> PriceList:
+        """The price of every SKU, in USD.
+
+        With an API key these are your organization's prices, each with the
+        public list price beside it; keyless, the public list prices. Use it
+        to choose a mode or budget a job before making calls.
+
+        Args:
+            timeout: Deadline for each attempt of this call, as in
+                :meth:`search`.
+            max_retries: Retry budget for this call, as in :meth:`search`.
+            extra_headers: Headers for this call, over ``default_headers``.
+        """
+        body, request_id = await self._request(
+            _PRICES,
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+        )
+        return PriceList._from_json(body, request_id)
+
+    async def balance(
+        self,
+        *,
+        timeout: float | httpx.Timeout | None = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> Balance:
+        """How much your organization has left to spend, in USD.
+
+        Needs an API key: keyless, it raises :class:`KeenableAuthError` with
+        code ``missing_api_key`` and sends nothing. Free, and not cached.
+
+        Args:
+            timeout: Deadline for each attempt of this call, as in
+                :meth:`search`.
+            max_retries: Retry budget for this call, as in :meth:`search`.
+            extra_headers: Headers for this call, over ``default_headers``.
+        """
+        body, request_id = await self._request(
+            _BALANCE,
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+            url=self._balance_url(),
+        )
+        return Balance._from_json(body, request_id)

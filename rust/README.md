@@ -158,6 +158,26 @@ Internal hosts and private addresses are refused before a request is sent:
 addresses in private, loopback, link-local, carrier-grade NAT, documentation,
 benchmarking, multicast and reserved ranges, however the address is spelled.
 
+## Prices and balance
+
+```rust
+for price in client.prices().await?.prices {
+    println!("{} {} {}", price.sku, price.unit_price.amount, price.unit_price.currency); // search.pro 0.004 usd
+}
+
+let balance = client.balance().await?; // needs an API key
+println!("{} {}", balance.available.amount, balance.billing_url);
+```
+
+`prices` works keyless and returns the public list prices; with a key it
+returns your organization's prices, each with `list_unit_price` beside it.
+`balance` needs an API key: keyless it returns `Error::Auth` with code
+`missing_api_key` and sends nothing. `SearchResponse::usage` and `Page::usage`
+say what a billed call (one made with an API key) cost and, in
+`usage.balance`, what is left; they are `None` otherwise.
+Prices and balances are `Money` values (`amount`, `currency`) in USD. The amount
+is a decimal string kept exactly as the API sent it, such as `"0.004"`.
+
 ## Tool calling
 
 `keenable::tools()` returns OpenAI-compatible definitions for

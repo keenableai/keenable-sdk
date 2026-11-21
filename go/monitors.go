@@ -617,16 +617,8 @@ func (m *MonitorsService) call(ctx context.Context, call monitorCall, out any) (
 	if err := requireContext(ctx); err != nil {
 		return nil, "", err
 	}
-	if c.apiKey == "" {
-		retryable := false
-		return nil, "", &AuthError{APIError: &APIError{
-			StatusCode: 401,
-			APICode:    "missing_api_key",
-			Type:       TypeAuthenticationError,
-			Retryable:  &retryable,
-			code:       CodeAuth,
-			msg:        "Keenable authentication failed (401): Monitors need an API key. Set Options.APIKey or KEENABLE_API_KEY; create one at https://keenable.ai/console.",
-		}}
+	if err := c.requireKey("Monitors need"); err != nil {
+		return nil, "", err
 	}
 	u, err := url.Parse(c.baseURL)
 	if err != nil || u.Host == "" {

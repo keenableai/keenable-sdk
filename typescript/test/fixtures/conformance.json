@@ -3325,6 +3325,7 @@
       "body": "{\"query\":\"q\",\"mode\":\"pro\",\"results\":[{\"title\":\"T\",\"url\":\"https://e.com/\",\"snippet\":\"S\",\"description\":\"D\",\"published_at\":\"2024-01-01\",\"acquired_at\":\"2024-02-02\"}]}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": "pro",
         "request_id": null,
@@ -3349,6 +3350,7 @@
       "body": "{}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3364,6 +3366,7 @@
       "body": "{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\",\"score\":0.9}],\"took_ms\":12,\"debug\":{\"x\":1}}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3388,6 +3391,7 @@
       "body": "{\"results\":null}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3403,6 +3407,7 @@
       "body": "{\"results\":{\"title\":\"T\"}}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3418,6 +3423,7 @@
       "body": "{\"results\":\"none\"}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3433,6 +3439,7 @@
       "body": "{\"results\":[1,\"x\",null,[],true,{\"title\":\"kept\"}]}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3457,6 +3464,7 @@
       "body": "{\"results\":[{\"title\":42,\"url\":{\"href\":\"u\"},\"snippet\":true,\"description\":5,\"published_at\":[\"2024\"],\"acquired_at\":false}]}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3481,6 +3489,7 @@
       "body": "{\"results\":[{\"title\":null,\"url\":null,\"snippet\":null,\"description\":null}]}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3505,6 +3514,7 @@
       "body": "{\"results\":[{\"title\":0,\"url\":false,\"snippet\":0}]}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3529,6 +3539,7 @@
       "body": "{\"results\":[{\"title\":\"  \",\"url\":\"\",\"snippet\":\" \",\"description\":\"  \",\"published_at\":\"\",\"acquired_at\":\" \"}]}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3553,6 +3564,7 @@
       "body": "{\"query\":\"normalized q\"}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "normalized q",
         "mode": null,
         "request_id": null,
@@ -3568,6 +3580,7 @@
       "body": "{\"query\":\"  \"}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3583,6 +3596,7 @@
       "body": "{\"query\":5}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3598,6 +3612,7 @@
       "body": "{\"mode\":5}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3613,6 +3628,7 @@
       "body": "{\"mode\":\"\"}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3630,6 +3646,7 @@
       "body": "{\"request_id\":\"body\"}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": "body",
@@ -3647,6 +3664,7 @@
       "body": "{\"request_id\":\" \"}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": "hdr",
@@ -3664,6 +3682,7 @@
       "body": "{\"request_id\":9}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": "hdr",
@@ -3681,6 +3700,7 @@
       "body": "{}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3696,6 +3716,7 @@
       "body": "{\"results\":[]}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3711,6 +3732,7 @@
       "body": "﻿{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\"}]}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3735,6 +3757,7 @@
       "body": "{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\",\"score\":1e400}],\"took\":1e400}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3849,6 +3872,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/final",
         "title": "T",
         "content": "C",
@@ -3869,6 +3893,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -3889,6 +3914,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -3909,6 +3935,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -3929,6 +3956,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -3949,6 +3977,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -3971,6 +4000,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "C",
@@ -4002,6 +4032,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4022,6 +4053,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4042,6 +4074,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4062,6 +4095,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4082,6 +4116,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4102,6 +4137,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4122,6 +4158,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4142,6 +4179,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4162,6 +4200,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4182,6 +4221,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4202,6 +4242,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4222,6 +4263,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4242,6 +4284,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4262,6 +4305,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4282,6 +4326,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4302,6 +4347,7 @@
         "error": null,
         "truncated": true,
         "total_chars": 120000,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "abc...",
@@ -4322,6 +4368,7 @@
         "error": null,
         "truncated": false,
         "total_chars": 0,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4342,6 +4389,7 @@
         "error": null,
         "truncated": null,
         "total_chars": 5,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4362,6 +4410,7 @@
         "error": null,
         "truncated": null,
         "total_chars": 9007199254740991,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4382,6 +4431,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4402,6 +4452,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4422,6 +4473,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4442,6 +4494,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4462,6 +4515,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4482,6 +4536,7 @@
         "error": null,
         "truncated": true,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4502,6 +4557,7 @@
         "error": null,
         "truncated": null,
         "total_chars": null,
+        "usage": null,
         "url": "https://e.com/p",
         "title": "",
         "content": "",
@@ -4520,6 +4576,7 @@
       "body": "{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\",\"published_at\":\"2024-05-01T12:00:00Z\",\"acquired_at\":\"2024-05-02T00:00:00Z\"}]}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -4544,6 +4601,7 @@
       "body": "{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\",\"published_at\":1714564800,\"acquired_at\":1714608000.5}]}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -4568,6 +4626,7 @@
       "body": "{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\",\"published_at\":-1,\"acquired_at\":100000000000000000000}]}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -4592,6 +4651,7 @@
       "body": "{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\",\"published_at\":0,\"acquired_at\":\"1714564800\"}]}",
       "expect": {
         "error": null,
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -4605,6 +4665,422 @@
             "acquired_at": "1714564800"
           }
         ]
+      }
+    },
+    {
+      "name": "a search's usage",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[],\"usage\":{\"sku\":\"search.pro\",\"amount\":1,\"cost\":{\"amount\":\"0.004\",\"currency\":\"usd\"},\"balance\":{\"amount\":\"42.176\",\"currency\":\"usd\"},\"credits\":4,\"paid\":true,\"credits_remaining\":42176}}",
+      "expect": {
+        "error": null,
+        "usage": {
+          "sku": "search.pro",
+          "amount": 1,
+          "cost": {
+            "amount": "0.004",
+            "currency": "usd"
+          },
+          "balance": {
+            "amount": "42.176",
+            "currency": "usd"
+          }
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "usage without a balance",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[],\"usage\":{\"sku\":\"search.realtime\",\"amount\":1,\"cost\":{\"amount\":\"0.001\",\"currency\":\"usd\"},\"credits\":1,\"paid\":false}}",
+      "expect": {
+        "error": null,
+        "usage": {
+          "sku": "search.realtime",
+          "amount": 1,
+          "cost": {
+            "amount": "0.001",
+            "currency": "usd"
+          },
+          "balance": null
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "usage that is not an object is null",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[],\"usage\":\"free\"}",
+      "expect": {
+        "error": null,
+        "usage": null,
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "mistyped usage fields",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[],\"usage\":{\"sku\":1,\"amount\":1.5,\"cost\":\"0.004\",\"balance\":{\"amount\":\" \",\"currency\":\"usd\"}}}",
+      "expect": {
+        "error": null,
+        "usage": {
+          "sku": "",
+          "amount": null,
+          "cost": {
+            "amount": "",
+            "currency": ""
+          },
+          "balance": null
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "a page's usage",
+      "endpoint": "fetch",
+      "arg": "https://e.com/",
+      "status": 200,
+      "headers": {},
+      "body": "{\"url\":\"https://e.com/\",\"content\":\"c\",\"usage\":{\"sku\":\"fetch.live\",\"amount\":1,\"cost\":{\"amount\":\"0.003\",\"currency\":\"usd\"},\"balance\":{\"amount\":\"-0.50\",\"currency\":\"usd\"}}}",
+      "expect": {
+        "error": null,
+        "truncated": null,
+        "total_chars": null,
+        "usage": {
+          "sku": "fetch.live",
+          "amount": 1,
+          "cost": {
+            "amount": "0.003",
+            "currency": "usd"
+          },
+          "balance": {
+            "amount": "-0.50",
+            "currency": "usd"
+          }
+        },
+        "url": "https://e.com/",
+        "title": "",
+        "content": "c",
+        "description": null,
+        "author": null,
+        "published_at": null,
+        "request_id": null
+      }
+    }
+  ],
+  "account": [
+    {
+      "name": "prices with a key",
+      "method": "prices",
+      "keyless": false,
+      "status": 200,
+      "headers": {
+        "X-Request-Id": " req_p "
+      },
+      "body": "{\"object\":\"price_list\",\"price_list_id\":\"pl_1\",\"source\":\"contract\",\"prices\":[{\"sku\":\"search.pro\",\"product\":\"search\",\"description\":\"One search in pro mode, up to 10 results.\",\"unit\":\"request\",\"unit_price\":{\"amount\":\"0.003\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":\"0.004\",\"currency\":\"usd\"},\"source\":\"contract\"},{\"sku\":\"fetch\",\"product\":\"fetch\",\"description\":\"One fetch.\",\"unit\":\"request\",\"unit_price\":{\"amount\":\"0.002\",\"currency\":\"usd\"},\"source\":\"list\"}]}",
+      "expect": {
+        "path": "/v1/prices",
+        "error": null,
+        "result": {
+          "price_list_id": "pl_1",
+          "source": "contract",
+          "request_id": "req_p",
+          "prices": [
+            {
+              "sku": "search.pro",
+              "product": "search",
+              "description": "One search in pro mode, up to 10 results.",
+              "unit": "request",
+              "unit_price": {
+                "amount": "0.003",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": "0.004",
+                "currency": "usd"
+              },
+              "source": "contract"
+            },
+            {
+              "sku": "fetch",
+              "product": "fetch",
+              "description": "One fetch.",
+              "unit": "request",
+              "unit_price": {
+                "amount": "0.002",
+                "currency": "usd"
+              },
+              "list_unit_price": null,
+              "source": "list"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "keyless prices use the public list",
+      "method": "prices",
+      "keyless": true,
+      "status": 200,
+      "headers": {},
+      "body": "{\"object\":\"price_list\",\"price_list_id\":\"pl_list\",\"source\":\"list\",\"prices\":[{\"sku\":\"search.pro\",\"product\":\"search\",\"description\":\"One search in pro mode, up to 10 results.\",\"unit\":\"request\",\"unit_price\":{\"amount\":\"0.004\",\"currency\":\"usd\"}}]}",
+      "expect": {
+        "path": "/v1/prices/public",
+        "error": null,
+        "result": {
+          "price_list_id": "pl_list",
+          "source": "list",
+          "request_id": null,
+          "prices": [
+            {
+              "sku": "search.pro",
+              "product": "search",
+              "description": "One search in pro mode, up to 10 results.",
+              "unit": "request",
+              "unit_price": {
+                "amount": "0.004",
+                "currency": "usd"
+              },
+              "list_unit_price": null,
+              "source": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "an empty price list",
+      "method": "prices",
+      "keyless": false,
+      "status": 200,
+      "headers": {},
+      "body": "{}",
+      "expect": {
+        "path": "/v1/prices",
+        "error": null,
+        "result": {
+          "price_list_id": "",
+          "source": "",
+          "request_id": null,
+          "prices": []
+        }
+      }
+    },
+    {
+      "name": "mistyped price fields",
+      "method": "prices",
+      "keyless": false,
+      "status": 200,
+      "headers": {},
+      "body": "{\"price_list_id\":7,\"source\":null,\"request_id\":\"req_body\",\"prices\":[1,\"x\",null,[],{\"sku\":5,\"product\":null,\"description\":true,\"unit\":[],\"unit_price\":\"0.004\",\"list_unit_price\":{\"amount\":\" \",\"currency\":\"usd\"},\"source\":\" \"},{\"sku\":\"s\",\"unit_price\":{\"amount\":0.004,\"currency\":1},\"list_unit_price\":{\"amount\":0.004,\"currency\":\"usd\"},\"source\":3}]}",
+      "expect": {
+        "path": "/v1/prices",
+        "error": null,
+        "result": {
+          "price_list_id": "",
+          "source": "",
+          "request_id": "req_body",
+          "prices": [
+            {
+              "sku": "",
+              "product": "",
+              "description": "",
+              "unit": "",
+              "unit_price": {
+                "amount": "",
+                "currency": ""
+              },
+              "list_unit_price": null,
+              "source": null
+            },
+            {
+              "sku": "s",
+              "product": "",
+              "description": "",
+              "unit": "",
+              "unit_price": {
+                "amount": "",
+                "currency": ""
+              },
+              "list_unit_price": null,
+              "source": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "prices as a non-object body",
+      "method": "prices",
+      "keyless": false,
+      "status": 200,
+      "headers": {},
+      "body": "[]",
+      "expect": {
+        "path": "/v1/prices",
+        "error": "api",
+        "result": null
+      }
+    },
+    {
+      "name": "a balance",
+      "method": "balance",
+      "keyless": false,
+      "status": 200,
+      "headers": {},
+      "body": "{\"object\":\"balance\",\"available\":{\"amount\":\"42.18\",\"currency\":\"usd\"},\"purchased\":{\"amount\":\"10.00\",\"currency\":\"usd\"},\"plan\":{\"name\":\"Builder\",\"renews_at\":\"2026-12-05T00:00:00.000Z\"},\"billing_url\":\"https://keenable.ai/console/billing\",\"as_of\":\"2026-11-21T10:00:00.000Z\"}",
+      "expect": {
+        "path": "/v1/balance",
+        "error": null,
+        "result": {
+          "available": {
+            "amount": "42.18",
+            "currency": "usd"
+          },
+          "purchased": {
+            "amount": "10.00",
+            "currency": "usd"
+          },
+          "plan": {
+            "name": "Builder",
+            "renews_at": "2026-12-05T00:00:00.000Z"
+          },
+          "billing_url": "https://keenable.ai/console/billing",
+          "as_of": "2026-11-21T10:00:00.000Z",
+          "request_id": null
+        }
+      }
+    },
+    {
+      "name": "a negative balance and no plan",
+      "method": "balance",
+      "keyless": false,
+      "status": 200,
+      "headers": {
+        "X-Request-Id": "req_b"
+      },
+      "body": "{\"object\":\"balance\",\"available\":{\"amount\":\"-1.50\",\"currency\":\"usd\"},\"purchased\":{\"amount\":\"0.00\",\"currency\":\"usd\"},\"plan\":null,\"billing_url\":\"https://keenable.ai/console/billing\",\"as_of\":\"2026-11-21T10:00:00.000Z\"}",
+      "expect": {
+        "path": "/v1/balance",
+        "error": null,
+        "result": {
+          "available": {
+            "amount": "-1.50",
+            "currency": "usd"
+          },
+          "purchased": {
+            "amount": "0.00",
+            "currency": "usd"
+          },
+          "plan": null,
+          "billing_url": "https://keenable.ai/console/billing",
+          "as_of": "2026-11-21T10:00:00.000Z",
+          "request_id": "req_b"
+        }
+      }
+    },
+    {
+      "name": "mistyped balance fields",
+      "method": "balance",
+      "keyless": false,
+      "status": 200,
+      "headers": {},
+      "body": "{\"available\":\"42.18\",\"purchased\":{\"amount\":10},\"plan\":{\"name\":1},\"billing_url\":null,\"as_of\":1700000000}",
+      "expect": {
+        "path": "/v1/balance",
+        "error": null,
+        "result": {
+          "available": {
+            "amount": "",
+            "currency": ""
+          },
+          "purchased": {
+            "amount": "",
+            "currency": ""
+          },
+          "plan": {
+            "name": "",
+            "renews_at": ""
+          },
+          "billing_url": "",
+          "as_of": "",
+          "request_id": null
+        }
+      }
+    },
+    {
+      "name": "a plan that is not an object is null",
+      "method": "balance",
+      "keyless": false,
+      "status": 200,
+      "headers": {},
+      "body": "{\"plan\":\"Builder\"}",
+      "expect": {
+        "path": "/v1/balance",
+        "error": null,
+        "result": {
+          "available": {
+            "amount": "",
+            "currency": ""
+          },
+          "purchased": {
+            "amount": "",
+            "currency": ""
+          },
+          "plan": null,
+          "billing_url": "",
+          "as_of": "",
+          "request_id": null
+        }
+      }
+    },
+    {
+      "name": "keyless balance is the missing-key error and sends nothing",
+      "method": "balance",
+      "keyless": true,
+      "status": 200,
+      "headers": {},
+      "body": "{\"available\":{\"amount\":\"1.00\",\"currency\":\"usd\"}}",
+      "expect": {
+        "path": null,
+        "error": "auth",
+        "result": null
+      }
+    },
+    {
+      "name": "a balance error body",
+      "method": "balance",
+      "keyless": false,
+      "status": 401,
+      "headers": {},
+      "body": "{\"code\":\"invalid_api_key\",\"type\":\"authentication_error\",\"detail\":\"Invalid API key\"}",
+      "expect": {
+        "path": "/v1/balance",
+        "error": "auth",
+        "result": null
       }
     }
   ],
