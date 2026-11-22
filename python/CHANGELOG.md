@@ -18,6 +18,7 @@ All notable changes to the `keenable` Python package. Versions follow
 - **Changed (may break code):** `Monitor.search` is now `MonitorSearch | None`: it is None for a page monitor. Code that reads `monitor.search.query` unchecked fails on a page monitor; check `monitor.type` or `monitor.search is not None` first.
 - **Changed:** the schedule docstrings give the API's limits: interval `10m` to `90d`, cron runs at least 10 minutes apart. The SDK does not check schedules itself.
 - **Changed:** the error contract fixtures follow the backend's current catalog, which adds `run_in_progress` (409: the monitor is already running).
+- **Changed:** the `objective` docs say what the API now does: the ranker scores results for it together with the query (retrieval reads only the query), at the same price. The parameter and its behaviour in the SDK are unchanged.
 
 ## 0.2.0
 

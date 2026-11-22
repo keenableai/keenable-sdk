@@ -15,6 +15,7 @@
 - **Changed (breaking):** `Monitor.Search` is now `*MonitorSearch`, nil for a page monitor; `MonitorRun.Changes` changes from `any` to a typed pointer. Code that passes `m.Search` as a `MonitorSearch` no longer compiles, and `m.Search.Query` panics on a page monitor; check `m.Type` or `m.Search != nil` first.
 - **Changed:** the schedule docs give the API's limits: interval `10m` to `90d`, cron runs at least 10 minutes apart. The SDK does not check schedules itself.
 - **Changed:** the error contract fixtures follow the backend's current catalog, which adds `run_in_progress` (409: the monitor is already running).
+- **Changed:** the `Objective` docs say what the API now does: the ranker scores results for it together with the query (retrieval reads only the query), at the same price. The option and its behaviour in the SDK are unchanged.
 
 ## 0.2.0
 

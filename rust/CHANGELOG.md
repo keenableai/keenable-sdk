@@ -15,6 +15,7 @@
 - **Changed (breaking):** `Monitor::search` is now `Option<MonitorSearch>`, `None` for a page monitor; `MonitorRun::changes` changes from `Option<Value>` to an `Option<MonitorRunChanges>`. Code that reads `monitor.search.query` no longer compiles. Before this, a page monitor's `"search": null` failed to parse.
 - **Changed:** the schedule docs give the API's limits: interval `10m` to `90d`, cron runs at least 10 minutes apart. The SDK does not check schedules itself.
 - **Changed:** the error contract fixtures follow the backend's current catalog, which adds `run_in_progress` (409: the monitor is already running).
+- **Changed:** the `objective` docs say what the API now does: the ranker scores results for it together with the query (retrieval reads only the query), at the same price. The option and its behaviour in the SDK are unchanged.
 
 ## 0.2.0
 

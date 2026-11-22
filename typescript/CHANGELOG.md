@@ -19,6 +19,7 @@ All notable changes to the `keenable` npm package. Versions follow
 - **Changed (may break code):** `Monitor.search` is now `MonitorSearch | null`: it is null for a page monitor. Code that reads `monitor.search.query` stops compiling under `strictNullChecks`, and fails at run time on a page monitor; check `monitor.type` or use `monitor.search?.query`.
 - **Changed:** the schedule docs give the API's limits: interval `10m` to `90d`, cron runs at least 10 minutes apart. The SDK does not check schedules itself.
 - **Changed:** the error contract fixtures follow the backend's current catalog, which adds `run_in_progress` (409: the monitor is already running).
+- **Changed:** the `objective` docs say what the API now does: the ranker scores results for it together with the query (retrieval reads only the query), at the same price. The option and its behaviour in the SDK are unchanged.
 
 ## 0.2.0
 

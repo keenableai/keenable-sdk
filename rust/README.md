@@ -101,7 +101,7 @@ for result in &results {
 | `snippet_max_length` | Cap the page text returned per result, 180 to 10000 characters |
 | `max_results` | How many results to return, 1 to 50. The API default is 10 |
 | `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price |
+| `objective` | What the search is for, in two or three sentences (up to 1,000 characters); the ranker scores results for it together with the query (retrieval reads only the query), same price |
 | `disable_cards` | `true` returns ordinary web pages in place of Keenable's cards |
 | `request` | This call's timeout, retry budget and headers (`RequestOptions`) |
 
