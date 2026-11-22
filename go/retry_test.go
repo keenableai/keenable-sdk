@@ -256,3 +256,19 @@ func TestReturnsTheErrorWhenTheWaitOutlastsTheDeadline(t *testing.T) {
 		t.Fatalf("waited %v past the deadline", waits)
 	}
 }
+
+func TestBillingRetriesAndSendsTheCallHeaders(t *testing.T) {
+	c, n, seen := scripted(t, nil, busy, reply(200, `{"object":"billing","prices":[],"account":null}`))
+	one := 1
+	resp, err := c.Billing(context.Background(), &keenable.RequestOptions{MaxRetries: &one, Headers: map[string]string{"X-Trace": "t"}})
+	if err != nil || n.Load() != 2 {
+		t.Fatalf("err=%v requests=%d", err, n.Load())
+	}
+	if len(resp.Prices) != 0 || resp.Account != nil {
+		t.Fatalf("got %+v", resp)
+	}
+	last := (*seen)[1]
+	if last.Path != "/v1/billing" || last.Header.Get("X-Trace") != "t" || last.Header.Get("X-API-Key") != "k" {
+		t.Fatalf("sent %s with %v", last.Path, last.Header)
+	}
+}

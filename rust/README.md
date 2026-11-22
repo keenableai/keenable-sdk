@@ -162,6 +162,28 @@ Internal hosts and private addresses are refused before a request is sent:
 addresses in private, loopback, link-local, carrier-grade NAT, documentation,
 benchmarking, multicast and reserved ranges, however the address is spelled.
 
+## Billing
+
+```rust
+let billing = client.billing().await?;
+for price in &billing.prices {
+    println!("{} {} {}", price.sku, price.unit_price.amount, price.unit_price.currency);
+}
+if let Some(account) = &billing.account {
+    // None without an API key
+    println!("available: {}", account.balance.available.amount);
+}
+```
+
+`billing()` (or `billing_with(&RequestOptions)`) reads `GET /v1/billing`:
+read-only and free, with or without a key. Without one, `prices` are the public
+list prices and `account` is `None`. With one, `prices` are your
+organization's (with `list_unit_price` and `source`, `"list"` or
+`"contract"`), and `account` holds the balance, this month's usage per SKU,
+and `billing_url`, the console page for adding funds. Amounts are decimal
+strings (`Money::amount`, such as `"0.004"`, negative for an account in debt):
+parse them with a decimal type, not as `f64`.
+
 ## Tool calling
 
 `keenable::tools()` returns OpenAI-compatible definitions for

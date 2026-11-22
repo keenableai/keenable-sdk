@@ -38,6 +38,11 @@ export type { KeenableAPIErrorDetails, KeenableErrorType, RateLimitInfo } from "
 export { FETCH_TOOL, SEARCH_TOOL, TOOLS, runToolCall } from "./tools.js";
 export type { ToolDefinition } from "./tools.js";
 export type {
+  Billing,
+  BillingAccount,
+  BillingPrice,
+  BillingUsageLine,
+  Money,
   KeenableOptions,
   FetchOptions,
   RequestOptions,

@@ -23,6 +23,10 @@ import {
   timestamp,
 } from "./internal.js";
 import type {
+  Billing,
+  BillingAccount,
+  BillingPrice,
+  Money,
   KeenableOptions,
   FetchOptions,
   RequestOptions,
@@ -55,7 +59,8 @@ const MAX_RETRY_AFTER_WAIT_SECONDS = 60;
 
 // Endpoints are named once; the keyless variant of each is the same path with a
 // `/public` suffix, so a new endpoint is one name rather than two constants.
-type Endpoint = "search" | "fetch";
+// Billing is the one endpoint with a single path for both: the key is optional.
+type Endpoint = "search" | "fetch" | "billing";
 
 /** Hosts that must never be fetched, whatever the backend would do. */
 const BLOCKED_HOSTS = new Set(["localhost", "metadata.google.internal"]);
@@ -553,6 +558,44 @@ function toPage(data: Record<string, unknown>, url: string): Page {
   });
 }
 
+function toMoney(value: unknown): Money {
+  const data = isRecord(value) ? value : {};
+  return { amount: text(data.amount), currency: text(data.currency) };
+}
+
+function records(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function toBillingPrice(data: Record<string, unknown>): BillingPrice {
+  return {
+    sku: text(data.sku),
+    unit: text(data.unit),
+    unitPrice: toMoney(data.unit_price),
+    listUnitPrice: isRecord(data.list_unit_price) ? toMoney(data.list_unit_price) : undefined,
+    source: nonEmpty(data.source),
+  };
+}
+
+function toBillingAccount(data: Record<string, unknown>): BillingAccount {
+  const balance = isRecord(data.balance) ? data.balance : {};
+  const usage = isRecord(data.usage) ? data.usage : {};
+  return {
+    balance: { available: toMoney(balance.available), purchased: toMoney(balance.purchased) },
+    usage: {
+      since: text(usage.since),
+      cost: toMoney(usage.cost),
+      lineItems: records(usage.line_items).map((line) => ({
+        sku: text(line.sku),
+        quantity: count(line.quantity) ?? 0,
+        cost: toMoney(line.cost),
+      })),
+    },
+    billingUrl: text(data.billing_url),
+    asOf: text(data.as_of),
+  };
+}
+
 /** Wait `ms`, or reject with the signal's reason as soon as it aborts. */
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -857,6 +900,28 @@ export class Keenable {
       results: entries.flatMap((entry, i) =>
         isRecord(entry) ? [toPage(entry, String(targets[i] ?? ""))] : [],
       ),
+      requestId,
+      raw: data,
+    };
+  }
+
+  /**
+   * Prices, and with an API key the balance and usage, from `GET /v1/billing`.
+   *
+   * Read-only and free. Without a key, `prices` are the public list prices and
+   * `account` is null. Amounts are decimal strings.
+   */
+  async billing(options: RequestOptions = {}): Promise<Billing> {
+    // The same path with and without a key: billing has no /public variant.
+    const { data, requestId } = await this.request(
+      "billing",
+      { method: "GET" },
+      options,
+      `${this.baseUrl}/v1/billing`,
+    );
+    return {
+      prices: records(data.prices).map(toBillingPrice),
+      account: isRecord(data.account) ? toBillingAccount(data.account) : null,
       requestId,
       raw: data,
     };

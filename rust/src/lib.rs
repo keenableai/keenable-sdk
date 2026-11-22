@@ -44,7 +44,8 @@ pub use error::{
     RateLimitInfo, Result, WebhookVerificationError,
 };
 pub use models::{
-    AnswerError, ContextOptions, FetchError, FetchResponse, Page, PageImage, PageLink,
+    AnswerError, Billing, BillingAccount, BillingBalance, BillingPrice, BillingUsage,
+    BillingUsageLine, ContextOptions, FetchError, FetchResponse, Money, Page, PageImage, PageLink,
     SearchResponse, SearchResult, Usage, DEFAULT_CONTEXT_MAX_CHARS,
     DEFAULT_CONTEXT_MAX_SNIPPET_CHARS,
 };

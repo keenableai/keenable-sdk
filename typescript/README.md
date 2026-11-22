@@ -170,6 +170,27 @@ per-request ones, are sent only when set (the API checks their values):
 | `images` | The most images per page to return, in `page.images` |
 | `maxAgeHours` | Use a stored copy only if younger than this; `0` reads every page live |
 
+## Billing
+
+```ts
+const billing = await keenable.billing();
+for (const price of billing.prices) {
+  console.log(price.sku, price.unitPrice.amount, price.unitPrice.currency);
+}
+if (billing.account) {
+  // null without an API key
+  console.log("available:", billing.account.balance.available.amount);
+}
+```
+
+`billing()` reads `GET /v1/billing`: read-only and free, with or without a key.
+Without one, `prices` are the public list prices and `account` is `null`. With
+one, `prices` are your organization's (with `listUnitPrice` and `source`,
+`"list"` or `"contract"`), and `account` holds the balance, this month's usage
+per SKU, and `billingUrl`, the console page for adding funds. Amounts are
+decimal strings (`Money.amount`, such as `"0.004"`, negative for an account in
+debt): use a decimal library to compute with them, not `Number()`.
+
 ## Tool calling
 
 The SDK ships OpenAI-compatible tool definitions, so any inference API that

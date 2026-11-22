@@ -643,3 +643,169 @@ mod tests {
         assert_eq!(timestamp(Some(&json!(true))), None);
     }
 }
+
+// ---- Billing ----------------------------------------------------------------
+
+/// An amount of money, as the API sent it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct Money {
+    /// The decimal amount in the currency's major unit, such as `"0.004"`,
+    /// kept as a string so it is exact. Negative for an account in debt.
+    /// Parse it with a decimal type, not `f64`, to compute with it.
+    pub amount: String,
+    /// The lowercase ISO 4217 code, such as `"usd"`.
+    pub currency: String,
+}
+
+/// The price of one SKU, from [`Client::billing`](crate::Client::billing).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct BillingPrice {
+    /// What is billed, such as `search.pro` or `fetch.live`.
+    pub sku: String,
+    /// What one unit is: `search`, `result` or `page`.
+    pub unit: String,
+    /// The price of one unit.
+    pub unit_price: Money,
+    /// The public list price of one unit. Only with an API key.
+    pub list_unit_price: Option<Money>,
+    /// `list` when `unit_price` is the list price, `contract` when the
+    /// organization has its own. Only with an API key.
+    pub source: Option<String>,
+}
+
+/// What the organization can still spend.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct BillingBalance {
+    /// The unused free allowance for this month plus the purchased balance.
+    pub available: Money,
+    /// The part of the balance that was bought, spent after the allowance.
+    pub purchased: Money,
+}
+
+/// The use of one SKU since the start of the period.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct BillingUsageLine {
+    /// `search`, `search.extra_result` or `fetch`.
+    pub sku: String,
+    /// The units used since the start of the period.
+    pub quantity: u64,
+    /// What those units cost.
+    pub cost: Money,
+}
+
+/// The spend since the start of the current monthly period.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct BillingUsage {
+    /// The start of the period (ISO 8601), when the free allowance last
+    /// renewed.
+    pub since: String,
+    /// The total spend since `since`.
+    pub cost: Money,
+    /// The spend per SKU.
+    pub line_items: Vec<BillingUsageLine>,
+}
+
+/// The organization's balance and usage.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct BillingAccount {
+    /// What the organization can still spend.
+    pub balance: BillingBalance,
+    /// The spend this period.
+    pub usage: BillingUsage,
+    /// The console page where a person can add funds.
+    pub billing_url: String,
+    /// When this was read (ISO 8601). Usage can lag recent calls by about a
+    /// minute.
+    pub as_of: String,
+}
+
+/// What [`Client::billing`](crate::Client::billing) returns: prices, and the
+/// account with an API key.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct Billing {
+    /// The public list prices without an API key. With one, your
+    /// organization's prices; a SKU without a price on your plan is left out.
+    pub prices: Vec<BillingPrice>,
+    /// The balance and usage. `None` without an API key.
+    pub account: Option<BillingAccount>,
+    /// The API's id for this request. Quote it when reporting a problem.
+    pub request_id: Option<String>,
+    /// The unmodified JSON body.
+    #[serde(skip)]
+    pub raw: Map<String, Value>,
+}
+
+fn object_or_empty(v: Option<&Value>) -> Map<String, Value> {
+    v.and_then(Value::as_object).cloned().unwrap_or_default()
+}
+
+fn objects(v: Option<&Value>) -> Vec<&Map<String, Value>> {
+    match v {
+        Some(Value::Array(items)) => items.iter().filter_map(Value::as_object).collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn money(v: Option<&Value>) -> Money {
+    let m = object_or_empty(v);
+    Money {
+        amount: as_string(m.get("amount")),
+        currency: as_string(m.get("currency")),
+    }
+}
+
+pub(crate) fn billing_from_json(
+    data: Map<String, Value>,
+    header_request_id: Option<String>,
+) -> Billing {
+    let prices = objects(data.get("prices"))
+        .into_iter()
+        .map(|p| BillingPrice {
+            sku: as_string(p.get("sku")),
+            unit: as_string(p.get("unit")),
+            unit_price: money(p.get("unit_price")),
+            list_unit_price: p
+                .get("list_unit_price")
+                .filter(|v| v.is_object())
+                .map(|v| money(Some(v))),
+            source: non_blank(p.get("source")),
+        })
+        .collect();
+    let account = data.get("account").and_then(Value::as_object).map(|a| {
+        let balance = object_or_empty(a.get("balance"));
+        let usage = object_or_empty(a.get("usage"));
+        BillingAccount {
+            balance: BillingBalance {
+                available: money(balance.get("available")),
+                purchased: money(balance.get("purchased")),
+            },
+            usage: BillingUsage {
+                since: as_string(usage.get("since")),
+                cost: money(usage.get("cost")),
+                line_items: objects(usage.get("line_items"))
+                    .into_iter()
+                    .map(|line| BillingUsageLine {
+                        sku: as_string(line.get("sku")),
+                        quantity: safe_count(line.get("quantity")).unwrap_or(0),
+                        cost: money(line.get("cost")),
+                    })
+                    .collect(),
+            },
+            billing_url: as_string(a.get("billing_url")),
+            as_of: as_string(a.get("as_of")),
+        }
+    });
+    Billing {
+        prices,
+        account,
+        request_id: non_blank(data.get("request_id")).or(header_request_id),
+        raw: data,
+    }
+}

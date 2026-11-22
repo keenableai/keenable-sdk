@@ -602,3 +602,23 @@ async def test_async_search_matches_the_sync_payloads() -> None:
     assert mixed["exclude_domains"] == ["export.arxiv.org"]
     assert lone["exclude_domains"] == ["x"]
     assert blank["exclude_domains"] == [""]
+
+
+def test_billing_retries_and_sends_the_call_headers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("keenable.client.time.sleep", lambda _: None)
+    replies = iter(
+        [
+            httpx.Response(503, json={"error": "busy"}),
+            httpx.Response(
+                200, json={"object": "billing", "prices": [], "account": None}
+            ),
+        ]
+    )
+    client, seen = _client(lambda _: next(replies), api_key="sk-test")
+    billing = client.billing(max_retries=1, extra_headers={"X-Trace": "t"})
+    assert billing.prices == [] and billing.account is None
+    assert [r.url.path for r in seen] == ["/v1/billing", "/v1/billing"]
+    assert seen[-1].headers["X-Trace"] == "t"
+    assert seen[-1].headers["X-API-Key"] == "sk-test"

@@ -284,6 +284,53 @@ async def test_responses(kind: str, case: dict[str, Any], waits: list[float]) ->
     assert got == {key: want[key] for key in got}
 
 
+@pytest.mark.parametrize("kind", CLIENTS)
+@pytest.mark.parametrize("case", cases("billing"))
+async def test_billing(kind: str, case: dict[str, Any], waits: list[float]) -> None:
+    outcome = Outcome()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        outcome.requests.append(request)
+        return httpx.Response(
+            case["status"], headers=case["headers"], content=case["body"].encode()
+        )
+
+    transport = httpx.MockTransport(handler)
+    settings: dict[str, Any] = {
+        "api_key": "k" if case["keyed"] else "",
+        "max_retries": 0,
+    }
+    try:
+        if kind == "sync":
+            with Keenable(client=httpx.Client(transport=transport), **settings) as c:
+                outcome.result = c.billing()
+        else:
+            async with AsyncKeenable(
+                client=httpx.AsyncClient(transport=transport), **settings
+            ) as ac:
+                outcome.result = await ac.billing()
+    except KeenableError as error:
+        outcome.error = error
+
+    want = case["expect"]
+    assert len(outcome.requests) == 1
+    request = outcome.requests[0]
+    assert request.method == "GET"
+    assert request.url.path == want["path"]
+    assert request.url.query == b""
+    assert request.content == b""
+    assert request.headers.get("X-API-Key") == ("k" if case["keyed"] else None)
+    if want["error"] is not None:
+        assert type(outcome.error) is KINDS[want["error"]]
+        return
+    assert outcome.error is None
+    result = outcome.result
+    got = dataclasses.asdict(result)
+    del got["raw"], got["request_id"]
+    assert got == want["billing"]
+    assert result.request_id == want["request_id"]
+
+
 # --- arguments ---------------------------------------------------------------
 
 _OPTION_NAMES = {
@@ -388,6 +435,7 @@ def test_the_fixture_has_every_section() -> None:
         "retry",
         "errors",
         "responses",
+        "billing",
         "options",
         "search_body",
         "tool_call",

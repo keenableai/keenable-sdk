@@ -137,6 +137,25 @@ type. A search echoes the query the API sent back when it is such a string,
 else the query asked. The request id is the body's, else the trimmed
 `X-Request-Id` header.
 
+## Billing (`billing`)
+
+`billing()` sends `GET /v1/billing` with no body and no query. The path is the
+same with and without a key: billing has no `/public` variant, and the key is
+sent only when the client has one. The body is read like the other success
+bodies (not a JSON object is an API error), with these fields:
+
+- Required text (`sku`, `unit`, `since`, `billing_url`, `as_of`, and a Money's
+  `amount` and `currency`) is the string sent or `""`. An amount stays the
+  decimal string the API sent, never a number: a number there is `""`.
+- A required Money (`unit_price`, `available`, `purchased`, `cost`) that is not
+  an object reads as `{}`. `list_unit_price` is a Money when an object, else
+  null; `source` is a string with more than whitespace, else null.
+- `account` is null unless it is an object; a `balance` or `usage` that is not
+  an object reads as `{}`.
+- `prices` and `line_items` keep their object entries and are empty when not a
+  list. `quantity` is an integer from 0 to 2^53 - 1, else 0.
+- The request id follows the success-body rule above.
+
 ## Arguments (`options`, `search_body`)
 
 - `max_retries` is an integer of 0 or more; unset means the default (client) or

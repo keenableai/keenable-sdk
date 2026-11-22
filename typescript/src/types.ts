@@ -170,3 +170,77 @@ export interface KeenableOptions {
    */
   fetch?: typeof globalThis.fetch;
 }
+
+/** An amount of money, as the API sent it. */
+export interface Money {
+  /**
+   * Decimal amount in the currency's major unit, such as "0.004", kept as a
+   * string so it is exact. Negative for an account in debt. Parse it with a
+   * decimal library rather than `Number()` to compute with it.
+   */
+  amount: string;
+  /** Lowercase ISO 4217 code, such as "usd". */
+  currency: string;
+}
+
+/** The price of one SKU, from `billing()`. */
+export interface BillingPrice {
+  /** What is billed, such as "search.pro" or "fetch.live". */
+  sku: string;
+  /** What one unit is: "search", "result" or "page". */
+  unit: string;
+  /** The price of one unit. */
+  unitPrice: Money;
+  /** The public list price of one unit. Only with an API key. */
+  listUnitPrice?: Money;
+  /**
+   * "list" when `unitPrice` is the list price, "contract" when the
+   * organization has its own. Only with an API key.
+   */
+  source?: string;
+}
+
+/** Use of one SKU since the start of the period. */
+export interface BillingUsageLine {
+  /** "search", "search.extra_result" or "fetch". */
+  sku: string;
+  /** Units used since the start of the period. */
+  quantity: number;
+  /** What those units cost. */
+  cost: Money;
+}
+
+/** The organization's balance and usage, from `billing()`. */
+export interface BillingAccount {
+  balance: {
+    /** The unused free allowance for this month plus the purchased balance. */
+    available: Money;
+    /** The part of the balance that was bought, spent after the allowance. */
+    purchased: Money;
+  };
+  usage: {
+    /** Start of the period (ISO 8601), when the free allowance last renewed. */
+    since: string;
+    /** Total spend since `since`. */
+    cost: Money;
+    lineItems: BillingUsageLine[];
+  };
+  /** Console page where a person can add funds. */
+  billingUrl: string;
+  /** When this was read (ISO 8601). Usage can lag recent calls by about a minute. */
+  asOf: string;
+}
+
+/** What `billing()` returns: prices, and the account with an API key. */
+export interface Billing {
+  /**
+   * Without an API key, the public list prices. With one, your
+   * organization's prices; a SKU without a price on your plan is left out.
+   */
+  prices: BillingPrice[];
+  /** Balance and usage. Null without an API key. */
+  account: BillingAccount | null;
+  /** The API's id for this request. Quote it when reporting a problem. */
+  requestId?: string;
+  raw: Record<string, unknown>;
+}

@@ -3935,6 +3935,359 @@
       }
     }
   ],
+  "billing": [
+    {
+      "name": "keyless: GET /v1/billing, not /public, list prices and no account",
+      "keyed": false,
+      "status": 200,
+      "headers": {},
+      "body": "{\"object\":\"billing\",\"prices\":[{\"sku\":\"search.pro\",\"unit\":\"search\",\"unit_price\":{\"amount\":\"0.004\",\"currency\":\"usd\"}},{\"sku\":\"fetch.live\",\"unit\":\"page\",\"unit_price\":{\"amount\":\"0.002\",\"currency\":\"usd\"}}],\"account\":null}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [
+            {
+              "sku": "search.pro",
+              "unit": "search",
+              "unit_price": {
+                "amount": "0.004",
+                "currency": "usd"
+              },
+              "list_unit_price": null,
+              "source": null
+            },
+            {
+              "sku": "fetch.live",
+              "unit": "page",
+              "unit_price": {
+                "amount": "0.002",
+                "currency": "usd"
+              },
+              "list_unit_price": null,
+              "source": null
+            }
+          ],
+          "account": null
+        }
+      }
+    },
+    {
+      "name": "keyed: the key is sent, a contract price and a negative balance",
+      "keyed": true,
+      "status": 200,
+      "headers": {
+        "X-Request-Id": " req-1 "
+      },
+      "body": "{\"object\":\"billing\",\"prices\":[{\"sku\":\"search.pro\",\"unit\":\"search\",\"unit_price\":{\"amount\":\"0.003\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":\"0.004\",\"currency\":\"usd\"},\"source\":\"contract\"},{\"sku\":\"fetch\",\"unit\":\"page\",\"unit_price\":{\"amount\":\"0.001\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":\"0.001\",\"currency\":\"usd\"},\"source\":\"list\"}],\"account\":{\"balance\":{\"available\":{\"amount\":\"-1\",\"currency\":\"usd\"},\"purchased\":{\"amount\":\"12.345678901234567890\",\"currency\":\"usd\"}},\"usage\":{\"since\":\"2026-11-01T00:00:00.000Z\",\"cost\":{\"amount\":\"1.25\",\"currency\":\"usd\"},\"line_items\":[{\"sku\":\"search\",\"quantity\":250,\"cost\":{\"amount\":\"1\",\"currency\":\"usd\"}},{\"sku\":\"search.extra_result\",\"quantity\":0,\"cost\":{\"amount\":\"0\",\"currency\":\"usd\"}},{\"sku\":\"fetch\",\"quantity\":9007199254740991,\"cost\":{\"amount\":\"0.25\",\"currency\":\"usd\"}}]},\"billing_url\":\"https://keenable.ai/console?tab=billing\",\"as_of\":\"2026-11-22T10:00:00.000Z\"}}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": "req-1",
+        "billing": {
+          "prices": [
+            {
+              "sku": "search.pro",
+              "unit": "search",
+              "unit_price": {
+                "amount": "0.003",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": "0.004",
+                "currency": "usd"
+              },
+              "source": "contract"
+            },
+            {
+              "sku": "fetch",
+              "unit": "page",
+              "unit_price": {
+                "amount": "0.001",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": "0.001",
+                "currency": "usd"
+              },
+              "source": "list"
+            }
+          ],
+          "account": {
+            "balance": {
+              "available": {
+                "amount": "-1",
+                "currency": "usd"
+              },
+              "purchased": {
+                "amount": "12.345678901234567890",
+                "currency": "usd"
+              }
+            },
+            "usage": {
+              "since": "2026-11-01T00:00:00.000Z",
+              "cost": {
+                "amount": "1.25",
+                "currency": "usd"
+              },
+              "line_items": [
+                {
+                  "sku": "search",
+                  "quantity": 250,
+                  "cost": {
+                    "amount": "1",
+                    "currency": "usd"
+                  }
+                },
+                {
+                  "sku": "search.extra_result",
+                  "quantity": 0,
+                  "cost": {
+                    "amount": "0",
+                    "currency": "usd"
+                  }
+                },
+                {
+                  "sku": "fetch",
+                  "quantity": 9007199254740991,
+                  "cost": {
+                    "amount": "0.25",
+                    "currency": "usd"
+                  }
+                }
+              ]
+            },
+            "billing_url": "https://keenable.ai/console?tab=billing",
+            "as_of": "2026-11-22T10:00:00.000Z"
+          }
+        }
+      }
+    },
+    {
+      "name": "an empty object",
+      "keyed": false,
+      "status": 200,
+      "headers": {},
+      "body": "{}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [],
+          "account": null
+        }
+      }
+    },
+    {
+      "name": "the body's request id over the header's",
+      "keyed": false,
+      "status": 200,
+      "headers": {
+        "X-Request-Id": "hdr"
+      },
+      "body": "{\"request_id\":\"body\",\"prices\":[]}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": "body",
+        "billing": {
+          "prices": [],
+          "account": null
+        }
+      }
+    },
+    {
+      "name": "mistyped prices fall back",
+      "keyed": false,
+      "status": 200,
+      "headers": {},
+      "body": "{\"prices\":[1,\"x\",null,[],{\"sku\":5,\"unit\":null,\"unit_price\":\"0.004\",\"list_unit_price\":7,\"source\":\" \"},{\"sku\":\"fetch\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.001,\"currency\":5},\"list_unit_price\":{},\"source\":1}]}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [
+            {
+              "sku": "",
+              "unit": "",
+              "unit_price": {
+                "amount": "",
+                "currency": ""
+              },
+              "list_unit_price": null,
+              "source": null
+            },
+            {
+              "sku": "fetch",
+              "unit": "page",
+              "unit_price": {
+                "amount": "",
+                "currency": ""
+              },
+              "list_unit_price": {
+                "amount": "",
+                "currency": ""
+              },
+              "source": null
+            }
+          ],
+          "account": null
+        }
+      }
+    },
+    {
+      "name": "prices as an object and account as a string",
+      "keyed": true,
+      "status": 200,
+      "headers": {},
+      "body": "{\"prices\":{\"sku\":\"search.pro\"},\"account\":\"none\"}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [],
+          "account": null
+        }
+      }
+    },
+    {
+      "name": "mistyped account fields fall back",
+      "keyed": true,
+      "status": 200,
+      "headers": {},
+      "body": "{\"prices\":[],\"account\":{\"balance\":[],\"usage\":{\"since\":1714564800,\"cost\":null,\"line_items\":[{\"sku\":\"search\",\"quantity\":1.5,\"cost\":{\"amount\":\"0.004\",\"currency\":\"usd\"}},{\"quantity\":-1,\"cost\":\"1\"},{\"quantity\":\"3\"},{\"quantity\":true},2,null]},\"billing_url\":5,\"as_of\":null}}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [],
+          "account": {
+            "balance": {
+              "available": {
+                "amount": "",
+                "currency": ""
+              },
+              "purchased": {
+                "amount": "",
+                "currency": ""
+              }
+            },
+            "usage": {
+              "since": "",
+              "cost": {
+                "amount": "",
+                "currency": ""
+              },
+              "line_items": [
+                {
+                  "sku": "search",
+                  "quantity": 0,
+                  "cost": {
+                    "amount": "0.004",
+                    "currency": "usd"
+                  }
+                },
+                {
+                  "sku": "",
+                  "quantity": 0,
+                  "cost": {
+                    "amount": "",
+                    "currency": ""
+                  }
+                },
+                {
+                  "sku": "",
+                  "quantity": 0,
+                  "cost": {
+                    "amount": "",
+                    "currency": ""
+                  }
+                },
+                {
+                  "sku": "",
+                  "quantity": 0,
+                  "cost": {
+                    "amount": "",
+                    "currency": ""
+                  }
+                }
+              ]
+            },
+            "billing_url": "",
+            "as_of": ""
+          }
+        }
+      }
+    },
+    {
+      "name": "an account with no balance or usage",
+      "keyed": true,
+      "status": 200,
+      "headers": {},
+      "body": "{\"account\":{\"balance\":null,\"usage\":{\"line_items\":{\"sku\":\"search\"}},\"billing_url\":\"https://keenable.ai/console\",\"as_of\":\"2026-11-22T10:00:00Z\"}}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [],
+          "account": {
+            "balance": {
+              "available": {
+                "amount": "",
+                "currency": ""
+              },
+              "purchased": {
+                "amount": "",
+                "currency": ""
+              }
+            },
+            "usage": {
+              "since": "",
+              "cost": {
+                "amount": "",
+                "currency": ""
+              },
+              "line_items": []
+            },
+            "billing_url": "https://keenable.ai/console",
+            "as_of": "2026-11-22T10:00:00Z"
+          }
+        }
+      }
+    },
+    {
+      "name": "a JSON array body",
+      "keyed": true,
+      "status": 200,
+      "headers": {},
+      "body": "[]",
+      "expect": {
+        "path": "/v1/billing",
+        "error": "api",
+        "request_id": null,
+        "billing": null
+      }
+    },
+    {
+      "name": "a keyless JSON null body",
+      "keyed": false,
+      "status": 200,
+      "headers": {},
+      "body": "null",
+      "expect": {
+        "path": "/v1/billing",
+        "error": "api",
+        "request_id": null,
+        "billing": null
+      }
+    }
+  ],
   "options": [
     {
       "name": "max_retries 0",

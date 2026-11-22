@@ -514,3 +514,156 @@ func asString(v any) string {
 	}
 	return s
 }
+
+// Money is an amount of money, as the API sent it.
+type Money struct {
+	// Amount is the decimal amount in the currency's major unit, such as
+	// "0.004", kept as a string so it is exact. Negative for an account in
+	// debt. Parse it with a decimal type (math/big.Rat), not float64.
+	Amount string `json:"amount"`
+	// Currency is the lowercase ISO 4217 code, such as "usd".
+	Currency string `json:"currency"`
+}
+
+// BillingPrice is the price of one SKU, from [Client.Billing].
+type BillingPrice struct {
+	// SKU is what is billed, such as "search.pro" or "fetch.live".
+	SKU string `json:"sku"`
+	// Unit is what one unit is: "search", "result" or "page".
+	Unit string `json:"unit"`
+	// UnitPrice is the price of one unit.
+	UnitPrice Money `json:"unit_price"`
+	// ListUnitPrice is the public list price of one unit. Only with an API key.
+	ListUnitPrice *Money `json:"list_unit_price"`
+	// Source is "list" when UnitPrice is the list price, "contract" when the
+	// organization has its own. Only with an API key.
+	Source *string `json:"source"`
+}
+
+// BillingBalance is what the organization can still spend.
+type BillingBalance struct {
+	// Available is the unused free allowance for this month plus the
+	// purchased balance.
+	Available Money `json:"available"`
+	// Purchased is the part of the balance that was bought, spent after the
+	// allowance.
+	Purchased Money `json:"purchased"`
+}
+
+// BillingUsageLine is the use of one SKU since the start of the period.
+type BillingUsageLine struct {
+	// SKU is "search", "search.extra_result" or "fetch".
+	SKU string `json:"sku"`
+	// Quantity is the units used since the start of the period.
+	Quantity int `json:"quantity"`
+	// Cost is what those units cost.
+	Cost Money `json:"cost"`
+}
+
+// BillingUsage is the spend since the start of the current monthly period.
+type BillingUsage struct {
+	// Since is the start of the period (ISO 8601), when the free allowance
+	// last renewed.
+	Since string `json:"since"`
+	// Cost is the total spend since Since.
+	Cost      Money              `json:"cost"`
+	LineItems []BillingUsageLine `json:"line_items"`
+}
+
+// BillingAccount is the organization's balance and usage.
+type BillingAccount struct {
+	Balance BillingBalance `json:"balance"`
+	Usage   BillingUsage   `json:"usage"`
+	// BillingURL is the console page where a person can add funds.
+	BillingURL string `json:"billing_url"`
+	// AsOf is when this was read (ISO 8601). Usage can lag recent calls by
+	// about a minute.
+	AsOf string `json:"as_of"`
+}
+
+// Billing is what [Client.Billing] returns: prices, and the account with an
+// API key.
+type Billing struct {
+	// Prices are the public list prices without an API key. With one, they
+	// are your organization's prices; a SKU without a price on your plan is
+	// left out.
+	Prices []BillingPrice `json:"prices"`
+	// Account is the balance and usage. Nil without an API key.
+	Account *BillingAccount `json:"account"`
+	// RequestID is the API's id for this request. Quote it when reporting a
+	// problem. Empty when the API sent none.
+	RequestID string         `json:"request_id,omitempty"`
+	Raw       map[string]any `json:"-"`
+}
+
+func objectOrEmpty(v any) map[string]any {
+	if m, ok := v.(map[string]any); ok {
+		return m
+	}
+	return map[string]any{}
+}
+
+func objects(v any) []map[string]any {
+	items, _ := v.([]any)
+	out := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		if m, ok := item.(map[string]any); ok {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func moneyFromJSON(v any) Money {
+	m := objectOrEmpty(v)
+	return Money{Amount: asString(m["amount"]), Currency: asString(m["currency"])}
+}
+
+func billingFromJSON(data map[string]any) *Billing {
+	b := &Billing{Prices: make([]BillingPrice, 0), Raw: data}
+	for _, p := range objects(data["prices"]) {
+		price := BillingPrice{
+			SKU:       asString(p["sku"]),
+			Unit:      asString(p["unit"]),
+			UnitPrice: moneyFromJSON(p["unit_price"]),
+			Source:    nonEmptyString(p["source"]),
+		}
+		if list, ok := p["list_unit_price"].(map[string]any); ok {
+			m := moneyFromJSON(list)
+			price.ListUnitPrice = &m
+		}
+		b.Prices = append(b.Prices, price)
+	}
+	account, ok := data["account"].(map[string]any)
+	if !ok {
+		return b
+	}
+	balance := objectOrEmpty(account["balance"])
+	usage := objectOrEmpty(account["usage"])
+	acct := &BillingAccount{
+		Balance: BillingBalance{
+			Available: moneyFromJSON(balance["available"]),
+			Purchased: moneyFromJSON(balance["purchased"]),
+		},
+		Usage: BillingUsage{
+			Since:     asString(usage["since"]),
+			Cost:      moneyFromJSON(usage["cost"]),
+			LineItems: make([]BillingUsageLine, 0),
+		},
+		BillingURL: asString(account["billing_url"]),
+		AsOf:       asString(account["as_of"]),
+	}
+	for _, line := range objects(usage["line_items"]) {
+		quantity := 0
+		if n := count(line["quantity"]); n != nil {
+			quantity = *n
+		}
+		acct.Usage.LineItems = append(acct.Usage.LineItems, BillingUsageLine{
+			SKU:      asString(line["sku"]),
+			Quantity: quantity,
+			Cost:     moneyFromJSON(line["cost"]),
+		})
+	}
+	b.Account = acct
+	return b
+}

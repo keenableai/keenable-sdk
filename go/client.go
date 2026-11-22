@@ -437,6 +437,30 @@ func retryDelay(err error, retry int, jitter float64) (time.Duration, bool) {
 	return 0, false
 }
 
+// Billing returns the prices and, with an API key, the organization's balance
+// and usage, from GET /v1/billing. It is read-only and free. Without a key,
+// Prices are the public list prices and Account is nil. The path is the same
+// with and without a key: billing has no /public variant. opts may be nil.
+func (c *Client) Billing(ctx context.Context, opts *RequestOptions) (*Billing, error) {
+	if err := requireClient(c); err != nil {
+		return nil, err
+	}
+	if err := requireContext(ctx); err != nil {
+		return nil, err
+	}
+	rawURL, err := c.apiURL("billing", nil)
+	if err != nil {
+		return nil, err
+	}
+	data, id, err := c.send(ctx, http.MethodGet, rawURL, nil, opts, nil, true)
+	if err != nil {
+		return nil, err
+	}
+	resp := billingFromJSON(data)
+	resp.RequestID = requestID(data, id)
+	return resp, nil
+}
+
 // isRateLimited reports a 429: the API refused the request before acting on it.
 func isRateLimited(err error) bool {
 	var api *APIError
@@ -667,15 +691,21 @@ func (c *Client) headers(jsonBody bool, extra map[string]string) http.Header {
 	return h
 }
 
+// endpointURL is the endpoint's keyed URL, or its /public variant when keyless.
 func (c *Client) endpointURL(endpoint string, query url.Values) (string, error) {
+	if c.apiKey == "" {
+		endpoint += "/public"
+	}
+	return c.apiURL(endpoint, query)
+}
+
+// apiURL is /v1/<path> on the base URL, the same with and without a key.
+func (c *Client) apiURL(path string, query url.Values) (string, error) {
 	u, err := url.Parse(c.baseURL)
 	if err != nil || u.Host == "" {
 		return "", &InvalidRequestError{msg: fmt.Sprintf("baseURL %q is not a valid URL. Pass an https URL with a host.", c.baseURL)}
 	}
-	u.Path = strings.TrimRight(u.Path, "/") + "/v1/" + endpoint
-	if c.apiKey == "" {
-		u.Path += "/public"
-	}
+	u.Path = strings.TrimRight(u.Path, "/") + "/v1/" + path
 	u.RawQuery = ""
 	u.Fragment = ""
 	u.RawQuery = query.Encode()

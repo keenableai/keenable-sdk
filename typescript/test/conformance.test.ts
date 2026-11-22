@@ -20,7 +20,7 @@ import {
   verifyWebhook,
   WebhookVerificationError,
 } from "../src/index.js";
-import type { KeenableOptions, SearchOptions, SearchResponse } from "../src/index.js";
+import type { Billing, KeenableOptions, Money, SearchOptions, SearchResponse } from "../src/index.js";
 import { backoffMs, retryAfterHeader } from "../src/client.js";
 import { SEARCH_FILTERS } from "../src/filters.js";
 
@@ -49,6 +49,11 @@ interface Fixture {
     endpoint: "search";
     arg: string;
     expect: Record<string, Json>;
+  })[];
+  billing: (Reply & {
+    name: string;
+    keyed: boolean;
+    expect: { path: string; error: string | null; request_id: string | null; billing: Json };
   })[];
   options: {
     name: string;
@@ -321,6 +326,58 @@ describe("success bodies", () => {
         acquired_at: x.acquiredAt ?? null,
       })),
     }).toEqual(want);
+  });
+});
+
+describe("billing", () => {
+  const money = (m: Money) => ({ amount: m.amount, currency: m.currency });
+  it.each(FIXTURE.billing.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
+    const outcome = await call([c], { apiKey: c.keyed ? "k" : "", maxRetries: 0 }, (client) =>
+      client.billing(),
+    );
+    expect(outcome.requests).toHaveLength(1);
+    const { url, init } = outcome.requests[0]!;
+    const sent = new URL(url);
+    expect(init.method).toBe("GET");
+    expect(init.body).toBeUndefined();
+    expect(sent.pathname).toBe(c.expect.path);
+    expect(sent.search).toBe("");
+    expect(new Headers(init.headers).get("X-API-Key")).toBe(c.keyed ? "k" : null);
+    if (c.expect.error !== null) {
+      const kind = KINDS[c.expect.error];
+      if (!kind) throw new Error(`unknown kind ${c.expect.error}`);
+      expect(outcome.error).toBeInstanceOf(kind);
+      return;
+    }
+    expect(outcome.error).toBeUndefined();
+    const b = outcome.result as Billing;
+    expect(b.requestId ?? null).toBe(c.expect.request_id);
+    expect({
+      prices: b.prices.map((p) => ({
+        sku: p.sku,
+        unit: p.unit,
+        unit_price: money(p.unitPrice),
+        list_unit_price: p.listUnitPrice ? money(p.listUnitPrice) : null,
+        source: p.source ?? null,
+      })),
+      account: b.account && {
+        balance: {
+          available: money(b.account.balance.available),
+          purchased: money(b.account.balance.purchased),
+        },
+        usage: {
+          since: b.account.usage.since,
+          cost: money(b.account.usage.cost),
+          line_items: b.account.usage.lineItems.map((l) => ({
+            sku: l.sku,
+            quantity: l.quantity,
+            cost: money(l.cost),
+          })),
+        },
+        billing_url: b.account.billingUrl,
+        as_of: b.account.asOf,
+      },
+    }).toEqual(c.expect.billing);
   });
 });
 

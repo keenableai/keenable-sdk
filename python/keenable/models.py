@@ -672,3 +672,177 @@ class FetchResponse:
             ],
             request_id=_str_or_none(data.get("request_id")) or request_id,
         )
+
+
+def _dict_or_empty(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+@dataclass
+class Money:
+    """An amount of money, as the API sent it."""
+
+    amount: str
+    """Decimal amount in the currency's major unit, such as ``"0.004"``, kept
+    as a string so it is exact. Negative for an account in debt. Use
+    :class:`decimal.Decimal` to compute with it, never ``float``."""
+
+    currency: str
+    """Lowercase ISO 4217 code, such as ``"usd"``."""
+
+    @classmethod
+    def _from_json(cls, value: Any) -> Money:
+        data = _dict_or_empty(value)
+        return cls(
+            amount=_str_or_empty(data.get("amount")),
+            currency=_str_or_empty(data.get("currency")),
+        )
+
+
+@dataclass
+class BillingPrice:
+    """The price of one SKU, from :meth:`Keenable.billing`."""
+
+    sku: str
+    """What is billed, such as ``"search.pro"`` or ``"fetch.live"``."""
+
+    unit: str
+    """What one unit is: ``"search"``, ``"result"`` or ``"page"``."""
+
+    unit_price: Money
+    """The price of one unit."""
+
+    list_unit_price: Money | None = None
+    """The public list price of one unit. Only with an API key."""
+
+    source: str | None = None
+    """``"list"`` when ``unit_price`` is the list price, ``"contract"`` when
+    the organization has its own. Only with an API key."""
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> BillingPrice:
+        list_price = data.get("list_unit_price")
+        return cls(
+            sku=_str_or_empty(data.get("sku")),
+            unit=_str_or_empty(data.get("unit")),
+            unit_price=Money._from_json(data.get("unit_price")),
+            list_unit_price=(
+                Money._from_json(list_price) if isinstance(list_price, dict) else None
+            ),
+            source=_str_or_none(data.get("source")),
+        )
+
+
+@dataclass
+class BillingBalance:
+    """What the organization can still spend."""
+
+    available: Money
+    """The unused free allowance for this month plus the purchased balance."""
+
+    purchased: Money
+    """The part of the balance that was bought, spent after the allowance."""
+
+
+@dataclass
+class BillingUsageLine:
+    """Use of one SKU since the start of the period."""
+
+    sku: str
+    """``"search"``, ``"search.extra_result"`` or ``"fetch"``."""
+
+    quantity: int
+    """Units used since the start of the period."""
+
+    cost: Money
+    """What those units cost."""
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> BillingUsageLine:
+        return cls(
+            sku=_str_or_empty(data.get("sku")),
+            quantity=_count_or_none(data.get("quantity")) or 0,
+            cost=Money._from_json(data.get("cost")),
+        )
+
+
+@dataclass
+class BillingUsage:
+    """Spend since the start of the current monthly period."""
+
+    since: str
+    """Start of the period (ISO 8601), when the free allowance last renewed."""
+
+    cost: Money
+    """Total spend since ``since``."""
+
+    line_items: list[BillingUsageLine] = field(default_factory=list)
+
+
+@dataclass
+class BillingAccount:
+    """The organization's balance and usage, from :meth:`Keenable.billing`."""
+
+    balance: BillingBalance
+    usage: BillingUsage
+    billing_url: str
+    """Console page where a person can add funds."""
+
+    as_of: str
+    """When this was read (ISO 8601). Usage can lag recent calls by about a
+    minute."""
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> BillingAccount:
+        balance = _dict_or_empty(data.get("balance"))
+        usage = _dict_or_empty(data.get("usage"))
+        return cls(
+            balance=BillingBalance(
+                available=Money._from_json(balance.get("available")),
+                purchased=Money._from_json(balance.get("purchased")),
+            ),
+            usage=BillingUsage(
+                since=_str_or_empty(usage.get("since")),
+                cost=Money._from_json(usage.get("cost")),
+                line_items=[
+                    BillingUsageLine._from_json(line)
+                    for line in _dicts(usage.get("line_items")) or []
+                ],
+            ),
+            billing_url=_str_or_empty(data.get("billing_url")),
+            as_of=_str_or_empty(data.get("as_of")),
+        )
+
+
+@dataclass
+class Billing:
+    """What :meth:`Keenable.billing` returns: prices, and the account with a key."""
+
+    prices: list[BillingPrice] = field(default_factory=list)
+    """Without an API key, the public list prices. With one, your
+    organization's prices; a SKU without a price on your plan is left out."""
+
+    account: BillingAccount | None = None
+    """Balance and usage. None without an API key."""
+
+    request_id: str | None = None
+    """The API's id for this request. Quote it when reporting a problem."""
+
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any], request_id: str | None) -> Billing:
+        account = data.get("account")
+        return cls(
+            prices=[
+                BillingPrice._from_json(price)
+                for price in _dicts(data.get("prices")) or []
+            ],
+            account=(
+                BillingAccount._from_json(account)
+                if isinstance(account, dict)
+                else None
+            ),
+            request_id=_str_or_none(data.get("request_id")) or request_id,
+            raw=data,
+        )
