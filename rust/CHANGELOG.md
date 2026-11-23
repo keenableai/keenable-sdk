@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Added:** `SearchOptions::moderation`: `"moderate"` or `"strict"` filters unsafe results; `None`, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 for a URL query or a `query_time` search.
+- **Added:** `SearchOptions::moderation`: `"moderate"` or `"strict"` filters unsafe results; `None`, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 when the query is a URL.
 - **Added:** `SearchResponse::warnings`, a `Vec<SearchWarning>` (`code`, `path`, `message`) naming what a request should change, such as a deprecated parameter. Empty when the API sends none.
 
 ## 0.3.0

@@ -103,7 +103,7 @@ for result in &results {
 | `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price |
 | `disable_cards` | `true` returns ordinary web pages in place of Keenable's cards |
-| `moderation` | Filter unsafe results: `"moderate"` or `"strict"`. `None` is no moderation. Works in `"pro"` and `"realtime"` modes, and not when the query is a URL or with `query_time` (the API answers 400) |
+| `moderation` | Filter unsafe results: `"moderate"` or `"strict"`. `None` is no moderation. Works in `"pro"` and `"realtime"` modes, and not when the query is a URL (the API answers 400) |
 | `request` | This call's timeout, retry budget and headers (`RequestOptions`) |
 
 An empty string is unset and is not sent. When the API rejects an
