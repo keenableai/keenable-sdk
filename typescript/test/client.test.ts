@@ -528,7 +528,7 @@ describe("runToolCall", () => {
       { type: string; description: string }
     >;
     expect(properties.objective?.type).toBe("string");
-    expect(properties.objective?.description).toContain("self-contained");
+    expect(properties.objective?.description).toContain("multi-step or ambiguous");
   });
 
   it("sends disableCards only as true", async () => {
