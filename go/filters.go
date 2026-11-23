@@ -17,6 +17,9 @@ type filter struct {
 	description string
 	jsonType    string
 	toolExposed bool
+	// enum is the values the tool schema offers, when the filter takes a
+	// fixed set.
+	enum []string
 }
 
 var searchFilters = []filter{
@@ -77,6 +80,13 @@ var searchFilters = []filter{
 			"whose URLs expire after one day). Default false.",
 		jsonType:    "boolean",
 		toolExposed: true,
+	},
+	{
+		wire: "moderation",
+		description: "Filter unsafe results: 'moderate' or 'strict'. Leave it out for no moderation. " +
+			"Not supported when the query is a URL.",
+		toolExposed: true,
+		enum:        []string{"moderate", "strict"},
 	},
 }
 
@@ -151,6 +161,11 @@ func (f filter) value(opts *SearchOptions) (any, bool) {
 			return nil, false
 		}
 		return true, true
+	case "moderation":
+		if opts.Moderation == "" {
+			return nil, false
+		}
+		return opts.Moderation, true
 	default:
 		return nil, false
 	}
@@ -172,6 +187,9 @@ func toolProperties() map[string]any {
 		}
 		if kind == "array" {
 			prop["items"] = map[string]any{"type": "string"}
+		}
+		if f.enum != nil {
+			prop["enum"] = append([]string(nil), f.enum...)
 		}
 		props[f.wire] = prop
 	}
@@ -286,6 +304,10 @@ func assignFilter(opts *SearchOptions, wire string, v any) {
 	case "objective":
 		if s, ok := v.(string); ok {
 			opts.Objective = s
+		}
+	case "moderation":
+		if s, ok := v.(string); ok {
+			opts.Moderation = s
 		}
 	}
 }

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Added:** `SearchOptions.Moderation`: `"moderate"` or `"strict"` filters unsafe results; empty, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 for a URL query or a `QueryTime` search.
+- **Added:** `SearchResponse.Warnings`, a slice of `SearchWarning` (`Code`, `Path`, `Message`) naming what a request should change, such as a deprecated parameter. Nil when the API sends none.
+
 ## 0.3.0
 
 - **Changed (breaking):** `Fetch` and `FetchWithOptions` take `[]string` URLs and send one `POST /v1/fetch`. They return a `*FetchResponse` whose `Results[i]` is the `Page` for `urls[i]`, with `Error` (a `*FetchError`) set when that URL failed. `FetchOptions` has `MaxChars`, `Prompt`, `Schema`, `Links`, `Images` and `MaxAgeHours`, sent only when set; the API checks their values. `Live` and `Page.RequestID` are gone (`FetchResponse.RequestID` replaces it), and there is no separate `FetchMany`.

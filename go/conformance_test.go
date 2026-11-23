@@ -470,6 +470,17 @@ func TestConformanceResponses(t *testing.T) {
 					t.Fatalf("result %d: got %+v, want %v", i, r, w)
 				}
 			}
+			warnings := want["warnings"].([]any)
+			if len(resp.Warnings) != len(warnings) {
+				t.Fatalf("got %d warnings, want %d", len(resp.Warnings), len(warnings))
+			}
+			for i, w := range warnings {
+				w := w.(map[string]any)
+				got := resp.Warnings[i]
+				if got.Code != w["code"] || got.Path != w["path"] || got.Message != w["message"] {
+					t.Fatalf("warning %d: got %+v, want %v", i, got, w)
+				}
+			}
 		})
 	}
 }
@@ -606,6 +617,8 @@ func TestConformanceSearchBody(t *testing.T) {
 					opts.MaxResults = int(v.(float64))
 				case "disable_cards":
 					opts.DisableCards = v.(bool)
+				case "moderation":
+					opts.Moderation = str
 				default:
 					t.Fatalf("no Go mapping for %q", wire)
 				}

@@ -191,6 +191,7 @@ fn the_tool_definitions_match_the_other_sdks() {
         [
             "disable_cards",
             "exclude_domains",
+            "moderation",
             "objective",
             "published_after",
             "query",
@@ -199,6 +200,54 @@ fn the_tool_definitions_match_the_other_sdks() {
     );
     assert_eq!(props["exclude_domains"]["items"], json!({"type": "string"}));
     assert_eq!(props["disable_cards"]["type"], "boolean");
+    assert_eq!(props["moderation"]["type"], "string");
+    assert_eq!(props["moderation"]["enum"], json!(["moderate", "strict"]));
+    assert!(props["moderation"]["description"]
+        .as_str()
+        .unwrap()
+        .contains("no moderation"));
+}
+
+#[tokio::test]
+async fn search_sends_moderation_only_when_set() {
+    let server = start(Script::Replies(vec![search_reply(), search_reply()])).await;
+    let client = keyed(&server);
+    let opts = SearchOptions {
+        mode: Some("realtime".into()),
+        moderation: Some("strict".into()),
+        ..Default::default()
+    };
+    client.search_with("q", &opts).await.unwrap();
+    client.search("q").await.unwrap();
+    let first: Value = serde_json::from_slice(&server.requests()[0].body).unwrap();
+    assert_eq!(
+        first,
+        json!({"query": "q", "mode": "realtime", "moderation": "strict"})
+    );
+    let second: Value = serde_json::from_slice(&server.requests()[1].body).unwrap();
+    assert!(second.get("moderation").is_none());
+}
+
+#[tokio::test]
+async fn search_parses_warnings() {
+    let server = start(Script::Replies(vec![
+        Reply::new(
+            200,
+            r#"{"query":"q","results":[],"warnings":[{"code":"deprecated_parameter","path":"/safety_mode","message":"safety_mode is deprecated. Use moderation."}]}"#,
+        ),
+        search_reply(),
+    ]))
+    .await;
+    let client = keyed(&server);
+    let resp = client.search("q").await.unwrap();
+    assert_eq!(resp.warnings.len(), 1);
+    assert_eq!(resp.warnings[0].code, "deprecated_parameter");
+    assert_eq!(resp.warnings[0].path, "/safety_mode");
+    assert_eq!(
+        resp.warnings[0].message,
+        "safety_mode is deprecated. Use moderation."
+    );
+    assert!(client.search("q").await.unwrap().warnings.is_empty());
 }
 
 #[tokio::test]

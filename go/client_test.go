@@ -259,6 +259,77 @@ func TestSearchSendsObjectiveOnlyWhenSet(t *testing.T) {
 	}
 }
 
+func TestSearchSendsModerationOnlyWhenSet(t *testing.T) {
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, searchBody), nil)
+	ctx := context.Background()
+	for _, opts := range []*keenable.SearchOptions{
+		{Moderation: "strict"},
+		{Mode: "realtime", Moderation: "moderate"},
+		{},
+	} {
+		if _, err := c.Search(ctx, "q", opts); err != nil {
+			t.Fatal(err)
+		}
+	}
+	requests := *seen
+	if got := payloadOf(t, requests[0])["moderation"]; got != "strict" {
+		t.Fatalf("moderation not sent: %#v", got)
+	}
+	second := payloadOf(t, requests[1])
+	if second["moderation"] != "moderate" || second["mode"] != "realtime" {
+		t.Fatalf("realtime moderation: %#v", second)
+	}
+	if _, ok := payloadOf(t, requests[2])["moderation"]; ok {
+		t.Fatal("sent an unset moderation")
+	}
+}
+
+func TestToolSchemaOffersModerationAsAnEnum(t *testing.T) {
+	prop, _ := searchToolProperties(t)["moderation"].(map[string]any)
+	if prop["type"] != "string" {
+		t.Fatalf("moderation should be a string: %#v", prop)
+	}
+	enum, _ := prop["enum"].([]any)
+	if len(enum) != 2 || enum[0] != "moderate" || enum[1] != "strict" {
+		t.Fatalf("moderation enum: %#v", prop)
+	}
+	if desc, _ := prop["description"].(string); !strings.Contains(desc, "no moderation") {
+		t.Fatalf("moderation description: %#v", prop)
+	}
+}
+
+func TestSearchParsesWarnings(t *testing.T) {
+	body := map[string]any{
+		"query":   "q",
+		"results": []any{},
+		"warnings": []any{map[string]any{
+			"code":    "deprecated_parameter",
+			"path":    "/safety_mode",
+			"message": "safety_mode is deprecated. Use moderation.",
+		}},
+	}
+	c, _ := startKeyless(t, jsonHandler(http.StatusOK, body), nil)
+	resp, err := c.Search(context.Background(), "q", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []keenable.SearchWarning{{Code: "deprecated_parameter", Path: "/safety_mode", Message: "safety_mode is deprecated. Use moderation."}}
+	if !reflect.DeepEqual(resp.Warnings, want) {
+		t.Fatalf("warnings: %#v", resp.Warnings)
+	}
+}
+
+func TestSearchWarningsEmptyWhenNoneSent(t *testing.T) {
+	c, _ := startKeyless(t, jsonHandler(http.StatusOK, searchBody), nil)
+	resp, err := c.Search(context.Background(), "q", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Warnings) != 0 {
+		t.Fatalf("warnings: %#v", resp.Warnings)
+	}
+}
+
 func TestSearchRawKeepsWarning(t *testing.T) {
 	body := map[string]any{
 		"query":   "q",

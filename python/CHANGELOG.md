@@ -5,6 +5,9 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
+- **Added:** `moderation` on `search()` (sync and async): `"moderate"` or `"strict"` filters unsafe results; `None`, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 for a URL query or a `query_time` search.
+- **Added:** `SearchResponse.warnings`, a list of `SearchWarning` (`code`, `path`, `message`) naming what a request should change, such as a deprecated parameter. Empty when the API sends none.
+
 ## 0.3.0
 
 - **Changed (breaking):** `fetch()` takes a list of URLs (a lone string is one URL) and sends one `POST /v1/fetch`. It returns a `FetchResponse` whose `results[i]` is the `Page` for `urls[i]`, with `error` (a `FetchError`) set when that URL failed. Options: `max_chars`, `prompt`, `schema`, `links`, `images`, `max_age_hours`, sent only when set; the API checks their values. The `live` option and `Page.request_id` are gone (`FetchResponse.request_id` replaces it), and there is no separate `fetch_many`.

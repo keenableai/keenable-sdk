@@ -29,6 +29,9 @@ class Filter:
     """Whether a model may set this filter through the search tool. The subset
     is kept small: a model picks better from fewer knobs."""
 
+    enum: tuple[str, ...] | None = None
+    """The values the tool schema offers, when the filter takes a fixed set."""
+
 
 SEARCH_FILTERS: tuple[Filter, ...] = (
     Filter(
@@ -99,6 +102,13 @@ SEARCH_FILTERS: tuple[Filter, ...] = (
         json_type="boolean",
         tool_exposed=True,
     ),
+    Filter(
+        "moderation",
+        "Filter unsafe results: 'moderate' or 'strict'. Leave it out for no "
+        "moderation. Not supported when the query is a URL.",
+        tool_exposed=True,
+        enum=("moderate", "strict"),
+    ),
 )
 
 TOOL_FILTERS: tuple[Filter, ...] = tuple(f for f in SEARCH_FILTERS if f.tool_exposed)
@@ -111,7 +121,10 @@ def _schema(f: Filter) -> dict[str, Any]:
             "items": {"type": "string"},
             "description": f.description,
         }
-    return {"type": f.json_type, "description": f.description}
+    schema: dict[str, Any] = {"type": f.json_type, "description": f.description}
+    if f.enum is not None:
+        schema["enum"] = list(f.enum)
+    return schema
 
 
 def tool_properties() -> dict[str, Any]:

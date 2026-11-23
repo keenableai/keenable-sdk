@@ -77,6 +77,7 @@ results, err := client.Search(context.Background(), "post-training quantization 
 | `Objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price. Not sent when empty |
 | `Mode` | Search mode: `"pro"` does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops. Empty means `"pro"` |
 | `DisableCards` | `true` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). False, the default, is not sent. In the next release after `v0.1.1` |
+| `Moderation` | Filter unsafe results: `"moderate"` or `"strict"`. Empty, the default, is no moderation and is not sent. Works in `"pro"` and `"realtime"` modes, and not when the query is a URL or with `QueryTime` (the API answers 400) |
 
 ### Excluding domains
 
@@ -220,9 +221,9 @@ tools render the same numbered, citable block, so the model can cite a fetched
 page the way it cites a search result. Arguments may be a JSON string,
 `[]byte`, `json.RawMessage`, or `map[string]any`.
 
-The model may set `site`, `exclude_domains`, `published_after` and
-`disable_cards` on search. The other filters stay on `Search` for you to set
-yourself.
+The model may set `site`, `exclude_domains`, `published_after`, `objective`,
+`disable_cards` and `moderation` on search. The other filters stay on
+`Search` for you to set yourself.
 
 On fetch the model sets `urls` (1 to 20) and may set `max_chars` (per page),
 `prompt` (applied to every page) and `max_age_hours` (0 reads every page
@@ -484,6 +485,8 @@ A header whose name is not an HTTP token, or whose value has a CR, LF or NUL, is
 an `InvalidRequestError` too, before anything is sent. `X-API-Key`
 always comes from `APIKey`. `SearchResponse.RequestID` and `FetchResponse.RequestID`
 carry the API's request id; quote it when reporting a problem.
+`SearchResponse.Warnings` lists what the request should change, such as a
+deprecated parameter it used; it is nil otherwise.
 
 ## Configuration
 

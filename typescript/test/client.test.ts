@@ -553,6 +553,49 @@ describe("runToolCall", () => {
     },
   );
 
+  it("offers moderation in the search tool schema as an enum", () => {
+    const properties = SEARCH_TOOL.function.parameters.properties as Record<
+      string,
+      { type: string; enum?: string[]; description: string }
+    >;
+    expect(properties.moderation?.type).toBe("string");
+    expect(properties.moderation?.enum).toEqual(["moderate", "strict"]);
+    expect(properties.moderation?.description).toContain("no moderation");
+  });
+
+  it("sends moderation only when it is set", async () => {
+    const { client, seen } = mockClient(routed);
+    await client.search("q", { moderation: "strict" });
+    await client.search("q", { mode: "realtime", moderation: "moderate" });
+    await client.search("q", { moderation: undefined });
+    const [strict, realtime, unset] = seen.map((r) => JSON.parse(String(r.init.body)));
+    expect(strict).toEqual({ query: "q", mode: "pro", moderation: "strict" });
+    expect(realtime).toEqual({ query: "q", mode: "realtime", moderation: "moderate" });
+    expect(unset).toEqual({ query: "q", mode: "pro" });
+  });
+
+  it("passes a tool call's moderation", async () => {
+    const { client, seen } = mockClient(routed);
+    await runToolCall(client, "keenable_search", { query: "q", moderation: "moderate" });
+    expect(JSON.parse(String(seen[0]?.init.body)).moderation).toBe("moderate");
+  });
+
+  it("parses the response's warnings", async () => {
+    const warning = {
+      code: "deprecated_parameter",
+      path: "/safety_mode",
+      message: "safety_mode is deprecated. Use moderation.",
+    };
+    const { client } = mockClient(() => json({ query: "q", results: [], warnings: [warning] }));
+    const response = await client.search("q");
+    expect(response.warnings).toEqual([warning]);
+  });
+
+  it("leaves warnings empty when the API sent none", async () => {
+    const { client } = mockClient(() => json(SEARCH_BODY));
+    expect((await client.search("q")).warnings).toEqual([]);
+  });
+
   it("forwards only the filters the schema offers the model", async () => {
     const { client, seen } = mockClient(routed);
     await runToolCall(client, "keenable_search", {

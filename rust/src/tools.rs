@@ -38,29 +38,45 @@ pub const SEARCH_TOOL_NAME: &str = "keenable_search";
 /// The name of the fetch tool.
 pub const FETCH_TOOL_NAME: &str = "keenable_fetch";
 
-/// The search filters a model may set, with their JSON type. They are both
-/// the tool schema's properties and the allow-list `run_tool_call` reads.
-const TOOL_FILTERS: [(&str, &str, &str); 5] = [
-    ("site", "string", "Optional. Restrict results to one domain, e.g. 'arxiv.org'."),
+/// The search filters a model may set, with their JSON type, description and
+/// the values the schema offers (empty for any). They are both the tool
+/// schema's properties and the allow-list `run_tool_call` reads.
+const TOOL_FILTERS: [(&str, &str, &str, &[&str]); 6] = [
+    (
+        "site",
+        "string",
+        "Optional. Restrict results to one domain, e.g. 'arxiv.org'.",
+        &[],
+    ),
     (
         "exclude_domains",
         "array",
         "Optional. Never return results from these hosts or their subdomains, e.g. 'pinterest.com'. Hosts only, no paths or wildcards. Up to 1,000.",
+        &[],
     ),
     (
         "published_after",
         "string",
         "Optional. Only pages published on or after this date (YYYY-MM-DD).",
+        &[],
     ),
     (
         "objective",
         "string",
         "Optional. Two or three natural sentences, with no field labels and no line breaks, that cover: the exact facts, entities, numbers, dates or names a useful page must contain; task context the query does not state (who, where, when, eligibility, date window); which kinds of sources count or must be excluded; what is already established from earlier steps; and what is still unknown. Every sentence must be self-contained: name the entities, places, dates and figures explicitly, and never refer to 'the task', 'the clue', 'the question', 'above' or earlier results. Do not paste the conversation, and do not include personal, confidential or sensitive information. At most 1,000 characters.",
+        &[],
     ),
     (
         "disable_cards",
         "boolean",
         "Optional. true returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). Default false.",
+        &[],
+    ),
+    (
+        "moderation",
+        "string",
+        "Filter unsafe results: 'moderate' or 'strict'. Leave it out for no moderation. Not supported when the query is a URL.",
+        &["moderate", "strict"],
     ),
 ];
 
@@ -74,10 +90,13 @@ pub fn search_tool() -> ToolDefinition {
             "description": "What to look for, described in natural language rather than keywords.",
         }),
     );
-    for (name, kind, description) in TOOL_FILTERS {
+    for (name, kind, description, values) in TOOL_FILTERS {
         let mut prop = json!({"type": kind, "description": description});
         if kind == "array" {
             prop["items"] = json!({"type": "string"});
+        }
+        if !values.is_empty() {
+            prop["enum"] = json!(values);
         }
         props.insert(name.into(), prop);
     }
@@ -219,7 +238,7 @@ fn require_string<'a>(v: Option<&'a Value>, message: &str) -> Result<&'a str> {
 /// wrapped, so the API judges a malformed one; null and "" are unset.
 fn tool_filters(args: &Map<String, Value>) -> Result<Map<String, Value>> {
     let mut payload = Map::new();
-    for (name, kind, _) in TOOL_FILTERS {
+    for (name, kind, _, _) in TOOL_FILTERS {
         let Some(v) = args.get(name) else { continue };
         match (kind, v) {
             (_, Value::Null) => {}
