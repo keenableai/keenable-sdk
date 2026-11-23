@@ -12,6 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from .errors import KeenableInvalidRequestError
+
 
 @dataclass(frozen=True)
 class Filter:
@@ -144,6 +146,11 @@ def tool_filter_kwargs(args: dict[str, Any]) -> dict[str, Any]:
             # false is the default. search() rejects anything but a bool.
             keep = value is not None and value is not False and value != ""
         else:
+            if f.enum is not None and value is not None and not isinstance(value, str):
+                choices = " or ".join(f'"{v}"' for v in f.enum)
+                raise KeenableInvalidRequestError(
+                    f"{f.name} must be {choices}. Pass a JSON string, or leave it out."
+                )
             keep = bool(value)
         if keep:
             kwargs[f.name] = value

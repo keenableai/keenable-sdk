@@ -196,6 +196,16 @@ describe("search", () => {
     expect(seen).toHaveLength(0);
   });
 
+  it("refuses a tool call whose moderation is not a string, sending nothing", async () => {
+    const { client, seen } = mockClient(() => json(SEARCH_BODY));
+    for (const moderation of [true, false, 1, ["strict"], { level: "strict" }]) {
+      await expect(
+        runToolCall(client, "keenable_search", { query: "q", moderation }),
+      ).rejects.toThrow(/moderation must be "moderate" or "strict"/);
+    }
+    expect(seen).toHaveLength(0);
+  });
+
   it("still sends malformed but encodable values for the API to judge", async () => {
     const { client, seen } = mockClient(() => json(SEARCH_BODY));
     await client.search("q", { excludeDomains: [42, null, "", { host: "a.com" }] as unknown as string[] });

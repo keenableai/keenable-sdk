@@ -3,6 +3,7 @@ package keenable
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 )
 
 // The search filter set, declared once.
@@ -236,11 +237,38 @@ func toolSearchOptions(args map[string]any) (*SearchOptions, error) {
 			}
 			continue
 		}
+		if f.enum != nil {
+			if err := toolEnum(f, v); err != nil {
+				return nil, err
+			}
+		}
 		if truthy(v) {
 			assignFilter(opts, f.wire, v)
 		}
 	}
 	return opts, nil
+}
+
+// toolEnum checks a tool argument the schema limits to a set of strings.
+// nil and "" are unset and other strings go to the API to judge; anything
+// that is not a string is an InvalidRequestError, so a model's malformed
+// value never runs the search without the filter it asked for.
+func toolEnum(f filter, v any) error {
+	if v == nil {
+		return nil
+	}
+	if _, ok := v.(string); ok {
+		return nil
+	}
+	return &InvalidRequestError{msg: f.wire + " must be " + enumChoices(f.enum) + ". Pass a JSON string, or leave it out."}
+}
+
+func enumChoices(values []string) string {
+	quoted := make([]string, len(values))
+	for i, v := range values {
+		quoted[i] = `"` + v + `"`
+	}
+	return strings.Join(quoted, " or ")
 }
 
 // toolBool reads a boolean tool argument. false, nil and "" are unset;

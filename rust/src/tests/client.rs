@@ -404,6 +404,31 @@ async fn a_bad_tool_call_sends_nothing() {
     assert_eq!(server.count(), 0);
 }
 
+#[tokio::test]
+async fn a_tool_call_with_a_moderation_that_is_not_a_string_sends_nothing() {
+    let server = start(Script::Replies(vec![search_reply()])).await;
+    let client = keyed(&server);
+    for moderation in [
+        json!(true),
+        json!(false),
+        json!(1),
+        json!(["strict"]),
+        json!({"level": "strict"}),
+    ] {
+        let got = client
+            .run_tool_call(
+                "keenable_search",
+                json!({"query": "q", "moderation": moderation}),
+            )
+            .await;
+        assert!(
+            matches!(&got, Err(Error::InvalidRequest(m)) if m.to_string().contains(r#"moderation must be "moderate" or "strict""#)),
+            "{moderation}: {got:?}"
+        );
+    }
+    assert_eq!(server.count(), 0);
+}
+
 #[test]
 fn debug_output_never_shows_the_api_key() {
     let opts = Options {

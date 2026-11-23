@@ -240,6 +240,16 @@ async def test_async_an_unencodable_domain_list_is_an_invalid_request() -> None:
     assert seen == []
 
 
+@pytest.mark.parametrize("value", [True, False, 1, ["strict"], {"level": "strict"}])
+def test_a_tool_call_rejects_a_moderation_that_is_not_a_string(value: Any) -> None:
+    keenable, seen = _client(_routed)
+    with pytest.raises(
+        KeenableInvalidRequestError, match='moderation must be "moderate" or "strict"'
+    ):
+        run_tool_call(keenable, "keenable_search", {"query": "q", "moderation": value})
+    assert seen == []
+
+
 def test_search_raw_keeps_the_filter_warning() -> None:
     body = {**SEARCH_BODY, "warning": "3 results were removed by your domain filter"}
     keenable, _ = _client(_ok(body))

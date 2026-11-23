@@ -450,6 +450,20 @@ func TestToolCallUnencodableDomainListIsInvalidRequest(t *testing.T) {
 	}
 }
 
+func TestToolCallNonStringModerationIsInvalidRequest(t *testing.T) {
+	c, seen := startKeyless(t, routed(), nil)
+	for _, v := range []any{true, false, 1, []string{"strict"}, map[string]any{"level": "strict"}} {
+		_, err := keenable.RunToolCall(context.Background(), c, "keenable_search", map[string]any{"query": "q", "moderation": v})
+		var invalid *keenable.InvalidRequestError
+		if !errors.As(err, &invalid) || !strings.Contains(err.Error(), `moderation must be "moderate" or "strict"`) {
+			t.Fatalf("moderation %#v: want an InvalidRequestError naming the values, got %v", v, err)
+		}
+	}
+	if len(*seen) != 0 {
+		t.Fatal("a malformed moderation sent a request")
+	}
+}
+
 func jsonEqual(a, b any) bool {
 	ja, errA := json.Marshal(a)
 	jb, errB := json.Marshal(b)

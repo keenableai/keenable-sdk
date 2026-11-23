@@ -238,8 +238,15 @@ fn require_string<'a>(v: Option<&'a Value>, message: &str) -> Result<&'a str> {
 /// wrapped, so the API judges a malformed one; null and "" are unset.
 fn tool_filters(args: &Map<String, Value>) -> Result<Map<String, Value>> {
     let mut payload = Map::new();
-    for (name, kind, _, _) in TOOL_FILTERS {
+    for (name, kind, _, values) in TOOL_FILTERS {
         let Some(v) = args.get(name) else { continue };
+        if !values.is_empty() && !matches!(v, Value::Null | Value::String(_)) {
+            let choices: Vec<String> = values.iter().map(|v| format!("\"{v}\"")).collect();
+            return Err(Error::invalid(format!(
+                "{name} must be {}. Pass a JSON string, or leave it out.",
+                choices.join(" or ")
+            )));
+        }
         match (kind, v) {
             (_, Value::Null) => {}
             ("array", Value::String(s)) if s.is_empty() => {}
