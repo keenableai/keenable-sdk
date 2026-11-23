@@ -5,6 +5,8 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
+## 0.3.0
+
 - **Changed (breaking):** `fetch()` takes a list of URLs (a lone string is one URL) and sends one `POST /v1/fetch`. It returns a `FetchResponse` whose `results[i]` is the `Page` for `urls[i]`, with `error` (a `FetchError`) set when that URL failed. Options: `max_chars`, `prompt`, `schema`, `links`, `images`, `max_age_hours`, sent only when set; the API checks their values. The `live` option and `Page.request_id` are gone (`FetchResponse.request_id` replaces it), and there is no separate `fetch_many`.
 - **Changed (breaks code):** the `keenable_fetch` tool matches `fetch()` and the hosted MCP tool: it takes `urls` (1 to 20), `max_chars` (per page), `prompt` and `max_age_hours` (0 reads live). `urls` is required and the old `url` argument is gone: a call that sends only `url` is an invalid request. The context budget without `max_chars` is split across the pages, so a call stays about the size one page was. `run_tool_call` returns each page as its own numbered block and a URL that failed as a `[n] <url> - failed: <reason>` block; it fails only when no URL could be read.
 - **Changed (breaks code):** what a search monitor finds is now called a result. `monitors.pages()` is `monitors.results()` and calls `GET /v1/monitors/{id}/results`; `PageList` is `ResultList`. Both `Monitors` and `AsyncMonitors`. The old names are gone, with no aliases.
