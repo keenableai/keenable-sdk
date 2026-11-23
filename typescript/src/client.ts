@@ -560,7 +560,11 @@ function toPage(data: Record<string, unknown>, url: string): Page {
 
 function toMoney(value: unknown): Money {
   const data = isRecord(value) ? value : {};
-  return { amount: text(data.amount), currency: text(data.currency) };
+  return { amount: amount(data.amount), currency: text(data.currency) };
+}
+
+function amount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function records(value: unknown): Record<string, unknown>[] {
@@ -909,7 +913,7 @@ export class Keenable {
    * Prices, and with an API key the balance and usage, from `GET /v1/billing`.
    *
    * Read-only and free. Without a key, `prices` are the public list prices and
-   * `account` is null. Amounts are decimal strings.
+   * `account` is null. Amounts are numbers in US dollars.
    */
   async billing(options: RequestOptions = {}): Promise<Billing> {
     // The same path with and without a key: billing has no /public variant.

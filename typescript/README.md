@@ -188,8 +188,8 @@ Without one, `prices` are the public list prices and `account` is `null`. With
 one, `prices` are your organization's (with `listUnitPrice` and `source`,
 `"list"` or `"contract"`), and `account` holds the balance, this month's usage
 per SKU, and `billingUrl`, the console page for adding funds. Amounts are
-decimal strings (`Money.amount`, such as `"0.004"`, negative for an account in
-debt): use a decimal library to compute with them, not `Number()`.
+numbers in US dollars (`Money.amount`, such as `0.004`, up to nine decimal
+places, negative for an account in debt).
 
 ## Tool calling
 

@@ -647,19 +647,19 @@ mod tests {
 // ---- Billing ----------------------------------------------------------------
 
 /// An amount of money, as the API sent it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct Money {
-    /// The decimal amount in the currency's major unit, such as `"0.004"`,
-    /// kept as a string so it is exact. Negative for an account in debt.
-    /// Parse it with a decimal type, not `f64`, to compute with it.
-    pub amount: String,
+    /// The amount in the currency's major unit (US dollars), such as
+    /// `0.004`, with up to nine decimal places. Negative for an account in
+    /// debt. `0.0` when the API sent no finite number.
+    pub amount: f64,
     /// The lowercase ISO 4217 code, such as `"usd"`.
     pub currency: String,
 }
 
 /// The price of one SKU, from [`Client::billing`](crate::Client::billing).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct BillingPrice {
     /// What is billed, such as `search.pro` or `fetch.live`.
@@ -676,7 +676,7 @@ pub struct BillingPrice {
 }
 
 /// What the organization can still spend.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct BillingBalance {
     /// The unused free allowance for this month plus the purchased balance.
@@ -686,7 +686,7 @@ pub struct BillingBalance {
 }
 
 /// The use of one SKU since the start of the period.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct BillingUsageLine {
     /// `search`, `search.extra_result` or `fetch`.
@@ -698,7 +698,7 @@ pub struct BillingUsageLine {
 }
 
 /// The spend since the start of the current monthly period.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct BillingUsage {
     /// The start of the period (ISO 8601), when the free allowance last
@@ -711,7 +711,7 @@ pub struct BillingUsage {
 }
 
 /// The organization's balance and usage.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct BillingAccount {
     /// What the organization can still spend.
@@ -753,10 +753,16 @@ fn objects(v: Option<&Value>) -> Vec<&Map<String, Value>> {
     }
 }
 
+fn as_amount(v: Option<&Value>) -> f64 {
+    v.and_then(Value::as_f64)
+        .filter(|f| f.is_finite())
+        .unwrap_or(0.0)
+}
+
 fn money(v: Option<&Value>) -> Money {
     let m = object_or_empty(v);
     Money {
-        amount: as_string(m.get("amount")),
+        amount: as_amount(m.get("amount")),
         currency: as_string(m.get("currency")),
     }
 }

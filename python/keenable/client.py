@@ -1579,7 +1579,7 @@ class Keenable(_BaseClient):
         """Prices, and with an API key the balance and usage, from ``GET /v1/billing``.
 
         Read-only and free. Without a key, ``prices`` are the public list
-        prices and ``account`` is None. Amounts are decimal strings.
+        prices and ``account`` is None. Amounts are numbers in US dollars.
 
         Args:
             timeout: Deadline for each attempt of this call, as in

@@ -145,8 +145,13 @@ sent only when the client has one. The body is read like the other success
 bodies (not a JSON object is an API error), with these fields:
 
 - Required text (`sku`, `unit`, `since`, `billing_url`, `as_of`, and a Money's
-  `amount` and `currency`) is the string sent or `""`. An amount stays the
-  decimal string the API sent, never a number: a number there is `""`.
+  `currency`) is the string sent or `""`.
+- A Money's `amount` is a number in US dollars (Python `float`, TypeScript
+  `number`, Go `float64`, Rust `f64`): the JSON number sent, with its sign and
+  fraction, when it is finite, else `0`. This is the rule for every required
+  number: a wrong type reads as `0`, never parsed or coerced. A string (an older
+  server's `"0.004"`), a boolean, null, a list or an object is `0`, and so is a
+  number too large for a double (`1e999`), which drops only that amount.
 - A required Money (`unit_price`, `available`, `purchased`, `cost`) that is not
   an object reads as `{}`. `list_unit_price` is a Money when an object, else
   null; `source` is a string with more than whitespace, else null.

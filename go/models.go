@@ -517,10 +517,10 @@ func asString(v any) string {
 
 // Money is an amount of money, as the API sent it.
 type Money struct {
-	// Amount is the decimal amount in the currency's major unit, such as
-	// "0.004", kept as a string so it is exact. Negative for an account in
-	// debt. Parse it with a decimal type (math/big.Rat), not float64.
-	Amount string `json:"amount"`
+	// Amount is the amount in the currency's major unit (US dollars), such
+	// as 0.004, with up to nine decimal places. Negative for an account in
+	// debt. 0 when the API sent no finite number.
+	Amount float64 `json:"amount"`
 	// Currency is the lowercase ISO 4217 code, such as "usd".
 	Currency string `json:"currency"`
 }
@@ -614,9 +614,17 @@ func objects(v any) []map[string]any {
 	return out
 }
 
+func asAmount(v any) float64 {
+	f, ok := v.(float64)
+	if !ok || math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0
+	}
+	return f
+}
+
 func moneyFromJSON(v any) Money {
 	m := objectOrEmpty(v)
-	return Money{Amount: asString(m["amount"]), Currency: asString(m["currency"])}
+	return Money{Amount: asAmount(m["amount"]), Currency: asString(m["currency"])}
 }
 
 func billingFromJSON(data map[string]any) *Billing {

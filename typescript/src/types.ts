@@ -174,11 +174,11 @@ export interface KeenableOptions {
 /** An amount of money, as the API sent it. */
 export interface Money {
   /**
-   * Decimal amount in the currency's major unit, such as "0.004", kept as a
-   * string so it is exact. Negative for an account in debt. Parse it with a
-   * decimal library rather than `Number()` to compute with it.
+   * Amount in the currency's major unit (US dollars), such as 0.004, with up
+   * to nine decimal places. Negative for an account in debt. 0 when the API
+   * sent no finite number.
    */
-  amount: string;
+  amount: number;
   /** Lowercase ISO 4217 code, such as "usd". */
   currency: string;
 }

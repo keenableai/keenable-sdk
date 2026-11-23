@@ -3941,7 +3941,7 @@
       "keyed": false,
       "status": 200,
       "headers": {},
-      "body": "{\"object\":\"billing\",\"prices\":[{\"sku\":\"search.pro\",\"unit\":\"search\",\"unit_price\":{\"amount\":\"0.004\",\"currency\":\"usd\"}},{\"sku\":\"fetch.live\",\"unit\":\"page\",\"unit_price\":{\"amount\":\"0.002\",\"currency\":\"usd\"}}],\"account\":null}",
+      "body": "{\"object\":\"billing\",\"prices\":[{\"sku\":\"search.pro\",\"unit\":\"search\",\"unit_price\":{\"amount\":0.004,\"currency\":\"usd\"}},{\"sku\":\"fetch.live\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.002,\"currency\":\"usd\"}}],\"account\":null}",
       "expect": {
         "path": "/v1/billing",
         "error": null,
@@ -3952,7 +3952,7 @@
               "sku": "search.pro",
               "unit": "search",
               "unit_price": {
-                "amount": "0.004",
+                "amount": 0.004,
                 "currency": "usd"
               },
               "list_unit_price": null,
@@ -3962,7 +3962,7 @@
               "sku": "fetch.live",
               "unit": "page",
               "unit_price": {
-                "amount": "0.002",
+                "amount": 0.002,
                 "currency": "usd"
               },
               "list_unit_price": null,
@@ -3980,7 +3980,7 @@
       "headers": {
         "X-Request-Id": " req-1 "
       },
-      "body": "{\"object\":\"billing\",\"prices\":[{\"sku\":\"search.pro\",\"unit\":\"search\",\"unit_price\":{\"amount\":\"0.003\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":\"0.004\",\"currency\":\"usd\"},\"source\":\"contract\"},{\"sku\":\"fetch\",\"unit\":\"page\",\"unit_price\":{\"amount\":\"0.001\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":\"0.001\",\"currency\":\"usd\"},\"source\":\"list\"}],\"account\":{\"balance\":{\"available\":{\"amount\":\"-1\",\"currency\":\"usd\"},\"purchased\":{\"amount\":\"12.345678901234567890\",\"currency\":\"usd\"}},\"usage\":{\"since\":\"2026-11-01T00:00:00.000Z\",\"cost\":{\"amount\":\"1.25\",\"currency\":\"usd\"},\"line_items\":[{\"sku\":\"search\",\"quantity\":250,\"cost\":{\"amount\":\"1\",\"currency\":\"usd\"}},{\"sku\":\"search.extra_result\",\"quantity\":0,\"cost\":{\"amount\":\"0\",\"currency\":\"usd\"}},{\"sku\":\"fetch\",\"quantity\":9007199254740991,\"cost\":{\"amount\":\"0.25\",\"currency\":\"usd\"}}]},\"billing_url\":\"https://keenable.ai/console?tab=billing\",\"as_of\":\"2026-11-22T10:00:00.000Z\"}}",
+      "body": "{\"object\":\"billing\",\"prices\":[{\"sku\":\"search.pro\",\"unit\":\"search\",\"unit_price\":{\"amount\":0.003,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0.004,\"currency\":\"usd\"},\"source\":\"contract\"},{\"sku\":\"fetch\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.001,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0.001,\"currency\":\"usd\"},\"source\":\"list\"}],\"account\":{\"balance\":{\"available\":{\"amount\":-1,\"currency\":\"usd\"},\"purchased\":{\"amount\":12.345678901,\"currency\":\"usd\"}},\"usage\":{\"since\":\"2026-11-01T00:00:00.000Z\",\"cost\":{\"amount\":1.25,\"currency\":\"usd\"},\"line_items\":[{\"sku\":\"search\",\"quantity\":250,\"cost\":{\"amount\":1,\"currency\":\"usd\"}},{\"sku\":\"search.extra_result\",\"quantity\":0,\"cost\":{\"amount\":0,\"currency\":\"usd\"}},{\"sku\":\"fetch\",\"quantity\":9007199254740991,\"cost\":{\"amount\":0.25,\"currency\":\"usd\"}}]},\"billing_url\":\"https://keenable.ai/console?tab=billing\",\"as_of\":\"2026-11-22T10:00:00.000Z\"}}",
       "expect": {
         "path": "/v1/billing",
         "error": null,
@@ -3991,11 +3991,11 @@
               "sku": "search.pro",
               "unit": "search",
               "unit_price": {
-                "amount": "0.003",
+                "amount": 0.003,
                 "currency": "usd"
               },
               "list_unit_price": {
-                "amount": "0.004",
+                "amount": 0.004,
                 "currency": "usd"
               },
               "source": "contract"
@@ -4004,11 +4004,11 @@
               "sku": "fetch",
               "unit": "page",
               "unit_price": {
-                "amount": "0.001",
+                "amount": 0.001,
                 "currency": "usd"
               },
               "list_unit_price": {
-                "amount": "0.001",
+                "amount": 0.001,
                 "currency": "usd"
               },
               "source": "list"
@@ -4017,18 +4017,18 @@
           "account": {
             "balance": {
               "available": {
-                "amount": "-1",
+                "amount": -1,
                 "currency": "usd"
               },
               "purchased": {
-                "amount": "12.345678901234567890",
+                "amount": 12.345678901,
                 "currency": "usd"
               }
             },
             "usage": {
               "since": "2026-11-01T00:00:00.000Z",
               "cost": {
-                "amount": "1.25",
+                "amount": 1.25,
                 "currency": "usd"
               },
               "line_items": [
@@ -4036,7 +4036,7 @@
                   "sku": "search",
                   "quantity": 250,
                   "cost": {
-                    "amount": "1",
+                    "amount": 1,
                     "currency": "usd"
                   }
                 },
@@ -4044,7 +4044,7 @@
                   "sku": "search.extra_result",
                   "quantity": 0,
                   "cost": {
-                    "amount": "0",
+                    "amount": 0,
                     "currency": "usd"
                   }
                 },
@@ -4052,7 +4052,7 @@
                   "sku": "fetch",
                   "quantity": 9007199254740991,
                   "cost": {
-                    "amount": "0.25",
+                    "amount": 0.25,
                     "currency": "usd"
                   }
                 }
@@ -4103,7 +4103,7 @@
       "keyed": false,
       "status": 200,
       "headers": {},
-      "body": "{\"prices\":[1,\"x\",null,[],{\"sku\":5,\"unit\":null,\"unit_price\":\"0.004\",\"list_unit_price\":7,\"source\":\" \"},{\"sku\":\"fetch\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.001,\"currency\":5},\"list_unit_price\":{},\"source\":1}]}",
+      "body": "{\"prices\":[1,\"x\",null,[],{\"sku\":5,\"unit\":null,\"unit_price\":\"0.004\",\"list_unit_price\":7,\"source\":\" \"},{\"sku\":\"fetch\",\"unit\":\"page\",\"unit_price\":{\"amount\":\"0.001\",\"currency\":5},\"list_unit_price\":{\"amount\":true,\"currency\":\"usd\"},\"source\":1},{\"sku\":\"search\",\"unit\":\"search\",\"unit_price\":{\"amount\":1e-9,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":null}}]}",
       "expect": {
         "path": "/v1/billing",
         "error": null,
@@ -4114,7 +4114,7 @@
               "sku": "",
               "unit": "",
               "unit_price": {
-                "amount": "",
+                "amount": 0,
                 "currency": ""
               },
               "list_unit_price": null,
@@ -4124,11 +4124,24 @@
               "sku": "fetch",
               "unit": "page",
               "unit_price": {
-                "amount": "",
+                "amount": 0,
                 "currency": ""
               },
               "list_unit_price": {
-                "amount": "",
+                "amount": 0,
+                "currency": "usd"
+              },
+              "source": null
+            },
+            {
+              "sku": "search",
+              "unit": "search",
+              "unit_price": {
+                "amount": 1e-9,
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 0,
                 "currency": ""
               },
               "source": null
@@ -4169,18 +4182,18 @@
           "account": {
             "balance": {
               "available": {
-                "amount": "",
+                "amount": 0,
                 "currency": ""
               },
               "purchased": {
-                "amount": "",
+                "amount": 0,
                 "currency": ""
               }
             },
             "usage": {
               "since": "",
               "cost": {
-                "amount": "",
+                "amount": 0,
                 "currency": ""
               },
               "line_items": [
@@ -4188,7 +4201,7 @@
                   "sku": "search",
                   "quantity": 0,
                   "cost": {
-                    "amount": "0.004",
+                    "amount": 0,
                     "currency": "usd"
                   }
                 },
@@ -4196,7 +4209,7 @@
                   "sku": "",
                   "quantity": 0,
                   "cost": {
-                    "amount": "",
+                    "amount": 0,
                     "currency": ""
                   }
                 },
@@ -4204,7 +4217,7 @@
                   "sku": "",
                   "quantity": 0,
                   "cost": {
-                    "amount": "",
+                    "amount": 0,
                     "currency": ""
                   }
                 },
@@ -4212,7 +4225,7 @@
                   "sku": "",
                   "quantity": 0,
                   "cost": {
-                    "amount": "",
+                    "amount": 0,
                     "currency": ""
                   }
                 }
@@ -4239,18 +4252,18 @@
           "account": {
             "balance": {
               "available": {
-                "amount": "",
+                "amount": 0,
                 "currency": ""
               },
               "purchased": {
-                "amount": "",
+                "amount": 0,
                 "currency": ""
               }
             },
             "usage": {
               "since": "",
               "cost": {
-                "amount": "",
+                "amount": 0,
                 "currency": ""
               },
               "line_items": []
@@ -4258,6 +4271,36 @@
             "billing_url": "https://keenable.ai/console",
             "as_of": "2026-11-22T10:00:00Z"
           }
+        }
+      }
+    },
+    {
+      "name": "an amount too large for a double is 0, the rest is kept",
+      "keyed": false,
+      "status": 200,
+      "headers": {},
+      "body": "{\"prices\": [{\"sku\": \"huge\", \"unit\": \"page\", \"unit_price\": {\"amount\": 1e999, \"currency\": \"usd\"}, \"list_unit_price\": {\"amount\": [1], \"currency\": \"usd\"}}]}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [
+            {
+              "sku": "huge",
+              "unit": "page",
+              "unit_price": {
+                "amount": 0,
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 0,
+                "currency": "usd"
+              },
+              "source": null
+            }
+          ],
+          "account": null
         }
       }
     },

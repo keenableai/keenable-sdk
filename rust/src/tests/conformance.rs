@@ -54,6 +54,18 @@ fn reply_for(case: &Value) -> Reply {
     reply
 }
 
+/// Every number as an f64, so an amount of `-1.0` matches the fixture's `-1`.
+fn as_floats(v: &Value) -> Value {
+    match v {
+        Value::Number(n) => n.as_f64().map_or(Value::Null, Value::from),
+        Value::Array(items) => Value::Array(items.iter().map(as_floats).collect()),
+        Value::Object(m) => {
+            Value::Object(m.iter().map(|(k, v)| (k.clone(), as_floats(v))).collect())
+        }
+        other => other.clone(),
+    }
+}
+
 /// Fails with every failing case at once, so one run shows them all.
 fn report(section: &str, failures: Vec<String>) {
     assert!(
@@ -395,8 +407,9 @@ async fn billing() {
                 (Ok(b), None) => {
                     let mut got = serde_json::to_value(&b).unwrap();
                     let request_id = got.as_object_mut().unwrap().remove("request_id");
-                    (got != want["billing"] || request_id.as_ref() != Some(&want["request_id"]))
-                        .then(|| format!("got {got} with request id {request_id:?}"))
+                    (as_floats(&got) != as_floats(&want["billing"])
+                        || request_id.as_ref() != Some(&want["request_id"]))
+                    .then(|| format!("got {got} with request id {request_id:?}"))
                 }
                 (got, _) => Some(format!("{got:?}")),
             }

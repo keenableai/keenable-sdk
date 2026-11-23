@@ -75,6 +75,18 @@ def _count_or_none(value: Any) -> int | None:
     return int(value)
 
 
+def _amount(value: Any) -> float:
+    """A finite JSON number as a float, or 0 for anything else (never parsed
+    from a string)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0.0
+    try:
+        amount = float(value)
+    except OverflowError:
+        return 0.0
+    return amount if math.isfinite(amount) else 0.0
+
+
 def _str_or_empty(value: Any) -> str:
     """Return the string as sent, or "" for anything else (never ``str()``)."""
     return value if isinstance(value, str) else ""
@@ -682,10 +694,10 @@ def _dict_or_empty(value: Any) -> dict[str, Any]:
 class Money:
     """An amount of money, as the API sent it."""
 
-    amount: str
-    """Decimal amount in the currency's major unit, such as ``"0.004"``, kept
-    as a string so it is exact. Negative for an account in debt. Use
-    :class:`decimal.Decimal` to compute with it, never ``float``."""
+    amount: float
+    """Amount in the currency's major unit (US dollars), such as ``0.004``,
+    with up to nine decimal places. Negative for an account in debt. 0 when
+    the API sent no finite number."""
 
     currency: str
     """Lowercase ISO 4217 code, such as ``"usd"``."""
@@ -694,7 +706,7 @@ class Money:
     def _from_json(cls, value: Any) -> Money:
         data = _dict_or_empty(value)
         return cls(
-            amount=_str_or_empty(data.get("amount")),
+            amount=_amount(data.get("amount")),
             currency=_str_or_empty(data.get("currency")),
         )
 

@@ -214,8 +214,8 @@ Without one, `Prices` are the public list prices and `Account` is nil. With
 one, `Prices` are your organization's (with `ListUnitPrice` and `Source`,
 `"list"` or `"contract"`), and `Account` holds the balance, this month's usage
 per SKU, and `BillingURL`, the console page for adding funds. Amounts are
-decimal strings (`Money.Amount`, such as `"0.004"`, negative for an account in
-debt): parse them with `math/big`, not as `float64`. `opts` is a
+numbers in US dollars (`Money.Amount`, a `float64` such as `0.004`, up to nine
+decimal places, negative for an account in debt). `opts` is a
 `*RequestOptions` and may be nil.
 
 ## Tool calling
