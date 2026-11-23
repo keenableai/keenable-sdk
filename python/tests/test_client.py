@@ -155,6 +155,14 @@ def test_tool_schema_offers_objective() -> None:
     search = next(t for t in TOOLS if t["function"]["name"] == "keenable_search")
     properties = search["function"]["parameters"]["properties"]
     assert properties["objective"]["type"] == "string"
+    # Canonical agent-facing description, shared with the Keenable MCP tool and the docs tool definitions.
+    assert properties["objective"]["description"] == (
+        "Optional. Use for multi-step or ambiguous searches; omit for simple "
+        "lookups. In one to three plain sentences, say what the search is for, "
+        "what the query leaves out (who, where, when, which sources count) and "
+        "what earlier searches found. Don't restate the question or include "
+        "personal or confidential details. At most 1,000 characters."
+    )
 
 
 @pytest.mark.parametrize(
