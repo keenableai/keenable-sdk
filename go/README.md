@@ -77,7 +77,7 @@ results, err := client.Search(context.Background(), "post-training quantization 
 | `Objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price. Not sent when empty |
 | `Mode` | Search mode: `"pro"` does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops. Empty means `"pro"` |
 | `DisableCards` | `true` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). False, the default, is not sent. In the next release after `v0.1.1` |
-| `Moderation` | Filter unsafe results: `"moderate"` or `"strict"`. Empty, the default, is no moderation and is not sent. Works in `"pro"` and `"realtime"` modes, and not when the query is a URL or with `QueryTime` (the API answers 400) |
+| `Moderation` | Filter unsafe results: `"moderate"` or `"strict"`. Empty, the default, is no moderation and is not sent. Works in `"pro"` and `"realtime"` modes, and not when the query is a URL (the API answers 400) |
 
 ### Excluding domains
 

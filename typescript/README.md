@@ -56,7 +56,7 @@ const results = await keenable.search("post-training quantization results", {
 | `objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price. Not sent when empty |
 | `mode` | Search mode: `"pro"` (default) does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops |
 | `disableCards` | `true` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). Default `false`, which is not sent; a non-boolean throws `KeenableInvalidRequestError`. In the next release after 0.1.4 |
-| `moderation` | Filter unsafe results: `"moderate"` or `"strict"`. Unset, the default, is no moderation and is not sent. Works in `"pro"` and `"realtime"` modes, and not when the query is a URL or with `queryTime` (the API answers 400) |
+| `moderation` | Filter unsafe results: `"moderate"` or `"strict"`. Unset, the default, is no moderation and is not sent. Works in `"pro"` and `"realtime"` modes, and not when the query is a URL (the API answers 400) |
 | `signal` | An `AbortSignal` to cancel the request |
 
 ### Excluding domains
