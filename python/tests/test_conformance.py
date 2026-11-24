@@ -280,6 +280,10 @@ async def test_responses(kind: str, case: dict[str, Any], waits: list[float]) ->
             }
             for r in result.results
         ],
+        "warnings": [
+            {"code": w.code, "path": w.path, "message": w.message}
+            for w in result.warnings
+        ],
     }
     assert got == {key: want[key] for key in got}
 

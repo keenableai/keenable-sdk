@@ -403,6 +403,31 @@ def _result_body(result: SearchResult, max_snippet_chars: int | None) -> str:
 
 
 @dataclass
+class SearchWarning:
+    """Something in the request to change, such as a deprecated parameter.
+
+    The request was still served.
+    """
+
+    code: str
+    """What kind of warning, such as ``"deprecated_parameter"``."""
+
+    path: str
+    """JSON pointer to the request parameter, such as ``"/safety_mode"``."""
+
+    message: str
+    """What to change and by when."""
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> SearchWarning:
+        return cls(
+            code=_str_or_empty(data.get("code")),
+            path=_str_or_empty(data.get("path")),
+            message=_str_or_empty(data.get("message")),
+        )
+
+
+@dataclass
 class SearchResponse:
     """The result set for one :meth:`Keenable.search` call."""
 
@@ -412,6 +437,9 @@ class SearchResponse:
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
     request_id: str | None = None
     """The API's id for this request. Quote it when reporting a problem."""
+    warnings: list[SearchWarning] = field(default_factory=list)
+    """What the request should change, such as a deprecated parameter it
+    used. Empty when the API sent none."""
 
     def __iter__(self) -> Iterator[SearchResult]:
         return iter(self.results)
@@ -439,6 +467,9 @@ class SearchResponse:
             mode=_str_or_none(data.get("mode")),
             raw=data,
             request_id=_str_or_none(data.get("request_id")) or request_id,
+            warnings=[
+                SearchWarning._from_json(w) for w in _dicts(data.get("warnings")) or []
+            ],
         )
 
     def cited(

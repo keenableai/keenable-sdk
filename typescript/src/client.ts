@@ -32,6 +32,7 @@ import type {
   RequestOptions,
   SearchOptions,
   SearchResult,
+  SearchWarning,
   ToContextOptions,
 } from "./types.js";
 
@@ -335,6 +336,8 @@ export class SearchResponse {
   readonly results: SearchResult[];
   /** The API's id for this request. Quote it when reporting a problem. */
   readonly requestId?: string;
+  /** What the request should change, such as a deprecated parameter it used. Empty when the API sent none. */
+  readonly warnings: SearchWarning[];
   readonly raw: Record<string, unknown>;
 
   constructor(init: {
@@ -342,12 +345,14 @@ export class SearchResponse {
     mode?: string;
     results: SearchResult[];
     requestId?: string;
+    warnings?: SearchWarning[];
     raw: Record<string, unknown>;
   }) {
     this.query = init.query;
     this.mode = init.mode;
     this.results = init.results;
     this.requestId = init.requestId;
+    this.warnings = init.warnings ?? [];
     this.raw = init.raw;
   }
 
@@ -530,6 +535,10 @@ function toSearchResult(data: Record<string, unknown>): SearchResult {
     acquiredAt: timestamp(data.acquired_at),
     raw: data,
   };
+}
+
+function toSearchWarning(data: Record<string, unknown>): SearchWarning {
+  return { code: text(data.code), path: text(data.path), message: text(data.message) };
 }
 
 function toPage(data: Record<string, unknown>, url: string): Page {
@@ -866,6 +875,9 @@ export class Keenable {
         .filter(isRecord)
         .map(toSearchResult),
       requestId,
+      warnings: Array.isArray(data.warnings)
+        ? data.warnings.filter(isRecord).map(toSearchWarning)
+        : [],
       raw: data,
     });
   }

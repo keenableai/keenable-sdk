@@ -1446,6 +1446,7 @@ class Keenable(_BaseClient):
         query_time: str | None = None,
         objective: str | None = None,
         disable_cards: bool | None = None,
+        moderation: Literal["moderate", "strict"] | None = None,
         timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
@@ -1487,6 +1488,12 @@ class Keenable(_BaseClient):
                 prices, exchange rates or company facts (their URLs expire
                 after one day). Default ``False``. Works in ``"pro"`` and
                 ``"realtime"`` modes.
+            moderation: Filter unsafe results: ``"moderate"`` or ``"strict"``
+                removes results a safety model judges unsafe at that level,
+                so a search can return fewer results or none. ``None`` (the
+                default) is no moderation. Works in ``"pro"`` and
+                ``"realtime"`` modes, and not when the query is a URL or with
+                ``query_time``; the API rejects it there.
             timeout: Deadline in seconds (or an ``httpx.Timeout``) for each
                 attempt of this call. ``None`` keeps the client's timeout.
             max_retries: Retry budget for this call; ``0`` turns retries off.
@@ -1510,6 +1517,7 @@ class Keenable(_BaseClient):
             query_time=query_time,
             objective=objective,
             disable_cards=disable_cards,
+            moderation=moderation,
         )
         body, request_id = self._request(
             _SEARCH,
@@ -1733,6 +1741,7 @@ class AsyncKeenable(_BaseClient):
         query_time: str | None = None,
         objective: str | None = None,
         disable_cards: bool | None = None,
+        moderation: Literal["moderate", "strict"] | None = None,
         timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
@@ -1752,6 +1761,7 @@ class AsyncKeenable(_BaseClient):
             query_time=query_time,
             objective=objective,
             disable_cards=disable_cards,
+            moderation=moderation,
         )
         body, request_id = await self._request(
             _SEARCH,

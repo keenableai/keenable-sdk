@@ -56,6 +56,7 @@ const results = await keenable.search("post-training quantization results", {
 | `objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price. Not sent when empty |
 | `mode` | Search mode: `"pro"` (default) does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops |
 | `disableCards` | `true` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). Default `false`, which is not sent; a non-boolean throws `KeenableInvalidRequestError`. In the next release after 0.1.4 |
+| `moderation` | Filter unsafe results: `"moderate"` or `"strict"`. Unset, the default, is no moderation and is not sent. Works in `"pro"` and `"realtime"` modes, and not when the query is a URL (the API answers 400) |
 | `signal` | An `AbortSignal` to cancel the request |
 
 ### Excluding domains
@@ -216,9 +217,9 @@ whichever the model picked and returns text ready for the `tool` message. Both
 tools render the same numbered, citable block, so the model can cite a fetched
 page the way it cites a search result.
 
-The model may set `site`, `exclude_domains`, `published_after` and
-`disable_cards` on search. The other filters stay on `search()` for you to set
-yourself.
+The model may set `site`, `exclude_domains`, `published_after`, `objective`,
+`disable_cards` and `moderation` on search. The other filters stay on
+`search()` for you to set yourself.
 
 On fetch the model sets `urls` (1 to 20) and may set `max_chars` (per page),
 `prompt` (applied to every page) and `max_age_hours` (0 reads every page
@@ -414,7 +415,9 @@ await keenable.fetch(["https://example.com"], { timeoutMs: 60_000, headers: { "X
 
 Every call takes `signal`, `timeoutMs`, `maxRetries` and `headers`, which
 override the client's settings for that call. Results carry `requestId` (quote
-it when reporting a problem). Redirects are never followed, so the API key
+it when reporting a problem). A search response's `warnings` lists what the
+request should change, such as a deprecated parameter it used; it is empty
+otherwise. Redirects are never followed, so the API key
 cannot leak to another host.
 
 ## Configuration

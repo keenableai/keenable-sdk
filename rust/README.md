@@ -103,11 +103,15 @@ for result in &results {
 | `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
 | `objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price |
 | `disable_cards` | `true` returns ordinary web pages in place of Keenable's cards |
+| `moderation` | Filter unsafe results: `"moderate"` or `"strict"`. `None` is no moderation. Works in `"pro"` and `"realtime"` modes, and not when the query is a URL (the API answers 400) |
 | `request` | This call's timeout, retry budget and headers (`RequestOptions`) |
 
 An empty string is unset and is not sent. When the API rejects an
 `exclude_domains` entry, the error is an `Error::Api` whose `ApiError` has
 `param` (`exclude_domains`), `value` (the rejected entry) and `reason`.
+
+`SearchResponse::warnings` lists what the request should change, such as a
+deprecated parameter it used; it is empty otherwise.
 
 ## Ground a model in one line
 
@@ -201,8 +205,8 @@ let content = match client.run_tool_call(&call.name, &call.arguments).await {
 ```
 
 `arguments` is the JSON text the model sent, or a `serde_json::Value`. The
-model may set `site`, `exclude_domains`, `published_after`, `objective` and
-`disable_cards` on search.
+model may set `site`, `exclude_domains`, `published_after`, `objective`,
+`disable_cards` and `moderation` on search.
 
 On fetch the model sets `urls` (1 to 20) and may set `max_chars` (per page),
 `prompt` (applied to every page) and `max_age_hours` (0 reads every page

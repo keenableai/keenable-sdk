@@ -40,6 +40,7 @@ from .models import (
     Page,
     SearchResponse,
     SearchResult,
+    SearchWarning,
 )
 from .monitors import (
     NOT_GIVEN,
@@ -136,6 +137,7 @@ __all__ = [
     "SEARCH_TOOL",
     "SearchResponse",
     "SearchResult",
+    "SearchWarning",
     "TOOLS",
     "VersionList",
     "WebhookEvent",

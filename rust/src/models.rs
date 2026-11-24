@@ -51,9 +51,24 @@ pub struct SearchResponse {
     pub results: Vec<SearchResult>,
     /// The API's id for this request. Quote it when reporting a problem.
     pub request_id: Option<String>,
+    /// What the request should change, such as a deprecated parameter it
+    /// used; the request was still served. Empty when the API sent none.
+    pub warnings: Vec<SearchWarning>,
     /// The unmodified JSON body.
     #[serde(skip)]
     pub raw: Map<String, Value>,
+}
+
+/// Something in a search request to change, such as a deprecated parameter.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct SearchWarning {
+    /// The kind of warning, such as `deprecated_parameter`.
+    pub code: String,
+    /// A JSON pointer to the request parameter, such as `/safety_mode`.
+    pub path: String,
+    /// What to change and by when.
+    pub message: String,
 }
 
 /// What [`Client::fetch`](crate::Client::fetch) returns: `results[i]` is for
@@ -484,11 +499,24 @@ pub(crate) fn search_response_from_json(
             .collect(),
         _ => Vec::new(),
     };
+    let warnings = match data.get("warnings") {
+        Some(Value::Array(items)) => items
+            .iter()
+            .filter_map(|item| item.as_object())
+            .map(|obj| SearchWarning {
+                code: as_string(obj.get("code")),
+                path: as_string(obj.get("path")),
+                message: as_string(obj.get("message")),
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
     SearchResponse {
         query: non_blank(data.get("query")).unwrap_or_else(|| query.to_string()),
         mode: non_blank(data.get("mode")),
         results,
         request_id: non_blank(data.get("request_id")).or(header_request_id),
+        warnings,
         raw: data,
     }
 }
@@ -562,6 +590,7 @@ mod tests {
             mode: None,
             results,
             request_id: None,
+            warnings: Vec::new(),
             raw: Map::new(),
         }
     }

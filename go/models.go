@@ -56,6 +56,12 @@ type SearchOptions struct {
 	// company facts (their URLs expire after one day). It works in the "pro"
 	// and "realtime" modes. False, the API default, is not sent.
 	DisableCards bool
+	// Moderation filters unsafe results: "moderate" or "strict" removes
+	// results a safety model judges unsafe at that level, so a search can
+	// return fewer results or none. Empty means no moderation and is not
+	// sent. It works in the "pro" and "realtime" modes, and not when the
+	// query is a URL or with QueryTime; the API rejects it there.
+	Moderation string
 
 	// excludeDomainsJSON is a tool call's exclude_domains as the model sent
 	// it, which []string cannot always hold; the API judges it.
@@ -111,8 +117,23 @@ type SearchResponse struct {
 	Results []SearchResult `json:"results"`
 	// RequestID is the API's id for this request. Quote it when reporting a
 	// problem. Empty when the API sent none.
-	RequestID string         `json:"request_id,omitempty"`
-	Raw       map[string]any `json:"-"`
+	RequestID string `json:"request_id,omitempty"`
+	// Warnings name what the request should change, such as a deprecated
+	// parameter it used; the request was still served. Nil when the API
+	// sent none.
+	Warnings []SearchWarning `json:"warnings,omitempty"`
+	Raw      map[string]any  `json:"-"`
+}
+
+// SearchWarning is something in a search request to change, such as a
+// deprecated parameter.
+type SearchWarning struct {
+	// Code is the kind of warning, such as "deprecated_parameter".
+	Code string `json:"code"`
+	// Path is a JSON pointer to the request parameter, such as "/safety_mode".
+	Path string `json:"path"`
+	// Message says what to change and by when.
+	Message string `json:"message"`
 }
 
 // FetchResponse is what [Client.Fetch] returns: Results[i] is for urls[i].
@@ -390,11 +411,26 @@ func searchResponseFromJSON(data map[string]any, query string) *SearchResponse {
 			results = append(results, searchResultFromJSON(obj))
 		}
 	}
+	var warnings []SearchWarning
+	if raw, ok := data["warnings"].([]any); ok {
+		for _, item := range raw {
+			obj, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			warnings = append(warnings, SearchWarning{
+				Code:    asString(obj["code"]),
+				Path:    asString(obj["path"]),
+				Message: asString(obj["message"]),
+			})
+		}
+	}
 	return &SearchResponse{
-		Query:   q,
-		Mode:    nonEmptyString(data["mode"]),
-		Results: results,
-		Raw:     data,
+		Query:    q,
+		Mode:     nonEmptyString(data["mode"]),
+		Results:  results,
+		Warnings: warnings,
+		Raw:      data,
 	}
 }
 
