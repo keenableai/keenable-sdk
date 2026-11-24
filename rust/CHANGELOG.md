@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Added:** `SearchOptions::moderation`: `"moderate"` or `"strict"` filters unsafe results; `None`, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 when the query is a URL.
+- **Added:** `SearchResponse::warnings`, a `Vec<SearchWarning>` (`code`, `path`, `message`) naming what a request should change, such as a deprecated parameter. Empty when the API sends none.
+
 ## 0.3.0
 
 - **Changed (breaking):** `fetch` and `fetch_with` take any iterable of URLs and send one `POST /v1/fetch`. They return a `FetchResponse` whose `results[i]` is the `Page` for `urls[i]`, with `error` (a `FetchError`) set when that URL failed. `FetchOptions` has `max_chars`, `prompt`, `schema`, `links`, `images` and `max_age_hours`, sent only when set; the API checks their values. `live` and `Page::request_id` are gone (`FetchResponse::request_id` replaces it), and there is no separate `fetch_many`.

@@ -320,6 +320,7 @@ describe("success bodies", () => {
         published_at: x.publishedAt ?? null,
         acquired_at: x.acquiredAt ?? null,
       })),
+      warnings: r.warnings.map((w) => ({ code: w.code, path: w.path, message: w.message })),
     }).toEqual(want);
   });
 });

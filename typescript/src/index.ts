@@ -43,6 +43,7 @@ export type {
   RequestOptions,
   SearchOptions,
   SearchResult,
+  SearchWarning,
   ToContextOptions,
 } from "./types.js";
 export { Monitors } from "./monitors.js";

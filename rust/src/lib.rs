@@ -45,7 +45,7 @@ pub use error::{
 };
 pub use models::{
     AnswerError, ContextOptions, FetchError, FetchResponse, Page, PageImage, PageLink,
-    SearchResponse, SearchResult, Usage, DEFAULT_CONTEXT_MAX_CHARS,
+    SearchResponse, SearchResult, SearchWarning, Usage, DEFAULT_CONTEXT_MAX_CHARS,
     DEFAULT_CONTEXT_MAX_SNIPPET_CHARS,
 };
 pub use monitors::{

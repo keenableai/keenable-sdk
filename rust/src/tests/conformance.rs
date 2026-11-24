@@ -343,6 +343,12 @@ async fn responses() {
                         })
                         .collect();
                 got.insert("results".into(), results.into());
+                let warnings: Vec<Value> = r
+                    .warnings
+                    .iter()
+                    .map(|w| serde_json::json!({"code": w.code, "path": w.path, "message": w.message}))
+                    .collect();
+                got.insert("warnings".into(), warnings.into());
                 got.insert("error".into(), Value::Null);
                 (Value::Object(got) != *want).then(|| format!("got {r:?}"))
             }
@@ -472,6 +478,7 @@ async fn search_body() {
                 "snippet_max_length" => opts.snippet_max_length = v.as_u64().map(|n| n as u32),
                 "max_results" => opts.max_results = v.as_u64().map(|n| n as u32),
                 "disable_cards" => opts.disable_cards = v.as_bool().unwrap(),
+                "moderation" => opts.moderation = opt_string(v),
                 other => failures.push(format!("{}: no Rust mapping for {other}", name(case))),
             }
         }

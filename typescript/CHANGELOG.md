@@ -5,6 +5,9 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- **Added:** `moderation` option on `search()`: `"moderate"` or `"strict"` filters unsafe results; unset, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 when the query is a URL.
+- **Added:** `SearchResponse.warnings`, a list of `SearchWarning` (`code`, `path`, `message`) naming what a request should change, such as a deprecated parameter. Empty when the API sends none.
+
 ## 0.3.0
 
 - **Changed (breaking):** `fetch()` takes a list of URLs (a lone string is one URL) and sends one `POST /v1/fetch`. It returns a `FetchResponse` whose `results[i]` is the `Page` for `urls[i]`, with `error` (a `FetchError`) set when that URL failed. Options: `maxChars`, `prompt`, `schema`, `links`, `images`, `maxAgeHours`, sent only when set; the API checks their values. The `live` option and `Page.requestId` are gone (`FetchResponse.requestId` replaces it), and there is no separate `fetchMany`.
