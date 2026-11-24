@@ -39,3 +39,7 @@ Also update this repo's `examples/` and `docs/partners/` when the change affects
 - **Docs reference the SDKs.** Examples use the official SDKs, with the HTTP API (curl) shown next to them.
 - **The SDK covers what the docs describe.** If the docs describe an API feature the SDK can't use, that's an SDK gap: add it, or open an issue here.
 - **If it isn't in the public docs, it doesn't exist in the product.** Don't ship an undocumented option or method: document it, or remove it.
+
+## One kind of work per PR
+
+Don't mix a new option, method or field with bug fixes or unrelated cleanups. A bug you find while adding a feature goes in its own PR (or an issue), so each can be reviewed, merged and reverted on its own. A fix the feature itself needs stays with the feature; say so in the description.
