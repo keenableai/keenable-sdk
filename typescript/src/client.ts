@@ -492,7 +492,17 @@ export class Page {
   /** Why the answer for `schema` could not be made. */
   readonly answerError?: { code: string; message: string };
   readonly stale?: boolean;
-  readonly usage?: { sku: string; amount: number; credits: number; paid: boolean; credits_remaining?: number };
+  readonly usage?: {
+    sku: string;
+    amount: number;
+    credits: number;
+    paid: boolean;
+    credits_remaining?: number;
+    /** What this page cost, in US dollars. */
+    cost?: Money;
+    /** The organization's balance after this page, in US dollars. */
+    balance?: Money;
+  };
   /** Set when this URL failed; the other fields are then empty. */
   readonly error?: FetchError;
   readonly raw!: Record<string, unknown>;

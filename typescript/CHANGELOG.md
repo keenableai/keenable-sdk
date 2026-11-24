@@ -5,6 +5,7 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- **Added:** `Page.usage.cost` and `Page.usage.balance` (`Money`, US dollars): what the page cost and the organization's balance after it.
 - **Added:** `billing(options?)` reads `GET /v1/billing` (read-only, free) as a `Billing`: `prices` (`BillingPrice` with `sku`, `unit`, `unitPrice`, and with a key `listUnitPrice` and `source`) and `account` (`BillingAccount`, null without a key: `balance.available`/`purchased`, `usage.since`/`cost`/`lineItems`, `billingUrl`, `asOf`). Amounts are `Money` (`{ amount, currency }`) with `amount` a `number` in US dollars (up to nine decimal places, negative for an account in debt; 0 when the API sends no finite number, such as an older server's string). The key is optional and the path is `/v1/billing` either way (no `/public` variant). Takes the usual `RequestOptions`. New exported types `Billing`, `BillingPrice`, `BillingAccount`, `BillingUsageLine` and `Money`.
 - **Added:** `moderation` option on `search()`: `"moderate"` or `"strict"` filters unsafe results; unset, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 when the query is a URL.
 - **Added:** `SearchResponse.warnings`, a list of `SearchWarning` (`code`, `path`, `message`) naming what a request should change, such as a deprecated parameter. Empty when the API sends none.

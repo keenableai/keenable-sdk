@@ -181,6 +181,12 @@ type Usage struct {
 	Credits          float64  `json:"credits"`
 	Paid             bool     `json:"paid"`
 	CreditsRemaining *float64 `json:"credits_remaining,omitempty"`
+	// Cost is what this page cost, in US dollars. Nil when the API did not
+	// send it.
+	Cost *Money `json:"cost,omitempty"`
+	// Balance is the organization's balance after this page, in US dollars.
+	// Nil when the API did not send it.
+	Balance *Money `json:"balance,omitempty"`
 }
 
 // Page is one result of [Client.Fetch]: a page as markdown, or Error when

@@ -646,6 +646,8 @@ class Page:
 
     stale: bool | None = None
     usage: dict[str, Any] | None = None
+    """What this page cost, as the API sent it: ``sku``, ``credits``, and with a
+    key ``cost`` and ``balance``, each ``{"amount": <US dollars>, "currency": "usd"}``."""
     error: FetchError | None = None
     """Set when this URL failed; the other fields are then empty."""
 

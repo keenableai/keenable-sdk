@@ -151,6 +151,13 @@ pub struct Usage {
     pub paid: bool,
     /// The credits left after this page.
     pub credits_remaining: Option<f64>,
+    /// What this page cost, in US dollars. `None` when the API did not send it.
+    #[serde(default)]
+    pub cost: Option<Money>,
+    /// The organization's balance after this page, in US dollars. `None` when
+    /// the API did not send it.
+    #[serde(default)]
+    pub balance: Option<Money>,
 }
 
 /// One result of [`Client::fetch`](crate::Client::fetch): a page as markdown,
@@ -643,6 +650,40 @@ mod tests {
     }
 
     #[test]
+    fn reads_the_cost_and_balance_in_usage() {
+        let data = json!({
+            "url": "https://example.com", "title": "Example Domain", "content": "# Example Domain",
+            "usage": {
+                "sku": "fetch", "amount": 1, "credits": 1.0, "paid": true, "credits_remaining": 11998.0,
+                "cost": {"amount": 0.004, "currency": "usd"},
+                "balance": {"amount": 47.992, "currency": "usd"}
+            }
+        });
+        let page = page_from_json(data.as_object().unwrap().clone(), "https://example.com");
+        let usage = page.usage.expect("usage");
+        assert_eq!(
+            usage.cost,
+            Some(Money {
+                amount: 0.004,
+                currency: "usd".into()
+            })
+        );
+        assert_eq!(
+            usage.balance,
+            Some(Money {
+                amount: 47.992,
+                currency: "usd".into()
+            })
+        );
+
+        let older = json!({"url": "https://example.com", "usage": {"sku": "fetch", "amount": 1, "credits": 1.0, "paid": false}});
+        let usage = page_from_json(older.as_object().unwrap().clone(), "https://example.com")
+            .usage
+            .expect("usage");
+        assert_eq!((usage.cost, usage.balance), (None, None));
+    }
+
+    #[test]
     fn cuts_a_page_at_the_budget() {
         let page = page_from_json(
             json!({"title": "T", "content": "abcdefghij  "})
@@ -676,7 +717,7 @@ mod tests {
 // ---- Billing ----------------------------------------------------------------
 
 /// An amount of money, as the API sent it.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Money {
     /// The amount in the currency's major unit (US dollars), such as

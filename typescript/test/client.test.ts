@@ -358,6 +358,25 @@ describe("fetch", () => {
     expect(missing?.error).toMatchObject({ status: 404, code: "page_not_found" });
   });
 
+  it("parses the cost and balance in usage", async () => {
+    const billed = {
+      ...PAGE_BODY,
+      usage: {
+        sku: "fetch",
+        amount: 1,
+        credits: 1,
+        paid: true,
+        cost: { amount: 0.004, currency: "usd" },
+        balance: { amount: 47.992, currency: "usd" },
+      },
+    };
+    const { client } = mockClient(() => json({ results: [billed] }));
+    const [page] = (await client.fetch("https://example.com")).results;
+
+    expect(page?.usage?.cost).toEqual({ amount: 0.004, currency: "usd" });
+    expect(page?.usage?.balance).toEqual({ amount: 47.992, currency: "usd" });
+  });
+
   it("renders a citable block like search results do", async () => {
     const { client } = mockClient(() => json(FETCH_BODY));
     const [page] = (await client.fetch("https://example.com")).results;

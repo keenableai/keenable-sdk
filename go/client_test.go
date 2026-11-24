@@ -698,6 +698,32 @@ func TestFetchParsesAPageAndAFailedURL(t *testing.T) {
 	}
 }
 
+func TestFetchParsesTheCostAndBalanceInUsage(t *testing.T) {
+	billed := map[string]any{
+		"url": "https://example.com", "title": "Example Domain", "content": "# Example Domain",
+		"usage": map[string]any{
+			"sku": "fetch", "amount": 1, "credits": 1, "paid": true, "credits_remaining": 11998,
+			"cost":    map[string]any{"amount": 0.004, "currency": "usd"},
+			"balance": map[string]any{"amount": 47.992, "currency": "usd"},
+		},
+	}
+	c, _ := startKeyless(t, jsonHandler(http.StatusOK, map[string]any{"results": []any{billed, pageBody}}), nil)
+	resp, err := c.Fetch(context.Background(), []string{"https://example.com", "https://example.org"})
+	if err != nil || len(resp.Results) != 2 {
+		t.Fatalf("resp=%+v err=%v", resp, err)
+	}
+	usage := resp.Results[0].Usage
+	if usage == nil || usage.Cost == nil || usage.Balance == nil {
+		t.Fatalf("usage=%#v", usage)
+	}
+	if usage.Cost.Amount != 0.004 || usage.Cost.Currency != "usd" || usage.Balance.Amount != 47.992 || usage.Balance.Currency != "usd" {
+		t.Fatalf("cost=%#v balance=%#v", usage.Cost, usage.Balance)
+	}
+	if resp.Results[1].Usage != nil {
+		t.Fatalf("a page without usage got %#v", resp.Results[1].Usage)
+	}
+}
+
 func TestFetchAllowsPublicAddress(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
 	if _, err := c.Fetch(context.Background(), []string{"https://8.8.8.8/path"}); err != nil {
