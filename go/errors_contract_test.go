@@ -39,6 +39,7 @@ type contractCase struct {
 			Window   string `json:"window"`
 			Max      int    `json:"max"`
 			ResetsAt string `json:"resets_at"`
+			Endpoint string `json:"endpoint"`
 		} `json:"limit"`
 		MessageContains string   `json:"message_contains"`
 		Absent          []string `json:"absent"`
@@ -137,7 +138,7 @@ func TestBackendErrorBodiesParseIntoTypedErrors(t *testing.T) {
 					t.Fatalf("unexpected limit %+v", api.RateLimit)
 				}
 			} else {
-				got := keenable.RateLimitInfo{Scope: want.Limit.Scope, Window: want.Limit.Window, Max: want.Limit.Max, ResetsAt: want.Limit.ResetsAt}
+				got := keenable.RateLimitInfo{Scope: want.Limit.Scope, Window: want.Limit.Window, Max: want.Limit.Max, ResetsAt: want.Limit.ResetsAt, Endpoint: want.Limit.Endpoint}
 				if api.RateLimit == nil || *api.RateLimit != got {
 					t.Fatalf("limit %+v, want %+v", api.RateLimit, got)
 				}

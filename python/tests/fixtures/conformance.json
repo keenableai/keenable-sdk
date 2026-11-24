@@ -2595,7 +2595,98 @@
           "scope": "ip",
           "window": "hour",
           "max": 1000,
-          "resets_at": "2026-11-06T12:30:00.000Z"
+          "resets_at": "2026-11-06T12:30:00.000Z",
+          "endpoint": null
+        },
+        "message_contains": [],
+        "message_excludes": [],
+        "absent": []
+      }
+    },
+    {
+      "name": "a limit with an endpoint",
+      "status": 429,
+      "headers": {},
+      "body": "{\"error\":\"rate_limit_per_second\",\"message\":\"Too many requests\",\"limit\":{\"scope\":\"organization\",\"window\":\"second\",\"max\":10,\"endpoint\":\"fetch\"}}",
+      "expect": {
+        "kind": "rate_limit",
+        "detail": "Too many requests",
+        "code": null,
+        "type": "rate_limit_error",
+        "error": "rate_limit_per_second",
+        "fix": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": null,
+        "value": null,
+        "reason": null,
+        "limit": {
+          "scope": "organization",
+          "window": "second",
+          "max": 10,
+          "resets_at": null,
+          "endpoint": "fetch"
+        },
+        "message_contains": [],
+        "message_excludes": [],
+        "absent": []
+      }
+    },
+    {
+      "name": "limit endpoint not a string",
+      "status": 429,
+      "headers": {},
+      "body": "{\"limit\":{\"scope\":\"organization\",\"window\":\"second\",\"max\":10,\"endpoint\":1}}",
+      "expect": {
+        "kind": "rate_limit",
+        "detail": null,
+        "code": null,
+        "type": "rate_limit_error",
+        "error": null,
+        "fix": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": null,
+        "value": null,
+        "reason": null,
+        "limit": {
+          "scope": "organization",
+          "window": "second",
+          "max": 10,
+          "resets_at": null,
+          "endpoint": null
+        },
+        "message_contains": [],
+        "message_excludes": [],
+        "absent": []
+      }
+    },
+    {
+      "name": "limit endpoint blank",
+      "status": 429,
+      "headers": {},
+      "body": "{\"limit\":{\"endpoint\":\"  \"}}",
+      "expect": {
+        "kind": "rate_limit",
+        "detail": null,
+        "code": null,
+        "type": "rate_limit_error",
+        "error": null,
+        "fix": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": null,
+        "value": null,
+        "reason": null,
+        "limit": {
+          "scope": null,
+          "window": null,
+          "max": null,
+          "resets_at": null,
+          "endpoint": null
         },
         "message_contains": [],
         "message_excludes": [],
@@ -2624,7 +2715,8 @@
           "scope": null,
           "window": null,
           "max": null,
-          "resets_at": null
+          "resets_at": null,
+          "endpoint": null
         },
         "message_contains": [],
         "message_excludes": [],
@@ -2653,7 +2745,8 @@
           "scope": null,
           "window": null,
           "max": null,
-          "resets_at": null
+          "resets_at": null,
+          "endpoint": null
         },
         "message_contains": [],
         "message_excludes": [],
@@ -2682,7 +2775,8 @@
           "scope": null,
           "window": null,
           "max": null,
-          "resets_at": null
+          "resets_at": null,
+          "endpoint": null
         },
         "message_contains": [],
         "message_excludes": [],
@@ -2711,7 +2805,8 @@
           "scope": null,
           "window": null,
           "max": null,
-          "resets_at": null
+          "resets_at": null,
+          "endpoint": null
         },
         "message_contains": [],
         "message_excludes": [],
@@ -2740,7 +2835,8 @@
           "scope": null,
           "window": null,
           "max": null,
-          "resets_at": null
+          "resets_at": null,
+          "endpoint": null
         },
         "message_contains": [],
         "message_excludes": [],

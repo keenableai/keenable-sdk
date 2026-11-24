@@ -282,6 +282,9 @@ pub struct RateLimitInfo {
     pub max: Option<u64>,
     /// An ISO 8601 time when the window opens again.
     pub resets_at: Option<String>,
+    /// Which endpoint limit was hit ("search" or "fetch") when the
+    /// organization has separate limits; `None` for the shared limit.
+    pub endpoint: Option<String>,
 }
 
 /// HTTP 429: the rate limit was exceeded.

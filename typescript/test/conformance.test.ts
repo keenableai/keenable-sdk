@@ -167,6 +167,7 @@ function errorFields(error: KeenableAPIError): Record<string, Json> {
         window: error.limit.window ?? null,
         max: error.limit.max ?? null,
         resets_at: error.limit.resetsAt ?? null,
+        endpoint: error.limit.endpoint ?? null,
       }
     : null;
   return {

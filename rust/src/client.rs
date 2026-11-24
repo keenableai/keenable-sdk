@@ -818,6 +818,7 @@ fn build_api_error(
             window: non_blank(l.get("window")),
             max: safe_count(l.get("max")),
             resets_at: non_blank(l.get("resets_at")),
+            endpoint: non_blank(l.get("endpoint")),
         });
     }
     if status == 400 && field("error").as_deref() == Some("invalid_filter") {

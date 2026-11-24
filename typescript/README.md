@@ -359,7 +359,7 @@ try {
 | `requestId` | Quote it when reporting a problem |
 | `param` | The parameter a 400 is about |
 | `value`, `reason` | What a 400 `invalid_filter` rejected (usually the entry; for a size cap the count or a truncated entry), and why |
-| `limit` | On a 429: `{ scope, window, max, resetsAt }` |
+| `limit` | On a 429: `{ scope, window, max, resetsAt, endpoint }`; `endpoint` is which endpoint limit was hit (`search` or `fetch`) when the organization has separate limits; absent for the shared limit |
 
 When the API sends `fix`, the error message ends with it, then with
 `(code: <code>)` and `(request_id: <id>)`, as in the Go and Python SDKs. A 402

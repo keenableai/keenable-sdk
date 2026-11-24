@@ -7,6 +7,7 @@ All notable changes to the `keenable` npm package. Versions follow
 
 - **Added:** `moderation` option on `search()`: `"moderate"` or `"strict"` filters unsafe results; unset, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 when the query is a URL.
 - **Added:** `SearchResponse.warnings`, a list of `SearchWarning` (`code`, `path`, `message`) naming what a request should change, such as a deprecated parameter. Empty when the API sends none.
+- **Added:** `RateLimitInfo.endpoint`: on a 429 `rate_limit_per_second`, which endpoint limit was hit (`"search"` or `"fetch"`) when the organization has separate search and fetch limits; `undefined` for the shared limit.
 
 ## 0.3.0
 

@@ -1235,6 +1235,7 @@ function rateLimitInfo(value: unknown): RateLimitInfo | undefined {
     window: nonEmpty(value.window),
     max: Number.isSafeInteger(max) && (max as number) >= 0 ? (max as number) : undefined,
     resetsAt: nonEmpty(value.resets_at),
+    endpoint: nonEmpty(value.endpoint),
   };
 }
 

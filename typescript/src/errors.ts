@@ -33,6 +33,11 @@ export interface RateLimitInfo {
   max?: number;
   /** ISO 8601 time when the window opens again. */
   resetsAt?: string;
+  /**
+   * Which endpoint limit was hit (`"search"` or `"fetch"`) when the
+   * organization has separate limits; absent for the shared limit.
+   */
+  endpoint?: string;
 }
 
 /**

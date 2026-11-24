@@ -433,7 +433,7 @@ case errors.As(err, &api):
 | `RequestID` | Quote it when reporting a problem |
 | `Param` | The parameter a 400 is about |
 | `Value`, `Reason` | What a 400 `invalid_filter` rejected (usually the entry; for a size cap the count or a truncated entry), and why |
-| `RateLimit` | On a 429: `Scope`, `Window`, `Max`, `ResetsAt` |
+| `RateLimit` | On a 429: `Scope`, `Window`, `Max`, `ResetsAt`, and `Endpoint`: which endpoint limit was hit (`search` or `fetch`) when the organization has separate limits; empty for the shared limit |
 | `Body` | The API's error message (its `message`, `error` or `detail` string), or the text of a body that is not JSON |
 
 When the API sends `Fix`, the error message ends with it in place of the

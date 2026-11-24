@@ -33,7 +33,7 @@ interface Case {
     request_id: string | null;
     param: string | null;
     fix: string | null;
-    limit: { scope: string; window: string; max: number; resets_at: string } | null;
+    limit: { scope: string; window: string; max: number; resets_at: string; endpoint?: string } | null;
     message_contains: string;
     absent: string[];
   };
@@ -112,6 +112,7 @@ describe("backend error bodies", () => {
         window: want.limit.window,
         max: want.limit.max,
         resetsAt: want.limit.resets_at,
+        endpoint: want.limit.endpoint,
       });
     }
   });

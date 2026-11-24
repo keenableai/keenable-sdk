@@ -79,6 +79,7 @@ type conformance struct {
 				Window   *string `json:"window"`
 				Max      *int    `json:"max"`
 				ResetsAt *string `json:"resets_at"`
+				Endpoint *string `json:"endpoint"`
 			} `json:"limit"`
 			MessageContains []string `json:"message_contains"`
 			MessageExcludes []string `json:"message_excludes"`
@@ -386,7 +387,7 @@ func TestConformanceErrors(t *testing.T) {
 				if want.Limit.Max != nil {
 					max = *want.Limit.Max
 				}
-				wantLimit := keenable.RateLimitInfo{Scope: deref(want.Limit.Scope), Window: deref(want.Limit.Window), Max: max, ResetsAt: deref(want.Limit.ResetsAt)}
+				wantLimit := keenable.RateLimitInfo{Scope: deref(want.Limit.Scope), Window: deref(want.Limit.Window), Max: max, ResetsAt: deref(want.Limit.ResetsAt), Endpoint: deref(want.Limit.Endpoint)}
 				if api.RateLimit == nil || *api.RateLimit != wantLimit {
 					t.Errorf("limit %+v, want %+v", api.RateLimit, wantLimit)
 				}

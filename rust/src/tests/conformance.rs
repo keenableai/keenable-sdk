@@ -281,6 +281,7 @@ async fn errors() {
                 window: opt_str(&l["window"]),
                 max: l.get("max").and_then(Value::as_u64),
                 resets_at: opt_str(&l["resets_at"]),
+                endpoint: opt_str(&l["endpoint"]),
             });
             if api.limit != want_limit {
                 problems.push(format!("limit {:?}, want {want_limit:?}", api.limit));
