@@ -464,10 +464,10 @@ impl Client {
         })
     }
 
-    /// The prices and, with an API key, the organization's balance and usage,
-    /// from `GET /v1/billing`. Read-only and free. Without a key, `prices` are
-    /// the public list prices and `account` is `None`. Amounts are numbers
-    /// in US dollars.
+    /// The prices and, with an API key, the organization's balance, from
+    /// `GET /v1/billing`. Read-only and free. Without a key, `prices` are the
+    /// public list prices and `account` is `None`. Amounts are numbers in US
+    /// dollars.
     pub async fn billing(&self) -> Result<Billing> {
         self.billing_with(&RequestOptions::default()).await
     }

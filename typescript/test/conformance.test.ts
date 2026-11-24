@@ -364,16 +364,6 @@ describe("billing", () => {
       account: b.account && {
         balance: {
           available: money(b.account.balance.available),
-          purchased: money(b.account.balance.purchased),
-        },
-        usage: {
-          since: b.account.usage.since,
-          cost: money(b.account.usage.cost),
-          line_items: b.account.usage.lineItems.map((l) => ({
-            sku: l.sku,
-            quantity: l.quantity,
-            cost: money(l.cost),
-          })),
         },
         billing_url: b.account.billingUrl,
         as_of: b.account.asOf,

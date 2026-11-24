@@ -437,8 +437,8 @@ func retryDelay(err error, retry int, jitter float64) (time.Duration, bool) {
 	return 0, false
 }
 
-// Billing returns the prices and, with an API key, the organization's balance
-// and usage, from GET /v1/billing. It is read-only and free. Without a key,
+// Billing returns the prices and, with an API key, the organization's balance,
+// from GET /v1/billing. It is read-only and free. Without a key,
 // Prices are the public list prices and Account is nil. The path is the same
 // with and without a key: billing has no /public variant. opts may be nil.
 func (c *Client) Billing(ctx context.Context, opts *RequestOptions) (*Billing, error) {

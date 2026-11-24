@@ -162,16 +162,15 @@ for price in billing.prices:
     print(price.sku, price.unit_price.amount, price.unit_price.currency)
 if billing.account:  # None without an API key
     print("available:", billing.account.balance.available.amount)
-    print("spent since", billing.account.usage.since, billing.account.usage.cost.amount)
 ```
 
 `billing()` reads `GET /v1/billing`: read-only and free, with or without a key.
 Without one, `prices` are the public list prices and `account` is `None`. With
 one, `prices` are your organization's (with `list_unit_price` and `source`,
-`"list"` or `"contract"`), and `account` holds the balance, this month's usage
-per SKU, and `billing_url`, the console page for adding funds. Amounts are
-numbers in US dollars (`Money.amount`, a `float` such as `0.004`, up to nine
-decimal places, negative for an account in debt).
+`"list"` or `"contract"`), and `account` holds the available balance and
+`billing_url`, the console page for adding funds. Amounts are numbers in US
+dollars (`Money.amount`, a `float` such as `0.004`, up to nine decimal places,
+negative for an account in debt).
 
 ## Tool calling
 

@@ -96,7 +96,7 @@ results = keenable.search(
 ```
 
 Each SDK exposes the same surface: search, fetch, billing (prices, and with a
-key your balance and usage), a `to_context()` /
+key your balance), a `to_context()` /
 `toContext()` / `ToContext()` / `to_context()` renderer for prompts, and OpenAI-compatible tool
 definitions for tool calling. See the per-language READMEs for the full
 reference.

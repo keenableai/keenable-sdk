@@ -1584,7 +1584,7 @@ class Keenable(_BaseClient):
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
     ) -> Billing:
-        """Prices, and with an API key the balance and usage, from ``GET /v1/billing``.
+        """Prices, and with an API key the balance, from ``GET /v1/billing``.
 
         Read-only and free. Without a key, ``prices`` are the public list
         prices and ``account`` is None. Amounts are numbers in US dollars.

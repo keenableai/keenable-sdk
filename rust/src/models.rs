@@ -710,47 +710,17 @@ pub struct BillingPrice {
 pub struct BillingBalance {
     /// The unused free allowance for this month plus the purchased balance.
     pub available: Money,
-    /// The part of the balance that was bought, spent after the allowance.
-    pub purchased: Money,
 }
 
-/// The use of one SKU since the start of the period.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[non_exhaustive]
-pub struct BillingUsageLine {
-    /// `search`, `search.extra_result` or `fetch`.
-    pub sku: String,
-    /// The units used since the start of the period.
-    pub quantity: u64,
-    /// What those units cost.
-    pub cost: Money,
-}
-
-/// The spend since the start of the current monthly period.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[non_exhaustive]
-pub struct BillingUsage {
-    /// The start of the period (ISO 8601), when the free allowance last
-    /// renewed.
-    pub since: String,
-    /// The total spend since `since`.
-    pub cost: Money,
-    /// The spend per SKU.
-    pub line_items: Vec<BillingUsageLine>,
-}
-
-/// The organization's balance and usage.
+/// The organization's balance.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct BillingAccount {
     /// What the organization can still spend.
     pub balance: BillingBalance,
-    /// The spend this period.
-    pub usage: BillingUsage,
     /// The console page where a person can add funds.
     pub billing_url: String,
-    /// When this was read (ISO 8601). Usage can lag recent calls by about a
-    /// minute.
+    /// When this was read (ISO 8601).
     pub as_of: String,
 }
 
@@ -762,7 +732,7 @@ pub struct Billing {
     /// The public list prices without an API key. With one, your
     /// organization's prices; a SKU without a price on your plan is left out.
     pub prices: Vec<BillingPrice>,
-    /// The balance and usage. `None` without an API key.
+    /// The balance. `None` without an API key.
     pub account: Option<BillingAccount>,
     /// The API's id for this request. Quote it when reporting a problem.
     pub request_id: Option<String>,
@@ -815,23 +785,9 @@ pub(crate) fn billing_from_json(
         .collect();
     let account = data.get("account").and_then(Value::as_object).map(|a| {
         let balance = object_or_empty(a.get("balance"));
-        let usage = object_or_empty(a.get("usage"));
         BillingAccount {
             balance: BillingBalance {
                 available: money(balance.get("available")),
-                purchased: money(balance.get("purchased")),
-            },
-            usage: BillingUsage {
-                since: as_string(usage.get("since")),
-                cost: money(usage.get("cost")),
-                line_items: objects(usage.get("line_items"))
-                    .into_iter()
-                    .map(|line| BillingUsageLine {
-                        sku: as_string(line.get("sku")),
-                        quantity: safe_count(line.get("quantity")).unwrap_or(0),
-                        cost: money(line.get("cost")),
-                    })
-                    .collect(),
             },
             billing_url: as_string(a.get("billing_url")),
             as_of: as_string(a.get("as_of")),

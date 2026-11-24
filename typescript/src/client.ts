@@ -592,18 +592,8 @@ function toBillingPrice(data: Record<string, unknown>): BillingPrice {
 
 function toBillingAccount(data: Record<string, unknown>): BillingAccount {
   const balance = isRecord(data.balance) ? data.balance : {};
-  const usage = isRecord(data.usage) ? data.usage : {};
   return {
-    balance: { available: toMoney(balance.available), purchased: toMoney(balance.purchased) },
-    usage: {
-      since: text(usage.since),
-      cost: toMoney(usage.cost),
-      lineItems: records(usage.line_items).map((line) => ({
-        sku: text(line.sku),
-        quantity: count(line.quantity) ?? 0,
-        cost: toMoney(line.cost),
-      })),
-    },
+    balance: { available: toMoney(balance.available) },
     billingUrl: text(data.billing_url),
     asOf: text(data.as_of),
   };
@@ -922,7 +912,7 @@ export class Keenable {
   }
 
   /**
-   * Prices, and with an API key the balance and usage, from `GET /v1/billing`.
+   * Prices, and with an API key the balance, from `GET /v1/billing`.
    *
    * Read-only and free. Without a key, `prices` are the public list prices and
    * `account` is null. Amounts are numbers in US dollars.

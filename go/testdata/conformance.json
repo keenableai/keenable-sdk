@@ -4088,7 +4088,7 @@
       "headers": {
         "X-Request-Id": " req-1 "
       },
-      "body": "{\"object\":\"billing\",\"prices\":[{\"sku\":\"search.pro\",\"unit\":\"search\",\"unit_price\":{\"amount\":0.003,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0.004,\"currency\":\"usd\"},\"source\":\"contract\"},{\"sku\":\"fetch\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.001,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0.001,\"currency\":\"usd\"},\"source\":\"list\"}],\"account\":{\"balance\":{\"available\":{\"amount\":-1,\"currency\":\"usd\"},\"purchased\":{\"amount\":12.345678901,\"currency\":\"usd\"}},\"usage\":{\"since\":\"2026-11-01T00:00:00.000Z\",\"cost\":{\"amount\":1.25,\"currency\":\"usd\"},\"line_items\":[{\"sku\":\"search\",\"quantity\":250,\"cost\":{\"amount\":1,\"currency\":\"usd\"}},{\"sku\":\"search.extra_result\",\"quantity\":0,\"cost\":{\"amount\":0,\"currency\":\"usd\"}},{\"sku\":\"fetch\",\"quantity\":9007199254740991,\"cost\":{\"amount\":0.25,\"currency\":\"usd\"}}]},\"billing_url\":\"https://keenable.ai/console?tab=billing\",\"as_of\":\"2026-11-22T10:00:00.000Z\"}}",
+      "body": "{\"object\":\"billing\",\"prices\":[{\"sku\":\"search.pro\",\"unit\":\"search\",\"unit_price\":{\"amount\":0.003,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0.004,\"currency\":\"usd\"},\"source\":\"contract\"},{\"sku\":\"fetch\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.001,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0.001,\"currency\":\"usd\"},\"source\":\"list\"}],\"account\":{\"balance\":{\"available\":{\"amount\":-12.345678901,\"currency\":\"usd\"}},\"billing_url\":\"https://keenable.ai/console?tab=billing\",\"as_of\":\"2026-11-22T10:00:00.000Z\"}}",
       "expect": {
         "path": "/v1/billing",
         "error": null,
@@ -4125,46 +4125,9 @@
           "account": {
             "balance": {
               "available": {
-                "amount": -1,
-                "currency": "usd"
-              },
-              "purchased": {
-                "amount": 12.345678901,
+                "amount": -12.345678901,
                 "currency": "usd"
               }
-            },
-            "usage": {
-              "since": "2026-11-01T00:00:00.000Z",
-              "cost": {
-                "amount": 1.25,
-                "currency": "usd"
-              },
-              "line_items": [
-                {
-                  "sku": "search",
-                  "quantity": 250,
-                  "cost": {
-                    "amount": 1,
-                    "currency": "usd"
-                  }
-                },
-                {
-                  "sku": "search.extra_result",
-                  "quantity": 0,
-                  "cost": {
-                    "amount": 0,
-                    "currency": "usd"
-                  }
-                },
-                {
-                  "sku": "fetch",
-                  "quantity": 9007199254740991,
-                  "cost": {
-                    "amount": 0.25,
-                    "currency": "usd"
-                  }
-                }
-              ]
             },
             "billing_url": "https://keenable.ai/console?tab=billing",
             "as_of": "2026-11-22T10:00:00.000Z"
@@ -4280,7 +4243,7 @@
       "keyed": true,
       "status": 200,
       "headers": {},
-      "body": "{\"prices\":[],\"account\":{\"balance\":[],\"usage\":{\"since\":1714564800,\"cost\":null,\"line_items\":[{\"sku\":\"search\",\"quantity\":1.5,\"cost\":{\"amount\":\"0.004\",\"currency\":\"usd\"}},{\"quantity\":-1,\"cost\":\"1\"},{\"quantity\":\"3\"},{\"quantity\":true},2,null]},\"billing_url\":5,\"as_of\":null}}",
+      "body": "{\"prices\":[],\"account\":{\"balance\":{\"available\":{\"amount\":\"0.004\",\"currency\":5}},\"billing_url\":5,\"as_of\":null}}",
       "expect": {
         "path": "/v1/billing",
         "error": null,
@@ -4292,52 +4255,7 @@
               "available": {
                 "amount": 0,
                 "currency": ""
-              },
-              "purchased": {
-                "amount": 0,
-                "currency": ""
               }
-            },
-            "usage": {
-              "since": "",
-              "cost": {
-                "amount": 0,
-                "currency": ""
-              },
-              "line_items": [
-                {
-                  "sku": "search",
-                  "quantity": 0,
-                  "cost": {
-                    "amount": 0,
-                    "currency": "usd"
-                  }
-                },
-                {
-                  "sku": "",
-                  "quantity": 0,
-                  "cost": {
-                    "amount": 0,
-                    "currency": ""
-                  }
-                },
-                {
-                  "sku": "",
-                  "quantity": 0,
-                  "cost": {
-                    "amount": 0,
-                    "currency": ""
-                  }
-                },
-                {
-                  "sku": "",
-                  "quantity": 0,
-                  "cost": {
-                    "amount": 0,
-                    "currency": ""
-                  }
-                }
-              ]
             },
             "billing_url": "",
             "as_of": ""
@@ -4346,11 +4264,11 @@
       }
     },
     {
-      "name": "an account with no balance or usage",
+      "name": "an account with no balance",
       "keyed": true,
       "status": 200,
       "headers": {},
-      "body": "{\"account\":{\"balance\":null,\"usage\":{\"line_items\":{\"sku\":\"search\"}},\"billing_url\":\"https://keenable.ai/console\",\"as_of\":\"2026-11-22T10:00:00Z\"}}",
+      "body": "{\"account\":{\"balance\":null,\"billing_url\":\"https://keenable.ai/console\",\"as_of\":\"2026-11-22T10:00:00Z\"}}",
       "expect": {
         "path": "/v1/billing",
         "error": null,
@@ -4362,19 +4280,57 @@
               "available": {
                 "amount": 0,
                 "currency": ""
-              },
-              "purchased": {
+              }
+            },
+            "billing_url": "https://keenable.ai/console",
+            "as_of": "2026-11-22T10:00:00Z"
+          }
+        }
+      }
+    },
+    {
+      "name": "a balance that is a list and the fields an older server sent",
+      "keyed": true,
+      "status": 200,
+      "headers": {},
+      "body": "{\"account\":{\"balance\":[],\"usage\":{\"since\":\"2026-11-01T00:00:00.000Z\",\"cost\":{\"amount\":1.25,\"currency\":\"usd\"},\"line_items\":[{\"sku\":\"search\",\"quantity\":250,\"cost\":{\"amount\":1,\"currency\":\"usd\"}}]},\"billing_url\":\"https://keenable.ai/console\",\"as_of\":\"2026-11-22T10:00:00Z\"}}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [],
+          "account": {
+            "balance": {
+              "available": {
                 "amount": 0,
                 "currency": ""
               }
             },
-            "usage": {
-              "since": "",
-              "cost": {
-                "amount": 0,
-                "currency": ""
-              },
-              "line_items": []
+            "billing_url": "https://keenable.ai/console",
+            "as_of": "2026-11-22T10:00:00Z"
+          }
+        }
+      }
+    },
+    {
+      "name": "an older server's purchased balance is ignored",
+      "keyed": true,
+      "status": 200,
+      "headers": {},
+      "body": "{\"account\":{\"balance\":{\"available\":{\"amount\":5.5,\"currency\":\"usd\"},\"purchased\":{\"amount\":3,\"currency\":\"usd\"}},\"billing_url\":\"https://keenable.ai/console\",\"as_of\":\"2026-11-22T10:00:00Z\"}}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [],
+          "account": {
+            "balance": {
+              "available": {
+                "amount": 5.5,
+                "currency": "usd"
+              }
             },
             "billing_url": "https://keenable.ai/console",
             "as_of": "2026-11-22T10:00:00Z"
