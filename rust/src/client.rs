@@ -26,6 +26,10 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 /// is `None`.
 pub const DEFAULT_MAX_RETRIES: u32 = 2;
 
+/// The endpoints with a `/public` keyless variant. `endpoint_url` adds the
+/// suffix to no other: billing has one path with and without a key.
+const PUBLIC_VARIANT: [&str; 2] = ["search", "fetch"];
+
 const DEFAULT_CLIENT_SOURCE: &str = "Keenable SDK";
 /// The longest per-attempt deadline: about 24.8 days, the longest a
 /// JavaScript timer can wait. A longer timeout is treated as it, so every SDK
@@ -475,16 +479,17 @@ impl Client {
     /// [`Client::billing`] with per-call settings.
     pub async fn billing_with(&self, opts: &RequestOptions) -> Result<Billing> {
         // The same path with and without a key: billing has no /public variant.
-        let url = format!("{}/v1/billing", self.inner.base_url);
+        let url = self.endpoint_url("billing", &[]);
         let (data, id) = self
             .send_url(reqwest::Method::GET, url, None, &HashMap::new(), opts, true)
             .await?;
         Ok(billing_from_json(data, id))
     }
 
-    fn endpoint_url(&self, endpoint: &str, query: &[(String, String)]) -> String {
+    /// The endpoint URL: its `/public` variant when keyless and it has one.
+    pub(crate) fn endpoint_url(&self, endpoint: &str, query: &[(String, String)]) -> String {
         let mut url = format!("{}/v1/{endpoint}", self.inner.base_url);
-        if self.is_keyless() {
+        if self.is_keyless() && PUBLIC_VARIANT.contains(&endpoint) {
             url.push_str("/public");
         }
         if !query.is_empty() {

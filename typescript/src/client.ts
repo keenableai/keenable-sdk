@@ -61,7 +61,14 @@ const MAX_RETRY_AFTER_WAIT_SECONDS = 60;
 // Endpoints are named once; the keyless variant of each is the same path with a
 // `/public` suffix, so a new endpoint is one name rather than two constants.
 // Billing is the one endpoint with a single path for both: the key is optional.
+// Every endpoint states here whether it has a /public variant, so url() cannot
+// build a keyless path that does not exist.
 type Endpoint = "search" | "fetch" | "billing";
+const HAS_PUBLIC_VARIANT: Readonly<Record<Endpoint, boolean>> = {
+  search: true,
+  fetch: true,
+  billing: false,
+};
 
 /** Hosts that must never be fetched, whatever the backend would do. */
 const BLOCKED_HOSTS = new Set(["localhost", "metadata.google.internal"]);
@@ -808,9 +815,13 @@ export class Keenable {
     return headers;
   }
 
-  /** The endpoint URL, keyless or keyed depending on the configured key. */
+  /**
+   * The endpoint URL: its /public variant when keyless and it has one, else
+   * the keyed path.
+   */
   private url(endpoint: Endpoint): string {
-    return `${this.baseUrl}/v1/${endpoint}${this.keyless ? "/public" : ""}`;
+    const suffix = this.keyless && HAS_PUBLIC_VARIANT[endpoint] ? "/public" : "";
+    return `${this.baseUrl}/v1/${endpoint}${suffix}`;
   }
 
   /**
@@ -919,12 +930,7 @@ export class Keenable {
    */
   async billing(options: RequestOptions = {}): Promise<Billing> {
     // The same path with and without a key: billing has no /public variant.
-    const { data, requestId } = await this.request(
-      "billing",
-      { method: "GET" },
-      options,
-      `${this.baseUrl}/v1/billing`,
-    );
+    const { data, requestId } = await this.request("billing", { method: "GET" }, options);
     return {
       prices: records(data.prices).map(toBillingPrice),
       account: isRecord(data.account) ? toBillingAccount(data.account) : null,

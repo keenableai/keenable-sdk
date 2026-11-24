@@ -623,6 +623,24 @@ describe("runToolCall", () => {
 });
 
 describe("billing", () => {
+  it("never builds a /public path for billing, keyless or keyed", () => {
+    const keyless = new Keenable();
+    const keyed = new Keenable({ apiKey: "sk-test" });
+    const url = (c: Keenable, e: string): string => (c as unknown as { url(e: string): string }).url(e);
+    expect(new URL(url(keyless, "billing")).pathname).toBe("/v1/billing");
+    expect(new URL(url(keyed, "billing")).pathname).toBe("/v1/billing");
+    expect(new URL(url(keyless, "search")).pathname).toBe("/v1/search/public");
+    expect(new URL(url(keyless, "fetch")).pathname).toBe("/v1/fetch/public");
+    expect(new URL(url(keyed, "search")).pathname).toBe("/v1/search");
+  });
+
+  it("keyless, it GETs /v1/billing without a key", async () => {
+    const { client, seen } = mockClient(() => json({ prices: [], account: null }));
+    await client.billing();
+    expect(seen.map((s) => new URL(s.url).pathname)).toEqual(["/v1/billing"]);
+    expect(new Headers(seen[0]?.init.headers).get("X-API-Key")).toBeNull();
+  });
+
   it("retries like any GET and sends the call's headers with the key", async () => {
     let n = 0;
     const { client, seen } = mockClient(

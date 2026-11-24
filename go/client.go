@@ -448,7 +448,7 @@ func (c *Client) Billing(ctx context.Context, opts *RequestOptions) (*Billing, e
 	if err := requireContext(ctx); err != nil {
 		return nil, err
 	}
-	rawURL, err := c.apiURL("billing", nil)
+	rawURL, err := c.endpointURL("billing", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -691,9 +691,14 @@ func (c *Client) headers(jsonBody bool, extra map[string]string) http.Header {
 	return h
 }
 
-// endpointURL is the endpoint's keyed URL, or its /public variant when keyless.
+// hasPublicVariant names the endpoints with a /public keyless variant.
+// endpointURL adds the suffix to no other: billing has one path for both.
+var hasPublicVariant = map[string]bool{"search": true, "fetch": true}
+
+// endpointURL is the endpoint's keyed URL, or its /public variant when keyless
+// and it has one.
 func (c *Client) endpointURL(endpoint string, query url.Values) (string, error) {
-	if c.apiKey == "" {
+	if c.apiKey == "" && hasPublicVariant[endpoint] {
 		endpoint += "/public"
 	}
 	return c.apiURL(endpoint, query)

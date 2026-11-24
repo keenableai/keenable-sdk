@@ -681,6 +681,30 @@ async def test_async_search_matches_the_sync_payloads() -> None:
     assert blank["exclude_domains"] == [""]
 
 
+def test_url_never_builds_a_public_billing_path() -> None:
+    keyless, _ = _client(_ok({}))
+    keyed, _ = _client(_ok({}), api_key="sk-test")
+    assert keyless.keyless and not keyed.keyless
+    assert keyless._url("billing").endswith("/v1/billing")
+    assert keyed._url("billing").endswith("/v1/billing")
+    assert keyless._url("search").endswith("/v1/search/public")
+    assert keyless._url("fetch").endswith("/v1/fetch/public")
+    assert keyed._url("search").endswith("/v1/search")
+
+
+def test_keyless_billing_gets_v1_billing_without_a_key() -> None:
+    client, seen = _client(_ok({"prices": [], "account": None}))
+    client.billing()
+    assert [r.url.path for r in seen] == ["/v1/billing"]
+    assert "X-API-Key" not in seen[0].headers
+
+
+async def test_async_keyless_billing_gets_v1_billing() -> None:
+    client, seen = _aclient(_ok({"prices": [], "account": None}))
+    await client.billing()
+    assert [r.url.path for r in seen] == ["/v1/billing"]
+
+
 def test_billing_retries_and_sends_the_call_headers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

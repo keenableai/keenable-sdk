@@ -493,3 +493,54 @@ async fn billing_retries_and_sends_the_call_headers() {
     assert_eq!(seen[1].header("X-Trace"), Some("t"));
     assert_eq!(seen[1].header("X-API-Key"), Some("k"));
 }
+
+#[test]
+fn endpoint_url_never_builds_a_public_billing_path() {
+    let build = |key: &str| {
+        Client::with_options(Options {
+            api_key: Some(key.into()),
+            base_url: Some("https://api.keenable.ai".into()),
+            ..Default::default()
+        })
+        .unwrap()
+    };
+    let (keyless, keyed) = (build(""), build("k"));
+    assert!(keyless.is_keyless() && !keyed.is_keyless());
+    let path = |c: &Client, e: &str| c.endpoint_url(e, &[]);
+    assert_eq!(
+        path(&keyless, "billing"),
+        "https://api.keenable.ai/v1/billing"
+    );
+    assert_eq!(
+        path(&keyed, "billing"),
+        "https://api.keenable.ai/v1/billing"
+    );
+    assert_eq!(
+        path(&keyless, "search"),
+        "https://api.keenable.ai/v1/search/public"
+    );
+    assert_eq!(
+        path(&keyless, "fetch"),
+        "https://api.keenable.ai/v1/fetch/public"
+    );
+    assert_eq!(path(&keyed, "search"), "https://api.keenable.ai/v1/search");
+}
+
+#[tokio::test]
+async fn keyless_billing_gets_v1_billing_without_a_key() {
+    let server = start(Script::Replies(vec![Reply::new(
+        200,
+        r#"{"prices":[],"account":null}"#,
+    )]))
+    .await;
+    let client = Client::with_options(Options {
+        api_key: Some(String::new()),
+        base_url: Some(server.base_url.clone()),
+        ..Default::default()
+    })
+    .unwrap();
+    client.billing().await.unwrap();
+    let seen = server.requests();
+    assert_eq!(seen[0].path, "/v1/billing");
+    assert!(seen[0].header("X-API-Key").is_none());
+}
