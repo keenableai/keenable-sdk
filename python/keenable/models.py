@@ -438,6 +438,10 @@ class SearchResponse:
     request_id: str | None = None
     """The API's id for this request. Quote it when reporting a problem."""
     warnings: list[SearchWarning] = field(default_factory=list)
+    usage: dict[str, Any] | None = None
+    """What the search cost, as the API sent it: ``sku``, ``credits``, and with a
+    key ``cost`` and ``balance``, each ``{"amount": <US dollars>, "currency": "usd"}``.
+    None on keyless calls."""
     """What the request should change, such as a deprecated parameter it
     used. Empty when the API sent none."""
 
@@ -470,6 +474,7 @@ class SearchResponse:
             warnings=[
                 SearchWarning._from_json(w) for w in _dicts(data.get("warnings")) or []
             ],
+            usage=_dict_or_none(data.get("usage")),
         )
 
     def cited(

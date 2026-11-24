@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Added:** `SearchResponse::usage` (`Option<Usage>`): what the search cost and, with a key, `cost` and `balance` in US dollars. `None` on keyless calls.
+- **Fixed:** a malformed `cost` or `balance` no longer drops the whole `Usage` of a page; each field is read on its own.
+- **Changed:** the `keenable_search` tool's `moderation` description: supported for a URL query when `exclude_domains` is set.
 - **Added:** `Usage::cost` and `Usage::balance` (`Option<Money>`, US dollars) on a fetched page: what the page cost and the organization's balance after it. `Money` now also derives `Deserialize`.
 - **Added:** `billing()` and `billing_with(&RequestOptions)` read `GET /v1/billing` (read-only, free) as a `Billing`: `prices` (`BillingPrice` with `sku`, `unit`, `unit_price`, and with a key `list_unit_price` and `source`) and `account` (`Option<BillingAccount>`, `None` without a key: `balance.available`/`purchased`, `usage.since`/`cost`/`line_items`, `billing_url`, `as_of`). Amounts are `Money { amount, currency }` with `amount` an `f64` in US dollars (up to nine decimal places, negative for an account in debt; 0.0 when the API sends no finite number, such as an older server's string). The billing models are `PartialEq` but not `Eq`. The key is optional and the path is `/v1/billing` either way (no `/public` variant).
 - **Added:** `SearchOptions::moderation`: `"moderate"` or `"strict"` filters unsafe results; `None`, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 when the query is a URL.

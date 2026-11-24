@@ -54,6 +54,9 @@ pub struct SearchResponse {
     /// What the request should change, such as a deprecated parameter it
     /// used; the request was still served. Empty when the API sent none.
     pub warnings: Vec<SearchWarning>,
+    /// What the search cost and, with a key, the balance left after it.
+    /// `None` when the API sent none, as on keyless calls.
+    pub usage: Option<Usage>,
     /// The unmodified JSON body.
     #[serde(skip)]
     pub raw: Map<String, Value>,
@@ -524,8 +527,32 @@ pub(crate) fn search_response_from_json(
         results,
         request_id: non_blank(data.get("request_id")).or(header_request_id),
         warnings,
+        usage: usage_from_json(data.get("usage")),
         raw: data,
     }
+}
+
+/// Reads a usage object field by field, so one malformed field (such as a
+/// `cost` whose amount is a string) does not lose the others.
+pub(crate) fn usage_from_json(v: Option<&Value>) -> Option<Usage> {
+    let u = v?.as_object()?;
+    let money_field = |name: &str| {
+        u.get(name)
+            .filter(|m| m.is_object())
+            .map(|m| money(Some(m)))
+    };
+    Some(Usage {
+        sku: as_string(u.get("sku")),
+        amount: u.get("amount").and_then(Value::as_u64).unwrap_or(0),
+        credits: as_amount(u.get("credits")),
+        paid: u.get("paid").and_then(Value::as_bool).unwrap_or(false),
+        credits_remaining: u
+            .get("credits_remaining")
+            .and_then(Value::as_f64)
+            .filter(|f| f.is_finite()),
+        cost: money_field("cost"),
+        balance: money_field("balance"),
+    })
 }
 
 pub(crate) fn page_from_json(data: Map<String, Value>, fallback_url: &str) -> Page {
@@ -548,7 +575,7 @@ pub(crate) fn page_from_json(data: Map<String, Value>, fallback_url: &str) -> Pa
         structured: data.get("structured").and_then(Value::as_object).cloned(),
         answer_error: typed(data.get("answer_error")),
         stale: data.get("stale").and_then(Value::as_bool),
-        usage: typed(data.get("usage")),
+        usage: usage_from_json(data.get("usage")),
         error: data
             .get("error")
             .and_then(Value::as_object)
@@ -598,6 +625,7 @@ mod tests {
             results,
             request_id: None,
             warnings: Vec::new(),
+            usage: None,
             raw: Map::new(),
         }
     }
@@ -681,6 +709,39 @@ mod tests {
             .usage
             .expect("usage");
         assert_eq!((usage.cost, usage.balance), (None, None));
+    }
+
+    #[test]
+    fn keeps_usage_when_a_money_field_is_malformed() {
+        let data = json!({
+            "url": "https://example.com",
+            "usage": {
+                "sku": "fetch", "amount": 1, "credits": 1.0, "paid": true,
+                "cost": {"amount": "0.004", "currency": "usd"},
+                "balance": {"amount": 47.992}
+            }
+        });
+        let usage = page_from_json(data.as_object().unwrap().clone(), "https://example.com")
+            .usage
+            .expect("usage survives a malformed money field");
+        assert_eq!(
+            (usage.sku.as_str(), usage.amount, usage.paid),
+            ("fetch", 1, true)
+        );
+        assert_eq!(
+            usage.cost,
+            Some(Money {
+                amount: 0.0,
+                currency: "usd".into()
+            })
+        );
+        assert_eq!(
+            usage.balance,
+            Some(Money {
+                amount: 47.992,
+                currency: String::new()
+            })
+        );
     }
 
     #[test]

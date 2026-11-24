@@ -326,6 +326,17 @@ describe("success bodies", () => {
         acquired_at: x.acquiredAt ?? null,
       })),
       warnings: r.warnings.map((w) => ({ code: w.code, path: w.path, message: w.message })),
+      usage: r.usage
+        ? {
+            sku: r.usage.sku,
+            amount: r.usage.amount,
+            credits: r.usage.credits,
+            paid: r.usage.paid,
+            credits_remaining: r.usage.credits_remaining ?? null,
+            cost: r.usage.cost ? { amount: r.usage.cost.amount, currency: r.usage.cost.currency } : null,
+            balance: r.usage.balance ? { amount: r.usage.balance.amount, currency: r.usage.balance.currency } : null,
+          }
+        : null,
     }).toEqual(want);
   });
 });

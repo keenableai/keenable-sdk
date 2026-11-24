@@ -284,8 +284,24 @@ async def test_responses(kind: str, case: dict[str, Any], waits: list[float]) ->
             {"code": w.code, "path": w.path, "message": w.message}
             for w in result.warnings
         ],
+        "usage": _usage(result.usage),
     }
     assert got == {key: want[key] for key in got}
+
+
+def _usage(usage: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The usage dict as the cases spell it; Python keeps the dict as sent."""
+    if usage is None:
+        return None
+    return {
+        "sku": usage.get("sku"),
+        "amount": usage.get("amount"),
+        "credits": usage.get("credits"),
+        "paid": usage.get("paid"),
+        "credits_remaining": usage.get("credits_remaining"),
+        "cost": usage.get("cost"),
+        "balance": usage.get("balance"),
+    }
 
 
 @pytest.mark.parametrize("kind", CLIENTS)

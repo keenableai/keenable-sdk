@@ -26,6 +26,19 @@ export interface SearchResult {
   raw: Record<string, unknown>;
 }
 
+/** What a call cost and, with a key, the balance left after it. */
+export interface Usage {
+  sku: string;
+  amount: number;
+  credits: number;
+  paid: boolean;
+  credits_remaining?: number;
+  /** What the call cost, in US dollars. */
+  cost?: Money;
+  /** The organization's balance after the call, in US dollars. */
+  balance?: Money;
+}
+
 /** Something in a search request to change, such as a deprecated parameter. The request was still served. */
 export interface SearchWarning {
   /** What kind of warning, such as `"deprecated_parameter"`. */

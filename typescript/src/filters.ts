@@ -106,7 +106,7 @@ export const SEARCH_FILTERS: readonly Filter[] = [
     option: "moderation",
     description:
       "Filter unsafe results: 'moderate' or 'strict'. Leave it out for no moderation. " +
-      "Not supported when the query is a URL.",
+      "Not supported for a URL query unless exclude_domains is set.",
     toolExposed: true,
     enum: ["moderate", "strict"],
   },

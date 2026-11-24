@@ -168,7 +168,7 @@ function responses(): Obj[] {
       status: (item.status as number | undefined) ?? 200,
       headers: headers(item),
       body: bodyText(item, `responses ${name}`),
-      expect: typeof given.error === "string" ? given : { error: null, warnings: [], ...given },
+      expect: typeof given.error === "string" ? given : { error: null, warnings: [], usage: null, ...given },
     };
   });
 }

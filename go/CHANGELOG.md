@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Added:** `SearchResponse.Usage` (`*Usage`): what the search cost and, with a key, `Cost` and `Balance` in US dollars. Nil on keyless calls.
+- **Changed:** `Usage` is read field by field, so a malformed `cost` or `balance` no longer loses the other fields.
+- **Changed:** the `keenable_search` tool's `moderation` description: supported for a URL query when `exclude_domains` is set.
 - **Added:** `Usage.Cost` and `Usage.Balance` (`*Money`, US dollars) on a fetched page: what the page cost and the organization's balance after it. Nil when the API does not send them.
 - **Added:** `client.Billing(ctx, opts)` reads `GET /v1/billing` (read-only, free) as a `*Billing`: `Prices` (`[]BillingPrice` with `SKU`, `Unit`, `UnitPrice`, and with a key `ListUnitPrice` and `Source`) and `Account` (`*BillingAccount`, nil without a key: `Balance.Available`/`Purchased`, `Usage.Since`/`Cost`/`LineItems`, `BillingURL`, `AsOf`). Amounts are `Money{Amount, Currency}` with `Amount` a `float64` in US dollars (up to nine decimal places, negative for an account in debt; 0 when the API sends no finite number, such as an older server's string). The key is optional and the path is `/v1/billing` either way (no `/public` variant). `opts` (`*RequestOptions`) may be nil.
 - **Added:** `SearchOptions.Moderation`: `"moderate"` or `"strict"` filters unsafe results; empty, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 when the query is a URL.

@@ -122,7 +122,10 @@ type SearchResponse struct {
 	// parameter it used; the request was still served. Nil when the API
 	// sent none.
 	Warnings []SearchWarning `json:"warnings,omitempty"`
-	Raw      map[string]any  `json:"-"`
+	// Usage is what the search cost and, with a key, the balance left after
+	// it. Nil when the API sent none, as on keyless calls.
+	Usage *Usage         `json:"usage,omitempty"`
+	Raw   map[string]any `json:"-"`
 }
 
 // SearchWarning is something in a search request to change, such as a
@@ -436,8 +439,35 @@ func searchResponseFromJSON(data map[string]any, query string) *SearchResponse {
 		Mode:     nonEmptyString(data["mode"]),
 		Results:  results,
 		Warnings: warnings,
+		Usage:    usageFromJSON(data["usage"]),
 		Raw:      data,
 	}
+}
+
+// usageFromJSON reads a usage object field by field, so one malformed field
+// does not lose the others. Nil unless the value is an object.
+func usageFromJSON(v any) *Usage {
+	obj, ok := v.(map[string]any)
+	if !ok {
+		return nil
+	}
+	u := &Usage{SKU: asString(obj["sku"]), Credits: asAmount(obj["credits"])}
+	if n, ok := asInt(obj["amount"]); ok && n >= 0 {
+		u.Amount = n
+	}
+	u.Paid, _ = obj["paid"].(bool)
+	if f, ok := obj["credits_remaining"].(float64); ok && !math.IsNaN(f) && !math.IsInf(f, 0) {
+		u.CreditsRemaining = &f
+	}
+	if _, ok := obj["cost"].(map[string]any); ok {
+		cost := moneyFromJSON(obj["cost"])
+		u.Cost = &cost
+	}
+	if _, ok := obj["balance"].(map[string]any); ok {
+		balance := moneyFromJSON(obj["balance"])
+		u.Balance = &balance
+	}
+	return u
 }
 
 func searchResultFromJSON(data map[string]any) SearchResult {
@@ -476,7 +506,7 @@ func pageFromJSON(data map[string]any, fallbackURL string) *Page {
 	decodeField(data["links"], &page.Links)
 	decodeField(data["images"], &page.Images)
 	decodeField(data["answer_error"], &page.AnswerError)
-	decodeField(data["usage"], &page.Usage)
+	page.Usage = usageFromJSON(data["usage"])
 	decodeField(data["error"], &page.Error)
 	return page
 }
