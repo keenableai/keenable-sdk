@@ -4130,6 +4130,31 @@
       }
     },
     {
+      "name": "a usage amount in float form is the whole number",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\": \"q\", \"results\": [], \"usage\": {\"sku\": \"search.pro\", \"amount\": 1.0, \"credits\": 1, \"paid\": true}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "sku": "search.pro",
+          "amount": 1,
+          "credits": 1,
+          "paid": true,
+          "credits_remaining": null,
+          "cost": null,
+          "balance": null
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
       "name": "usage that is not an object is null",
       "endpoint": "search",
       "arg": "q",

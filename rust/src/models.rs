@@ -543,7 +543,7 @@ pub(crate) fn usage_from_json(v: Option<&Value>) -> Option<Usage> {
     };
     Some(Usage {
         sku: as_string(u.get("sku")),
-        amount: u.get("amount").and_then(Value::as_u64).unwrap_or(0),
+        amount: safe_count(u.get("amount")).unwrap_or(0),
         credits: as_amount(u.get("credits")),
         paid: u.get("paid").and_then(Value::as_bool).unwrap_or(false),
         credits_remaining: u
@@ -709,6 +709,26 @@ mod tests {
             .usage
             .expect("usage");
         assert_eq!((usage.cost, usage.balance), (None, None));
+    }
+
+    #[test]
+    fn reads_a_whole_usage_amount_in_float_form() {
+        let amount = |v: Value| {
+            usage_from_json(Some(&json!({ "amount": v })))
+                .expect("usage")
+                .amount
+        };
+        assert_eq!(amount(json!(1.0)), 1);
+        assert_eq!(amount(json!(3)), 3);
+        assert_eq!(
+            amount(json!(9_007_199_254_740_991.0)),
+            9_007_199_254_740_991
+        );
+        assert_eq!(amount(json!(1.5)), 0);
+        assert_eq!(amount(json!(-1.0)), 0);
+        assert_eq!(amount(json!(-1)), 0);
+        assert_eq!(amount(json!(1e300)), 0);
+        assert_eq!(amount(json!("1")), 0);
     }
 
     #[test]

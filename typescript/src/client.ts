@@ -574,7 +574,7 @@ function toPage(data: Record<string, unknown>, url: string): Page {
     structured: record(data.structured),
     answerError: record(data.answer_error),
     stale: bool(data.stale),
-    usage: record(data.usage),
+    usage: toUsage(data.usage),
     error: record(data.error),
     raw: data,
   });
