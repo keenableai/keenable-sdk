@@ -7,11 +7,23 @@ Four SDKs ship from this repo, on independent version numbers.
 One command, from any machine with `gh` logged in and Node 22.18+:
 
 ```bash
-node scripts/release.ts python patch       # or typescript, go, rust; patch, minor, major or X.Y.Z
-node scripts/release.ts all 0.1.5          # all four SDKs at one shared version, in one PR
+node scripts/release.ts python patch --notes=notes.md   # or typescript, go, rust; patch, minor, major or X.Y.Z
+node scripts/release.ts all 0.1.5 --notes=notes.md      # all four SDKs at one shared version, in one PR
 ```
 
-It runs the **Cut SDK release** workflow (bumps that SDK's version files below and moves its changelog `Unreleased` entries under the new version, on a `release/<sdk>-vX.Y.Z` branch, and runs the tests), opens the PR as you, waits for the tests and the Qodo approval, squash-merges the commit the tests ran on, and waits for the publish. Merging tags and publishes the SDK: a GitHub Release plus `publish-python.yml` (PyPI) for Python, a GitHub Release plus `publish-typescript.yml` (npm, Trusted Publishing, no OTP) for TypeScript, a `go/v<version>` tag for Go, a GitHub Release plus `publish-rust.yml` (crates.io, Trusted Publishing, no token) for Rust. `all` takes the highest current version as the base for `patch`/`minor`/`major`, and every SDK must end up above its current version. Pass `--yes` to skip the confirmation, `--dry-run` to see the version only.
+It runs the **Cut SDK release** workflow (bumps that SDK's version files below and moves its changelog `Unreleased` entries under the new version, on a `release/<sdk>-vX.Y.Z` branch, and runs the tests), opens the PR as you, waits for the tests and the Qodo approval, squash-merges the commit the tests ran on, and waits for the publish. Merging tags and publishes the SDK: a GitHub Release plus `publish-python.yml` (PyPI) for Python, a GitHub Release plus `publish-typescript.yml` (npm, Trusted Publishing, no OTP) for TypeScript, a `go/v<version>` tag for Go, a GitHub Release plus `publish-rust.yml` (crates.io, Trusted Publishing, no token) for Rust. `all` takes the highest current version as the base for `patch`/`minor`/`major`, and every SDK must end up above its current version. Pass `--yes` to skip the confirmation, `--dry-run` to see the version and check the notes only.
+
+**Release notes come first.** A merged PR can be reverted; a published version cannot be called back. PyPI and crates.io can only yank, npm can unpublish only within 72 hours, and the Go proxy caches a tag forever. So the release PR carries release notes, and `pr-body-lint` fails a PR that changes an SDK version without them:
+
+- `## What changes for users`: `release.ts` fills it from the changelog's `Unreleased` entries, so write those first.
+- `## Evidence`, with a link: what shows this version is safe to give everyone. Examples: the test and conformance runs on the release commit, the docs samples run against production, and an eval run if the change touches tool definitions agents read (`tools.*`).
+- `## Rollback`: how a user gets back, and what that can't undo. Per registry:
+  - PyPI: `yank` the version, so pip skips it unless it is pinned.
+  - npm: `npm deprecate keenable@<version> "<why>"`, then publish a fixed patch. Within 72 hours `npm unpublish` is also possible.
+  - crates.io: `cargo yank --version <version>`.
+  - Go: add a `retract` directive in `go.mod` and tag a new version.
+
+Put the last two sections in a file and pass it as `--notes=<file>`. `release.ts` checks the notes before it dispatches anything (`--dry-run` checks them too). The rules are in `scripts/pr-description/`, a verbatim copy of `keenableai/ci-workflows/pr-description/`.
 
 **Installable from GitHub, without any registry.** Both publish workflows also attach the built package to the GitHub Release (the Python wheel and sdist, the TypeScript `keenable-<version>.tgz`), and Go installs from its tag. The attach job is separate from the PyPI / npm job, so a registry problem (for example the npm Trusted Publisher not being registered yet) never blocks the GitHub side; re-run the failed job to finish the registry later. Install commands are in the README.
 

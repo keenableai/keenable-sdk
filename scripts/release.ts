@@ -1,7 +1,7 @@
 /**
  * One-command SDK release.
  *
- *   node scripts/release.ts <python|typescript|go|rust|all> [patch|minor|major|X.Y.Z] [--yes] [--dry-run]
+ *   node scripts/release.ts <python|typescript|go|rust|all> [patch|minor|major|X.Y.Z] --notes=<file> [--yes] [--dry-run]
  *
  * `all` releases the four SDKs together at one shared version (the highest
  * current one, bumped), in one PR.
@@ -17,9 +17,18 @@
  *      Release assets, crates.io) or the go/v<version> tag, and prints where each landed
  * Nothing is built or pushed from this machine. Needs Node 22.18+ (it runs this
  * file as TypeScript) and `gh`.
+ *
+ * A merge publishes to registries that cannot take a version back, so the
+ * release PR carries release notes: "What changes for users" (the changelog
+ * entries) plus the `## Evidence` (with a link) and `## Rollback` sections
+ * from --notes. They are checked here before anything is dispatched, and again
+ * by pr-body-lint on the PR (scripts/pr-description/, PUBLISH.md).
  */
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
+
+import { checkReleaseNotes } from "./pr-description/pr-body.mjs";
 
 const REPO = "keenableai/keenable-sdk";
 type Sdk = "python" | "typescript" | "go" | "rust";
@@ -129,6 +138,11 @@ export function changelogSection(changelog: string, version: string): string {
   return lines.slice(start + 1, end < 0 ? undefined : end).join("\n").trim();
 }
 
+/** The release PR body: what it bumps, the changelog entries as "What changes for users", then the author's Evidence and Rollback. */
+export function releaseBody(intro: string, whatChanges: string, notes: string): string {
+  return `${intro}\n\n## What changes for users\n\n${whatChanges.trim() || "No changelog entries."}\n\n${notes.trim()}\n`;
+}
+
 interface Check {
   __typename?: string;
   status?: string;
@@ -207,7 +221,7 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const flags = new Set(args.filter((a) => a.startsWith("-")));
   const [targetArg, bumpArg = "patch"] = args.filter((a) => !a.startsWith("-"));
-  const usage = "usage: node scripts/release.ts <python|typescript|go|rust|all> [patch|minor|major|X.Y.Z] [--yes] [--dry-run]";
+  const usage = "usage: node scripts/release.ts <python|typescript|go|rust|all> [patch|minor|major|X.Y.Z] --notes=<file> [--yes] [--dry-run]";
   if (flags.has("--help") || flags.has("-h") || !targetArg) {
     console.log(usage);
     process.exit(targetArg ? 0 : 1);
@@ -230,6 +244,24 @@ async function main(): Promise<void> {
   }
   const branch = `release/${target}-v${next}`;
   log(`keenable ${sdks.map((s) => `${s} ${curOf(s)}`).join(", ")} -> ${next} (branch ${branch})`);
+
+  const notesFile = args.find((a) => a.startsWith("--notes="))?.slice("--notes=".length);
+  if (!notesFile) die(`pass --notes=<file> with the release's "## Evidence" (with a link) and "## Rollback" sections; see PUBLISH.md\n${usage}`);
+  let releaseNotes = "";
+  try {
+    releaseNotes = readFileSync(notesFile, "utf8");
+  } catch {
+    die(`cannot read the notes file ${notesFile}`);
+  }
+  const changelogOn = (s: Sdk, ref: string, heading: string): string =>
+    changelogSection(ghTry(["api", "-H", "Accept: application/vnd.github.raw", `repos/${REPO}/contents/${s}/CHANGELOG.md?ref=${ref}`]) ?? "", heading);
+  const joinNotes = (section: (s: Sdk) => string): string =>
+    sdks.map((s) => (sdks.length > 1 ? `### ${s}\n\n${section(s)}` : section(s))).join("\n\n");
+  const tags = sdks.map((s) => `\`${SDKS[s].tag}${next}\``).join(", ");
+  const intro = `Bumps ${sdks.map((s) => `the ${s} SDK ${curOf(s)}`).join(", ")} -> ${next}. Merging tags ${tags} and publishes.`;
+  const draft = checkReleaseNotes({ body: releaseBody(intro, joinNotes((s) => changelogOn(s, "main", "Unreleased")), releaseNotes) });
+  if (draft.errors.length > 0) die(`the release notes are not ready:\n${draft.errors.map((e) => `  - ${e}`).join("\n")}`);
+
   if (flags.has("--dry-run")) return;
 
   if (!flags.has("--yes") && !flags.has("-y")) {
@@ -287,15 +319,7 @@ async function main(): Promise<void> {
   }
   if (!pr) {
     log("opening the PR");
-    const notes = sdks
-      .map((s) => {
-        const changelog = ghTry(["api", "-H", "Accept: application/vnd.github.raw", `repos/${REPO}/contents/${s}/CHANGELOG.md?ref=${branch}`]) ?? "";
-        const section = changelogSection(changelog, next);
-        return sdks.length > 1 ? `### ${s}\n\n${section}` : section;
-      })
-      .join("\n\n");
-    const tags = sdks.map((s) => `\`${SDKS[s].tag}${next}\``).join(", ");
-    const body = `Bumps ${sdks.map((s) => `the ${s} SDK ${curOf(s)}`).join(", ")} -> ${next}. Merging tags ${tags} and publishes.\n\n${notes}`;
+    const body = releaseBody(intro, joinNotes((s) => changelogOn(s, branch, next)), releaseNotes);
     pr = gh(["pr", "create", "--repo", REPO, "--base", "main", "--head", branch, "--title", `chore: release ${target} ${next}`, "--body", body]).split("/").pop()!;
   }
 

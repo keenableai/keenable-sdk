@@ -11,8 +11,10 @@ import {
   highestVersion,
   newestPerCheck,
   nextVersion,
+  releaseBody,
   summarizeChecks,
 } from "../../scripts/release.js";
+import { checkReleaseNotes } from "../../scripts/pr-description/pr-body.mjs";
 
 const run = (name: string, status: string, conclusion: string, startedAt: string, workflowName = "Test") => ({
   __typename: "CheckRun",
@@ -107,5 +109,30 @@ describe("summarizeChecks", () => {
         { __typename: "StatusContext", context: "ci/x", state: "SUCCESS" },
       ]),
     ).toHaveLength(1);
+  });
+});
+
+describe("release PR body", () => {
+  const intro = "Bumps the python SDK 0.1.4 -> 0.1.5. Merging tags `python-v0.1.5` and publishes.";
+  const changes = "- `search()` takes `moderation`; `safety_mode` is deprecated and still accepted until 2027-03-01.";
+  const notes = [
+    "## Evidence",
+    "Measured: conformance and error-contract suites green, https://github.com/keenableai/keenable-sdk/actions/runs/1; docs sample ran unmodified against production.",
+    "",
+    "## Rollback",
+    "Yank 0.1.5 on PyPI (pip falls back to 0.1.4 unless pinned); the deprecated argument keeps working, so a yank breaks nobody.",
+  ].join("\n");
+
+  it("puts the changelog under What changes for users and passes the release-notes check", () => {
+    const body = releaseBody(intro, changes, notes);
+    expect(body).toContain("## What changes for users\n\n- `search()`");
+    expect(checkReleaseNotes({ body }).errors).toEqual([]);
+  });
+
+  it("fails without changelog entries, evidence or a rollback", () => {
+    expect(checkReleaseNotes({ body: releaseBody(intro, "", notes) }).errors.join()).toMatch(/What changes for users/);
+    expect(checkReleaseNotes({ body: releaseBody(intro, changes, "") }).errors).toHaveLength(2);
+    const unlinked = notes.replace(/https:\/\/\S+;/, "");
+    expect(checkReleaseNotes({ body: releaseBody(intro, changes, unlinked) }).errors.join()).toMatch(/must link/);
   });
 });

@@ -39,3 +39,17 @@ Also update this repo's `examples/` and `docs/partners/` when the change affects
 - **Docs reference the SDKs.** Examples use the official SDKs, with the HTTP API (curl) shown next to them.
 - **The SDK covers what the docs describe.** If the docs describe an API feature the SDK can't use, that's an SDK gap: add it, or open an issue here.
 - **If it isn't in the public docs, it doesn't exist in the product.** Don't ship an undocumented option or method: document it, or remove it.
+
+## Pull request descriptions and releases
+
+`pr-body-lint` checks every PR description. The checker is `scripts/pr-description/`, a verbatim copy of `keenableai/ci-workflows/pr-description/`: change it there, then re-copy.
+
+- **A PR that changes an SDK version** publishes on merge, and no registry takes a version back. Its description needs `## What changes for users`, `## Evidence` (with a link) and `## Rollback`. `scripts/release.ts --notes=<file>` writes them (PUBLISH.md).
+- **Any other PR** fills the sections of `.github/pull_request_template.md`:
+  - Why: who it is for, and what shows the problem.
+  - Hypothesis: with a "we'll know we're wrong when …" kill criterion.
+  - Evidence: what you ran and what it showed.
+  - Risk and rollback.
+  - Follow-up: where you will look after it ships, and when.
+
+  The `no-behavior-change` label skips Hypothesis and Follow-up. A change to the tool definitions agents read (`tools.*` in each SDK) must link a run: give agents of several model families the same tasks on base and head and compare what they do. The guide to measuring is `MEASURING.md` next to the canonical checker.

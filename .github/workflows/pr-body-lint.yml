@@ -1,0 +1,113 @@
+name: pr-body-lint
+
+# Two kinds of PR, two sets of rules (scripts/pr-description/, a verbatim copy
+# of keenableai/ci-workflows/pr-description/; change it there, then re-copy):
+#
+#   release PR — changes an SDK's version. Merging it tags and publishes to
+#     PyPI, npm, crates.io or the Go proxy, and none of them takes a version
+#     back, so the description must carry release notes: "What changes for
+#     users", "Evidence" with a link, and "Rollback" (PUBLISH.md).
+#     scripts/release.ts writes them from the changelog and --notes.
+#   any other PR — Why, Hypothesis, Evidence, Risk and rollback, Follow-up
+#     (.github/pull_request_template.md). A change to the tool definitions
+#     agents read (tools.* in each SDK) must link a run in Evidence.
+#
+# A version is compared, not a file name: pyproject.toml, package.json and
+# Cargo.toml also change for dependency edits, which are not releases (same
+# rule as cut-sdk-release.yml).
+#
+# pull_request_target runs this file and the checker from the base branch, so
+# a PR cannot loosen the check that judges it. The PR's files are read through
+# the API as data; no PR code is checked out or run.
+#
+# Make "pr-body-lint / Description" a required status check on main.
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled, ready_for_review]
+
+concurrency:
+  group: pr-body-lint-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  check:
+    name: Description
+    # Dependabot writes its own descriptions. A skipped job satisfies a
+    # required check, so its PRs are not blocked.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26'
+
+      - name: Collect the description and changed files; is this a release?
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUM: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$BODY" > "$RUNNER_TEMP/body.md"
+          gh api "repos/$REPO/pulls/$NUM/files" --paginate --jq '.[].filename' > "$RUNNER_TEMP/files.txt"
+          # The head version is read from the API (as data), the base version
+          # from this base checkout.
+          at_head() { gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/$1?ref=$HEAD_SHA" 2>/dev/null || true; }
+          toml_ver() { sed -n 's/^version = "\(.*\)"$/\1/p' | head -1; }
+          go_ver() { sed -n 's/^const Version = "\(.*\)"$/\1/p' | head -1; }
+          json_ver() { jq -r '.version // empty' 2>/dev/null || true; }
+          released=""
+          check() { # <sdk> <file> <reader>
+            grep -qxF "$2" "$RUNNER_TEMP/files.txt" || return 0
+            base=$($3 < "$2" || true)
+            head=$(at_head "$2" | $3 || true)
+            if [ -n "$head" ] && [ "$head" != "$base" ]; then
+              echo "$1: $base -> $head"
+              released="$released $1"
+            fi
+          }
+          check python python/pyproject.toml toml_ver
+          check typescript typescript/package.json json_ver
+          check go go/version.go go_ver
+          check rust rust/Cargo.toml toml_ver
+          if [ -n "$released" ]; then
+            echo "Release PR for:$released"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check the description
+        env:
+          PR_BODY_FILE: ${{ runner.temp }}/body.md
+          PR_FILES_FILE: ${{ runner.temp }}/files.txt
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          RELEASE: ${{ steps.pr.outputs.release }}
+          AGENT_FACING_PATHS: |
+            python/keenable/tools.py
+            typescript/src/tools.ts
+            go/tools.go
+            rust/src/tools.rs
+        run: |
+          if [ "$RELEASE" = "true" ]; then
+            node scripts/pr-description/check-pr-body.mjs --release
+          else
+            node scripts/pr-description/check-pr-body.mjs
+          fi
