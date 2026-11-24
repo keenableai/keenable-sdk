@@ -187,10 +187,10 @@ if (billing.account) {
 `billing()` reads `GET /v1/billing`: read-only and free, with or without a key.
 Without one, `prices` are the public list prices and `account` is `null`. With
 one, `prices` are your organization's (with `listUnitPrice` and `source`,
-`"list"` or `"contract"`), and `account` holds the balance, this month's usage
-per SKU, and `billingUrl`, the console page for adding funds. Amounts are
-numbers in US dollars (`Money.amount`, such as `0.004`, up to nine decimal
-places, negative for an account in debt).
+`"list"` or `"contract"`), and `account` holds the available balance and
+`billingUrl`, the console page for adding funds. Amounts are numbers in US
+dollars (`Money.amount`, such as `0.004`, up to nine decimal places, negative
+for an account in debt).
 
 ## Tool calling
 

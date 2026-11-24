@@ -231,34 +231,15 @@ export interface BillingPrice {
   source?: string;
 }
 
-/** Use of one SKU since the start of the period. */
-export interface BillingUsageLine {
-  /** "search", "search.extra_result" or "fetch". */
-  sku: string;
-  /** Units used since the start of the period. */
-  quantity: number;
-  /** What those units cost. */
-  cost: Money;
-}
-
-/** The organization's balance and usage, from `billing()`. */
+/** The organization's balance, from `billing()`. */
 export interface BillingAccount {
   balance: {
     /** The unused free allowance for this month plus the purchased balance. */
     available: Money;
-    /** The part of the balance that was bought, spent after the allowance. */
-    purchased: Money;
-  };
-  usage: {
-    /** Start of the period (ISO 8601), when the free allowance last renewed. */
-    since: string;
-    /** Total spend since `since`. */
-    cost: Money;
-    lineItems: BillingUsageLine[];
   };
   /** Console page where a person can add funds. */
   billingUrl: string;
-  /** When this was read (ISO 8601). Usage can lag recent calls by about a minute. */
+  /** When this was read (ISO 8601). */
   asOf: string;
 }
 
@@ -269,7 +250,7 @@ export interface Billing {
    * organization's prices; a SKU without a price on your plan is left out.
    */
   prices: BillingPrice[];
-  /** Balance and usage. Null without an API key. */
+  /** Balance. Null without an API key. */
   account: BillingAccount | null;
   /** The API's id for this request. Quote it when reporting a problem. */
   requestId?: string;

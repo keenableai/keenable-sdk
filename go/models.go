@@ -617,39 +617,14 @@ type BillingBalance struct {
 	// Available is the unused free allowance for this month plus the
 	// purchased balance.
 	Available Money `json:"available"`
-	// Purchased is the part of the balance that was bought, spent after the
-	// allowance.
-	Purchased Money `json:"purchased"`
 }
 
-// BillingUsageLine is the use of one SKU since the start of the period.
-type BillingUsageLine struct {
-	// SKU is "search", "search.extra_result" or "fetch".
-	SKU string `json:"sku"`
-	// Quantity is the units used since the start of the period.
-	Quantity int `json:"quantity"`
-	// Cost is what those units cost.
-	Cost Money `json:"cost"`
-}
-
-// BillingUsage is the spend since the start of the current monthly period.
-type BillingUsage struct {
-	// Since is the start of the period (ISO 8601), when the free allowance
-	// last renewed.
-	Since string `json:"since"`
-	// Cost is the total spend since Since.
-	Cost      Money              `json:"cost"`
-	LineItems []BillingUsageLine `json:"line_items"`
-}
-
-// BillingAccount is the organization's balance and usage.
+// BillingAccount is the organization's balance.
 type BillingAccount struct {
 	Balance BillingBalance `json:"balance"`
-	Usage   BillingUsage   `json:"usage"`
 	// BillingURL is the console page where a person can add funds.
 	BillingURL string `json:"billing_url"`
-	// AsOf is when this was read (ISO 8601). Usage can lag recent calls by
-	// about a minute.
+	// AsOf is when this was read (ISO 8601).
 	AsOf string `json:"as_of"`
 }
 
@@ -660,7 +635,7 @@ type Billing struct {
 	// are your organization's prices; a SKU without a price on your plan is
 	// left out.
 	Prices []BillingPrice `json:"prices"`
-	// Account is the balance and usage. Nil without an API key.
+	// Account is the balance. Nil without an API key.
 	Account *BillingAccount `json:"account"`
 	// RequestID is the API's id for this request. Quote it when reporting a
 	// problem. Empty when the API sent none.
@@ -719,31 +694,10 @@ func billingFromJSON(data map[string]any) *Billing {
 		return b
 	}
 	balance := objectOrEmpty(account["balance"])
-	usage := objectOrEmpty(account["usage"])
-	acct := &BillingAccount{
-		Balance: BillingBalance{
-			Available: moneyFromJSON(balance["available"]),
-			Purchased: moneyFromJSON(balance["purchased"]),
-		},
-		Usage: BillingUsage{
-			Since:     asString(usage["since"]),
-			Cost:      moneyFromJSON(usage["cost"]),
-			LineItems: make([]BillingUsageLine, 0),
-		},
+	b.Account = &BillingAccount{
+		Balance:    BillingBalance{Available: moneyFromJSON(balance["available"])},
 		BillingURL: asString(account["billing_url"]),
 		AsOf:       asString(account["as_of"]),
 	}
-	for _, line := range objects(usage["line_items"]) {
-		quantity := 0
-		if n := count(line["quantity"]); n != nil {
-			quantity = *n
-		}
-		acct.Usage.LineItems = append(acct.Usage.LineItems, BillingUsageLine{
-			SKU:      asString(line["sku"]),
-			Quantity: quantity,
-			Cost:     moneyFromJSON(line["cost"]),
-		})
-	}
-	b.Account = acct
 	return b
 }

@@ -62,7 +62,14 @@ const MAX_RETRY_AFTER_WAIT_SECONDS = 60;
 // Endpoints are named once; the keyless variant of each is the same path with a
 // `/public` suffix, so a new endpoint is one name rather than two constants.
 // Billing is the one endpoint with a single path for both: the key is optional.
+// Every endpoint states here whether it has a /public variant, so url() cannot
+// build a keyless path that does not exist.
 type Endpoint = "search" | "fetch" | "billing";
+const HAS_PUBLIC_VARIANT: Readonly<Record<Endpoint, boolean>> = {
+  search: true,
+  fetch: true,
+  billing: false,
+};
 
 /** Hosts that must never be fetched, whatever the backend would do. */
 const BLOCKED_HOSTS = new Set(["localhost", "metadata.google.internal"]);
@@ -613,18 +620,8 @@ function toBillingPrice(data: Record<string, unknown>): BillingPrice {
 
 function toBillingAccount(data: Record<string, unknown>): BillingAccount {
   const balance = isRecord(data.balance) ? data.balance : {};
-  const usage = isRecord(data.usage) ? data.usage : {};
   return {
-    balance: { available: toMoney(balance.available), purchased: toMoney(balance.purchased) },
-    usage: {
-      since: text(usage.since),
-      cost: toMoney(usage.cost),
-      lineItems: records(usage.line_items).map((line) => ({
-        sku: text(line.sku),
-        quantity: count(line.quantity) ?? 0,
-        cost: toMoney(line.cost),
-      })),
-    },
+    balance: { available: toMoney(balance.available) },
     billingUrl: text(data.billing_url),
     asOf: text(data.as_of),
   };
@@ -839,9 +836,13 @@ export class Keenable {
     return headers;
   }
 
-  /** The endpoint URL, keyless or keyed depending on the configured key. */
+  /**
+   * The endpoint URL: its /public variant when keyless and it has one, else
+   * the keyed path.
+   */
   private url(endpoint: Endpoint): string {
-    return `${this.baseUrl}/v1/${endpoint}${this.keyless ? "/public" : ""}`;
+    const suffix = this.keyless && HAS_PUBLIC_VARIANT[endpoint] ? "/public" : "";
+    return `${this.baseUrl}/v1/${endpoint}${suffix}`;
   }
 
   /**
@@ -944,19 +945,14 @@ export class Keenable {
   }
 
   /**
-   * Prices, and with an API key the balance and usage, from `GET /v1/billing`.
+   * Prices, and with an API key the balance, from `GET /v1/billing`.
    *
    * Read-only and free. Without a key, `prices` are the public list prices and
    * `account` is null. Amounts are numbers in US dollars.
    */
   async billing(options: RequestOptions = {}): Promise<Billing> {
     // The same path with and without a key: billing has no /public variant.
-    const { data, requestId } = await this.request(
-      "billing",
-      { method: "GET" },
-      options,
-      `${this.baseUrl}/v1/billing`,
-    );
+    const { data, requestId } = await this.request("billing", { method: "GET" }, options);
     return {
       prices: records(data.prices).map(toBillingPrice),
       account: isRecord(data.account) ? toBillingAccount(data.account) : null,

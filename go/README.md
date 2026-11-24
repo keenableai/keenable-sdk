@@ -213,11 +213,11 @@ if billing.Account != nil { // nil without an API key
 `Billing` reads `GET /v1/billing`: read-only and free, with or without a key.
 Without one, `Prices` are the public list prices and `Account` is nil. With
 one, `Prices` are your organization's (with `ListUnitPrice` and `Source`,
-`"list"` or `"contract"`), and `Account` holds the balance, this month's usage
-per SKU, and `BillingURL`, the console page for adding funds. Amounts are
-numbers in US dollars (`Money.Amount`, a `float64` such as `0.004`, up to nine
-decimal places, negative for an account in debt). `opts` is a
-`*RequestOptions` and may be nil.
+`"list"` or `"contract"`), and `Account` holds the available balance and
+`BillingURL`, the console page for adding funds. Amounts are numbers in US
+dollars (`Money.Amount`, a `float64` such as `0.004`, up to nine decimal
+places, negative for an account in debt). `opts` is a `*RequestOptions` and
+may be nil.
 
 ## Tool calling
 

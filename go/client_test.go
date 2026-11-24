@@ -1338,3 +1338,17 @@ func titles(results []keenable.SearchResult) string {
 func intPtr(n int) *int { return &n }
 
 func durPtr(d time.Duration) *time.Duration { return &d }
+
+func TestKeylessBillingGetsV1BillingWithoutAKey(t *testing.T) {
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, map[string]any{"prices": []any{}, "account": nil}), nil)
+	if _, err := c.Billing(context.Background(), nil); err != nil {
+		t.Fatalf("Billing: %v", err)
+	}
+	got := one(t, seen)
+	if got.Path != "/v1/billing" {
+		t.Errorf("path = %q, want /v1/billing", got.Path)
+	}
+	if got.Header.Get("X-API-Key") != "" {
+		t.Errorf("keyless billing sent X-API-Key")
+	}
+}

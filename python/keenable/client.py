@@ -58,6 +58,8 @@ _SEARCH = "search"
 _FETCH = "fetch"
 # Billing is the one endpoint with a single path for both: the key is optional.
 _BILLING = "billing"
+# The endpoints with a /public variant; _url adds the suffix to no other.
+_PUBLIC_VARIANT = frozenset({_SEARCH, _FETCH})
 
 _BLOCKED_HOSTS = frozenset({"localhost", "metadata.google.internal"})
 _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -1232,13 +1234,10 @@ class _BaseClient:
         return headers
 
     def _url(self, endpoint: str) -> str:
-        """The endpoint URL, keyless or keyed depending on the configured key."""
-        suffix = "/public" if self.keyless else ""
+        """The endpoint URL: its ``/public`` variant when keyless and it has one."""
+        keyless = self.keyless and endpoint in _PUBLIC_VARIANT
+        suffix = "/public" if keyless else ""
         return f"{self._base_url}/v1/{endpoint}{suffix}"
-
-    def _billing_url(self) -> str:
-        """``/v1/billing``, keyless or keyed: it has no ``/public`` variant."""
-        return f"{self._base_url}/v1/{_BILLING}"
 
     def _monitors_url(self, path: str) -> str:
         """A Monitors URL. Monitors need a key: keyless, nothing is sent."""
@@ -1584,7 +1583,7 @@ class Keenable(_BaseClient):
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
     ) -> Billing:
-        """Prices, and with an API key the balance and usage, from ``GET /v1/billing``.
+        """Prices, and with an API key the balance, from ``GET /v1/billing``.
 
         Read-only and free. Without a key, ``prices`` are the public list
         prices and ``account`` is None. Amounts are numbers in US dollars.
@@ -1600,7 +1599,6 @@ class Keenable(_BaseClient):
             timeout=timeout,
             max_retries=max_retries,
             extra_headers=extra_headers,
-            url=self._billing_url(),
         )
         return Billing._from_json(body, request_id)
 
@@ -1812,6 +1810,5 @@ class AsyncKeenable(_BaseClient):
             timeout=timeout,
             max_retries=max_retries,
             extra_headers=extra_headers,
-            url=self._billing_url(),
         )
         return Billing._from_json(body, request_id)

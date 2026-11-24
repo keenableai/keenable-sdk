@@ -790,74 +790,24 @@ class BillingBalance:
     available: Money
     """The unused free allowance for this month plus the purchased balance."""
 
-    purchased: Money
-    """The part of the balance that was bought, spent after the allowance."""
-
-
-@dataclass
-class BillingUsageLine:
-    """Use of one SKU since the start of the period."""
-
-    sku: str
-    """``"search"``, ``"search.extra_result"`` or ``"fetch"``."""
-
-    quantity: int
-    """Units used since the start of the period."""
-
-    cost: Money
-    """What those units cost."""
-
-    @classmethod
-    def _from_json(cls, data: dict[str, Any]) -> BillingUsageLine:
-        return cls(
-            sku=_str_or_empty(data.get("sku")),
-            quantity=_count_or_none(data.get("quantity")) or 0,
-            cost=Money._from_json(data.get("cost")),
-        )
-
-
-@dataclass
-class BillingUsage:
-    """Spend since the start of the current monthly period."""
-
-    since: str
-    """Start of the period (ISO 8601), when the free allowance last renewed."""
-
-    cost: Money
-    """Total spend since ``since``."""
-
-    line_items: list[BillingUsageLine] = field(default_factory=list)
-
 
 @dataclass
 class BillingAccount:
-    """The organization's balance and usage, from :meth:`Keenable.billing`."""
+    """The organization's balance, from :meth:`Keenable.billing`."""
 
     balance: BillingBalance
-    usage: BillingUsage
     billing_url: str
     """Console page where a person can add funds."""
 
     as_of: str
-    """When this was read (ISO 8601). Usage can lag recent calls by about a
-    minute."""
+    """When this was read (ISO 8601)."""
 
     @classmethod
     def _from_json(cls, data: dict[str, Any]) -> BillingAccount:
         balance = _dict_or_empty(data.get("balance"))
-        usage = _dict_or_empty(data.get("usage"))
         return cls(
             balance=BillingBalance(
                 available=Money._from_json(balance.get("available")),
-                purchased=Money._from_json(balance.get("purchased")),
-            ),
-            usage=BillingUsage(
-                since=_str_or_empty(usage.get("since")),
-                cost=Money._from_json(usage.get("cost")),
-                line_items=[
-                    BillingUsageLine._from_json(line)
-                    for line in _dicts(usage.get("line_items")) or []
-                ],
             ),
             billing_url=_str_or_empty(data.get("billing_url")),
             as_of=_str_or_empty(data.get("as_of")),
@@ -873,7 +823,7 @@ class Billing:
     organization's prices; a SKU without a price on your plan is left out."""
 
     account: BillingAccount | None = None
-    """Balance and usage. None without an API key."""
+    """Balance. None without an API key."""
 
     request_id: str | None = None
     """The API's id for this request. Quote it when reporting a problem."""
