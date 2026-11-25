@@ -19,8 +19,8 @@ import (
 //
 // Reads and deletes are retried like a search. Create sends an
 // Idempotency-Key (yours, or a new one for each call), so retrying it cannot
-// make a second monitor. Update, Trigger and Bulk are retried only on a 429,
-// which the API sends before it does anything.
+// make a second monitor. Update, Trigger, Bulk and TestWebhook are retried
+// only on a 429, which the API sends before it does anything.
 type MonitorsService struct {
 	client *Client
 }
@@ -154,6 +154,34 @@ type MonitorCreateParams struct {
 	// returns the monitor the first call created, for 24 hours. Empty means a
 	// new key for this call.
 	IdempotencyKey string
+}
+
+// MonitorPreviewParams are the arguments to [MonitorsService.Preview]. The
+// preview takes fewer fields than a create: the API refuses any other with a
+// 400.
+type MonitorPreviewParams struct {
+	// RequestOptions holds this call's timeout, retry budget and headers.
+	RequestOptions
+	// Type is "search" or "page". Empty is unset (the API's default is
+	// search).
+	Type string
+	// Search is what a search monitor would watch for: required, with a
+	// Query, unless Type is "page". Only Query, IncludeDomains and
+	// ExcludeDomains are taken.
+	Search MonitorSearchParams
+	// Page is the page a page monitor would watch: required, with a URL, when
+	// Type is "page", and refused otherwise. Only URL is taken.
+	Page *MonitorPageTarget
+}
+
+// MonitorWebhookTestParams are the options of [MonitorsService.TestWebhook].
+type MonitorWebhookTestParams struct {
+	// RequestOptions holds this call's timeout, retry budget and headers.
+	RequestOptions
+	// Secret is the webhook's secret (whsec_...) to sign the test event with,
+	// so your receiver's check passes. Used for this send only, never
+	// stored. Empty signs the event with a throwaway secret.
+	Secret string
 }
 
 // MonitorUpdateParams are the arguments to [MonitorsService.Update]. Only
@@ -570,6 +598,68 @@ type BulkResult struct {
 	NotFound  []string       `json:"not_found"`
 	RequestID string         `json:"-"`
 	Raw       map[string]any `json:"-"`
+}
+
+// MonitorPreviewResult is a page a search monitor would take, in
+// [MonitorsService.Preview].
+type MonitorPreviewResult struct {
+	URL   string  `json:"url"`
+	Title *string `json:"title"`
+	// PublishedAt is when the page was published; nil when the index has no
+	// date.
+	PublishedAt *string `json:"published_at"`
+}
+
+// MonitorPreviewPage is a page as a page monitor would read it now, in
+// [MonitorsService.Preview].
+type MonitorPreviewPage struct {
+	URL   string  `json:"url"`
+	Title *string `json:"title"`
+	// Excerpt is the first 400 characters of the page's text.
+	Excerpt *string `json:"excerpt"`
+	// Source is "stream" (Keenable's crawled copy, used while it is fresh)
+	// or "live" (fetched now); nil when the page could not be read.
+	Source *string `json:"source"`
+	// Error is why the page could not be read; Title, Excerpt and Source are
+	// then nil.
+	Error *string `json:"error"`
+}
+
+// MonitorPreview is what [MonitorsService.Preview] found. Nothing was
+// created.
+type MonitorPreview struct {
+	// Type is "search" or "page".
+	Type string `json:"type"`
+	// Results are up to 5 pages a search monitor would take; empty for a
+	// page monitor.
+	Results []MonitorPreviewResult `json:"results"`
+	// Page is the page as read now, for a page monitor; nil for a search
+	// monitor.
+	Page      *MonitorPreviewPage `json:"page"`
+	RequestID string              `json:"-"`
+	Raw       map[string]any      `json:"-"`
+}
+
+// MonitorWebhookTest is how a URL answered [MonitorsService.TestWebhook]'s
+// test event.
+type MonitorWebhookTest struct {
+	// OK is true when the URL answered with a 2xx status.
+	OK bool `json:"ok"`
+	// Status is the HTTP status the URL answered with; nil when no answer
+	// came.
+	Status *int `json:"status"`
+	// LatencyMS is the time from sending to the answer or the failure, in
+	// milliseconds.
+	LatencyMS int `json:"latency_ms"`
+	// Error is why the test failed, such as "HTTP 400" or "no answer within
+	// 10 s"; nil when it passed.
+	Error *string `json:"error"`
+	// SignedWith is "provided" (signed with the Secret you sent, so your
+	// receiver's check should pass) or "throwaway" (signed with a secret made
+	// for this test alone, which no receiver can check).
+	SignedWith string         `json:"signed_with"`
+	RequestID  string         `json:"-"`
+	Raw        map[string]any `json:"-"`
 }
 
 // List is one page of a list; NextCursor fetches the next.
@@ -1076,6 +1166,76 @@ func (m *MonitorsService) Bulk(ctx context.Context, action string, params *Monit
 	}
 	var out BulkResult
 	data, id, err := m.call(ctx, monitorCall{method: http.MethodPost, path: "monitors/bulk", body: body, safe: false, opts: &params.RequestOptions}, &out)
+	if err != nil {
+		return nil, err
+	}
+	out.RequestID, out.Raw = id, data
+	return &out, nil
+}
+
+// Preview shows what a monitor would find before you create it (POST
+// /v1/monitors/preview): a search monitor (Search.Query) gets up to 5 pages
+// from the last 7 days in Results; with Type "page", a page monitor
+// (Page.URL) gets the page as read now in Page, with Page.Error set when it
+// could not be read. It creates nothing.
+func (m *MonitorsService) Preview(ctx context.Context, params *MonitorPreviewParams) (*MonitorPreview, error) {
+	if params == nil {
+		return nil, &InvalidRequestError{msg: "Preview needs Search.Query, the topic in plain words"}
+	}
+	body := map[string]any{}
+	switch params.Type {
+	case "page":
+		if params.Page == nil || strings.TrimSpace(params.Page.URL) == "" {
+			return nil, &InvalidRequestError{msg: "a page preview needs Page.URL, the page to read"}
+		}
+		if len(params.Search.body()) > 0 {
+			return nil, &InvalidRequestError{msg: "a page preview takes Page, not Search"}
+		}
+		body["type"] = "page"
+		body["page"] = params.Page
+	case "", "search":
+		if params.Page != nil {
+			return nil, &InvalidRequestError{msg: `Page is only for Type "page"; a search preview takes Search`}
+		}
+		if strings.TrimSpace(params.Search.Query) == "" {
+			return nil, &InvalidRequestError{msg: "Preview needs Search.Query, the topic in plain words"}
+		}
+		if params.Type != "" {
+			body["type"] = params.Type
+		}
+		body["search"] = params.Search.body()
+	default:
+		return nil, &InvalidRequestError{msg: fmt.Sprintf("Type must be \"search\" or \"page\", got %q", params.Type)}
+	}
+	var out MonitorPreview
+	data, id, err := m.call(ctx, monitorCall{method: http.MethodPost, path: "monitors/preview", body: body, safe: true, opts: &params.RequestOptions}, &out)
+	if err != nil {
+		return nil, err
+	}
+	if out.Results == nil {
+		out.Results = []MonitorPreviewResult{}
+	}
+	out.RequestID, out.Raw = id, data
+	return &out, nil
+}
+
+// TestWebhook sends one signed monitor.test event to webhookURL, a public
+// HTTPS address (POST /v1/monitors/webhook-test), and reports how it
+// answered. An endpoint that fails or does not answer is not an error: OK is
+// false and Error says why. params may be nil. Not retried on a 5xx.
+func (m *MonitorsService) TestWebhook(ctx context.Context, webhookURL string, params *MonitorWebhookTestParams) (*MonitorWebhookTest, error) {
+	if strings.TrimSpace(webhookURL) == "" {
+		return nil, &InvalidRequestError{msg: "TestWebhook needs a URL, the endpoint to test"}
+	}
+	if params == nil {
+		params = &MonitorWebhookTestParams{}
+	}
+	body := map[string]any{"url": webhookURL}
+	if params.Secret != "" {
+		body["secret"] = params.Secret
+	}
+	var out MonitorWebhookTest
+	data, id, err := m.call(ctx, monitorCall{method: http.MethodPost, path: "monitors/webhook-test", body: body, safe: false, opts: &params.RequestOptions}, &out)
 	if err != nil {
 		return nil, err
 	}

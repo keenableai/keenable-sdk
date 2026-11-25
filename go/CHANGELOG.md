@@ -4,6 +4,8 @@
 
 - **Added:** `SearchOptions.Moderation`: `"moderate"` or `"strict"` filters unsafe results; empty, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 when the query is a URL.
 - **Added:** `SearchResponse.Warnings`, a slice of `SearchWarning` (`Code`, `Path`, `Message`) naming what a request should change, such as a deprecated parameter. Nil when the API sends none.
+- **Added:** `client.Monitors.Preview(ctx, &keenable.MonitorPreviewParams{...})` shows what a monitor would find before you create it (`POST /v1/monitors/preview`): a `*MonitorPreview` with up to 5 `MonitorPreviewResult` (`Title`, `URL`, `PublishedAt`) for a search monitor, or a `*MonitorPreviewPage` (`URL`, `Title`, `Excerpt`, `Source`, `Error`) for a page monitor. It creates nothing and is retried like a read.
+- **Added:** `client.Monitors.TestWebhook(ctx, url, &keenable.MonitorWebhookTestParams{Secret: ...})` sends one signed `monitor.test` event (`POST /v1/monitors/webhook-test`) and returns a `*MonitorWebhookTest` (`OK`, `Status`, `LatencyMS`, `Error`, `SignedWith`). An endpoint that fails or does not answer is `OK == false`, not an error. Retried only on a 429.
 
 ## 0.3.0
 

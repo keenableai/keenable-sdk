@@ -150,6 +150,22 @@ pub struct MonitorCreateParams {
     pub idempotency_key: Option<String>,
 }
 
+/// The arguments to [`Monitors::preview`]. A preview takes fewer fields than
+/// a create: the API refuses any other with a 400.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct MonitorPreviewParams {
+    /// "search" or "page", sent as `type`. `None` is unset (the API's default
+    /// is search).
+    pub monitor_type: Option<String>,
+    /// What a search monitor would watch for: required, with a query, unless
+    /// `monitor_type` is "page". Only `query`, `include_domains` and
+    /// `exclude_domains` are taken.
+    pub search: MonitorSearchParams,
+    /// The page a page monitor would watch: required, with a URL, when
+    /// `monitor_type` is "page", and refused otherwise. Only `url` is taken.
+    pub page: Option<MonitorPageTarget>,
+}
+
 /// The arguments to [`Monitors::update`]. `None` leaves a field as it is; for
 /// the fields that can be removed, `Some(None)` removes it.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -713,6 +729,85 @@ pub struct BulkResult {
     pub raw: Map<String, Value>,
 }
 
+/// A page a search monitor would take, in [`Monitors::preview`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+#[non_exhaustive]
+pub struct MonitorPreviewResult {
+    /// Its address.
+    pub url: String,
+    /// Its title.
+    pub title: Option<String>,
+    /// When it was published; `None` when the index has no date.
+    pub published_at: Option<String>,
+}
+
+/// A page as a page monitor would read it now, in [`Monitors::preview`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+#[non_exhaustive]
+pub struct MonitorPreviewPage {
+    /// The address sent.
+    pub url: String,
+    /// Its title.
+    pub title: Option<String>,
+    /// The first 400 characters of its text.
+    pub excerpt: Option<String>,
+    /// "stream" (Keenable's crawled copy, used while it is fresh) or "live"
+    /// (fetched now); `None` when the page could not be read.
+    pub source: Option<String>,
+    /// Why the page could not be read; `title`, `excerpt` and `source` are
+    /// then `None`.
+    pub error: Option<String>,
+}
+
+/// What [`Monitors::preview`] found. Nothing was created.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+#[non_exhaustive]
+pub struct MonitorPreview {
+    /// search or page.
+    #[serde(rename = "type", default = "default_type")]
+    pub monitor_type: String,
+    /// Up to 5 pages a search monitor would take; empty for a page monitor.
+    #[serde(deserialize_with = "null_as_default")]
+    pub results: Vec<MonitorPreviewResult>,
+    /// The page as read now, for a page monitor; `None` for a search monitor.
+    pub page: Option<MonitorPreviewPage>,
+    /// The API's id for this request.
+    #[serde(skip)]
+    pub request_id: Option<String>,
+    /// The unmodified JSON object.
+    #[serde(skip)]
+    pub raw: Map<String, Value>,
+}
+
+/// How a URL answered [`Monitors::test_webhook`]'s test event.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+#[non_exhaustive]
+pub struct MonitorWebhookTest {
+    /// Whether the URL answered with a 2xx status.
+    pub ok: bool,
+    /// The HTTP status the URL answered with; `None` when no answer came.
+    pub status: Option<u16>,
+    /// From sending to the answer or the failure, in milliseconds.
+    pub latency_ms: u64,
+    /// Why the test failed, such as "HTTP 400" or "no answer within 10 s";
+    /// `None` when it passed.
+    pub error: Option<String>,
+    /// "provided" (signed with the secret you sent, so your receiver's check
+    /// should pass) or "throwaway" (signed with a secret made for this test
+    /// alone, which no receiver can check).
+    pub signed_with: String,
+    /// The API's id for this request.
+    #[serde(skip)]
+    pub request_id: Option<String>,
+    /// The unmodified JSON object.
+    #[serde(skip)]
+    pub raw: Map<String, Value>,
+}
+
 /// One page of a list; `next_cursor` fetches the next.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
@@ -770,7 +865,14 @@ macro_rules! response {
     )*};
 }
 
-response!(Monitor, MonitorRun, MonitorStats, BulkResult);
+response!(
+    Monitor,
+    MonitorRun,
+    MonitorStats,
+    BulkResult,
+    MonitorPreview,
+    MonitorWebhookTest
+);
 
 impl<T: DeserializeOwned> Response for List<T> {
     fn attach(&mut self, request_id: Option<String>, raw: Map<String, Value>) {
@@ -785,9 +887,9 @@ impl<T: DeserializeOwned> Response for List<T> {
 ///
 /// Reads and deletes are retried like a search. [`Monitors::create`] sends an
 /// `Idempotency-Key` (yours, or a new one for each call), so retrying it
-/// cannot make a second monitor. [`Monitors::update`], [`Monitors::trigger`]
-/// and [`Monitors::bulk`] are retried only on a 429, which the API sends
-/// before it does anything.
+/// cannot make a second monitor. [`Monitors::update`], [`Monitors::trigger`],
+/// [`Monitors::bulk`] and [`Monitors::test_webhook`] are retried only on a
+/// 429, which the API sends before it does anything.
 ///
 /// ```no_run
 /// # async fn run() -> Result<(), keenable::Error> {
@@ -1285,6 +1387,88 @@ impl<'a> Monitors<'a> {
             body.insert("limit".into(), Value::from(n));
         }
         let mut call = Call::new(reqwest::Method::POST, "monitors/bulk".into(), false);
+        call.body = Some(Value::Object(body));
+        self.send(call).await
+    }
+
+    /// Shows what a monitor would find before you create it
+    /// (`POST /v1/monitors/preview`). A search monitor (`search.query`) gets
+    /// up to 5 pages from the last 7 days in `results`; with `monitor_type`
+    /// "page", a page monitor (`page.url`) gets the page as read now in
+    /// `page`, with `page.error` set when it could not be read. Creates
+    /// nothing.
+    pub async fn preview(&self, params: &MonitorPreviewParams) -> Result<MonitorPreview> {
+        let mut body = Map::new();
+        match params.monitor_type.as_deref() {
+            Some("page") => {
+                let page = params
+                    .page
+                    .as_ref()
+                    .filter(|p| !p.url.trim().is_empty())
+                    .ok_or_else(|| {
+                        Error::invalid("a page preview needs page.url, the page to read")
+                    })?;
+                if params.search != MonitorSearchParams::default() {
+                    return Err(Error::invalid("a page preview takes page, not search"));
+                }
+                body.insert("type".into(), Value::String("page".into()));
+                body.insert("page".into(), to_value(page));
+            }
+            None | Some("search") => {
+                if params.page.is_some() {
+                    return Err(Error::invalid(
+                        "page is only for monitor_type \"page\"; a search preview takes search",
+                    ));
+                }
+                if params.search.query.trim().is_empty() {
+                    return Err(Error::invalid(
+                        "preview needs search.query, the topic in plain words",
+                    ));
+                }
+                if let Some(t) = &params.monitor_type {
+                    body.insert("type".into(), Value::String(t.clone()));
+                }
+                body.insert("search".into(), params.search.body());
+            }
+            Some(other) => {
+                return Err(Error::invalid(format!(
+                    "monitor_type must be \"search\" or \"page\", got {other:?}"
+                )));
+            }
+        }
+        let mut call = Call::new(reqwest::Method::POST, "monitors/preview".into(), true);
+        call.body = Some(Value::Object(body));
+        self.send(call).await
+    }
+
+    /// Sends one signed `monitor.test` event to `url`, a public HTTPS
+    /// address (`POST /v1/monitors/webhook-test`), and reports how it
+    /// answered. `secret` is the webhook's secret (`whsec_...`) to sign the
+    /// event with, so your receiver's check passes; used for this send only.
+    /// Without it the event is signed with a throwaway secret. An endpoint
+    /// that fails or does not answer is not an error: `ok` is false and
+    /// `error` says why. Not retried on a 5xx.
+    pub async fn test_webhook(
+        &self,
+        url: &str,
+        secret: Option<&str>,
+    ) -> Result<MonitorWebhookTest> {
+        if url.trim().is_empty() {
+            return Err(Error::invalid(
+                "test_webhook needs a url, the endpoint to test",
+            ));
+        }
+        let mut body = Map::new();
+        body.insert("url".into(), Value::String(url.into()));
+        if let Some(secret) = secret {
+            if secret.is_empty() {
+                return Err(Error::invalid(
+                    "secret must be the webhook's whsec_... secret, or None",
+                ));
+            }
+            body.insert("secret".into(), Value::String(secret.into()));
+        }
+        let mut call = Call::new(reqwest::Method::POST, "monitors/webhook-test".into(), false);
         call.body = Some(Value::Object(body));
         self.send(call).await
     }

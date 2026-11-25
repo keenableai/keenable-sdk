@@ -275,12 +275,15 @@ Schedules: `cron` (runs at least 10 minutes apart, in `timezone`), `interval`
 | `deliveries(id, *, limit, cursor)` | Webhook events of the last 7 days, with attempts and errors |
 | `stats()` | Counts by status and by kind of schedule |
 | `bulk(action, *, ids, filter, limit, dry_run=True)` | Pause, resume or delete many; a dry run unless `dry_run=False` |
+| `preview(*, search, type, page)` | What a monitor would find, before you create it: up to 5 recent pages in `results` (`search` takes `query`, `include_domains`, `exclude_domains`), or with `type="page"` the page as read now in `page` (`page` takes `url`); creates nothing (`POST /v1/monitors/preview`) |
+| `test_webhook(url, secret=None)` | Send one signed `monitor.test` event to `url` and return `ok`, `status`, `latency_ms`, `error` and `signed_with` (`"provided"` with your `secret`, else `"throwaway"`); a failing endpoint is `ok=False`, not an exception (`POST /v1/monitors/webhook-test`) |
 
 `AsyncKeenable().monitors` has the same methods, awaitable (`list_all` is an
 async iterator). Every call also takes `timeout`, `max_retries` and
 `extra_headers`. Reads and deletes are retried like a search; `create()` sends
 an `Idempotency-Key` (yours, or a new one per call), so its retries cannot make
-a second monitor; `update()`, `trigger()` and `bulk()` are retried only on a 429.
+a second monitor; `update()`, `trigger()`, `bulk()` and `test_webhook()` are
+retried only on a 429.
 
 A `Monitor` has `type` (`"search"` or `"page"`), `search` (None for a page
 monitor), `page` (None for a search monitor), `disabled_reason` (`code`

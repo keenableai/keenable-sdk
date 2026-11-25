@@ -100,6 +100,9 @@ __all__ = [
     "MonitorList",
     "MonitorPageTarget",
     "MonitorPageTargetParams",
+    "MonitorPreview",
+    "MonitorPreviewPage",
+    "MonitorPreviewResult",
     "MonitorResult",
     "MonitorResultChange",
     "MonitorRun",
@@ -116,6 +119,7 @@ __all__ = [
     "MonitorVersion",
     "MonitorWebhook",
     "MonitorWebhookParams",
+    "MonitorWebhookTest",
     "ResultList",
     "RunList",
     "VersionList",
@@ -765,6 +769,120 @@ class BulkResult:
         )
 
 
+@dataclass
+class MonitorPreviewResult:
+    """A page a search monitor would take, in :meth:`Monitors.preview`."""
+
+    url: str
+    title: str | None = None
+    published_at: str | None = None
+    """When the page was published, None when the index has no date."""
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> MonitorPreviewResult:
+        return cls(
+            url=_req_str(data.get("url")),
+            title=_str(data.get("title")),
+            published_at=_str(data.get("published_at")),
+            raw=data,
+        )
+
+
+@dataclass
+class MonitorPreviewPage:
+    """A page as a page monitor would read it now, in
+    :meth:`Monitors.preview`."""
+
+    url: str
+    title: str | None = None
+    excerpt: str | None = None
+    """The first 400 characters of the page's text."""
+    source: str | None = None
+    """``"stream"`` (Keenable's crawled copy, used while it is fresh) or
+    ``"live"`` (fetched now); None when the page could not be read."""
+    error: str | None = None
+    """Why the page could not be read; ``title``, ``excerpt`` and ``source``
+    are then None."""
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> MonitorPreviewPage:
+        return cls(
+            url=_req_str(data.get("url")),
+            title=_str(data.get("title")),
+            excerpt=_str(data.get("excerpt")),
+            source=_str(data.get("source")),
+            error=_str(data.get("error")),
+            raw=data,
+        )
+
+
+@dataclass
+class MonitorPreview:
+    """What :meth:`Monitors.preview` found. Nothing was created."""
+
+    type: str
+    """``"search"`` or ``"page"``."""
+    results: list[MonitorPreviewResult]
+    """Up to 5 pages a search monitor would take; empty for a page monitor."""
+    page: MonitorPreviewPage | None = None
+    """The page as read now, for a page monitor; None for a search monitor."""
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+    request_id: str | None = None
+
+    @classmethod
+    def _from_json(
+        cls, data: dict[str, Any], request_id: str | None = None
+    ) -> MonitorPreview:
+        page = _dict(data.get("page"))
+        return cls(
+            type=_str(data.get("type")) or "search",
+            results=[
+                MonitorPreviewResult._from_json(x)
+                for x in _objects(data.get("results"))
+            ],
+            page=MonitorPreviewPage._from_json(page) if page is not None else None,
+            raw=data,
+            request_id=request_id,
+        )
+
+
+@dataclass
+class MonitorWebhookTest:
+    """How a URL answered :meth:`Monitors.test_webhook`'s test event."""
+
+    ok: bool
+    """True when the URL answered with a 2xx status."""
+    latency_ms: int
+    """From sending to the answer or the failure."""
+    signed_with: str
+    """``"provided"``: signed with the ``secret`` you sent, so your
+    receiver's check should pass. ``"throwaway"``: signed with a secret made
+    for this test alone, which no receiver can check."""
+    status: int | None = None
+    """The HTTP status the URL answered with, None when no answer came."""
+    error: str | None = None
+    """Why the test failed, such as ``"HTTP 400"`` or ``"no answer within 10
+    s"``; None when it passed."""
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+    request_id: str | None = None
+
+    @classmethod
+    def _from_json(
+        cls, data: dict[str, Any], request_id: str | None = None
+    ) -> MonitorWebhookTest:
+        return cls(
+            ok=data.get("ok") is True,
+            latency_ms=_int(data.get("latency_ms")) or 0,
+            signed_with=_req_str(data.get("signed_with")),
+            status=_int(data.get("status")),
+            error=_str(data.get("error")),
+            raw=data,
+            request_id=request_id,
+        )
+
+
 T = TypeVar("T")
 
 
@@ -1014,6 +1132,41 @@ def _bulk_call(
     return _Call("POST", _path("bulk"), json=body, safe=False)
 
 
+def _preview_call(search: Any, type: Any, page: Any) -> _Call:
+    if type is not None and type not in _TYPES:
+        raise KeenableInvalidRequestError(
+            f"type must be 'search' or 'page', got {type!r}"
+        )
+    body: dict[str, Any] = {}
+    if type == "page":
+        if search is not None:
+            raise KeenableInvalidRequestError("a page preview takes page, not search")
+        body["type"] = "page"
+        body["page"] = _check_page(page, True)
+    else:
+        if page is not None:
+            raise KeenableInvalidRequestError(
+                "page is only for type='page'; a search preview takes search"
+            )
+        if type is not None:
+            body["type"] = type
+        body["search"] = _check_search(search, True)
+    return _Call("POST", _path("preview"), json=body)
+
+
+def _webhook_test_call(url: Any, secret: Any) -> _Call:
+    if not isinstance(url, str) or not url.strip():
+        raise KeenableInvalidRequestError("url must be a non-empty string")
+    body: dict[str, Any] = {"url": url}
+    if secret is not None:
+        if not isinstance(secret, str) or not secret:
+            raise KeenableInvalidRequestError(
+                "secret must be the webhook's whsec_... secret, or None"
+            )
+        body["secret"] = secret
+    return _Call("POST", _path("webhook-test"), json=body, safe=False)
+
+
 Timeout = Union[float, httpx.Timeout, None]
 
 
@@ -1024,8 +1177,8 @@ class Monitors:
     :meth:`Keenable.search` does. Reads and deletes are retried like a search.
     :meth:`create` sends an ``Idempotency-Key`` (yours, or a new one for each
     call), so retrying it cannot make a second monitor. :meth:`update`,
-    :meth:`trigger` and :meth:`bulk` are retried only on a 429, which the API
-    sends before it does anything.
+    :meth:`trigger`, :meth:`bulk` and :meth:`test_webhook` are retried only on
+    a 429, which the API sends before it does anything.
     """
 
     def __init__(self, client: Keenable) -> None:
@@ -1442,6 +1595,66 @@ class Monitors:
         data, request_id = self._send(call, timeout, max_retries, extra_headers)
         return BulkResult._from_json(data, request_id)
 
+    def preview(
+        self,
+        *,
+        search: MonitorSearchParams | None = None,
+        type: MonitorType | None = None,
+        page: MonitorPageTargetParams | None = None,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> MonitorPreview:
+        """See what a monitor would find before you create it
+        (``POST /v1/monitors/preview``). Creates nothing.
+
+        Args:
+            search: For a search monitor: ``query`` (required),
+                ``include_domains`` and ``exclude_domains``. The preview takes
+                no other field; the API refuses one with a 400.
+            type: ``"search"`` (the API's default) or ``"page"``.
+            page: For ``type="page"``: ``{"url": "https://..."}``, a public
+                http(s) address. The preview takes no other field.
+
+        Returns:
+            A :class:`MonitorPreview`: for a search monitor, up to 5 pages
+            from the last 7 days in ``results``; for a page monitor, the page
+            as read now in ``page``. A page that cannot be read is not an
+            error: ``page.error`` says why.
+        """
+        data, request_id = self._send(
+            _preview_call(search, type, page), timeout, max_retries, extra_headers
+        )
+        return MonitorPreview._from_json(data, request_id)
+
+    def test_webhook(
+        self,
+        url: str,
+        secret: str | None = None,
+        *,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> MonitorWebhookTest:
+        """Send one signed ``monitor.test`` event to ``url``
+        (``POST /v1/monitors/webhook-test``) and report how it answered.
+
+        Args:
+            url: The endpoint to test, a public HTTPS address.
+            secret: The webhook's secret (``whsec_...``) to sign the event
+                with, so your receiver's check passes. Used for this send
+                only. Without it the event is signed with a throwaway secret.
+
+        Returns:
+            A :class:`MonitorWebhookTest`. An endpoint that fails or does not
+            answer is not an error: ``ok`` is False and ``error`` says why.
+            Not retried on a 5xx.
+        """
+        data, request_id = self._send(
+            _webhook_test_call(url, secret), timeout, max_retries, extra_headers
+        )
+        return MonitorWebhookTest._from_json(data, request_id)
+
 
 class AsyncMonitors:
     """``AsyncKeenable.monitors``: :class:`Monitors` with awaitable methods."""
@@ -1781,3 +1994,34 @@ class AsyncMonitors:
         call = _bulk_call(action, ids, filter, limit, dry_run)
         data, request_id = await self._send(call, timeout, max_retries, extra_headers)
         return BulkResult._from_json(data, request_id)
+
+    async def preview(
+        self,
+        *,
+        search: MonitorSearchParams | None = None,
+        type: MonitorType | None = None,
+        page: MonitorPageTargetParams | None = None,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> MonitorPreview:
+        """See what a monitor would find. See :meth:`Monitors.preview`."""
+        data, request_id = await self._send(
+            _preview_call(search, type, page), timeout, max_retries, extra_headers
+        )
+        return MonitorPreview._from_json(data, request_id)
+
+    async def test_webhook(
+        self,
+        url: str,
+        secret: str | None = None,
+        *,
+        timeout: Timeout = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> MonitorWebhookTest:
+        """Send a test event to a webhook. See :meth:`Monitors.test_webhook`."""
+        data, request_id = await self._send(
+            _webhook_test_call(url, secret), timeout, max_retries, extra_headers
+        )
+        return MonitorWebhookTest._from_json(data, request_id)

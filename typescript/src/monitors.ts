@@ -125,6 +125,40 @@ export interface MonitorPageCreateParams extends MonitorCreateCommonParams {
 /** `{ search: { query } }` for a search monitor, or `{ type: "page", page: { url } }` for a page monitor. */
 export type MonitorCreateParams = MonitorSearchCreateParams | MonitorPageCreateParams;
 
+/** What a search preview takes: the query and the domain filters, nothing else. */
+export type MonitorPreviewSearchParams = Pick<MonitorSearchParams, "query" | "includeDomains" | "excludeDomains">;
+
+/** What a page preview takes: the page's address, nothing else. */
+export type MonitorPreviewPageParams = Pick<MonitorPageTargetParams, "url">;
+
+/** Preview a search monitor. */
+export interface MonitorSearchPreviewParams extends RequestOptions {
+  /** "search", the API's default. */
+  type?: "search";
+  search: MonitorPreviewSearchParams;
+  page?: never;
+}
+
+/** Preview a page monitor. */
+export interface MonitorPagePreviewParams extends RequestOptions {
+  type: "page";
+  page: MonitorPreviewPageParams;
+  search?: never;
+}
+
+/** `{ search: { query } }` for a search monitor, or `{ type: "page", page: { url } }` for a page monitor. */
+export type MonitorPreviewParams = MonitorSearchPreviewParams | MonitorPagePreviewParams;
+
+/** Options of `testWebhook()`. */
+export interface MonitorWebhookTestParams extends RequestOptions {
+  /**
+   * The webhook's secret (`whsec_...`) to sign the test event with, so your
+   * receiver's check passes. Used for this send only, never stored. Without
+   * it the event is signed with a throwaway secret.
+   */
+  secret?: string;
+}
+
 /** Only the fields you set are sent; `null` removes the schedule, webhook or output schema. */
 export interface MonitorUpdateParams extends RequestOptions {
   name?: string | null;
@@ -405,6 +439,59 @@ export interface BulkResult {
   raw: Record<string, unknown>;
 }
 
+/** A page a search monitor would take, in `preview()`. */
+export interface MonitorPreviewResult {
+  url: string;
+  title: string | null;
+  /** When the page was published; null when the index has no date. */
+  publishedAt: string | null;
+  raw: Record<string, unknown>;
+}
+
+/** A page as a page monitor would read it now, in `preview()`. */
+export interface MonitorPreviewPage {
+  url: string;
+  title: string | null;
+  /** The first 400 characters of the page's text. */
+  excerpt: string | null;
+  /** stream (Keenable's crawled copy, used while it is fresh) or live (fetched now); null when the page could not be read. */
+  source: string | null;
+  /** Why the page could not be read; `title`, `excerpt` and `source` are then null. */
+  error: string | null;
+  raw: Record<string, unknown>;
+}
+
+/** What `preview()` found. Nothing was created. */
+export interface MonitorPreview {
+  type: MonitorType;
+  /** Up to 5 pages a search monitor would take; empty for a page monitor. */
+  results: MonitorPreviewResult[];
+  /** The page as read now, for a page monitor; null for a search monitor. */
+  page: MonitorPreviewPage | null;
+  requestId?: string;
+  raw: Record<string, unknown>;
+}
+
+/** How a URL answered `testWebhook()`'s test event. */
+export interface MonitorWebhookTest {
+  /** The URL answered with a 2xx status. */
+  ok: boolean;
+  /** The HTTP status the URL answered with; null when no answer came. */
+  status: number | null;
+  /** From sending to the answer or the failure. */
+  latencyMs: number;
+  /** Why the test failed, such as "HTTP 400" or "no answer within 10 s"; null when it passed. */
+  error: string | null;
+  /**
+   * provided: signed with the `secret` you sent, so your receiver's check
+   * should pass. throwaway: signed with a secret made for this test alone,
+   * which no receiver can check.
+   */
+  signedWith: string;
+  requestId?: string;
+  raw: Record<string, unknown>;
+}
+
 /** One page of a list. */
 export interface ListPage<T> {
   data: T[];
@@ -641,6 +728,21 @@ function toDelivery(data: Json): MonitorDelivery {
   };
 }
 
+function toPreviewResult(data: Json): MonitorPreviewResult {
+  return { url: reqStr(data.url), title: str(data.title), publishedAt: str(data.published_at), raw: data };
+}
+
+function toPreviewPage(data: Json): MonitorPreviewPage {
+  return {
+    url: reqStr(data.url),
+    title: str(data.title),
+    excerpt: str(data.excerpt),
+    source: str(data.source),
+    error: str(data.error),
+    raw: data,
+  };
+}
+
 function toList<T>(data: Json, requestId: string | undefined, item: (x: Json) => T): ListPage<T> {
   return {
     data: objects(data.data).map(item),
@@ -755,8 +857,8 @@ const BULK_ACTIONS = new Set(["pause", "resume", "delete"]);
  * Every call takes the usual `signal`, `timeoutMs`, `maxRetries` and
  * `headers`. Reads and deletes are retried like a search. `create()` sends an
  * `Idempotency-Key` (yours, or a new one per call), so retrying it cannot
- * make a second monitor. `update()`, `trigger()` and `bulk()` are retried only
- * on a 429, which the API sends before it does anything.
+ * make a second monitor. `update()`, `trigger()`, `bulk()` and `testWebhook()`
+ * are retried only on a 429, which the API sends before it does anything.
  */
 export class Monitors {
   /** @internal */
@@ -1013,6 +1115,80 @@ export class Monitors {
       dryRun: data.dry_run === true,
       hasMore: data.has_more === true,
       notFound: strs(data.not_found) ?? [],
+      requestId,
+      raw: data,
+    };
+  }
+
+  /**
+   * See what a monitor would find before you create it
+   * (`POST /v1/monitors/preview`). Creates nothing. A search monitor gets up
+   * to 5 pages from the last 7 days in `results`; a page monitor gets the
+   * page as read now in `page`, with `page.error` set when it could not be
+   * read.
+   */
+  async preview(params: MonitorPreviewParams): Promise<MonitorPreview> {
+    if (typeof params !== "object" || params === null || Array.isArray(params)) {
+      throw new KeenableInvalidRequestError("preview() needs { search: { query } } or { type: \"page\", page: { url } }");
+    }
+    const type: unknown = (params as { type?: unknown }).type;
+    if (type !== undefined && type !== "search" && type !== "page") {
+      throw new KeenableInvalidRequestError(`type must be "search" or "page", got ${JSON.stringify(type)}`);
+    }
+    const body: Json = {};
+    const sent = params as { search?: unknown; page?: unknown };
+    if (type === "page") {
+      if (sent.search !== undefined) throw new KeenableInvalidRequestError("a page preview takes page, not search");
+      body.type = "page";
+      body.page = pageBody(sent.page as MonitorPageTargetParams, true);
+    } else {
+      if (sent.page !== undefined) {
+        throw new KeenableInvalidRequestError('page is only for type: "page"; a search preview takes search');
+      }
+      if (type !== undefined) body.type = type;
+      body.search = searchBody(sent.search as MonitorSearchParams, true);
+    }
+    const { data, requestId } = await this.send(
+      { method: "POST", path: "monitors/preview", body, safe: true },
+      requestOptions(params),
+    );
+    const page = data.page;
+    return {
+      type: data.type === "page" ? "page" : "search",
+      results: objects(data.results).map(toPreviewResult),
+      page: isObject(page) ? toPreviewPage(page) : null,
+      requestId,
+      raw: data,
+    };
+  }
+
+  /**
+   * Send one signed `monitor.test` event to `url`, a public HTTPS address
+   * (`POST /v1/monitors/webhook-test`), and report how it answered. An
+   * endpoint that fails or does not answer is not an error: `ok` is false
+   * and `error` says why. Not retried on a 5xx.
+   */
+  async testWebhook(url: string, params: MonitorWebhookTestParams = {}): Promise<MonitorWebhookTest> {
+    if (typeof url !== "string" || url.trim() === "") {
+      throw new KeenableInvalidRequestError("url must be a non-empty string");
+    }
+    const body: Json = { url };
+    if (params.secret !== undefined) {
+      if (typeof params.secret !== "string" || params.secret === "") {
+        throw new KeenableInvalidRequestError("secret must be the webhook's whsec_... secret, or left out");
+      }
+      body.secret = params.secret;
+    }
+    const { data, requestId } = await this.send(
+      { method: "POST", path: "monitors/webhook-test", body, safe: false },
+      requestOptions(params),
+    );
+    return {
+      ok: data.ok === true,
+      status: int(data.status),
+      latencyMs: int(data.latency_ms) ?? 0,
+      error: str(data.error),
+      signedWith: reqStr(data.signed_with),
       requestId,
       raw: data,
     };

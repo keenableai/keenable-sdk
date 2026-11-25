@@ -286,12 +286,14 @@ code `invalid_request` and a message that names the rule.
 | `deliveries(id, &MonitorPageParams)` | Webhook events of the last 7 days, with attempts and errors |
 | `stats()` | Counts by status and by kind of schedule |
 | `bulk(action, &MonitorBulkParams)` | Pause, resume or delete many; a dry run unless `dry_run: Some(false)` |
+| `preview(&MonitorPreviewParams)` | What a monitor would find, before you create it: up to 5 recent pages in `results` (`search` takes `query`, `include_domains`, `exclude_domains`), or with `monitor_type` "page" the page as read now in `page` (`page` takes `url`); creates nothing (`POST /v1/monitors/preview`) |
+| `test_webhook(url, secret)` | Send one signed `monitor.test` event to `url` and return `ok`, `status`, `latency_ms`, `error` and `signed_with` ("provided" with `Some(secret)`, else "throwaway"); a failing endpoint is `ok: false`, not an `Err` (`POST /v1/monitors/webhook-test`) |
 
 `client.monitors().with_request(RequestOptions { .. })` sets a timeout, retry
 budget or headers for the calls made through it. Reads and deletes are retried
 like a search; `create` sends an `Idempotency-Key` (yours, or a new one per
-call), so its retries cannot make a second monitor; `update`, `trigger` and
-`bulk` are retried only on a 429.
+call), so its retries cannot make a second monitor; `update`, `trigger`,
+`bulk` and `test_webhook` are retried only on a 429.
 
 A `Monitor` has `monitor_type` ("search" or "page"), `search` (`None` for a
 page monitor), `page` (`None` for a search monitor), `disabled_reason` (`code`

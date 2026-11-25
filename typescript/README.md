@@ -271,11 +271,13 @@ Schedules: `cron` (runs at least 10 minutes apart, in `timezone`), `interval`
 | `deliveries(id, { limit, cursor })` | Webhook events of the last 7 days, with attempts and errors |
 | `stats()` | Counts by status and by kind of schedule |
 | `bulk(action, { ids, filter, limit, dryRun })` | Pause, resume or delete many; a dry run unless `dryRun: false` |
+| `preview({ type, search, page })` | What a monitor would find, before you create it: up to 5 recent pages in `results` (`search` takes `query`, `includeDomains`, `excludeDomains`), or with `type: "page"` the page as read now in `page` (`page` takes `url`); creates nothing (`POST /v1/monitors/preview`) |
+| `testWebhook(url, { secret })` | Send one signed `monitor.test` event to `url` and return `ok`, `status`, `latencyMs`, `error` and `signedWith` (`"provided"` with your `secret`, else `"throwaway"`); a failing endpoint is `ok: false`, not a throw (`POST /v1/monitors/webhook-test`) |
 
 Every call also takes `signal`, `timeoutMs`, `maxRetries` and `headers`. Reads
 and deletes are retried like a search; `create()` sends an `Idempotency-Key`
 (yours, or a new one per call), so its retries cannot make a second monitor;
-`update()`, `trigger()` and `bulk()` are retried only on a 429.
+`update()`, `trigger()`, `bulk()` and `testWebhook()` are retried only on a 429.
 
 A `Monitor` has `type` (`"search"` or `"page"`), `search` (null for a page
 monitor), `page` (null for a search monitor), `disabledReason` (`code`

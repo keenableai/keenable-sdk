@@ -4,6 +4,8 @@
 
 - **Added:** `SearchOptions::moderation`: `"moderate"` or `"strict"` filters unsafe results; `None`, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 when the query is a URL.
 - **Added:** `SearchResponse::warnings`, a `Vec<SearchWarning>` (`code`, `path`, `message`) naming what a request should change, such as a deprecated parameter. Empty when the API sends none.
+- **Added:** `monitors().preview(&MonitorPreviewParams { .. })` shows what a monitor would find before you create it (`POST /v1/monitors/preview`): a `MonitorPreview` with up to 5 `MonitorPreviewResult` (`title`, `url`, `published_at`) for a search monitor, or a `MonitorPreviewPage` (`url`, `title`, `excerpt`, `source`, `error`) for a page monitor. It creates nothing and is retried like a read.
+- **Added:** `monitors().test_webhook(url, secret)` sends one signed `monitor.test` event (`POST /v1/monitors/webhook-test`) and returns a `MonitorWebhookTest` (`ok`, `status`, `latency_ms`, `error`, `signed_with`). An endpoint that fails or does not answer is `ok: false`, not an `Err`. Retried only on a 429.
 
 ## 0.3.0
 

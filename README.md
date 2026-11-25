@@ -107,7 +107,8 @@ reports every new result that matches, by webhook, in scheduled runs, or when
 you poll it. A page monitor watches one page and reports the changes worth
 telling. Every SDK has a `monitors` namespace for
 `https://api.keenable.ai/v1/monitors` (create, list, get, update, pause,
-resume, delete, trigger, runs, results, versions, deliveries, stats, bulk) and a
+resume, delete, trigger, runs, results, versions, deliveries, stats, bulk,
+preview, test webhook) and a
 `verify_webhook` helper for the signed deliveries. Monitors need an API key.
 
 ```python

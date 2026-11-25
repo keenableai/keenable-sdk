@@ -326,11 +326,13 @@ Schedules: `cron` (runs at least 10 minutes apart, in `Timezone`), `interval`
 | `Deliveries(ctx, id, *MonitorPageParams)` | Webhook events of the last 7 days, with attempts and errors |
 | `Stats(ctx, *RequestOptions)` | Counts by status and by kind of schedule |
 | `Bulk(ctx, action, *MonitorBulkParams)` | Pause, resume or delete many; a dry run unless `DryRun` points to false |
+| `Preview(ctx, *MonitorPreviewParams)` | What a monitor would find, before you create it: up to 5 recent pages in `Results` (`Search` takes `Query`, `IncludeDomains`, `ExcludeDomains`), or with `Type: "page"` the page as read now in `Page` (`Page` takes `URL`); creates nothing (`POST /v1/monitors/preview`) |
+| `TestWebhook(ctx, url, *MonitorWebhookTestParams)` | Send one signed `monitor.test` event to `url` and return `OK`, `Status`, `LatencyMS`, `Error` and `SignedWith` (`"provided"` with your `Secret`, else `"throwaway"`); a failing endpoint is `OK == false`, not an error (`POST /v1/monitors/webhook-test`) |
 
 Every params struct embeds `RequestOptions`. Reads and deletes are retried like
 a search; `Create` sends an `Idempotency-Key` (yours, or a new one per call), so
-its retries cannot make a second monitor; `Update`, `Trigger` and `Bulk` are
-retried only on a 429.
+its retries cannot make a second monitor; `Update`, `Trigger`, `Bulk` and
+`TestWebhook` are retried only on a 429.
 
 A `Monitor` has `Type` ("search" or "page"), `Search` (nil for a page monitor),
 `Page` (nil for a search monitor), `DisabledReason` (`Code` `runs_failed`,

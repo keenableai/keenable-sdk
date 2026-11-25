@@ -441,3 +441,163 @@ func TestVerifyWebhookRefusesAnEmptyKeyAndALongTimestamp(t *testing.T) {
 		t.Fatalf("long timestamp: err %v", err)
 	}
 }
+
+var previewResultBody = map[string]any{
+	"title":        "Example Labs releases a 70B open-weights model",
+	"url":          "https://example.com/news/example-70b",
+	"published_at": "2026-11-24T08:12:00Z",
+}
+
+func TestMonitorsPreviewSearch(t *testing.T) {
+	c, seen := monitorServer(t, "k", mreply{200, map[string]any{
+		"type": "search",
+		"results": []any{previewResultBody, map[string]any{
+			"title": nil, "url": "https://example.com/b", "published_at": nil,
+		}},
+		"page": nil,
+	}})
+	preview, err := c.Monitors.Preview(context.Background(), &keenable.MonitorPreviewParams{
+		Search: keenable.MonitorSearchParams{Query: "open-weights LLM releases", ExcludeDomains: []string{"example.org"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := (*seen)[0]
+	if req.Method != http.MethodPost || req.Path != "/v1/monitors/preview" || req.Header.Get("Idempotency-Key") != "" {
+		t.Fatalf("request %+v", req)
+	}
+	want := map[string]any{"search": map[string]any{"query": "open-weights LLM releases", "exclude_domains": []any{"example.org"}}}
+	if !reflect.DeepEqual(req.Body, want) {
+		t.Fatalf("body %v", req.Body)
+	}
+	if preview.Type != "search" || preview.Page != nil || len(preview.Results) != 2 {
+		t.Fatalf("preview %+v", preview)
+	}
+	first, second := preview.Results[0], preview.Results[1]
+	if first.URL != "https://example.com/news/example-70b" || first.PublishedAt == nil || *first.PublishedAt != "2026-11-24T08:12:00Z" || first.Title == nil {
+		t.Fatalf("first %+v", first)
+	}
+	if second.Title != nil || second.PublishedAt != nil {
+		t.Fatalf("second %+v", second)
+	}
+}
+
+func TestMonitorsPreviewPage(t *testing.T) {
+	c, seen := monitorServer(t, "k",
+		mreply{200, map[string]any{"type": "page", "results": []any{}, "page": map[string]any{
+			"url": "https://example.com/pricing", "title": "Pricing", "excerpt": "Plans start at $20", "source": "live", "error": nil,
+		}}},
+		mreply{200, map[string]any{"type": "page", "results": []any{}, "page": map[string]any{
+			"url": "https://example.com/gone", "title": nil, "excerpt": nil, "source": nil, "error": "HTTP 404",
+		}}},
+	)
+	ctx := context.Background()
+	preview, err := c.Monitors.Preview(ctx, &keenable.MonitorPreviewParams{Type: "page", Page: &keenable.MonitorPageTarget{URL: "https://example.com/pricing"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"type": "page", "page": map[string]any{"url": "https://example.com/pricing"}}
+	if !reflect.DeepEqual((*seen)[0].Body, want) {
+		t.Fatalf("body %v", (*seen)[0].Body)
+	}
+	if preview.Type != "page" || len(preview.Results) != 0 || preview.Page == nil {
+		t.Fatalf("preview %+v", preview)
+	}
+	if p := preview.Page; p.Source == nil || *p.Source != "live" || p.Excerpt == nil || *p.Excerpt != "Plans start at $20" || p.Error != nil {
+		t.Fatalf("page %+v", p)
+	}
+	gone, err := c.Monitors.Preview(ctx, &keenable.MonitorPreviewParams{Type: "page", Page: &keenable.MonitorPageTarget{URL: "https://example.com/gone"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := gone.Page; p == nil || p.Error == nil || *p.Error != "HTTP 404" || p.Title != nil || p.Source != nil || p.Excerpt != nil {
+		t.Fatalf("gone %+v", p)
+	}
+}
+
+func TestMonitorsPreviewChecksItsArguments(t *testing.T) {
+	c, seen := monitorServer(t, "k", mreply{200, map[string]any{}})
+	page := &keenable.MonitorPageTarget{URL: "https://example.com"}
+	for _, params := range []*keenable.MonitorPreviewParams{
+		nil,
+		{},
+		{Search: keenable.MonitorSearchParams{Query: " "}},
+		{Type: "page"},
+		{Type: "page", Page: page, Search: keenable.MonitorSearchParams{Query: "q"}},
+		{Search: keenable.MonitorSearchParams{Query: "q"}, Page: page},
+		{Type: "feed", Search: keenable.MonitorSearchParams{Query: "q"}},
+	} {
+		var invalid *keenable.InvalidRequestError
+		if _, err := c.Monitors.Preview(context.Background(), params); !errors.As(err, &invalid) {
+			t.Fatalf("%+v: err %v", params, err)
+		}
+	}
+	if len(*seen) != 0 {
+		t.Fatalf("%d requests, want 0", len(*seen))
+	}
+}
+
+func TestMonitorsPreviewIsRetriedOn5xx(t *testing.T) {
+	c, seen := monitorServer(t, "k",
+		mreply{503, map[string]any{"retry_after_seconds": 0}},
+		mreply{200, map[string]any{"type": "search", "results": nil, "page": nil}},
+	)
+	preview, err := c.Monitors.Preview(context.Background(), &keenable.MonitorPreviewParams{Search: keenable.MonitorSearchParams{Query: "q"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(*seen) != 2 || preview.Results == nil || len(preview.Results) != 0 {
+		t.Fatalf("preview %+v, %d requests", preview, len(*seen))
+	}
+}
+
+func TestMonitorsTestWebhook(t *testing.T) {
+	const secret = "whsec_a2VlbmFibGUtbW9uaXRvcnMtd2ViaG9vay10ZXN0ISE="
+	c, seen := monitorServer(t, "k",
+		mreply{200, map[string]any{"ok": true, "status": 204, "latency_ms": 182, "error": nil, "signed_with": "provided", "request_id": "req_1"}},
+		mreply{200, map[string]any{"ok": false, "status": nil, "latency_ms": 10003, "error": "no answer within 10 s", "signed_with": "throwaway"}},
+	)
+	ctx := context.Background()
+	ok, err := c.Monitors.TestWebhook(ctx, "https://hooks.example.com/k", &keenable.MonitorWebhookTestParams{Secret: secret})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad, err := c.Monitors.TestWebhook(ctx, "https://hooks.example.com/k", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := (*seen)[0]; r.Method != http.MethodPost || r.Path != "/v1/monitors/webhook-test" ||
+		!reflect.DeepEqual(r.Body, map[string]any{"url": "https://hooks.example.com/k", "secret": secret}) {
+		t.Fatalf("request %+v", r)
+	}
+	if !reflect.DeepEqual((*seen)[1].Body, map[string]any{"url": "https://hooks.example.com/k"}) {
+		t.Fatalf("body %v", (*seen)[1].Body)
+	}
+	if !ok.OK || ok.Status == nil || *ok.Status != 204 || ok.LatencyMS != 182 || ok.Error != nil || ok.SignedWith != "provided" || ok.RequestID != "req_1" {
+		t.Fatalf("ok %+v", ok)
+	}
+	if bad.OK || bad.Status != nil || bad.Error == nil || *bad.Error != "no answer within 10 s" || bad.SignedWith != "throwaway" || bad.LatencyMS != 10003 {
+		t.Fatalf("bad %+v", bad)
+	}
+}
+
+func TestMonitorsTestWebhookIsNotRetriedOn5xx(t *testing.T) {
+	c, seen := monitorServer(t, "k", mreply{503, map[string]any{"retry_after_seconds": 0}})
+	if _, err := c.Monitors.TestWebhook(context.Background(), "https://hooks.example.com/k", nil); err == nil {
+		t.Fatal("want an error")
+	}
+	if len(*seen) != 1 {
+		t.Fatalf("%d requests, want 1", len(*seen))
+	}
+}
+
+func TestMonitorsTestWebhookNeedsAURL(t *testing.T) {
+	c, seen := monitorServer(t, "k", mreply{200, map[string]any{}})
+	var invalid *keenable.InvalidRequestError
+	if _, err := c.Monitors.TestWebhook(context.Background(), " ", nil); !errors.As(err, &invalid) {
+		t.Fatalf("err %v", err)
+	}
+	if len(*seen) != 0 {
+		t.Fatalf("%d requests, want 0", len(*seen))
+	}
+}

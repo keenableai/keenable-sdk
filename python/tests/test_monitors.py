@@ -773,3 +773,199 @@ def test_verify_webhook_reads_a_monitor_page_changed() -> None:
         event.data.run.changes.summary == "The Pro plan went from $25 to $30 a month."
     )
     assert event.data.result is None and event.data.monitor is None
+
+
+PREVIEW_RESULT: dict[str, Any] = {
+    "title": "Example Labs releases a 70B open-weights model",
+    "url": "https://example.com/news/example-70b",
+    "published_at": "2026-11-24T08:12:00Z",
+}
+
+
+def test_preview_a_search_monitor() -> None:
+    keenable, seen = _client(
+        [
+            httpx.Response(
+                200,
+                json={
+                    "type": "search",
+                    "results": [
+                        PREVIEW_RESULT,
+                        dict(PREVIEW_RESULT, title=None, published_at=None),
+                    ],
+                    "page": None,
+                },
+            )
+        ]
+    )
+    preview = keenable.monitors.preview(
+        search={
+            "query": "open-weights LLM releases",
+            "exclude_domains": ("example.org",),
+        }
+    )
+    assert seen[0].method == "POST" and seen[0].url.path == "/v1/monitors/preview"
+    assert "Idempotency-Key" not in seen[0].headers
+    assert json.loads(seen[0].content) == {
+        "search": {
+            "query": "open-weights LLM releases",
+            "exclude_domains": ["example.org"],
+        }
+    }
+    assert preview.type == "search" and preview.page is None
+    assert preview.results[0].url == "https://example.com/news/example-70b"
+    assert preview.results[0].published_at == "2026-11-24T08:12:00Z"
+    assert preview.results[1].title is None and preview.results[1].published_at is None
+
+
+def test_preview_a_page_monitor() -> None:
+    page = {
+        "url": "https://example.com/pricing",
+        "title": "Pricing",
+        "excerpt": "Plans start at $20",
+        "source": "live",
+        "error": None,
+    }
+    failed = {
+        "url": "https://example.com/gone",
+        "title": None,
+        "excerpt": None,
+        "source": None,
+        "error": "HTTP 404",
+    }
+    keenable, seen = _client(
+        [
+            httpx.Response(200, json={"type": "page", "results": [], "page": page}),
+            httpx.Response(200, json={"type": "page", "results": [], "page": failed}),
+        ]
+    )
+    preview = keenable.monitors.preview(
+        type="page", page={"url": "https://example.com/pricing"}
+    )
+    assert json.loads(seen[0].content) == {
+        "type": "page",
+        "page": {"url": "https://example.com/pricing"},
+    }
+    assert preview.type == "page" and preview.results == []
+    assert preview.page is not None and preview.page.source == "live"
+    assert preview.page.excerpt == "Plans start at $20" and preview.page.error is None
+    gone = keenable.monitors.preview(
+        type="page", page={"url": "https://example.com/gone"}
+    )
+    assert gone.page is not None and gone.page.error == "HTTP 404"
+    assert gone.page.title is None and gone.page.source is None
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {},
+        {"search": {"query": " "}},
+        {"type": "page"},
+        {"type": "page", "search": {"query": "q"}, "page": {"url": "https://a.b"}},
+        {"search": {"query": "q"}, "page": {"url": "https://a.b"}},
+        {"type": "agent", "search": {"query": "q"}},
+    ],
+)
+def test_preview_checks_the_kind_of_monitor(kwargs: dict[str, Any]) -> None:
+    keenable, seen = _client([httpx.Response(200, json={})])
+    with pytest.raises(KeenableInvalidRequestError):
+        keenable.monitors.preview(**kwargs)
+    assert seen == []
+
+
+def test_preview_is_retried_on_a_5xx() -> None:
+    keenable, seen = _client(
+        [
+            httpx.Response(503, json={}),
+            httpx.Response(200, json={"type": "search", "results": [], "page": None}),
+        ],
+        retries=2,
+    )
+    preview = keenable.monitors.preview(search={"query": "q"})
+    assert len(seen) == 2 and preview.results == []
+
+
+def test_test_webhook() -> None:
+    passed = {
+        "ok": True,
+        "status": 204,
+        "latency_ms": 182,
+        "error": None,
+        "signed_with": "provided",
+    }
+    failed = {
+        "ok": False,
+        "status": None,
+        "latency_ms": 10003,
+        "error": "no answer within 10 s",
+        "signed_with": "throwaway",
+    }
+    keenable, seen = _client(
+        [
+            httpx.Response(200, json=passed, headers={"x-request-id": "req_1"}),
+            httpx.Response(200, json=failed),
+        ]
+    )
+    ok = keenable.monitors.test_webhook("https://hooks.example.com/k", SECRET)
+    bad = keenable.monitors.test_webhook("https://hooks.example.com/k")
+    assert seen[0].method == "POST" and seen[0].url.path == "/v1/monitors/webhook-test"
+    assert json.loads(seen[0].content) == {
+        "url": "https://hooks.example.com/k",
+        "secret": SECRET,
+    }
+    assert json.loads(seen[1].content) == {"url": "https://hooks.example.com/k"}
+    assert ok.ok and ok.status == 204 and ok.latency_ms == 182
+    assert ok.error is None and ok.signed_with == "provided"
+    assert ok.request_id == "req_1"
+    assert not bad.ok and bad.status is None
+    assert bad.error == "no answer within 10 s" and bad.signed_with == "throwaway"
+
+
+@pytest.mark.parametrize("status", [500, 503])
+def test_test_webhook_is_not_retried_on_a_5xx(status: int) -> None:
+    keenable, seen = _client([httpx.Response(status, json={})], retries=2)
+    with pytest.raises(KeenableAPIError):
+        keenable.monitors.test_webhook("https://hooks.example.com/k")
+    assert len(seen) == 1
+
+
+def test_test_webhook_checks_its_arguments() -> None:
+    keenable, seen = _client([httpx.Response(200, json={})])
+    with pytest.raises(KeenableInvalidRequestError):
+        keenable.monitors.test_webhook("")
+    with pytest.raises(KeenableInvalidRequestError):
+        keenable.monitors.test_webhook("https://hooks.example.com/k", "")
+    assert seen == []
+
+
+async def test_the_async_client_preview_and_test_webhook() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if request.url.path == "/v1/monitors/preview":
+            return httpx.Response(
+                200, json={"type": "search", "results": [PREVIEW_RESULT], "page": None}
+            )
+        return httpx.Response(
+            200,
+            json={
+                "ok": False,
+                "status": 400,
+                "latency_ms": 90,
+                "error": "HTTP 400",
+                "signed_with": "provided",
+            },
+        )
+
+    async with AsyncKeenable(
+        "k", client=httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    ) as keenable:
+        preview = await keenable.monitors.preview(search={"query": "q"})
+        tested = await keenable.monitors.test_webhook(
+            "https://hooks.example.com/k", SECRET
+        )
+    assert preview.results[0].title == PREVIEW_RESULT["title"]
+    assert not tested.ok and tested.status == 400 and tested.error == "HTTP 400"
+    assert seen[1].url.path == "/v1/monitors/webhook-test"

@@ -8,9 +8,9 @@ use super::server::{start, Reply, Script};
 use super::*;
 use crate::{
     BulkFilter, Error, MonitorBulkParams, MonitorCreateParams, MonitorListParams,
-    MonitorPageParams, MonitorPageTarget, MonitorResultsParams, MonitorRunOutputError,
-    MonitorScheduleParams, MonitorSearchParams, MonitorUpdateParams, MonitorVersionsParams,
-    MonitorWebhookParams,
+    MonitorPageParams, MonitorPageTarget, MonitorPreviewParams, MonitorResultsParams,
+    MonitorRunOutputError, MonitorScheduleParams, MonitorSearchParams, MonitorUpdateParams,
+    MonitorVersionsParams, MonitorWebhookParams,
 };
 
 fn monitor() -> Value {
@@ -829,4 +829,245 @@ fn verify_webhook_reads_a_page_changed() {
         changes.summary.as_deref(),
         Some("The Pro plan went from $25 to $30 a month.")
     );
+}
+
+fn preview_result() -> Value {
+    json!({
+        "title": "Example Labs releases a 70B open-weights model",
+        "url": "https://example.com/news/example-70b",
+        "published_at": "2026-11-24T08:12:00Z"
+    })
+}
+
+#[tokio::test]
+async fn preview_a_search_monitor() {
+    let server = start(Script::Replies(vec![ok(
+        200,
+        json!({
+            "type": "search",
+            "results": [preview_result(), {"title": null, "url": "https://example.com/b", "published_at": null}],
+            "page": null
+        }),
+    )]))
+    .await;
+    let preview = keyed(&server)
+        .monitors()
+        .preview(&MonitorPreviewParams {
+            search: MonitorSearchParams {
+                exclude_domains: Some(vec!["example.org".into()]),
+                ..MonitorSearchParams::new("open-weights LLM releases")
+            },
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let seen = &server.requests()[0];
+    assert_eq!(seen.method, "POST");
+    assert_eq!(seen.path, "/v1/monitors/preview");
+    assert_eq!(seen.header("Idempotency-Key"), None);
+    assert_eq!(
+        body(seen),
+        json!({"search": {"query": "open-weights LLM releases", "exclude_domains": ["example.org"]}})
+    );
+    assert_eq!(preview.monitor_type, "search");
+    assert!(preview.page.is_none());
+    assert_eq!(preview.results.len(), 2);
+    assert_eq!(
+        preview.results[0].url,
+        "https://example.com/news/example-70b"
+    );
+    assert_eq!(
+        preview.results[0].published_at.as_deref(),
+        Some("2026-11-24T08:12:00Z")
+    );
+    assert_eq!(preview.results[1].title, None);
+    assert_eq!(preview.results[1].published_at, None);
+    assert_eq!(preview.raw["type"], json!("search"));
+}
+
+#[tokio::test]
+async fn preview_a_page_monitor() {
+    let server = start(Script::Replies(vec![
+        ok(
+            200,
+            json!({"type": "page", "results": [], "page": {
+                "url": "https://example.com/pricing", "title": "Pricing",
+                "excerpt": "Plans start at $20", "source": "live", "error": null
+            }}),
+        ),
+        ok(
+            200,
+            json!({"type": "page", "results": null, "page": {
+                "url": "https://example.com/gone", "title": null,
+                "excerpt": null, "source": null, "error": "HTTP 404"
+            }}),
+        ),
+    ]))
+    .await;
+    let client = keyed(&server);
+    let preview = client
+        .monitors()
+        .preview(&MonitorPreviewParams {
+            monitor_type: Some("page".into()),
+            page: Some(MonitorPageTarget::new("https://example.com/pricing")),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        body(&server.requests()[0]),
+        json!({"type": "page", "page": {"url": "https://example.com/pricing"}})
+    );
+    assert_eq!(preview.monitor_type, "page");
+    assert!(preview.results.is_empty());
+    let page = preview.page.unwrap();
+    assert_eq!(page.source.as_deref(), Some("live"));
+    assert_eq!(page.excerpt.as_deref(), Some("Plans start at $20"));
+    assert_eq!(page.error, None);
+    let gone = client
+        .monitors()
+        .preview(&MonitorPreviewParams {
+            monitor_type: Some("page".into()),
+            page: Some(MonitorPageTarget::new("https://example.com/gone")),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert!(gone.results.is_empty());
+    let page = gone.page.unwrap();
+    assert_eq!(page.error.as_deref(), Some("HTTP 404"));
+    assert_eq!(page.title, None);
+    assert_eq!(page.source, None);
+}
+
+#[tokio::test]
+async fn preview_checks_its_arguments() {
+    let server = start(Script::Replies(vec![ok(200, json!({}))])).await;
+    let client = keyed(&server);
+    let page = Some(MonitorPageTarget::new("https://example.com"));
+    for params in [
+        MonitorPreviewParams::default(),
+        MonitorPreviewParams {
+            search: MonitorSearchParams::new(" "),
+            ..Default::default()
+        },
+        MonitorPreviewParams {
+            monitor_type: Some("page".into()),
+            ..Default::default()
+        },
+        MonitorPreviewParams {
+            monitor_type: Some("page".into()),
+            page: page.clone(),
+            search: MonitorSearchParams::new("q"),
+        },
+        MonitorPreviewParams {
+            search: MonitorSearchParams::new("q"),
+            page: page.clone(),
+            ..Default::default()
+        },
+        MonitorPreviewParams {
+            monitor_type: Some("feed".into()),
+            search: MonitorSearchParams::new("q"),
+            ..Default::default()
+        },
+    ] {
+        let err = client.monitors().preview(&params).await.unwrap_err();
+        assert!(matches!(err, Error::InvalidRequest(_)), "{params:?}");
+    }
+    assert_eq!(server.count(), 0);
+}
+
+#[tokio::test]
+async fn preview_is_retried_on_a_5xx() {
+    let server = start(Script::Replies(vec![
+        ok(503, json!({})),
+        ok(200, json!({"type": "search", "results": [], "page": null})),
+    ]))
+    .await;
+    let preview = keyed(&server)
+        .monitors()
+        .preview(&MonitorPreviewParams {
+            search: MonitorSearchParams::new("q"),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(server.count(), 2);
+    assert!(preview.results.is_empty());
+}
+
+#[tokio::test]
+async fn test_webhook_reports_how_the_url_answered() {
+    let secret = "whsec_a2VlbmFibGUtbW9uaXRvcnMtd2ViaG9vay10ZXN0ISE=";
+    let server = start(Script::Replies(vec![
+        ok(
+            200,
+            json!({"ok": true, "status": 204, "latency_ms": 182, "error": null,
+                   "signed_with": "provided", "request_id": "req_1"}),
+        ),
+        ok(
+            200,
+            json!({"ok": false, "status": null, "latency_ms": 10003,
+                   "error": "no answer within 10 s", "signed_with": "throwaway"}),
+        ),
+    ]))
+    .await;
+    let client = keyed(&server);
+    let passed = client
+        .monitors()
+        .test_webhook("https://hooks.example.com/k", Some(secret))
+        .await
+        .unwrap();
+    let failed = client
+        .monitors()
+        .test_webhook("https://hooks.example.com/k", None)
+        .await
+        .unwrap();
+    let seen = server.requests();
+    assert_eq!(seen[0].method, "POST");
+    assert_eq!(seen[0].path, "/v1/monitors/webhook-test");
+    assert_eq!(
+        body(&seen[0]),
+        json!({"url": "https://hooks.example.com/k", "secret": secret})
+    );
+    assert_eq!(
+        body(&seen[1]),
+        json!({"url": "https://hooks.example.com/k"})
+    );
+    assert!(passed.ok);
+    assert_eq!(passed.status, Some(204));
+    assert_eq!(passed.latency_ms, 182);
+    assert_eq!(passed.error, None);
+    assert_eq!(passed.signed_with, "provided");
+    assert_eq!(passed.request_id.as_deref(), Some("req_1"));
+    assert!(!failed.ok);
+    assert_eq!(failed.status, None);
+    assert_eq!(failed.error.as_deref(), Some("no answer within 10 s"));
+    assert_eq!(failed.signed_with, "throwaway");
+}
+
+#[tokio::test]
+async fn test_webhook_is_not_retried_on_a_5xx() {
+    let server = start(Script::Replies(vec![ok(503, json!({}))])).await;
+    assert!(keyed(&server)
+        .monitors()
+        .test_webhook("https://hooks.example.com/k", None)
+        .await
+        .is_err());
+    assert_eq!(server.count(), 1);
+}
+
+#[tokio::test]
+async fn test_webhook_checks_its_arguments() {
+    let server = start(Script::Replies(vec![ok(200, json!({}))])).await;
+    let client = keyed(&server);
+    for (url, secret) in [(" ", None), ("https://hooks.example.com/k", Some(""))] {
+        let err = client
+            .monitors()
+            .test_webhook(url, secret)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, Error::InvalidRequest(_)));
+    }
+    assert_eq!(server.count(), 0);
 }

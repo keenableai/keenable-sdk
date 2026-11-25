@@ -6,6 +6,7 @@ import {
   KeenableAuthError,
   KeenableInvalidRequestError,
   type MonitorCreateParams,
+  type MonitorPreviewParams,
   verifyWebhook,
   WebhookVerificationError,
 } from "../src/index.js";
@@ -565,5 +566,144 @@ describe("page monitors", () => {
     expect(event.type).toBe("monitor.page.changed");
     expect(event.data.run?.changes?.summary).toBe("The Pro plan went from $25 to $30 a month.");
     expect(event.data.result).toBeUndefined();
+  });
+});
+
+const PREVIEW_RESULT = {
+  title: "Example Labs releases a 70B open-weights model",
+  url: "https://example.com/news/example-70b",
+  published_at: "2026-11-24T08:12:00Z",
+};
+
+describe("preview and testWebhook", () => {
+  it("previews a search monitor", async () => {
+    const { keenable, seen } = client([
+      [
+        200,
+        {
+          type: "search",
+          results: [PREVIEW_RESULT, { ...PREVIEW_RESULT, title: null, published_at: null }],
+          page: null,
+        },
+      ],
+    ]);
+    const preview = await keenable.monitors.preview({
+      search: { query: "open-weights LLM releases", excludeDomains: ["example.org"] },
+    });
+    expect(seen[0]!.method).toBe("POST");
+    expect(seen[0]!.url.pathname).toBe("/v1/monitors/preview");
+    expect(seen[0]!.headers.has("Idempotency-Key")).toBe(false);
+    expect(seen[0]!.body).toEqual({ search: { query: "open-weights LLM releases", exclude_domains: ["example.org"] } });
+    expect(preview.type).toBe("search");
+    expect(preview.page).toBeNull();
+    expect(preview.results[0]!.publishedAt).toBe("2026-11-24T08:12:00Z");
+    expect(preview.results[0]!.url).toBe("https://example.com/news/example-70b");
+    expect(preview.results[1]!.title).toBeNull();
+    expect(preview.results[1]!.publishedAt).toBeNull();
+  });
+
+  it("previews a page monitor, and a page that could not be read", async () => {
+    const { keenable, seen } = client([
+      [
+        200,
+        {
+          type: "page",
+          results: [],
+          page: { url: "https://example.com/pricing", title: "Pricing", excerpt: "Plans start at $20", source: "live", error: null },
+        },
+      ],
+      [
+        200,
+        {
+          type: "page",
+          results: [],
+          page: { url: "https://example.com/gone", title: null, excerpt: null, source: null, error: "HTTP 404" },
+        },
+      ],
+    ]);
+    const preview = await keenable.monitors.preview({ type: "page", page: { url: "https://example.com/pricing" } });
+    expect(seen[0]!.body).toEqual({ type: "page", page: { url: "https://example.com/pricing" } });
+    expect(preview.type).toBe("page");
+    expect(preview.results).toEqual([]);
+    expect(preview.page?.source).toBe("live");
+    expect(preview.page?.excerpt).toBe("Plans start at $20");
+    expect(preview.page?.error).toBeNull();
+    const gone = await keenable.monitors.preview({ type: "page", page: { url: "https://example.com/gone" } });
+    expect(gone.page?.error).toBe("HTTP 404");
+    expect(gone.page?.title).toBeNull();
+    expect(gone.page?.source).toBeNull();
+  });
+
+  it("checks the kind of preview before sending", async () => {
+    const { keenable, seen } = client([[200, {}]]);
+    const bad = [
+      {},
+      { search: { query: " " } },
+      { type: "page" },
+      { type: "page", page: { url: "https://example.com" }, search: { query: "q" } },
+      { search: { query: "q" }, page: { url: "https://example.com" } },
+      { type: "feed", search: { query: "q" } },
+    ];
+    for (const params of bad) {
+      const untyped = params as unknown as MonitorPreviewParams;
+      await expect(keenable.monitors.preview(untyped)).rejects.toBeInstanceOf(KeenableInvalidRequestError);
+    }
+    expect(seen).toHaveLength(0);
+  });
+
+  it("types a preview's fields", () => {
+    const ok: MonitorPreviewParams[] = [
+      { search: { query: "q", includeDomains: ["a.com"] } },
+      { type: "page", page: { url: "https://example.com" } },
+    ];
+    expect(ok).toHaveLength(2);
+    // @ts-expect-error a preview takes no maxResults
+    const maxResults: MonitorPreviewParams = { search: { query: "q", maxResults: 5 } };
+    // @ts-expect-error a page preview takes no watchFor
+    const watchFor: MonitorPreviewParams = { type: "page", page: { url: "https://example.com", watchFor: "x" } };
+    expect([maxResults, watchFor]).toHaveLength(2);
+  });
+
+  it("retries a preview on a 5xx", async () => {
+    const { keenable, seen } = client(
+      [
+        [503, { retry_after_seconds: 0 }],
+        [200, { type: "search", results: [], page: null }],
+      ],
+      { maxRetries: 2 },
+    );
+    const preview = await keenable.monitors.preview({ search: { query: "q" } });
+    expect(seen).toHaveLength(2);
+    expect(preview.results).toEqual([]);
+  });
+
+  it("tests a webhook", async () => {
+    const { keenable, seen } = client([
+      [200, { ok: true, status: 204, latency_ms: 182, error: null, signed_with: "provided" }],
+      [200, { ok: false, status: null, latency_ms: 10003, error: "no answer within 10 s", signed_with: "throwaway" }],
+    ]);
+    const ok = await keenable.monitors.testWebhook("https://hooks.example.com/k", { secret: SECRET });
+    const bad = await keenable.monitors.testWebhook("https://hooks.example.com/k");
+    expect(seen[0]!.method).toBe("POST");
+    expect(seen[0]!.url.pathname).toBe("/v1/monitors/webhook-test");
+    expect(seen[0]!.body).toEqual({ url: "https://hooks.example.com/k", secret: SECRET });
+    expect(seen[1]!.body).toEqual({ url: "https://hooks.example.com/k" });
+    expect(ok).toMatchObject({ ok: true, status: 204, latencyMs: 182, error: null, signedWith: "provided" });
+    expect(bad).toMatchObject({ ok: false, status: null, latencyMs: 10003, error: "no answer within 10 s", signedWith: "throwaway" });
+  });
+
+  it("does not retry testWebhook on a 5xx", async () => {
+    const { keenable, seen } = client([[503, {}]], { maxRetries: 2 });
+    await expect(keenable.monitors.testWebhook("https://hooks.example.com/k")).rejects.toBeInstanceOf(KeenableAPIError);
+    expect(seen).toHaveLength(1);
+  });
+
+  it("checks testWebhook's arguments before sending", async () => {
+    const { keenable, seen } = client([[200, {}]]);
+    await expect(keenable.monitors.testWebhook("")).rejects.toBeInstanceOf(KeenableInvalidRequestError);
+    await expect(keenable.monitors.testWebhook("https://hooks.example.com/k", { secret: "" })).rejects.toBeInstanceOf(
+      KeenableInvalidRequestError,
+    );
+    expect(seen).toHaveLength(0);
   });
 });
