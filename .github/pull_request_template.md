@@ -39,7 +39,7 @@ What you ran and what it showed, per SDK:
 - TypeScript: `npx vitest run && npx tsc --noEmit`
 - Rust: `cargo test && cargo clippy --all-targets -- -D warnings && cargo fmt --check`
 - shared cases: `node scripts/conformance/sync.ts --check`, `node scripts/error-contract/sync.ts --check`
-- tool definitions (tools.*) changed: an agent run on base and head (link it; required)
+- tool definitions (tools.*) changed: an agent run on base and head (link it)
 - the docs sample run against the live API, and its output
 Say what you could not run and why.
 -->
