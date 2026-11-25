@@ -1,20 +1,25 @@
 <!--
-A check (pr-body-lint) reads this description. Write your answers outside
-these comments; the check ignores the comments.
-Why the sections exist and how to measure: MEASURING.md in keenableai/ci-workflows.
+pr-body-lint reads this description and points out what's missing. It never
+blocks a merge. Comments like this one are guidance: write outside them.
+How to measure a change: MEASURING.md in keenableai/ci-workflows.
+
+Release PR (it changes an SDK version)? scripts/release.ts writes its
+description; it needs What changes for users, Evidence and Rollback instead
+(PUBLISH.md), and that check does block.
 
 No behavior change (refactor, tests, CI, docs only)? Add the
-`no-behavior-change` label and leave Hypothesis and Follow-up empty.
-Evidence is still required.
+`no-behavior-change` label and leave Hypothesis and Follow-up out.
 -->
+
+## What
+
+<!-- What changes, and in which SDKs: Python, TypeScript, Go, Rust. A new option, method, field or error type goes into all four. -->
 
 ## Why
 
 <!--
-Who is this for, and what problem do they have? Name a customer or an agent
-segment ("Claude Code users looking up docs", "Codex in CI", "open-source
-agents via OpenRouter"). Link what shows the problem: Linear issue (KEE-123),
-support ticket, transcript, Grafana panel, PostHog insight, failed-fetch report.
+Which developers or agents is this for, and what can't they do today? Link
+what shows it: an issue, a docs page the SDK can't follow, a support thread.
 -->
 
 ## Hypothesis
@@ -22,46 +27,41 @@ support ticket, transcript, Grafana panel, PostHog insight, failed-fetch report.
 <!--
 We believe <change> for <who> will result in <outcome>.
 We'll know we're right when <metric, threshold, where it is measured>.
-We'll know we're wrong when <metric or guardrail threshold>. This is the kill criterion.
+We'll know we're wrong when <metric or guardrail threshold>.
 -->
 
-## Evidence
+## Checks
 
 <!--
-What you ran and what it showed, with links. Mark each claim measured,
-inferred or guess. Pick what fits the change:
+What you ran and what it showed, per SDK:
+- Go: `go test ./... && go vet ./...`
+- Python: `python -m pytest -q`
+- TypeScript: `npx vitest run && npx tsc --noEmit`
+- Rust: `cargo test && cargo clippy --all-targets -- -D warnings && cargo fmt --check`
+- shared cases: `node scripts/conformance/sync.ts --check`, `node scripts/error-contract/sync.ts --check`
+- tool definitions (tools.*) changed: an agent run on base and head (link it; required)
+- the docs sample run against the live API, and its output
+Say what you could not run and why.
+-->
 
-- Eval: the benchmark on base and head (k-rank-eval, keenable-eval,
-  keenable-bench, search-gym). Report the paired per-query delta and its
-  interval, not two averages. Verdict: better, worse, non-inferior or inconclusive.
-- Agents: give Claude, a GPT/Codex model and an open model (via OpenRouter)
-  the same tasks on base and head. Compare what they do (tool chosen,
-  argument errors, calls per task, task success), not which version they
-  say they prefer.
-- Second opinion: ask a model from another family (Codex if Claude wrote it,
-  and the other way round) to review the diff against the hypothesis. List
-  what you acted on and what you dismissed, and why.
-- Real calls: hit the API, MCP server or SDK and paste the output.
-- Production today: the Grafana panel or PostHog insight that shows the
-  current baseline you expect to move.
+## Docs
 
-This section must link a run when the PR changes something agents or API
-clients get directly (the repo lists those paths in its pr-body-lint workflow).
+<!--
+Public behaviour changed (option, method, signature, model field, error type)?
+Link the keenable-external-docs PR (samples regenerated). Otherwise say why none is needed.
 -->
 
 ## Risk and rollback
 
 <!--
-What could break outside the diff, who would notice, and how to undo it.
-Is a revert enough, or does a migration, cache, config or published release
-outlive it?
+What could break for users of each SDK? Users get it only in the next release,
+and no registry takes a version back: say if it needs a careful release
+(a deprecation first, a major version).
 -->
 
 ## Follow-up
 
 <!--
-Where you will look once this ships, and when: a Grafana dashboard
-(search-runtime-god, user-analysis-god-dashboard, backend pod health), a
-PostHog insight, error tracking, a scheduled eval. Name the date.
-"None, because …" is an answer when nothing can be measured.
+Where you will look after it ships, and when: downloads, issues, API errors
+from the SDK's user agent. "None, because …" is an answer.
 -->

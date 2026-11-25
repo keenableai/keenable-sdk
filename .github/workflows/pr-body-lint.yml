@@ -8,9 +8,10 @@ name: pr-body-lint
 #     back, so the description must carry release notes: "What changes for
 #     users", "Evidence" with a link, and "Rollback" (PUBLISH.md).
 #     scripts/release.ts writes them from the changelog and --notes.
-#   any other PR — Why, Hypothesis, Evidence, Risk and rollback, Follow-up
-#     (.github/pull_request_template.md). A change to the tool definitions
-#     agents read (tools.* in each SDK) must link a run in Evidence.
+#   any other PR — What, Why, Hypothesis, Checks, Risk and rollback,
+#     Follow-up (.github/pull_request_template.md). A change to the tool
+#     definitions agents read (tools.* in each SDK) is asked to link a run.
+#     Advisory: findings are warnings and the check passes.
 #
 # A version is compared, not a file name: pyproject.toml, package.json and
 # Cargo.toml also change for dependency edits, which are not releases (same
@@ -20,7 +21,8 @@ name: pr-body-lint
 # a PR cannot loosen the check that judges it. The PR's files are read through
 # the API as data; no PR code is checked out or run.
 #
-# Make "pr-body-lint / Description" a required status check on main.
+# Make "pr-body-lint / Description" a required status check on main: release
+# PRs are the part that blocks.
 
 on:
   pull_request_target:
@@ -109,5 +111,5 @@ jobs:
           if [ "$RELEASE" = "true" ]; then
             node scripts/pr-description/check-pr-body.mjs --release
           else
-            node scripts/pr-description/check-pr-body.mjs
+            node scripts/pr-description/check-pr-body.mjs --advisory
           fi
