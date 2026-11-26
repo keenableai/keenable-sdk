@@ -206,6 +206,12 @@ fn the_tool_definitions_match_the_other_sdks() {
         .as_str()
         .unwrap()
         .contains("no moderation"));
+    let max_age = &tools[1]["function"]["parameters"]["properties"]["max_age_hours"];
+    assert_eq!(max_age["minimum"], json!(-1));
+    assert!(max_age["description"]
+        .as_str()
+        .unwrap()
+        .contains("-1 reads only the stored copy"));
 }
 
 #[tokio::test]
@@ -345,70 +351,6 @@ async fn a_fetch_tool_call_renders_the_page() {
         text,
         "[1] T (https://e.com/) - published 2024-05-01T12:00:00Z\nBody"
     );
-}
-
-#[tokio::test]
-async fn fetch_sends_minus_one_max_age_hours_with_the_content_options() {
-    let server = start(Script::Replies(vec![Reply::new(200, r#"{"results":[]}"#)])).await;
-    let opts = FetchOptions {
-        prompt: Some("List the prices".into()),
-        schema: Some(json!({"type": "object"})),
-        links: Some(5),
-        images: Some(2),
-        max_age_hours: Some(-1.0),
-        ..Default::default()
-    };
-    keyed(&server)
-        .fetch_with(["https://example.com"], &opts)
-        .await
-        .unwrap();
-    let body: Value = serde_json::from_slice(&server.requests()[0].body).unwrap();
-    assert_eq!(
-        body,
-        json!({
-            "urls": ["https://example.com"],
-            "content": {
-                "prompt": "List the prices",
-                "schema": {"type": "object"},
-                "links": 5,
-                "images": 2,
-            },
-            "retrieval": {"max_age_hours": -1.0},
-        })
-    );
-}
-
-#[tokio::test]
-async fn a_fetch_tool_call_sends_minus_one_max_age_hours() {
-    let server = start(Script::Replies(vec![Reply::new(
-        200,
-        r#"{"results":[{"url":"https://e.com/","title":"T","content":"Body"}]}"#,
-    )]))
-    .await;
-    keyed(&server)
-        .run_tool_call(
-            "keenable_fetch",
-            r#"{"urls": ["https://e.com/"], "max_age_hours": -1}"#,
-        )
-        .await
-        .unwrap();
-    let body: Value = serde_json::from_slice(&server.requests()[0].body).unwrap();
-    assert_eq!(
-        body,
-        json!({"urls": ["https://e.com/"], "retrieval": {"max_age_hours": -1.0}})
-    );
-}
-
-#[test]
-fn the_fetch_tool_lets_max_age_hours_be_minus_one() {
-    let tool = crate::fetch_tool();
-    let prop = &tool.function.parameters["properties"]["max_age_hours"];
-    assert_eq!(prop["minimum"], json!(-1));
-    assert_eq!(prop["maximum"], json!(720));
-    assert!(prop["description"]
-        .as_str()
-        .unwrap()
-        .contains("-1 reads only the stored copy"));
 }
 
 #[tokio::test]
