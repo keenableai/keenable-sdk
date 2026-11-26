@@ -102,7 +102,7 @@ SEARCH_FILTERS: tuple[Filter, ...] = (
     Filter(
         "moderation",
         "Filter unsafe results: 'moderate' or 'strict'. Leave it out for no "
-        "moderation. Not supported when the query is a URL.",
+        "moderation. Not supported for a URL query unless exclude_domains is set.",
         tool_exposed=True,
         enum=("moderate", "strict"),
     ),

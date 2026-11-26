@@ -171,6 +171,39 @@ per-request ones, are sent only when set (the API checks their values):
 | `images` | The most images per page to return, in `page.images` |
 | `maxAgeHours` | Use a stored copy only if younger than this many hours; `0` reads every page live; `-1` reads only the stored copy, never the live page (no stored copy: a 404 error entry) |
 
+## Billing
+
+```ts
+const billing = await keenable.billing();
+for (const price of billing.prices) {
+  console.log(price.sku, price.unitPrice.amount, price.unitPrice.currency);
+}
+if (billing.account) {
+  // null without an API key
+  console.log("available:", billing.account.balance.available.amount);
+}
+```
+
+`billing()` reads `GET /v1/billing`: read-only and free, with or without a key.
+Without one, `prices` are the public list prices and `account` is `null`. With
+one, `prices` are your organization's (with `listUnitPrice` and `source`,
+`"list"` or `"contract"`), and `account` holds the available balance and
+`billingUrl`, the console page for adding funds. Amounts are numbers in US
+dollars (`Money.amount`, such as `0.004`, up to nine decimal places, negative
+for an account in debt). `Money.amountDecimal` (the API's `amount_decimal`) is
+the same amount as an exact decimal string (`"0.004"`); add amounts with it,
+not with the float, when they must match a bill: with a decimal library, or as
+BigInt nano-dollars:
+
+```ts
+const nanos = (d: string) => {
+  const [whole, fraction = ""] = d.replace("-", "").split(".");
+  const n = BigInt(whole! + fraction.padEnd(9, "0"));
+  return d.startsWith("-") ? -n : n;
+};
+const total = billing.prices.reduce((sum, p) => sum + nanos(p.unitPrice.amountDecimal), 0n);
+```
+
 ## Tool calling
 
 The SDK ships OpenAI-compatible tool definitions, so any inference API that

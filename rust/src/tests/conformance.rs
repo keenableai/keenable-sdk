@@ -12,7 +12,7 @@ use super::server::{deadline_server, start, Reply, Script, Server};
 use super::*;
 use crate::retry::retry_after_at;
 use crate::test_hooks::{start_recording, take_waits};
-use crate::{Error, FetchOptions, Options, RequestOptions, SearchOptions};
+use crate::{Client, Error, FetchOptions, Options, RequestOptions, SearchOptions};
 
 fn fixture() -> Value {
     load_fixture("conformance.json")
@@ -52,6 +52,18 @@ fn reply_for(case: &Value) -> Reply {
         }
     }
     reply
+}
+
+/// Every number as an f64, so an amount of `-1.0` matches the fixture's `-1`.
+fn as_floats(v: &Value) -> Value {
+    match v {
+        Value::Number(n) => n.as_f64().map_or(Value::Null, Value::from),
+        Value::Array(items) => Value::Array(items.iter().map(as_floats).collect()),
+        Value::Object(m) => {
+            Value::Object(m.iter().map(|(k, v)| (k.clone(), as_floats(v))).collect())
+        }
+        other => other.clone(),
+    }
 }
 
 /// Fails with every failing case at once, so one run shows them all.
@@ -349,8 +361,9 @@ async fn responses() {
                     .map(|w| serde_json::json!({"code": w.code, "path": w.path, "message": w.message}))
                     .collect();
                 got.insert("warnings".into(), warnings.into());
+                got.insert("usage".into(), serde_json::to_value(&r.usage).unwrap());
                 got.insert("error".into(), Value::Null);
-                (Value::Object(got) != *want).then(|| format!("got {r:?}"))
+                (as_floats(&Value::Object(got)) != as_floats(want)).then(|| format!("got {r:?}"))
             }
             (got, _) => Some(format!("{got:?}")),
         };
@@ -359,6 +372,60 @@ async fn responses() {
         }
     }
     report("responses", failures);
+}
+
+#[tokio::test]
+async fn billing() {
+    let fixture = fixture();
+    let mut failures = Vec::new();
+    for case in cases(&fixture, "billing") {
+        let server = start(Script::Replies(vec![reply_for(case)])).await;
+        let keyed_case = case["keyed"].as_bool().unwrap();
+        let client = Client::with_options(Options {
+            api_key: Some(if keyed_case { "k" } else { "" }.into()),
+            base_url: Some(server.base_url.clone()),
+            max_retries: Some(0),
+            ..Default::default()
+        })
+        .unwrap();
+        let want = &case["expect"];
+        let result = client.billing().await;
+        let seen = server.requests();
+        let sent_ok = seen.len() == 1
+            && seen[0].method == "GET"
+            && seen[0].path == want["path"].as_str().unwrap()
+            && seen[0].query.is_empty()
+            && seen[0].body.is_empty()
+            && seen[0].header("X-API-Key") == keyed_case.then_some("k");
+        let problem = if !sent_ok {
+            Some(format!(
+                "sent {:?}",
+                seen.iter()
+                    .map(|r| (
+                        r.method.clone(),
+                        r.path.clone(),
+                        r.header("X-API-Key").map(str::to_string)
+                    ))
+                    .collect::<Vec<_>>()
+            ))
+        } else {
+            match (result, want["error"].as_str()) {
+                (Err(e), Some(kind)) => (!kind_matches(&e, kind)).then(|| format!("{e:?}")),
+                (Ok(b), None) => {
+                    let mut got = serde_json::to_value(&b).unwrap();
+                    let request_id = got.as_object_mut().unwrap().remove("request_id");
+                    (as_floats(&got) != as_floats(&want["billing"])
+                        || request_id.as_ref() != Some(&want["request_id"]))
+                    .then(|| format!("got {got} with request id {request_id:?}"))
+                }
+                (got, _) => Some(format!("{got:?}")),
+            }
+        };
+        if let Some(p) = problem {
+            failures.push(format!("{}: {p}, want {want}", name(case)));
+        }
+    }
+    report("billing", failures);
 }
 
 #[tokio::test]

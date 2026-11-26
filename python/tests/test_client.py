@@ -403,6 +403,38 @@ def test_fetch_parses_a_page_and_a_failed_url() -> None:
     assert (missing.error.status, missing.error.code) == (404, "page_not_found")
 
 
+def test_fetch_keeps_the_cost_and_balance_in_usage() -> None:
+    billed = {
+        **PAGE_BODY,
+        "usage": {
+            "sku": "fetch",
+            "amount": 1,
+            "credits": 1,
+            "paid": True,
+            "cost": {"amount": 0.004, "amount_decimal": "0.004", "currency": "usd"},
+            "balance": {
+                "amount": 47.992,
+                "amount_decimal": "47.992",
+                "currency": "usd",
+            },
+        },
+    }
+    keenable, _ = _client(_ok({"results": [billed]}))
+    page = keenable.fetch("https://example.com").results[0]
+
+    assert page.usage is not None
+    assert page.usage["cost"] == {
+        "amount": 0.004,
+        "amount_decimal": "0.004",
+        "currency": "usd",
+    }
+    assert page.usage["balance"] == {
+        "amount": 47.992,
+        "amount_decimal": "47.992",
+        "currency": "usd",
+    }
+
+
 def test_page_to_context_is_citable_like_search_results() -> None:
     keenable, _ = _client(_ok(FETCH_BODY))
     page = keenable.fetch("https://example.com").results[0]
@@ -695,3 +727,23 @@ def test_fetch_tool_definition_allows_minus_one_max_age_hours() -> None:
     prop = FETCH_TOOL["function"]["parameters"]["properties"]["max_age_hours"]
     assert prop["minimum"] == -1
     assert "-1 reads only the stored copy" in prop["description"]
+
+
+def test_billing_retries_and_sends_the_call_headers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("keenable.client.time.sleep", lambda _: None)
+    replies = iter(
+        [
+            httpx.Response(503, json={"error": "busy"}),
+            httpx.Response(
+                200, json={"object": "billing", "prices": [], "account": None}
+            ),
+        ]
+    )
+    client, seen = _client(lambda _: next(replies), api_key="sk-test")
+    billing = client.billing(max_retries=1, extra_headers={"X-Trace": "t"})
+    assert billing.prices == [] and billing.account is None
+    assert [r.url.path for r in seen] == ["/v1/billing", "/v1/billing"]
+    assert seen[-1].headers["X-Trace"] == "t"
+    assert seen[-1].headers["X-API-Key"] == "sk-test"

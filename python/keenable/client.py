@@ -37,7 +37,7 @@ from .errors import (
     KeenableTimeoutError,
     RateLimitInfo,
 )
-from .models import FetchResponse, SearchResponse
+from .models import Billing, FetchResponse, SearchResponse
 from .monitors import AsyncMonitors, Monitors, _Call
 
 __all__ = ["Keenable", "AsyncKeenable", "DEFAULT_MAX_RETRIES"]
@@ -56,6 +56,10 @@ _MAX_RETRY_AFTER_WAIT = 60.0
 # `/public` suffix, so a new endpoint is one name rather than two constants.
 _SEARCH = "search"
 _FETCH = "fetch"
+# Billing is the one endpoint with a single path for both: the key is optional.
+_BILLING = "billing"
+# The endpoints with a /public variant; _url adds the suffix to no other.
+_PUBLIC_VARIANT = frozenset({_SEARCH, _FETCH})
 
 _BLOCKED_HOSTS = frozenset({"localhost", "metadata.google.internal"})
 _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -1230,8 +1234,9 @@ class _BaseClient:
         return headers
 
     def _url(self, endpoint: str) -> str:
-        """The endpoint URL, keyless or keyed depending on the configured key."""
-        suffix = "/public" if self.keyless else ""
+        """The endpoint URL: its ``/public`` variant when keyless and it has one."""
+        keyless = self.keyless and endpoint in _PUBLIC_VARIANT
+        suffix = "/public" if keyless else ""
         return f"{self._base_url}/v1/{endpoint}{suffix}"
 
     def _monitors_url(self, path: str) -> str:
@@ -1576,6 +1581,32 @@ class Keenable(_BaseClient):
         )
         return FetchResponse._from_json(body, payload["urls"], request_id)
 
+    def billing(
+        self,
+        *,
+        timeout: float | httpx.Timeout | None = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> Billing:
+        """Prices, and with an API key the balance, from ``GET /v1/billing``.
+
+        Read-only and free. Without a key, ``prices`` are the public list
+        prices and ``account`` is None. Amounts are numbers in US dollars.
+
+        Args:
+            timeout: Deadline for each attempt of this call, as in
+                :meth:`search`.
+            max_retries: Retry budget for this call, as in :meth:`search`.
+            extra_headers: Headers for this call, over ``default_headers``.
+        """
+        body, request_id = self._request(
+            _BILLING,
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+        )
+        return Billing._from_json(body, request_id)
+
 
 class AsyncKeenable(_BaseClient):
     """Asynchronous client for the Keenable web search API.
@@ -1770,3 +1801,19 @@ class AsyncKeenable(_BaseClient):
             extra_headers=extra_headers,
         )
         return FetchResponse._from_json(body, payload["urls"], request_id)
+
+    async def billing(
+        self,
+        *,
+        timeout: float | httpx.Timeout | None = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> Billing:
+        """Prices and, with a key, the account. See :meth:`Keenable.billing`."""
+        body, request_id = await self._request(
+            _BILLING,
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+        )
+        return Billing._from_json(body, request_id)

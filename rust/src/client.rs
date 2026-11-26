@@ -10,7 +10,8 @@ use serde_json::{Map, Value};
 use crate::error::{ApiError, ConnectionError, Error, RateLimitError, RateLimitInfo, Result};
 use crate::guard::{reject_private_fetch_target, resolve_base_url};
 use crate::models::{
-    non_blank, page_from_json, safe_count, search_response_from_json, FetchResponse, SearchResponse,
+    billing_from_json, non_blank, page_from_json, safe_count, search_response_from_json, Billing,
+    FetchResponse, SearchResponse,
 };
 use crate::retry::{retry_after_header, retry_delay, seconds};
 use crate::{json, types, VERSION};
@@ -24,6 +25,10 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 /// How many times a failed request is retried when [`Options::max_retries`]
 /// is `None`.
 pub const DEFAULT_MAX_RETRIES: u32 = 2;
+
+/// The endpoints with a `/public` keyless variant. `endpoint_url` adds the
+/// suffix to no other: billing has one path with and without a key.
+const PUBLIC_VARIANT: [&str; 2] = ["search", "fetch"];
 
 const DEFAULT_CLIENT_SOURCE: &str = "Keenable SDK";
 /// The longest per-attempt deadline: about 24.8 days, the longest a
@@ -468,9 +473,28 @@ impl Client {
         })
     }
 
+    /// The prices and, with an API key, the organization's balance, from
+    /// `GET /v1/billing`. Read-only and free. Without a key, `prices` are the
+    /// public list prices and `account` is `None`. Amounts are numbers in US
+    /// dollars.
+    pub async fn billing(&self) -> Result<Billing> {
+        self.billing_with(&RequestOptions::default()).await
+    }
+
+    /// [`Client::billing`] with per-call settings.
+    pub async fn billing_with(&self, opts: &RequestOptions) -> Result<Billing> {
+        // The same path with and without a key: billing has no /public variant.
+        let url = self.endpoint_url("billing", &[]);
+        let (data, id) = self
+            .send_url(reqwest::Method::GET, url, None, &HashMap::new(), opts, true)
+            .await?;
+        Ok(billing_from_json(data, id))
+    }
+
+    /// The endpoint URL: its `/public` variant when keyless and it has one.
     fn endpoint_url(&self, endpoint: &str, query: &[(String, String)]) -> String {
         let mut url = format!("{}/v1/{endpoint}", self.inner.base_url);
-        if self.is_keyless() {
+        if self.is_keyless() && PUBLIC_VARIANT.contains(&endpoint) {
             url.push_str("/public");
         }
         if !query.is_empty() {

@@ -101,6 +101,10 @@ def waits(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     return recorded
 
 
+NO_ARG = object()
+"""``run``'s arg for a method that takes none (None is a real argument)."""
+
+
 async def run(
     kind: str,
     replies: list[Reply],
@@ -111,7 +115,8 @@ async def run(
     options: dict[str, Any] | None = None,
     call: dict[str, Any] | None = None,
 ) -> Outcome:
-    """Call ``method(arg)`` on a client whose attempt n gets ``replies[n]``."""
+    """Call ``method(arg)`` (``method()`` for ``NO_ARG``) on a client whose
+    attempt n gets ``replies[n]``."""
     outcome = Outcome()
     outcome.waits = waits
 
@@ -122,15 +127,16 @@ async def run(
 
     transport = httpx.MockTransport(handler)
     settings = {"api_key": "k", **(options or {})}
+    args = () if arg is NO_ARG else (arg,)
     try:
         if kind == "sync":
             with Keenable(client=httpx.Client(transport=transport), **settings) as c:
-                outcome.result = getattr(c, method)(arg, **(call or {}))
+                outcome.result = getattr(c, method)(*args, **(call or {}))
         else:
             async with AsyncKeenable(
                 client=httpx.AsyncClient(transport=transport), **settings
             ) as ac:
-                outcome.result = await getattr(ac, method)(arg, **(call or {}))
+                outcome.result = await getattr(ac, method)(*args, **(call or {}))
     except KeenableError as error:
         outcome.error = error
     return outcome
@@ -284,8 +290,55 @@ async def test_responses(kind: str, case: dict[str, Any], waits: list[float]) ->
             {"code": w.code, "path": w.path, "message": w.message}
             for w in result.warnings
         ],
+        "usage": _usage(result.usage),
     }
     assert got == {key: want[key] for key in got}
+
+
+def _usage(usage: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The usage dict as the cases spell it; Python keeps the dict as sent."""
+    if usage is None:
+        return None
+    return {
+        "sku": usage.get("sku"),
+        "amount": usage.get("amount"),
+        "credits": usage.get("credits"),
+        "paid": usage.get("paid"),
+        "credits_remaining": usage.get("credits_remaining"),
+        "cost": usage.get("cost"),
+        "balance": usage.get("balance"),
+    }
+
+
+@pytest.mark.parametrize("kind", CLIENTS)
+@pytest.mark.parametrize("case", cases("billing"))
+async def test_billing(kind: str, case: dict[str, Any], waits: list[float]) -> None:
+    outcome = await run(
+        kind,
+        [reply(case)],
+        waits,
+        method="billing",
+        arg=NO_ARG,
+        options={"api_key": "k" if case["keyed"] else "", "max_retries": 0},
+    )
+
+    want = case["expect"]
+    assert len(outcome.requests) == 1
+    request = outcome.requests[0]
+    assert request.method == "GET"
+    assert request.url.path == want["path"]
+    assert request.url.query == b""
+    assert request.content == b""
+    assert request.headers.get("X-API-Key") == ("k" if case["keyed"] else None)
+    if want["error"] is not None:
+        assert type(outcome.error) is KINDS[want["error"]]
+        return
+    assert outcome.error is None
+    result = outcome.result
+    got = dataclasses.asdict(result)
+    del got["raw"], got["request_id"]
+    assert got == want["billing"]
+    assert result.request_id == want["request_id"]
 
 
 # --- arguments ---------------------------------------------------------------
@@ -392,6 +445,7 @@ def test_the_fixture_has_every_section() -> None:
         "retry",
         "errors",
         "responses",
+        "billing",
         "options",
         "search_body",
         "tool_call",
