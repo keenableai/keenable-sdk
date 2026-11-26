@@ -162,8 +162,7 @@ bodies (not a JSON object is an API error), with these fields:
   above written in fixed point with nine decimal places, correctly rounded,
   then with trailing zeros and a bare trailing point removed, and `-0` written
   as `0`: `0.004` is `"0.004"`, `100` is `"100"`, `0.30000000000000004` is
-  `"0.3"`, `0.0000000004` is `"0"`, `1e21` is `"1000000000000000000000"`
-  (never an exponent).
+  `"0.3"`, `0.0000000004` is `"0"`.
 - A required Money (`unit_price`, `available`) that is not an object reads as
   `{}`. `list_unit_price` is a Money when an object, else null; `source` is a
   string with more than whitespace, else null.

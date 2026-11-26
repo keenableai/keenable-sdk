@@ -31,6 +31,20 @@ export function bool(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
 }
 
+/** A finite JSON number, or null for anything else. */
+export function num(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** The object entries of a JSON list, or [] when it is not a list. */
+export function objects(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value)
+    ? value.filter(
+        (v): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v),
+      )
+    : [];
+}
+
 /** A whole number from 0 to 2^53 - 1, or undefined for anything else. */
 export function count(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) return undefined;

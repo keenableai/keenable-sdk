@@ -488,7 +488,7 @@ impl Client {
     }
 
     /// The endpoint URL: its `/public` variant when keyless and it has one.
-    pub(crate) fn endpoint_url(&self, endpoint: &str, query: &[(String, String)]) -> String {
+    fn endpoint_url(&self, endpoint: &str, query: &[(String, String)]) -> String {
         let mut url = format!("{}/v1/{endpoint}", self.inner.base_url);
         if self.is_keyless() && PUBLIC_VARIANT.contains(&endpoint) {
             url.push_str("/public");

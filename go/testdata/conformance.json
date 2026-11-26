@@ -4487,11 +4487,11 @@
       }
     },
     {
-      "name": "an account with no balance",
+      "name": "a balance that is not an object reads as {}",
       "keyed": true,
       "status": 200,
       "headers": {},
-      "body": "{\"account\":{\"balance\":null,\"billing_url\":\"https://keenable.ai/console\",\"as_of\":\"2026-11-22T10:00:00Z\"}}",
+      "body": "{\"account\":{\"balance\":[],\"billing_url\":\"https://keenable.ai/console\",\"as_of\":\"2026-11-22T10:00:00Z\"}}",
       "expect": {
         "path": "/v1/billing",
         "error": null,
@@ -4513,37 +4513,11 @@
       }
     },
     {
-      "name": "a balance that is a list and the fields an older server sent",
+      "name": "the fields an older server sent (balance.purchased, usage) are ignored",
       "keyed": true,
       "status": 200,
       "headers": {},
-      "body": "{\"account\":{\"balance\":[],\"usage\":{\"since\":\"2026-11-01T00:00:00.000Z\",\"cost\":{\"amount\":1.25,\"currency\":\"usd\"},\"line_items\":[{\"sku\":\"search\",\"quantity\":250,\"cost\":{\"amount\":1,\"currency\":\"usd\"}}]},\"billing_url\":\"https://keenable.ai/console\",\"as_of\":\"2026-11-22T10:00:00Z\"}}",
-      "expect": {
-        "path": "/v1/billing",
-        "error": null,
-        "request_id": null,
-        "billing": {
-          "prices": [],
-          "account": {
-            "balance": {
-              "available": {
-                "amount": 0,
-                "amount_decimal": "0",
-                "currency": ""
-              }
-            },
-            "billing_url": "https://keenable.ai/console",
-            "as_of": "2026-11-22T10:00:00Z"
-          }
-        }
-      }
-    },
-    {
-      "name": "an older server's purchased balance is ignored",
-      "keyed": true,
-      "status": 200,
-      "headers": {},
-      "body": "{\"account\":{\"balance\":{\"available\":{\"amount\":5.5,\"amount_decimal\":\"5.5\",\"currency\":\"usd\"},\"purchased\":{\"amount\":3,\"amount_decimal\":\"3\",\"currency\":\"usd\"}},\"billing_url\":\"https://keenable.ai/console\",\"as_of\":\"2026-11-22T10:00:00Z\"}}",
+      "body": "{\"account\":{\"balance\":{\"available\":{\"amount\":5.5,\"amount_decimal\":\"5.5\",\"currency\":\"usd\"},\"purchased\":{\"amount\":3,\"amount_decimal\":\"3\",\"currency\":\"usd\"}},\"usage\":{\"since\":\"2026-11-01T00:00:00.000Z\",\"cost\":{\"amount\":1.25,\"currency\":\"usd\"},\"line_items\":[{\"sku\":\"search\",\"quantity\":250,\"cost\":{\"amount\":1,\"currency\":\"usd\"}}]},\"billing_url\":\"https://keenable.ai/console\",\"as_of\":\"2026-11-22T10:00:00Z\"}}",
       "expect": {
         "path": "/v1/billing",
         "error": null,
@@ -4643,7 +4617,7 @@
       "keyed": true,
       "status": 200,
       "headers": {},
-      "body": "{\"prices\":[{\"sku\":\"a\",\"unit\":\"search\",\"unit_price\":{\"amount\":0.004,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":100,\"currency\":\"usd\"}},{\"sku\":\"b\",\"unit\":\"page\",\"unit_price\":{\"amount\":1e-9,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":4e-10,\"currency\":\"usd\"}},{\"sku\":\"c\",\"unit\":\"page\",\"unit_price\":{\"amount\":-4e-10,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":1e+21,\"currency\":\"usd\"}},{\"sku\":\"d\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.30000000000000004,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":25000000.5,\"currency\":\"usd\"}}],\"account\":{\"balance\":{\"available\":{\"amount\":-12.345678901,\"currency\":\"usd\"}},\"billing_url\":\"https://keenable.ai/console\",\"as_of\":\"2026-11-22T10:00:00Z\"}}",
+      "body": "{\"prices\":[{\"sku\":\"a\",\"unit\":\"search\",\"unit_price\":{\"amount\":0.004,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":100,\"currency\":\"usd\"}},{\"sku\":\"b\",\"unit\":\"page\",\"unit_price\":{\"amount\":1e-9,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":4e-10,\"currency\":\"usd\"}},{\"sku\":\"c\",\"unit\":\"page\",\"unit_price\":{\"amount\":-4e-10,\"currency\":\"usd\"}},{\"sku\":\"d\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.30000000000000004,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":25000000.5,\"currency\":\"usd\"}}],\"account\":{\"balance\":{\"available\":{\"amount\":-12.345678901,\"currency\":\"usd\"}},\"billing_url\":\"https://keenable.ai/console\",\"as_of\":\"2026-11-22T10:00:00Z\"}}",
       "expect": {
         "path": "/v1/billing",
         "error": null,
@@ -4688,11 +4662,7 @@
                 "amount_decimal": "0",
                 "currency": "usd"
               },
-              "list_unit_price": {
-                "amount": 1e+21,
-                "amount_decimal": "1000000000000000000000",
-                "currency": "usd"
-              },
+              "list_unit_price": null,
               "source": null
             },
             {

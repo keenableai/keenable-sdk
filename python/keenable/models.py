@@ -98,8 +98,6 @@ def _amount_decimal(value: Any, amount: float) -> str:
     """
     if isinstance(value, str) and _DECIMAL.fullmatch(value):
         return value
-    if not math.isfinite(amount):
-        return "0"
     text = f"{amount:.9f}".rstrip("0").rstrip(".")
     return "0" if text == "-0" else text
 
@@ -748,10 +746,6 @@ class FetchResponse:
         )
 
 
-def _dict_or_empty(value: Any) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
-
-
 @dataclass
 class Money:
     """An amount of money, as the API sent it."""
@@ -774,7 +768,7 @@ class Money:
 
     @classmethod
     def _from_json(cls, value: Any) -> Money:
-        data = _dict_or_empty(value)
+        data = _dict_or_none(value) or {}
         amount = _amount(data.get("amount"))
         return cls(
             amount=amount,
@@ -838,7 +832,7 @@ class BillingAccount:
 
     @classmethod
     def _from_json(cls, data: dict[str, Any]) -> BillingAccount:
-        balance = _dict_or_empty(data.get("balance"))
+        balance = _dict_or_none(data.get("balance")) or {}
         return cls(
             balance=BillingBalance(
                 available=Money._from_json(balance.get("available")),
