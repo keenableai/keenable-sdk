@@ -494,7 +494,31 @@ func TestConformanceResponses(t *testing.T) {
 					t.Fatalf("warning %d: got %+v, want %v", i, got, w)
 				}
 			}
+			if gotUsage, wantUsage := usageJSON(resp.Usage), want["usage"]; !reflect.DeepEqual(gotUsage, wantUsage) {
+				t.Fatalf("usage: got %#v, want %#v", gotUsage, wantUsage)
+			}
 		})
+	}
+}
+
+// usageJSON spells a Usage the way the cases do, with JSON number types.
+func usageJSON(u *keenable.Usage) any {
+	if u == nil {
+		return nil
+	}
+	money := func(m *keenable.Money) any {
+		if m == nil {
+			return nil
+		}
+		return map[string]any{"amount": m.Amount, "amount_decimal": m.AmountDecimal, "currency": m.Currency}
+	}
+	var remaining any
+	if u.CreditsRemaining != nil {
+		remaining = *u.CreditsRemaining
+	}
+	return map[string]any{
+		"sku": u.SKU, "amount": float64(u.Amount), "credits": u.Credits, "paid": u.Paid,
+		"credits_remaining": remaining, "cost": money(u.Cost), "balance": money(u.Balance),
 	}
 }
 

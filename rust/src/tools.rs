@@ -75,7 +75,7 @@ const TOOL_FILTERS: [(&str, &str, &str, &[&str]); 6] = [
     (
         "moderation",
         "string",
-        "Filter unsafe results: 'moderate' or 'strict'. Leave it out for no moderation. Not supported when the query is a URL.",
+        "Filter unsafe results: 'moderate' or 'strict'. Leave it out for no moderation. Not supported for a URL query unless exclude_domains is set.",
         &["moderate", "strict"],
     ),
 ];

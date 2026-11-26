@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urljoin, urlsplit
@@ -455,6 +455,14 @@ class SearchResponse:
     warnings: list[SearchWarning] = field(default_factory=list)
     """What the request should change, such as a deprecated parameter it
     used. Empty when the API sent none."""
+    usage: dict[str, Any] | None = None
+    """What the search cost: the dict the API sent (``sku``, ``credits``, ...)
+    with, when a key is set, ``cost`` and ``balance`` in US dollars, each read
+    as a :class:`Money` and given as its dict ``{"amount": 0.004,
+    "amount_decimal": "0.004", "currency": "usd"}``. Add costs with
+    ``Decimal(usage["cost"]["amount_decimal"])``, not the float ``amount``.
+    A ``cost`` or ``balance`` that is not an object is left out. None on
+    keyless calls."""
 
     def __iter__(self) -> Iterator[SearchResult]:
         return iter(self.results)
@@ -485,6 +493,7 @@ class SearchResponse:
             warnings=[
                 SearchWarning._from_json(w) for w in _dicts(data.get("warnings")) or []
             ],
+            usage=_usage(data.get("usage")),
         )
 
     def cited(
@@ -613,6 +622,21 @@ def _dict_or_none(value: Any) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
+def _usage(value: Any) -> dict[str, Any] | None:
+    """The usage dict as sent, with ``cost`` and ``balance`` read as Money
+    dicts, so money from an older server gains ``amount_decimal``; a
+    money field that is not an object is left out."""
+    usage = _dict_or_none(value)
+    if usage is None:
+        return None
+    usage = dict(usage)
+    for key in ("cost", "balance"):
+        money = usage.pop(key, None)
+        if isinstance(money, dict):
+            usage[key] = asdict(Money._from_json(money))
+    return usage
+
+
 @dataclass
 class Page:
     """One result of :meth:`Keenable.fetch`: a page as markdown, or ``error``."""
@@ -661,6 +685,7 @@ class Page:
 
     stale: bool | None = None
     usage: dict[str, Any] | None = None
+    """What this page cost, read like :attr:`SearchResponse.usage`."""
     error: FetchError | None = None
     """Set when this URL failed; the other fields are then empty."""
 
@@ -684,7 +709,7 @@ class Page:
             structured=_dict_or_none(data.get("structured")),
             answer_error=_dict_or_none(data.get("answer_error")),
             stale=_bool_or_none(data.get("stale")),
-            usage=_dict_or_none(data.get("usage")),
+            usage=_usage(data.get("usage")),
             error=FetchError._from_json(error) if isinstance(error, dict) else None,
         )
 

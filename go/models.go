@@ -124,7 +124,10 @@ type SearchResponse struct {
 	// parameter it used; the request was still served. Nil when the API
 	// sent none.
 	Warnings []SearchWarning `json:"warnings,omitempty"`
-	Raw      map[string]any  `json:"-"`
+	// Usage is what the search cost and, with a key, the balance left after
+	// it. Nil when the API sent none, as on keyless calls.
+	Usage *Usage         `json:"usage,omitempty"`
+	Raw   map[string]any `json:"-"`
 }
 
 // SearchWarning is something in a search request to change, such as a
@@ -183,6 +186,12 @@ type Usage struct {
 	Credits          float64  `json:"credits"`
 	Paid             bool     `json:"paid"`
 	CreditsRemaining *float64 `json:"credits_remaining,omitempty"`
+	// Cost is what this page cost, in US dollars. Nil when the API did not
+	// send it.
+	Cost *Money `json:"cost,omitempty"`
+	// Balance is the organization's balance after this page, in US dollars.
+	// Nil when the API did not send it.
+	Balance *Money `json:"balance,omitempty"`
 }
 
 // Page is one result of [Client.Fetch]: a page as markdown, or Error when
@@ -432,8 +441,29 @@ func searchResponseFromJSON(data map[string]any, query string) *SearchResponse {
 		Mode:     nonEmptyString(data["mode"]),
 		Results:  results,
 		Warnings: warnings,
+		Usage:    usageFromJSON(data["usage"]),
 		Raw:      data,
 	}
+}
+
+// usageFromJSON reads a usage object field by field, so one malformed field
+// does not lose the others. Nil unless the value is an object.
+func usageFromJSON(v any) *Usage {
+	obj, ok := v.(map[string]any)
+	if !ok {
+		return nil
+	}
+	u := &Usage{SKU: asString(obj["sku"]), Credits: asAmount(obj["credits"])}
+	if n, ok := asInt(obj["amount"]); ok && n >= 0 {
+		u.Amount = n
+	}
+	u.Paid, _ = obj["paid"].(bool)
+	if f, ok := obj["credits_remaining"].(float64); ok && !math.IsNaN(f) && !math.IsInf(f, 0) {
+		u.CreditsRemaining = &f
+	}
+	u.Cost = optionalMoney(obj["cost"])
+	u.Balance = optionalMoney(obj["balance"])
+	return u
 }
 
 func searchResultFromJSON(data map[string]any) SearchResult {
@@ -472,7 +502,7 @@ func pageFromJSON(data map[string]any, fallbackURL string) *Page {
 	decodeField(data["links"], &page.Links)
 	decodeField(data["images"], &page.Images)
 	decodeField(data["answer_error"], &page.AnswerError)
-	decodeField(data["usage"], &page.Usage)
+	page.Usage = usageFromJSON(data["usage"])
 	decodeField(data["error"], &page.Error)
 	return page
 }
@@ -668,20 +698,26 @@ func moneyFromJSON(v any) Money {
 	}
 }
 
+// optionalMoney is a Money when v is an object, else nil.
+func optionalMoney(v any) *Money {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return nil
+	}
+	money := moneyFromJSON(m)
+	return &money
+}
+
 func billingFromJSON(data map[string]any) *Billing {
 	b := &Billing{Prices: make([]BillingPrice, 0), Raw: data}
 	for _, p := range objects(data["prices"]) {
-		price := BillingPrice{
-			SKU:       asString(p["sku"]),
-			Unit:      asString(p["unit"]),
-			UnitPrice: moneyFromJSON(p["unit_price"]),
-			Source:    nonEmptyString(p["source"]),
-		}
-		if list, ok := p["list_unit_price"].(map[string]any); ok {
-			m := moneyFromJSON(list)
-			price.ListUnitPrice = &m
-		}
-		b.Prices = append(b.Prices, price)
+		b.Prices = append(b.Prices, BillingPrice{
+			SKU:           asString(p["sku"]),
+			Unit:          asString(p["unit"]),
+			UnitPrice:     moneyFromJSON(p["unit_price"]),
+			ListUnitPrice: optionalMoney(p["list_unit_price"]),
+			Source:        nonEmptyString(p["source"]),
+		})
 	}
 	account, ok := data["account"].(map[string]any)
 	if !ok {

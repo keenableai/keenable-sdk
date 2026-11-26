@@ -54,6 +54,9 @@ pub struct SearchResponse {
     /// What the request should change, such as a deprecated parameter it
     /// used; the request was still served. Empty when the API sent none.
     pub warnings: Vec<SearchWarning>,
+    /// What the search cost and, with a key, the balance left after it.
+    /// `None` when the API sent none, as on keyless calls.
+    pub usage: Option<Usage>,
     /// The unmodified JSON body.
     #[serde(skip)]
     pub raw: Map<String, Value>,
@@ -151,6 +154,11 @@ pub struct Usage {
     pub paid: bool,
     /// The credits left after this page.
     pub credits_remaining: Option<f64>,
+    /// What this page cost, in US dollars. `None` when the API did not send it.
+    pub cost: Option<Money>,
+    /// The organization's balance after this page, in US dollars. `None` when
+    /// the API did not send it.
+    pub balance: Option<Money>,
 }
 
 /// One result of [`Client::fetch`](crate::Client::fetch): a page as markdown,
@@ -517,8 +525,27 @@ pub(crate) fn search_response_from_json(
         results,
         request_id: non_blank(data.get("request_id")).or(header_request_id),
         warnings,
+        usage: usage_from_json(data.get("usage")),
         raw: data,
     }
+}
+
+/// Reads a usage object field by field, so one malformed field (such as a
+/// `cost` whose amount is a string) does not lose the others.
+pub(crate) fn usage_from_json(v: Option<&Value>) -> Option<Usage> {
+    let u = v?.as_object()?;
+    Some(Usage {
+        sku: as_string(u.get("sku")),
+        amount: safe_count(u.get("amount")).unwrap_or(0),
+        credits: as_amount(u.get("credits")),
+        paid: u.get("paid").and_then(Value::as_bool).unwrap_or(false),
+        credits_remaining: u
+            .get("credits_remaining")
+            .and_then(Value::as_f64)
+            .filter(|f| f.is_finite()),
+        cost: optional_money(u.get("cost")),
+        balance: optional_money(u.get("balance")),
+    })
 }
 
 pub(crate) fn page_from_json(data: Map<String, Value>, fallback_url: &str) -> Page {
@@ -541,7 +568,7 @@ pub(crate) fn page_from_json(data: Map<String, Value>, fallback_url: &str) -> Pa
         structured: data.get("structured").and_then(Value::as_object).cloned(),
         answer_error: typed(data.get("answer_error")),
         stale: data.get("stale").and_then(Value::as_bool),
-        usage: typed(data.get("usage")),
+        usage: usage_from_json(data.get("usage")),
         error: data
             .get("error")
             .and_then(Value::as_object)
@@ -591,6 +618,7 @@ mod tests {
             results,
             request_id: None,
             warnings: Vec::new(),
+            usage: None,
             raw: Map::new(),
         }
     }
@@ -643,6 +671,62 @@ mod tests {
     }
 
     #[test]
+    fn reads_the_cost_and_balance_in_usage() {
+        let data = json!({
+            "url": "https://example.com", "title": "Example Domain", "content": "# Example Domain",
+            "usage": {
+                "sku": "fetch", "amount": 1, "credits": 1.0, "paid": true, "credits_remaining": 11998.0,
+                "cost": {"amount": 0.004, "amount_decimal": "0.004", "currency": "usd"},
+                "balance": {"amount": 47.992, "amount_decimal": "47.992", "currency": "usd"}
+            }
+        });
+        let page = page_from_json(data.as_object().unwrap().clone(), "https://example.com");
+        let usage = page.usage.expect("usage");
+        assert_eq!(
+            usage.cost,
+            Some(Money {
+                amount: 0.004,
+                amount_decimal: "0.004".into(),
+                currency: "usd".into()
+            })
+        );
+        assert_eq!(
+            usage.balance,
+            Some(Money {
+                amount: 47.992,
+                amount_decimal: "47.992".into(),
+                currency: "usd".into()
+            })
+        );
+
+        let older = json!({"url": "https://example.com", "usage": {"sku": "fetch", "amount": 1, "credits": 1.0, "paid": false}});
+        let usage = page_from_json(older.as_object().unwrap().clone(), "https://example.com")
+            .usage
+            .expect("usage");
+        assert_eq!((usage.cost, usage.balance), (None, None));
+    }
+
+    #[test]
+    fn reads_a_whole_usage_amount_in_float_form() {
+        let amount = |v: Value| {
+            usage_from_json(Some(&json!({ "amount": v })))
+                .expect("usage")
+                .amount
+        };
+        assert_eq!(amount(json!(1.0)), 1);
+        assert_eq!(amount(json!(3)), 3);
+        assert_eq!(
+            amount(json!(9_007_199_254_740_991.0)),
+            9_007_199_254_740_991
+        );
+        assert_eq!(amount(json!(1.5)), 0);
+        assert_eq!(amount(json!(-1.0)), 0);
+        assert_eq!(amount(json!(-1)), 0);
+        assert_eq!(amount(json!(1e300)), 0);
+        assert_eq!(amount(json!("1")), 0);
+    }
+
+    #[test]
     fn cuts_a_page_at_the_budget() {
         let page = page_from_json(
             json!({"title": "T", "content": "abcdefghij  "})
@@ -676,7 +760,11 @@ mod tests {
 // ---- Billing ----------------------------------------------------------------
 
 /// An amount of money, as the API sent it.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+///
+/// Deserializing reads it as the client does: a missing or malformed
+/// `amount_decimal` (an older server) is `amount` written as a decimal.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(from = "Value")]
 #[non_exhaustive]
 pub struct Money {
     /// The amount in the currency's major unit (US dollars), such as
@@ -748,8 +836,9 @@ pub struct Billing {
     pub raw: Map<String, Value>,
 }
 
-fn object_or_empty(v: Option<&Value>) -> Map<String, Value> {
-    v.and_then(Value::as_object).cloned().unwrap_or_default()
+/// A field of an object that may be missing.
+fn field<'a>(object: Option<&'a Map<String, Value>>, key: &str) -> Option<&'a Value> {
+    object.and_then(|o| o.get(key))
 }
 
 fn objects(v: Option<&Value>) -> Vec<&Map<String, Value>> {
@@ -793,13 +882,25 @@ fn amount_decimal(v: Option<&Value>, amount: f64) -> String {
     if text == "-0" { "0" } else { text }.to_string()
 }
 
+/// A Money; anything but an object reads as `{}`.
 fn money(v: Option<&Value>) -> Money {
-    let m = object_or_empty(v);
-    let amount = as_amount(m.get("amount"));
+    let m = v.and_then(Value::as_object);
+    let amount = as_amount(field(m, "amount"));
     Money {
         amount,
-        amount_decimal: amount_decimal(m.get("amount_decimal"), amount),
-        currency: as_string(m.get("currency")),
+        amount_decimal: amount_decimal(field(m, "amount_decimal"), amount),
+        currency: as_string(field(m, "currency")),
+    }
+}
+
+/// A Money when the value is an object, else `None`.
+fn optional_money(v: Option<&Value>) -> Option<Money> {
+    v.filter(|v| v.is_object()).map(|v| money(Some(v)))
+}
+
+impl From<Value> for Money {
+    fn from(v: Value) -> Self {
+        money(Some(&v))
     }
 }
 
@@ -813,18 +914,15 @@ pub(crate) fn billing_from_json(
             sku: as_string(p.get("sku")),
             unit: as_string(p.get("unit")),
             unit_price: money(p.get("unit_price")),
-            list_unit_price: p
-                .get("list_unit_price")
-                .filter(|v| v.is_object())
-                .map(|v| money(Some(v))),
+            list_unit_price: optional_money(p.get("list_unit_price")),
             source: non_blank(p.get("source")),
         })
         .collect();
     let account = data.get("account").and_then(Value::as_object).map(|a| {
-        let balance = object_or_empty(a.get("balance"));
+        let balance = a.get("balance").and_then(Value::as_object);
         BillingAccount {
             balance: BillingBalance {
-                available: money(balance.get("available")),
+                available: money(field(balance, "available")),
             },
             billing_url: as_string(a.get("billing_url")),
             as_of: as_string(a.get("as_of")),

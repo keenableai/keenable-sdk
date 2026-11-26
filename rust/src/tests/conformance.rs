@@ -361,8 +361,9 @@ async fn responses() {
                     .map(|w| serde_json::json!({"code": w.code, "path": w.path, "message": w.message}))
                     .collect();
                 got.insert("warnings".into(), warnings.into());
+                got.insert("usage".into(), serde_json::to_value(&r.usage).unwrap());
                 got.insert("error".into(), Value::Null);
-                (Value::Object(got) != *want).then(|| format!("got {r:?}"))
+                (as_floats(&Value::Object(got)) != as_floats(want)).then(|| format!("got {r:?}"))
             }
             (got, _) => Some(format!("{got:?}")),
         };

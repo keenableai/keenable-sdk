@@ -35,6 +35,7 @@ import type {
   SearchOptions,
   SearchResult,
   SearchWarning,
+  Usage,
   ToContextOptions,
 } from "./types.js";
 
@@ -347,6 +348,8 @@ export class SearchResponse {
   readonly requestId?: string;
   /** What the request should change, such as a deprecated parameter it used. Empty when the API sent none. */
   readonly warnings: SearchWarning[];
+  /** What the search cost and, with a key, the balance left after it. Undefined on keyless calls. */
+  readonly usage?: Usage;
   readonly raw: Record<string, unknown>;
 
   constructor(init: {
@@ -355,6 +358,7 @@ export class SearchResponse {
     results: SearchResult[];
     requestId?: string;
     warnings?: SearchWarning[];
+    usage?: Usage;
     raw: Record<string, unknown>;
   }) {
     this.query = init.query;
@@ -362,6 +366,7 @@ export class SearchResponse {
     this.results = init.results;
     this.requestId = init.requestId;
     this.warnings = init.warnings ?? [];
+    this.usage = init.usage;
     this.raw = init.raw;
   }
 
@@ -501,7 +506,8 @@ export class Page {
   /** Why the answer for `schema` could not be made. */
   readonly answerError?: { code: string; message: string };
   readonly stale?: boolean;
-  readonly usage?: { sku: string; amount: number; credits: number; paid: boolean; credits_remaining?: number };
+  /** What this page cost and, with a key, the balance after it, as the API sent it. */
+  readonly usage?: Usage;
   /** Set when this URL failed; the other fields are then empty. */
   readonly error?: FetchError;
   readonly raw!: Record<string, unknown>;
@@ -570,10 +576,30 @@ function toPage(data: Record<string, unknown>, url: string): Page {
     structured: record(data.structured),
     answerError: record(data.answer_error),
     stale: bool(data.stale),
-    usage: record(data.usage),
+    usage: toUsage(data.usage),
     error: record(data.error),
     raw: data,
   });
+}
+
+/** Reads a usage object field by field, so one malformed field does not lose the others. */
+function toUsage(value: unknown): Usage | undefined {
+  if (!isRecord(value)) return undefined;
+  const remaining = value.credits_remaining;
+  return {
+    sku: text(value.sku),
+    amount: count(value.amount) ?? 0,
+    credits: num(value.credits) ?? 0,
+    paid: value.paid === true,
+    ...(typeof remaining === "number" && Number.isFinite(remaining) && { credits_remaining: remaining }),
+    cost: optionalMoney(value.cost),
+    balance: optionalMoney(value.balance),
+  };
+}
+
+/** A Money when the value is an object, else undefined. */
+function optionalMoney(value: unknown): Money | undefined {
+  return isRecord(value) ? toMoney(value) : undefined;
 }
 
 function toMoney(value: unknown): Money {
@@ -604,7 +630,7 @@ function toBillingPrice(data: Record<string, unknown>): BillingPrice {
     sku: text(data.sku),
     unit: text(data.unit),
     unitPrice: toMoney(data.unit_price),
-    listUnitPrice: isRecord(data.list_unit_price) ? toMoney(data.list_unit_price) : undefined,
+    listUnitPrice: optionalMoney(data.list_unit_price),
     source: nonEmpty(data.source),
   };
 }
@@ -891,6 +917,7 @@ export class Keenable {
       warnings: Array.isArray(data.warnings)
         ? data.warnings.filter(isRecord).map(toSearchWarning)
         : [],
+      usage: toUsage(data.usage),
       raw: data,
     });
   }

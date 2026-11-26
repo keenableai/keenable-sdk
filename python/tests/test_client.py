@@ -403,6 +403,38 @@ def test_fetch_parses_a_page_and_a_failed_url() -> None:
     assert (missing.error.status, missing.error.code) == (404, "page_not_found")
 
 
+def test_fetch_keeps_the_cost_and_balance_in_usage() -> None:
+    billed = {
+        **PAGE_BODY,
+        "usage": {
+            "sku": "fetch",
+            "amount": 1,
+            "credits": 1,
+            "paid": True,
+            "cost": {"amount": 0.004, "amount_decimal": "0.004", "currency": "usd"},
+            "balance": {
+                "amount": 47.992,
+                "amount_decimal": "47.992",
+                "currency": "usd",
+            },
+        },
+    }
+    keenable, _ = _client(_ok({"results": [billed]}))
+    page = keenable.fetch("https://example.com").results[0]
+
+    assert page.usage is not None
+    assert page.usage["cost"] == {
+        "amount": 0.004,
+        "amount_decimal": "0.004",
+        "currency": "usd",
+    }
+    assert page.usage["balance"] == {
+        "amount": 47.992,
+        "amount_decimal": "47.992",
+        "currency": "usd",
+    }
+
+
 def test_page_to_context_is_citable_like_search_results() -> None:
     keenable, _ = _client(_ok(FETCH_BODY))
     page = keenable.fetch("https://example.com").results[0]

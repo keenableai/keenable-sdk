@@ -362,6 +362,47 @@ describe("fetch", () => {
     expect(missing?.error).toMatchObject({ status: 404, code: "page_not_found" });
   });
 
+  it("parses the cost and balance in usage", async () => {
+    const billed = {
+      ...PAGE_BODY,
+      usage: {
+        sku: "fetch",
+        amount: 1,
+        credits: 1,
+        paid: true,
+        cost: { amount: 0.004, amount_decimal: "0.004", currency: "usd" },
+        balance: { amount: 47.992, amount_decimal: "47.992", currency: "usd" },
+      },
+    };
+    const { client } = mockClient(() => json({ results: [billed] }));
+    const [page] = (await client.fetch("https://example.com")).results;
+
+    expect(page?.usage?.cost).toEqual({ amount: 0.004, amountDecimal: "0.004", currency: "usd" });
+    expect(page?.usage?.balance).toEqual({ amount: 47.992, amountDecimal: "47.992", currency: "usd" });
+  });
+
+  it("normalizes a fetched page's usage field by field", async () => {
+    const billed = {
+      ...PAGE_BODY,
+      usage: {
+        sku: 5,
+        amount: "1",
+        credits: "1",
+        paid: "yes",
+        credits_remaining: "10",
+      },
+    };
+    const { client } = mockClient(() => json({ results: [billed] }));
+    const [page] = (await client.fetch("https://example.com")).results;
+
+    expect(page?.usage).toEqual({
+      sku: "",
+      amount: 0,
+      credits: 0,
+      paid: false,
+    });
+  });
+
   it("renders a citable block like search results do", async () => {
     const { client } = mockClient(() => json(FETCH_BODY));
     const [page] = (await client.fetch("https://example.com")).results;

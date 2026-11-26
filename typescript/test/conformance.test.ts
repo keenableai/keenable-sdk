@@ -298,6 +298,13 @@ describe("errors", () => {
   });
 });
 
+/** A Money spelled the way the cases do. */
+const money = (m: Money) => ({
+  amount: m.amount,
+  amount_decimal: m.amountDecimal,
+  currency: m.currency,
+});
+
 describe("success bodies", () => {
   it.each(FIXTURE.responses.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
     const outcome = await call([c, c], { maxRetries: 0 }, (client) =>
@@ -326,16 +333,22 @@ describe("success bodies", () => {
         acquired_at: x.acquiredAt ?? null,
       })),
       warnings: r.warnings.map((w) => ({ code: w.code, path: w.path, message: w.message })),
+      usage: r.usage
+        ? {
+            sku: r.usage.sku,
+            amount: r.usage.amount,
+            credits: r.usage.credits,
+            paid: r.usage.paid,
+            credits_remaining: r.usage.credits_remaining ?? null,
+            cost: r.usage.cost ? money(r.usage.cost) : null,
+            balance: r.usage.balance ? money(r.usage.balance) : null,
+          }
+        : null,
     }).toEqual(want);
   });
 });
 
 describe("billing", () => {
-  const money = (m: Money) => ({
-    amount: m.amount,
-    amount_decimal: m.amountDecimal,
-    currency: m.currency,
-  });
   it.each(FIXTURE.billing.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
     const outcome = await call([c], { apiKey: c.keyed ? "k" : "", maxRetries: 0 }, (client) =>
       client.billing(),

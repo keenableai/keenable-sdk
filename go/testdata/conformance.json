@@ -3326,6 +3326,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": "pro",
         "request_id": null,
@@ -3351,6 +3352,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3367,6 +3369,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3392,6 +3395,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3408,6 +3412,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3424,6 +3429,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3440,6 +3446,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3465,6 +3472,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3490,6 +3498,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3515,6 +3524,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3540,6 +3550,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3565,6 +3576,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "normalized q",
         "mode": null,
         "request_id": null,
@@ -3581,6 +3593,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3597,6 +3610,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3613,6 +3627,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3629,6 +3644,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3647,6 +3663,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": "body",
@@ -3665,6 +3682,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": "hdr",
@@ -3683,6 +3701,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": "hdr",
@@ -3701,6 +3720,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3717,6 +3737,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3733,6 +3754,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3758,6 +3780,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3871,6 +3894,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3896,6 +3920,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3921,6 +3946,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3946,6 +3972,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3977,6 +4004,7 @@
             "message": "safety_mode is deprecated and stops working on 2027-03-01. Use moderation."
           }
         ],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -4004,6 +4032,7 @@
             "message": "m"
           }
         ],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -4020,6 +4049,7 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -4036,6 +4066,198 @@
       "expect": {
         "error": null,
         "warnings": [],
+        "usage": null,
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "usage with the cost and balance in US dollars",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"sku\":\"search.pro\",\"amount\":1,\"credits\":1,\"paid\":true,\"credits_remaining\":11998,\"cost\":{\"amount\":0.004,\"amount_decimal\":\"0.004\",\"currency\":\"usd\"},\"balance\":{\"amount\":47.992,\"amount_decimal\":\"47.992\",\"currency\":\"usd\"}}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "sku": "search.pro",
+          "amount": 1,
+          "credits": 1,
+          "paid": true,
+          "credits_remaining": 11998,
+          "cost": {
+            "amount": 0.004,
+            "amount_decimal": "0.004",
+            "currency": "usd"
+          },
+          "balance": {
+            "amount": 47.992,
+            "amount_decimal": "47.992",
+            "currency": "usd"
+          }
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "usage money from an older server without amount_decimal",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"sku\":\"search.pro\",\"amount\":1,\"credits\":1,\"paid\":true,\"cost\":{\"amount\":0.004,\"currency\":\"usd\"},\"balance\":{\"amount\":-4e-10,\"currency\":\"usd\"}}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "sku": "search.pro",
+          "amount": 1,
+          "credits": 1,
+          "paid": true,
+          "credits_remaining": null,
+          "cost": {
+            "amount": 0.004,
+            "amount_decimal": "0.004",
+            "currency": "usd"
+          },
+          "balance": {
+            "amount": -4e-10,
+            "amount_decimal": "0",
+            "currency": "usd"
+          }
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "usage from a server that sends no money",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"sku\":\"search.realtime\",\"amount\":1,\"credits\":1,\"paid\":false}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "sku": "search.realtime",
+          "amount": 1,
+          "credits": 1,
+          "paid": false,
+          "credits_remaining": null,
+          "cost": null,
+          "balance": null
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "a usage money field that is not an object is null, the rest is kept",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"sku\":\"search.pro\",\"amount\":1,\"credits\":1,\"paid\":true,\"credits_remaining\":5,\"cost\":\"0.004\",\"balance\":[0.004]}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "sku": "search.pro",
+          "amount": 1,
+          "credits": 1,
+          "paid": true,
+          "credits_remaining": 5,
+          "cost": null,
+          "balance": null
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "a malformed usage money field reads as in billing, the rest is kept",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"sku\":\"search.pro\",\"amount\":1,\"credits\":1,\"paid\":true,\"cost\":{\"amount\":\"0.004\",\"currency\":\"usd\"},\"balance\":{\"amount\":47.992}}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "sku": "search.pro",
+          "amount": 1,
+          "credits": 1,
+          "paid": true,
+          "credits_remaining": null,
+          "cost": {
+            "amount": 0,
+            "amount_decimal": "0",
+            "currency": "usd"
+          },
+          "balance": {
+            "amount": 47.992,
+            "amount_decimal": "47.992",
+            "currency": ""
+          }
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "a usage amount in float form is the whole number",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\": \"q\", \"results\": [], \"usage\": {\"sku\": \"search.pro\", \"amount\": 1.0, \"credits\": 1, \"paid\": true}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "sku": "search.pro",
+          "amount": 1,
+          "credits": 1,
+          "paid": true,
+          "credits_remaining": null,
+          "cost": null,
+          "balance": null
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "usage that is not an object is null",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":\"1 credit\"}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
