@@ -706,8 +706,8 @@ func TestFetchParsesTheCostAndBalanceInUsage(t *testing.T) {
 		"url": "https://example.com", "title": "Example Domain", "content": "# Example Domain",
 		"usage": map[string]any{
 			"sku": "fetch", "amount": 1, "credits": 1, "paid": true, "credits_remaining": 11998,
-			"cost":    map[string]any{"amount": 0.004, "currency": "usd"},
-			"balance": map[string]any{"amount": 47.992, "currency": "usd"},
+			"cost":    map[string]any{"amount": 0.004, "amount_decimal": "0.004", "currency": "usd"},
+			"balance": map[string]any{"amount": 47.992, "amount_decimal": "47.992", "currency": "usd"},
 		},
 	}
 	c, _ := startKeyless(t, jsonHandler(http.StatusOK, map[string]any{"results": []any{billed, pageBody}}), nil)
@@ -719,7 +719,11 @@ func TestFetchParsesTheCostAndBalanceInUsage(t *testing.T) {
 	if usage == nil || usage.Cost == nil || usage.Balance == nil {
 		t.Fatalf("usage=%#v", usage)
 	}
-	if usage.Cost.Amount != 0.004 || usage.Cost.Currency != "usd" || usage.Balance.Amount != 47.992 || usage.Balance.Currency != "usd" {
+	want := [2]keenable.Money{
+		{Amount: 0.004, AmountDecimal: "0.004", Currency: "usd"},
+		{Amount: 47.992, AmountDecimal: "47.992", Currency: "usd"},
+	}
+	if *usage.Cost != want[0] || *usage.Balance != want[1] {
 		t.Fatalf("cost=%#v balance=%#v", usage.Cost, usage.Balance)
 	}
 	if resp.Results[1].Usage != nil {

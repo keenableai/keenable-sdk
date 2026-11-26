@@ -459,7 +459,10 @@ class SearchResponse:
     used. Empty when the API sent none."""
     usage: dict[str, Any] | None = None
     """What the search cost, as the API sent it: ``sku``, ``credits``, and with a
-    key ``cost`` and ``balance``, each ``{"amount": <US dollars>, "currency": "usd"}``.
+    key ``cost`` and ``balance``, each ``{"amount": <US dollars>,
+    "amount_decimal": "<the same amount, exact>", "currency": "usd"}``. Add
+    costs with ``Decimal(cost["amount_decimal"])``, not the float ``amount``;
+    an older server sends no ``amount_decimal``.
     None on keyless calls."""
 
     def __iter__(self) -> Iterator[SearchResult]:
@@ -669,7 +672,10 @@ class Page:
     stale: bool | None = None
     usage: dict[str, Any] | None = None
     """What this page cost, as the API sent it: ``sku``, ``credits``, and with a
-    key ``cost`` and ``balance``, each ``{"amount": <US dollars>, "currency": "usd"}``.
+    key ``cost`` and ``balance``, each ``{"amount": <US dollars>,
+    "amount_decimal": "<the same amount, exact>", "currency": "usd"}``. Add
+    costs with ``Decimal(cost["amount_decimal"])``, not the float ``amount``;
+    an older server sends no ``amount_decimal``.
     """
     error: FetchError | None = None
     """Set when this URL failed; the other fields are then empty."""

@@ -510,7 +510,7 @@ func usageJSON(u *keenable.Usage) any {
 		if m == nil {
 			return nil
 		}
-		return map[string]any{"amount": m.Amount, "currency": m.Currency}
+		return map[string]any{"amount": m.Amount, "amount_decimal": m.AmountDecimal, "currency": m.Currency}
 	}
 	var remaining any
 	if u.CreditsRemaining != nil {

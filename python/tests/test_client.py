@@ -411,16 +411,28 @@ def test_fetch_keeps_the_cost_and_balance_in_usage() -> None:
             "amount": 1,
             "credits": 1,
             "paid": True,
-            "cost": {"amount": 0.004, "currency": "usd"},
-            "balance": {"amount": 47.992, "currency": "usd"},
+            "cost": {"amount": 0.004, "amount_decimal": "0.004", "currency": "usd"},
+            "balance": {
+                "amount": 47.992,
+                "amount_decimal": "47.992",
+                "currency": "usd",
+            },
         },
     }
     keenable, _ = _client(_ok({"results": [billed]}))
     page = keenable.fetch("https://example.com").results[0]
 
     assert page.usage is not None
-    assert page.usage["cost"] == {"amount": 0.004, "currency": "usd"}
-    assert page.usage["balance"] == {"amount": 47.992, "currency": "usd"}
+    assert page.usage["cost"] == {
+        "amount": 0.004,
+        "amount_decimal": "0.004",
+        "currency": "usd",
+    }
+    assert page.usage["balance"] == {
+        "amount": 47.992,
+        "amount_decimal": "47.992",
+        "currency": "usd",
+    }
 
 
 def test_page_to_context_is_citable_like_search_results() -> None:

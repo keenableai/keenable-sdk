@@ -364,7 +364,7 @@ async fn responses() {
                 let money = |m: &Option<crate::models::Money>| {
                     m.as_ref().map_or(
                         Value::Null,
-                        |m| serde_json::json!({"amount": m.amount, "currency": m.currency}),
+                        |m| serde_json::json!({"amount": m.amount, "amount_decimal": m.amount_decimal, "currency": m.currency}),
                     )
                 };
                 let usage = r.usage.as_ref().map_or(Value::Null, |u| {
