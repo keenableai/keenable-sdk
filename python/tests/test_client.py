@@ -16,6 +16,7 @@ from keenable import (
     KeenableAuthError,
     KeenableInvalidRequestError,
     KeenableRateLimitError,
+    SearchWarning,
     arun_tool_call,
     run_tool_call,
 )
@@ -155,7 +156,7 @@ def test_tool_schema_offers_objective() -> None:
     search = next(t for t in TOOLS if t["function"]["name"] == "keenable_search")
     properties = search["function"]["parameters"]["properties"]
     assert properties["objective"]["type"] == "string"
-    # Canonical agent-facing description, shared with the Keenable MCP tool and the docs tool definitions.
+    # Canonical agent-facing description, shared with the MCP tool and docs.
     assert properties["objective"]["description"] == (
         "Optional. Use for multi-step or ambiguous searches; omit for simple "
         "lookups. In one to three plain sentences, say what the search is for, "
@@ -244,6 +245,16 @@ async def test_async_an_unencodable_domain_list_is_an_invalid_request() -> None:
             await arun_tool_call(
                 keenable, "keenable_search", {"query": "q", "exclude_domains": [b"x"]}
             )
+    assert seen == []
+
+
+@pytest.mark.parametrize("value", [True, False, 1, ["strict"], {"level": "strict"}])
+def test_a_tool_call_rejects_a_moderation_that_is_not_a_string(value: Any) -> None:
+    keenable, seen = _client(_routed)
+    with pytest.raises(
+        KeenableInvalidRequestError, match='moderation must be "moderate" or "strict"'
+    ):
+        run_tool_call(keenable, "keenable_search", {"query": "q", "moderation": value})
     assert seen == []
 
 
@@ -565,6 +576,72 @@ async def test_async_search_sends_disable_cards() -> None:
         "mode": "realtime",
         "disable_cards": True,
     }
+
+
+def test_search_sends_moderation_only_when_set() -> None:
+    keenable, seen = _client(_routed)
+    keenable.search("q", moderation="strict")
+    keenable.search("q", mode="realtime", moderation="moderate")
+    keenable.search("q", moderation=None)
+    keenable.search("q")
+    sent = [json.loads(request.content) for request in seen]
+    assert sent[0] == {"query": "q", "mode": "pro", "moderation": "strict"}
+    assert sent[1] == {"query": "q", "mode": "realtime", "moderation": "moderate"}
+    assert "moderation" not in sent[2]
+    assert "moderation" not in sent[3]
+
+
+async def test_async_search_sends_moderation() -> None:
+    keenable, seen = _aclient(_routed)
+    async with keenable:
+        await keenable.search("q", moderation="moderate")
+    assert json.loads(seen[0].content) == {
+        "query": "q",
+        "mode": "pro",
+        "moderation": "moderate",
+    }
+
+
+def test_tool_schema_offers_moderation_as_an_enum() -> None:
+    search = next(t for t in TOOLS if t["function"]["name"] == "keenable_search")
+    prop = search["function"]["parameters"]["properties"]["moderation"]
+    assert prop["type"] == "string"
+    assert prop["enum"] == ["moderate", "strict"]
+    assert "no moderation" in prop["description"]
+
+
+def test_tool_call_passes_moderation() -> None:
+    keenable, seen = _client(_routed)
+    run_tool_call(keenable, "keenable_search", {"query": "q", "moderation": "strict"})
+    assert json.loads(seen[0].content)["moderation"] == "strict"
+
+
+def test_search_response_parses_warnings() -> None:
+    body = {
+        "query": "q",
+        "results": [],
+        "warnings": [
+            {
+                "code": "deprecated_parameter",
+                "path": "/safety_mode",
+                "message": "safety_mode is deprecated. Use moderation.",
+            }
+        ],
+    }
+    keenable, _ = _client(_ok(body))
+    response = keenable.search("q")
+    assert response.warnings == [
+        SearchWarning(
+            code="deprecated_parameter",
+            path="/safety_mode",
+            message="safety_mode is deprecated. Use moderation.",
+        )
+    ]
+
+
+def test_search_response_warnings_default_to_empty() -> None:
+    keenable, _ = _client(_ok(SEARCH_BODY))
+    assert keenable.search("q").warnings == []
 
 
 def test_tool_schema_keeps_max_results_and_query_time_out() -> None:

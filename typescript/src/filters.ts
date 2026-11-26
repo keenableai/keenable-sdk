@@ -21,6 +21,8 @@ export interface Filter {
    * kept small: a model picks better from fewer knobs.
    */
   readonly toolExposed?: boolean;
+  /** The values the tool schema offers, when the filter takes a fixed set. */
+  readonly enum?: readonly string[];
 }
 
 export const SEARCH_FILTERS: readonly Filter[] = [
@@ -99,6 +101,15 @@ export const SEARCH_FILTERS: readonly Filter[] = [
     jsonType: "boolean",
     toolExposed: true,
   },
+  {
+    wire: "moderation",
+    option: "moderation",
+    description:
+      "Filter unsafe results: 'moderate' or 'strict'. Leave it out for no moderation. " +
+      "Not supported when the query is a URL.",
+    toolExposed: true,
+    enum: ["moderate", "strict"],
+  },
 ];
 
 export const TOOL_FILTERS: readonly Filter[] = SEARCH_FILTERS.filter(
@@ -112,7 +123,11 @@ export function toolProperties(): Record<string, unknown> {
       f.wire,
       f.jsonType === "array"
         ? { type: "array", items: { type: "string" }, description: f.description }
-        : { type: f.jsonType ?? "string", description: f.description },
+        : {
+            type: f.jsonType ?? "string",
+            ...(f.enum ? { enum: [...f.enum] } : {}),
+            description: f.description,
+          },
     ]),
   );
 }

@@ -26,6 +26,16 @@ export interface SearchResult {
   raw: Record<string, unknown>;
 }
 
+/** Something in a search request to change, such as a deprecated parameter. The request was still served. */
+export interface SearchWarning {
+  /** What kind of warning, such as `"deprecated_parameter"`. */
+  code: string;
+  /** JSON pointer to the request parameter, such as `"/safety_mode"`. */
+  path: string;
+  /** What to change and by when. */
+  message: string;
+}
+
 /**
  * Per-call transport settings, accepted by `search()` and `fetch()`. Each one
  * overrides the client's setting for this call only.
@@ -92,6 +102,14 @@ export interface SearchOptions extends RequestOptions {
    * `"realtime"` modes.
    */
   disableCards?: boolean;
+  /**
+   * Filter unsafe results: `"moderate"` or `"strict"` removes results a safety
+   * model judges unsafe at that level, so a search can return fewer results or
+   * none. Leave it unset for no moderation. Works in `"pro"` and `"realtime"`
+   * modes, and not when the query is a URL or with `queryTime`; the API
+   * rejects it there.
+   */
+  moderation?: "moderate" | "strict";
 }
 
 /** Optional arguments for `fetch()`. The API checks their values. */

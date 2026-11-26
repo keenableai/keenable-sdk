@@ -6,6 +6,11 @@ All notable changes to the `keenable` npm package. Versions follow
 ## Unreleased
 
 - **Changed:** the `keenable_search` tool's `objective` description is shorter (about 330 characters): use it for multi-step or ambiguous searches, say what the query leaves out and what earlier searches found, and stay within 1,000 characters.
+- **Added:** `moderation` option on `search()`: `"moderate"` or `"strict"` filters unsafe results; unset, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 when the query is a URL.
+- **Added:** `SearchResponse.warnings`, a list of `SearchWarning` (`code`, `path`, `message`) naming what a request should change, such as a deprecated parameter. Empty when the API sends none.
+
+## 0.3.0
+
 - **Changed (breaking):** `fetch()` takes a list of URLs (a lone string is one URL) and sends one `POST /v1/fetch`. It returns a `FetchResponse` whose `results[i]` is the `Page` for `urls[i]`, with `error` (a `FetchError`) set when that URL failed. Options: `maxChars`, `prompt`, `schema`, `links`, `images`, `maxAgeHours`, sent only when set; the API checks their values. The `live` option and `Page.requestId` are gone (`FetchResponse.requestId` replaces it), and there is no separate `fetchMany`.
 - **Changed (breaks code):** the `keenable_fetch` tool matches `fetch()` and the hosted MCP tool: it takes `urls` (1 to 20), `max_chars` (per page), `prompt` and `max_age_hours` (0 reads live). `urls` is required and the old `url` argument is gone: a call that sends only `url` is an invalid request. The context budget without `max_chars` is split across the pages, so a call stays about the size one page was. `runToolCall` returns each page as its own numbered block and a URL that failed as a `[n] <url> - failed: <reason>` block; it fails only when no URL could be read.
 - **Changed (breaks code):** what a search monitor finds is now called a result. `monitors.pages()` is `monitors.results()` and calls `GET /v1/monitors/{id}/results`; `PageList` is `ResultList` and `MonitorPagesParams` is `MonitorResultsParams`. The old names are gone, with no aliases.

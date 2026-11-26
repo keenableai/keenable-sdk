@@ -147,6 +147,13 @@ pub struct SearchOptions {
     /// facts (their URLs expire after one day). `false`, the API default, is
     /// not sent.
     pub disable_cards: bool,
+    /// Filters unsafe results: "moderate" or "strict" removes results a
+    /// safety model judges unsafe at that level, so a search can return fewer
+    /// results or none. `None` (or "") is no moderation and is not sent; any
+    /// other value is sent as given for the API to judge. It works in the
+    /// "pro" and "realtime" modes, and not when the query is a URL or with
+    /// `query_time`; the API rejects it there.
+    pub moderation: Option<String>,
     /// This call's timeout, retry budget and headers.
     pub request: RequestOptions,
 }
@@ -337,6 +344,7 @@ impl Client {
         if opts.disable_cards {
             payload.insert("disable_cards".into(), Value::Bool(true));
         }
+        put(&mut payload, "moderation", &opts.moderation);
         self.search_payload(query, opts.mode.as_deref(), payload, &opts.request)
             .await
     }

@@ -136,6 +136,9 @@ millisecond value too) or not finite is null, as is a boolean or any other
 type. A search echoes the query the API sent back when it is such a string,
 else the query asked. The request id is the body's, else the trimmed
 `X-Request-Id` header.
+`warnings` is the body's list, each object entry kept as `code`, `path` and
+`message`, each the string sent or `""`; any other entry is skipped, and a
+missing or non-list `warnings` is empty.
 
 ## Arguments (`options`, `search_body`)
 
@@ -166,6 +169,9 @@ else the query asked. The request id is the body's, else the trimmed
   default, so it is not sent, and unset (or `""`) is not sent either. Any other
   value, such as the string `"true"` or `1`, is the invalid-request error and
   sends nothing (Go's `bool` cannot hold one).
+- `moderation` is sent as given (`moderate` or `strict`); the SDKs do not
+  check it, and the API rejects any other value. `""` is unset, as for any
+  other string option.
 
 ## The whole-attempt deadline (`deadline`)
 
@@ -196,7 +202,9 @@ invalid-request error. A list filter (`exclude_domains`) is sent as the model
 gave it for the API to judge: a lone string is wrapped, not split; `""` and
 null are unset; anything else, an empty list or a blank entry included, is
 sent unchanged. `disable_cards` is sent only as `true`; `false`, `""` and null
-are unset, and any other value is the invalid-request error. Arguments JSON
+are unset, and any other value is the invalid-request error. `moderation` is
+sent as the model gave it for the API to judge; `""` and null are unset.
+Arguments JSON
 cannot encode (`NaN`, `Infinity`) are the invalid-request error and send
 nothing.
 

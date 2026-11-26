@@ -128,6 +128,10 @@ function toolValue(filter: Filter, value: unknown): unknown {
   if (filter.jsonType === "boolean") {
     return value === false || value === "" || value === null ? undefined : value;
   }
+  if (filter.enum && value !== null && value !== undefined && typeof value !== "string") {
+    const choices = filter.enum.map((v) => `"${v}"`).join(" or ");
+    throw new KeenableInvalidRequestError(`${filter.wire} must be ${choices}. Pass a JSON string, or leave it out.`);
+  }
   if (filter.jsonType !== "array") return nonEmpty(value);
   return value === "" || value === null ? undefined : value;
 }

@@ -3325,6 +3325,7 @@
       "body": "{\"query\":\"q\",\"mode\":\"pro\",\"results\":[{\"title\":\"T\",\"url\":\"https://e.com/\",\"snippet\":\"S\",\"description\":\"D\",\"published_at\":\"2024-01-01\",\"acquired_at\":\"2024-02-02\"}]}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": "pro",
         "request_id": null,
@@ -3349,6 +3350,7 @@
       "body": "{}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3364,6 +3366,7 @@
       "body": "{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\",\"score\":0.9}],\"took_ms\":12,\"debug\":{\"x\":1}}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3388,6 +3391,7 @@
       "body": "{\"results\":null}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3403,6 +3407,7 @@
       "body": "{\"results\":{\"title\":\"T\"}}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3418,6 +3423,7 @@
       "body": "{\"results\":\"none\"}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3433,6 +3439,7 @@
       "body": "{\"results\":[1,\"x\",null,[],true,{\"title\":\"kept\"}]}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3457,6 +3464,7 @@
       "body": "{\"results\":[{\"title\":42,\"url\":{\"href\":\"u\"},\"snippet\":true,\"description\":5,\"published_at\":[\"2024\"],\"acquired_at\":false}]}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3481,6 +3489,7 @@
       "body": "{\"results\":[{\"title\":null,\"url\":null,\"snippet\":null,\"description\":null}]}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3505,6 +3514,7 @@
       "body": "{\"results\":[{\"title\":0,\"url\":false,\"snippet\":0}]}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3529,6 +3539,7 @@
       "body": "{\"results\":[{\"title\":\"  \",\"url\":\"\",\"snippet\":\" \",\"description\":\"  \",\"published_at\":\"\",\"acquired_at\":\" \"}]}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3553,6 +3564,7 @@
       "body": "{\"query\":\"normalized q\"}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "normalized q",
         "mode": null,
         "request_id": null,
@@ -3568,6 +3580,7 @@
       "body": "{\"query\":\"  \"}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3583,6 +3596,7 @@
       "body": "{\"query\":5}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3598,6 +3612,7 @@
       "body": "{\"mode\":5}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3613,6 +3628,7 @@
       "body": "{\"mode\":\"\"}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3630,6 +3646,7 @@
       "body": "{\"request_id\":\"body\"}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": "body",
@@ -3647,6 +3664,7 @@
       "body": "{\"request_id\":\" \"}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": "hdr",
@@ -3664,6 +3682,7 @@
       "body": "{\"request_id\":9}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": "hdr",
@@ -3681,6 +3700,7 @@
       "body": "{}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3696,6 +3716,7 @@
       "body": "{\"results\":[]}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3711,6 +3732,7 @@
       "body": "﻿{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\"}]}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3735,6 +3757,7 @@
       "body": "{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\",\"score\":1e400}],\"took\":1e400}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3847,6 +3870,7 @@
       "body": "{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\",\"published_at\":\"2024-05-01T12:00:00Z\",\"acquired_at\":\"2024-05-02T00:00:00Z\"}]}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3871,6 +3895,7 @@
       "body": "{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\",\"published_at\":1714564800,\"acquired_at\":1714608000.5}]}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3895,6 +3920,7 @@
       "body": "{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\",\"published_at\":-1,\"acquired_at\":100000000000000000000}]}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3919,6 +3945,7 @@
       "body": "{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\",\"published_at\":0,\"acquired_at\":\"1714564800\"}]}",
       "expect": {
         "error": null,
+        "warnings": [],
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3932,6 +3959,87 @@
             "acquired_at": "1714564800"
           }
         ]
+      }
+    },
+    {
+      "name": "warnings are parsed",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"warnings\":[{\"code\":\"deprecated_parameter\",\"path\":\"/safety_mode\",\"message\":\"safety_mode is deprecated and stops working on 2027-03-01. Use moderation.\"}]}",
+      "expect": {
+        "error": null,
+        "warnings": [
+          {
+            "code": "deprecated_parameter",
+            "path": "/safety_mode",
+            "message": "safety_mode is deprecated and stops working on 2027-03-01. Use moderation."
+          }
+        ],
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "malformed warnings",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[],\"warnings\":[1,\"x\",null,[],{\"code\":5,\"path\":null},{\"code\":\"c\",\"path\":\"/p\",\"message\":\"m\",\"extra\":true}]}",
+      "expect": {
+        "error": null,
+        "warnings": [
+          {
+            "code": "",
+            "path": "",
+            "message": ""
+          },
+          {
+            "code": "c",
+            "path": "/p",
+            "message": "m"
+          }
+        ],
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "warnings as an object",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[],\"warnings\":{\"code\":\"c\"}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "warnings null",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[],\"warnings\":null}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
       }
     }
   ],
@@ -4819,6 +4927,45 @@
         "disable_cards": true
       },
       "skip": {}
+    },
+    {
+      "name": "moderation moderate is sent",
+      "query": "q",
+      "options": {
+        "moderation": "moderate"
+      },
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "moderation": "moderate"
+      },
+      "skip": {}
+    },
+    {
+      "name": "moderation strict with realtime mode",
+      "query": "q",
+      "options": {
+        "mode": "realtime",
+        "moderation": "strict"
+      },
+      "sent": {
+        "query": "q",
+        "mode": "realtime",
+        "moderation": "strict"
+      },
+      "skip": {}
+    },
+    {
+      "name": "an empty moderation is unset",
+      "query": "q",
+      "options": {
+        "moderation": ""
+      },
+      "sent": {
+        "query": "q",
+        "mode": "pro"
+      },
+      "skip": {}
     }
   ],
   "tool_call": [
@@ -5038,6 +5185,44 @@
         "mode": "pro",
         "site": "arxiv.org",
         "disable_cards": true
+      },
+      "invalid": false
+    },
+    {
+      "name": "moderation strict is sent",
+      "arguments": "{\"query\":\"q\",\"moderation\":\"strict\"}",
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "moderation": "strict"
+      },
+      "invalid": false
+    },
+    {
+      "name": "moderation off is sent for the API to judge",
+      "arguments": "{\"query\":\"q\",\"moderation\":\"off\"}",
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "moderation": "off"
+      },
+      "invalid": false
+    },
+    {
+      "name": "moderation an empty string is unset",
+      "arguments": "{\"query\":\"q\",\"moderation\":\"\"}",
+      "sent": {
+        "query": "q",
+        "mode": "pro"
+      },
+      "invalid": false
+    },
+    {
+      "name": "moderation null is unset",
+      "arguments": "{\"query\":\"q\",\"moderation\":null}",
+      "sent": {
+        "query": "q",
+        "mode": "pro"
       },
       "invalid": false
     }

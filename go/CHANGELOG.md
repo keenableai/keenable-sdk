@@ -3,6 +3,11 @@
 ## Unreleased
 
 - **Changed:** the `keenable_search` tool's `objective` description is shorter (about 330 characters): use it for multi-step or ambiguous searches, say what the query leaves out and what earlier searches found, and stay within 1,000 characters.
+- **Added:** `SearchOptions.Moderation`: `"moderate"` or `"strict"` filters unsafe results; empty, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 when the query is a URL.
+- **Added:** `SearchResponse.Warnings`, a slice of `SearchWarning` (`Code`, `Path`, `Message`) naming what a request should change, such as a deprecated parameter. Nil when the API sends none.
+
+## 0.3.0
+
 - **Changed (breaking):** `Fetch` and `FetchWithOptions` take `[]string` URLs and send one `POST /v1/fetch`. They return a `*FetchResponse` whose `Results[i]` is the `Page` for `urls[i]`, with `Error` (a `*FetchError`) set when that URL failed. `FetchOptions` has `MaxChars`, `Prompt`, `Schema`, `Links`, `Images` and `MaxAgeHours`, sent only when set; the API checks their values. `Live` and `Page.RequestID` are gone (`FetchResponse.RequestID` replaces it), and there is no separate `FetchMany`.
 - **Changed (breaking):** the `keenable_fetch` tool matches `Fetch` and the hosted MCP tool: it takes `urls` (1 to 20), `max_chars` (per page), `prompt` and `max_age_hours` (0 reads live). `urls` is required and the old `url` argument is gone: a call that sends only `url` is an invalid request. The context budget without `max_chars` is split across the pages, so a call stays about the size one page was. `RunToolCall` returns each page as its own numbered block and a URL that failed as a `[n] <url> - failed: <reason>` block; it fails only when no URL could be read.
 - **Changed (breaking):** what a search monitor finds is now called a result. `client.Monitors.Pages` is `client.Monitors.Results` and calls `GET /v1/monitors/{id}/results`; `PageList` is `ResultList` and `MonitorPagesParams` is `MonitorResultsParams`. The old names are gone, with no aliases.

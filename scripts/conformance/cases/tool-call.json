@@ -1,5 +1,5 @@
 {
-  "_comment": "A keenable_search tool call: the JSON body it sends, or the invalid-request error it raises before sending. `args` is the model's arguments object, passed as its JSON text; `text` is raw argument text for what JSON cannot hold. Give exactly one. A list filter (exclude_domains) is sent as the model gave it, for the API to judge: a lone string is wrapped, not split; \"\" and null are unset; any other value, an empty list included, is sent unchanged. disable_cards is sent only as true; false, null and \"\" are unset, and any other value is the invalid-request error. `sent` is the whole body, compared as JSON; `invalid` means the invalid-request error and no request.",
+  "_comment": "A keenable_search tool call: the JSON body it sends, or the invalid-request error it raises before sending. `args` is the model's arguments object, passed as its JSON text; `text` is raw argument text for what JSON cannot hold. Give exactly one. A list filter (exclude_domains) is sent as the model gave it, for the API to judge: a lone string is wrapped, not split; \"\" and null are unset; any other value, an empty list included, is sent unchanged. disable_cards is sent only as true; false, null and \"\" are unset, and any other value is the invalid-request error. moderation is a string sent as the model gave it, for the API to judge; \"\" and null are unset. `sent` is the whole body, compared as JSON; `invalid` means the invalid-request error and no request.",
   "cases": [
     {"name": "a list is sent as given", "args": {"query": "q", "exclude_domains": ["pinterest.com", "quora.com"]}, "sent": {"query": "q", "mode": "pro", "exclude_domains": ["pinterest.com", "quora.com"]}},
     {"name": "an empty list is sent", "args": {"query": "q", "exclude_domains": []}, "sent": {"query": "q", "mode": "pro", "exclude_domains": []}},
@@ -22,6 +22,10 @@
     {"name": "disable_cards an empty string is unset", "args": {"query": "q", "disable_cards": ""}, "sent": {"query": "q", "mode": "pro"}},
     {"name": "disable_cards a string is invalid", "args": {"query": "q", "disable_cards": "true"}, "invalid": true},
     {"name": "disable_cards a number is invalid", "args": {"query": "q", "disable_cards": 1}, "invalid": true},
-    {"name": "disable_cards with other filters", "args": {"query": "q", "site": "arxiv.org", "disable_cards": true}, "sent": {"query": "q", "mode": "pro", "site": "arxiv.org", "disable_cards": true}}
+    {"name": "disable_cards with other filters", "args": {"query": "q", "site": "arxiv.org", "disable_cards": true}, "sent": {"query": "q", "mode": "pro", "site": "arxiv.org", "disable_cards": true}},
+    {"name": "moderation strict is sent", "args": {"query": "q", "moderation": "strict"}, "sent": {"query": "q", "mode": "pro", "moderation": "strict"}},
+    {"name": "moderation off is sent for the API to judge", "args": {"query": "q", "moderation": "off"}, "sent": {"query": "q", "mode": "pro", "moderation": "off"}},
+    {"name": "moderation an empty string is unset", "args": {"query": "q", "moderation": ""}, "sent": {"query": "q", "mode": "pro"}},
+    {"name": "moderation null is unset", "args": {"query": "q", "moderation": null}, "sent": {"query": "q", "mode": "pro"}}
   ]
 }
