@@ -155,6 +155,15 @@ bodies (not a JSON object is an API error), with these fields:
   number: a wrong type reads as `0`, never parsed or coerced. A string (an older
   server's `"0.004"`), a boolean, null, a list or an object is `0`, and so is a
   number too large for a double (`1e999`), which drops only that amount.
+- A Money's `amount_decimal` is the same amount as an exact decimal string,
+  for adding amounts without float error. It is the string sent when it
+  matches `^-?[0-9]+(\.[0-9]{1,9})?$` (ASCII digits, nothing before or after).
+  Otherwise (an older server sends none, or a wrong type) it is `amount`
+  above written in fixed point with nine decimal places, correctly rounded,
+  then with trailing zeros and a bare trailing point removed, and `-0` written
+  as `0`: `0.004` is `"0.004"`, `100` is `"100"`, `0.30000000000000004` is
+  `"0.3"`, `0.0000000004` is `"0"`, `1e21` is `"1000000000000000000000"`
+  (never an exponent).
 - A required Money (`unit_price`, `available`) that is not an object reads as
   `{}`. `list_unit_price` is a Money when an object, else null; `source` is a
   string with more than whitespace, else null.

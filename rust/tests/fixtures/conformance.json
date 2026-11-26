@@ -4049,7 +4049,7 @@
       "keyed": false,
       "status": 200,
       "headers": {},
-      "body": "{\"object\":\"billing\",\"prices\":[{\"sku\":\"search.pro\",\"unit\":\"search\",\"unit_price\":{\"amount\":0.004,\"currency\":\"usd\"}},{\"sku\":\"fetch.live\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.002,\"currency\":\"usd\"}}],\"account\":null}",
+      "body": "{\"object\":\"billing\",\"prices\":[{\"sku\":\"search.pro\",\"unit\":\"search\",\"unit_price\":{\"amount\":0.004,\"amount_decimal\":\"0.004\",\"currency\":\"usd\"}},{\"sku\":\"fetch.live\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.002,\"amount_decimal\":\"0.002\",\"currency\":\"usd\"}}],\"account\":null}",
       "expect": {
         "path": "/v1/billing",
         "error": null,
@@ -4061,6 +4061,7 @@
               "unit": "search",
               "unit_price": {
                 "amount": 0.004,
+                "amount_decimal": "0.004",
                 "currency": "usd"
               },
               "list_unit_price": null,
@@ -4071,6 +4072,7 @@
               "unit": "page",
               "unit_price": {
                 "amount": 0.002,
+                "amount_decimal": "0.002",
                 "currency": "usd"
               },
               "list_unit_price": null,
@@ -4088,7 +4090,7 @@
       "headers": {
         "X-Request-Id": " req-1 "
       },
-      "body": "{\"object\":\"billing\",\"prices\":[{\"sku\":\"search.pro\",\"unit\":\"search\",\"unit_price\":{\"amount\":0.003,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0.004,\"currency\":\"usd\"},\"source\":\"contract\"},{\"sku\":\"fetch\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.001,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0.001,\"currency\":\"usd\"},\"source\":\"list\"}],\"account\":{\"balance\":{\"available\":{\"amount\":-12.345678901,\"currency\":\"usd\"}},\"billing_url\":\"https://keenable.ai/console?tab=billing\",\"as_of\":\"2026-11-22T10:00:00.000Z\"}}",
+      "body": "{\"object\":\"billing\",\"prices\":[{\"sku\":\"search.pro\",\"unit\":\"search\",\"unit_price\":{\"amount\":0.003,\"amount_decimal\":\"0.003\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0.004,\"amount_decimal\":\"0.004\",\"currency\":\"usd\"},\"source\":\"contract\"},{\"sku\":\"fetch\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.001,\"amount_decimal\":\"0.001\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0.001,\"amount_decimal\":\"0.001\",\"currency\":\"usd\"},\"source\":\"list\"}],\"account\":{\"balance\":{\"available\":{\"amount\":-12.345678901,\"amount_decimal\":\"-12.345678901\",\"currency\":\"usd\"}},\"billing_url\":\"https://keenable.ai/console?tab=billing\",\"as_of\":\"2026-11-22T10:00:00.000Z\"}}",
       "expect": {
         "path": "/v1/billing",
         "error": null,
@@ -4100,10 +4102,12 @@
               "unit": "search",
               "unit_price": {
                 "amount": 0.003,
+                "amount_decimal": "0.003",
                 "currency": "usd"
               },
               "list_unit_price": {
                 "amount": 0.004,
+                "amount_decimal": "0.004",
                 "currency": "usd"
               },
               "source": "contract"
@@ -4113,10 +4117,12 @@
               "unit": "page",
               "unit_price": {
                 "amount": 0.001,
+                "amount_decimal": "0.001",
                 "currency": "usd"
               },
               "list_unit_price": {
                 "amount": 0.001,
+                "amount_decimal": "0.001",
                 "currency": "usd"
               },
               "source": "list"
@@ -4126,6 +4132,7 @@
             "balance": {
               "available": {
                 "amount": -12.345678901,
+                "amount_decimal": "-12.345678901",
                 "currency": "usd"
               }
             },
@@ -4186,6 +4193,7 @@
               "unit": "",
               "unit_price": {
                 "amount": 0,
+                "amount_decimal": "0",
                 "currency": ""
               },
               "list_unit_price": null,
@@ -4196,10 +4204,12 @@
               "unit": "page",
               "unit_price": {
                 "amount": 0,
+                "amount_decimal": "0",
                 "currency": ""
               },
               "list_unit_price": {
                 "amount": 0,
+                "amount_decimal": "0",
                 "currency": "usd"
               },
               "source": null
@@ -4209,10 +4219,12 @@
               "unit": "search",
               "unit_price": {
                 "amount": 1e-9,
+                "amount_decimal": "0.000000001",
                 "currency": "usd"
               },
               "list_unit_price": {
                 "amount": 0,
+                "amount_decimal": "0",
                 "currency": ""
               },
               "source": null
@@ -4254,6 +4266,7 @@
             "balance": {
               "available": {
                 "amount": 0,
+                "amount_decimal": "0",
                 "currency": ""
               }
             },
@@ -4279,6 +4292,7 @@
             "balance": {
               "available": {
                 "amount": 0,
+                "amount_decimal": "0",
                 "currency": ""
               }
             },
@@ -4304,6 +4318,7 @@
             "balance": {
               "available": {
                 "amount": 0,
+                "amount_decimal": "0",
                 "currency": ""
               }
             },
@@ -4318,7 +4333,7 @@
       "keyed": true,
       "status": 200,
       "headers": {},
-      "body": "{\"account\":{\"balance\":{\"available\":{\"amount\":5.5,\"currency\":\"usd\"},\"purchased\":{\"amount\":3,\"currency\":\"usd\"}},\"billing_url\":\"https://keenable.ai/console\",\"as_of\":\"2026-11-22T10:00:00Z\"}}",
+      "body": "{\"account\":{\"balance\":{\"available\":{\"amount\":5.5,\"amount_decimal\":\"5.5\",\"currency\":\"usd\"},\"purchased\":{\"amount\":3,\"amount_decimal\":\"3\",\"currency\":\"usd\"}},\"billing_url\":\"https://keenable.ai/console\",\"as_of\":\"2026-11-22T10:00:00Z\"}}",
       "expect": {
         "path": "/v1/billing",
         "error": null,
@@ -4329,6 +4344,7 @@
             "balance": {
               "available": {
                 "amount": 5.5,
+                "amount_decimal": "5.5",
                 "currency": "usd"
               }
             },
@@ -4355,10 +4371,248 @@
               "unit": "page",
               "unit_price": {
                 "amount": 0,
+                "amount_decimal": "0",
                 "currency": "usd"
               },
               "list_unit_price": {
                 "amount": 0,
+                "amount_decimal": "0",
+                "currency": "usd"
+              },
+              "source": null
+            }
+          ],
+          "account": null
+        }
+      }
+    },
+    {
+      "name": "amount_decimal is kept as sent, exact where amount is not",
+      "keyed": true,
+      "status": 200,
+      "headers": {},
+      "body": "{\"prices\":[{\"sku\":\"a\",\"unit\":\"search\",\"unit_price\":{\"amount\":12345678.12345679,\"amount_decimal\":\"12345678.123456789\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0,\"amount_decimal\":\"0\",\"currency\":\"usd\"}}],\"account\":{\"balance\":{\"available\":{\"amount\":-0.5,\"amount_decimal\":\"-0.5\",\"currency\":\"usd\"}},\"billing_url\":\"https://keenable.ai/console\",\"as_of\":\"2026-11-22T10:00:00Z\"}}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [
+            {
+              "sku": "a",
+              "unit": "search",
+              "unit_price": {
+                "amount": 12345678.12345679,
+                "amount_decimal": "12345678.123456789",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 0,
+                "amount_decimal": "0",
+                "currency": "usd"
+              },
+              "source": null
+            }
+          ],
+          "account": {
+            "balance": {
+              "available": {
+                "amount": -0.5,
+                "amount_decimal": "-0.5",
+                "currency": "usd"
+              }
+            },
+            "billing_url": "https://keenable.ai/console",
+            "as_of": "2026-11-22T10:00:00Z"
+          }
+        }
+      }
+    },
+    {
+      "name": "an older server without amount_decimal: amount with at most nine decimals, trailing zeros trimmed",
+      "keyed": true,
+      "status": 200,
+      "headers": {},
+      "body": "{\"prices\":[{\"sku\":\"a\",\"unit\":\"search\",\"unit_price\":{\"amount\":0.004,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":100,\"currency\":\"usd\"}},{\"sku\":\"b\",\"unit\":\"page\",\"unit_price\":{\"amount\":1e-9,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":4e-10,\"currency\":\"usd\"}},{\"sku\":\"c\",\"unit\":\"page\",\"unit_price\":{\"amount\":-4e-10,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":1e+21,\"currency\":\"usd\"}},{\"sku\":\"d\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.30000000000000004,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":25000000.5,\"currency\":\"usd\"}}],\"account\":{\"balance\":{\"available\":{\"amount\":-12.345678901,\"currency\":\"usd\"}},\"billing_url\":\"https://keenable.ai/console\",\"as_of\":\"2026-11-22T10:00:00Z\"}}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [
+            {
+              "sku": "a",
+              "unit": "search",
+              "unit_price": {
+                "amount": 0.004,
+                "amount_decimal": "0.004",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 100,
+                "amount_decimal": "100",
+                "currency": "usd"
+              },
+              "source": null
+            },
+            {
+              "sku": "b",
+              "unit": "page",
+              "unit_price": {
+                "amount": 1e-9,
+                "amount_decimal": "0.000000001",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 4e-10,
+                "amount_decimal": "0",
+                "currency": "usd"
+              },
+              "source": null
+            },
+            {
+              "sku": "c",
+              "unit": "page",
+              "unit_price": {
+                "amount": -4e-10,
+                "amount_decimal": "0",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 1e+21,
+                "amount_decimal": "1000000000000000000000",
+                "currency": "usd"
+              },
+              "source": null
+            },
+            {
+              "sku": "d",
+              "unit": "page",
+              "unit_price": {
+                "amount": 0.30000000000000004,
+                "amount_decimal": "0.3",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 25000000.5,
+                "amount_decimal": "25000000.5",
+                "currency": "usd"
+              },
+              "source": null
+            }
+          ],
+          "account": {
+            "balance": {
+              "available": {
+                "amount": -12.345678901,
+                "amount_decimal": "-12.345678901",
+                "currency": "usd"
+              }
+            },
+            "billing_url": "https://keenable.ai/console",
+            "as_of": "2026-11-22T10:00:00Z"
+          }
+        }
+      }
+    },
+    {
+      "name": "an amount_decimal that is not a plain decimal string falls back to amount",
+      "keyed": false,
+      "status": 200,
+      "headers": {},
+      "body": "{\"prices\":[{\"sku\":\"number\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.25,\"amount_decimal\":0.25,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0.25,\"amount_decimal\":null,\"currency\":\"usd\"}},{\"sku\":\"exponent\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.25,\"amount_decimal\":\"2.5e-1\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0.25,\"amount_decimal\":\"\",\"currency\":\"usd\"}},{\"sku\":\"ten decimals\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.25,\"amount_decimal\":\"0.2500000000\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0.25,\"amount_decimal\":\" 0.25\",\"currency\":\"usd\"}},{\"sku\":\"signs and dots\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.25,\"amount_decimal\":\"+0.25\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0.25,\"amount_decimal\":\".25\",\"currency\":\"usd\"}},{\"sku\":\"trailing dot and newline\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.25,\"amount_decimal\":\"0.\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0.25,\"amount_decimal\":\"0.25\\n\",\"currency\":\"usd\"}},{\"sku\":\"not ASCII digits\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.25,\"amount_decimal\":\"٠.٢٥\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":\"0.25\",\"amount_decimal\":[\"0.25\"],\"currency\":\"usd\"}}]}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [
+            {
+              "sku": "number",
+              "unit": "page",
+              "unit_price": {
+                "amount": 0.25,
+                "amount_decimal": "0.25",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 0.25,
+                "amount_decimal": "0.25",
+                "currency": "usd"
+              },
+              "source": null
+            },
+            {
+              "sku": "exponent",
+              "unit": "page",
+              "unit_price": {
+                "amount": 0.25,
+                "amount_decimal": "0.25",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 0.25,
+                "amount_decimal": "0.25",
+                "currency": "usd"
+              },
+              "source": null
+            },
+            {
+              "sku": "ten decimals",
+              "unit": "page",
+              "unit_price": {
+                "amount": 0.25,
+                "amount_decimal": "0.25",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 0.25,
+                "amount_decimal": "0.25",
+                "currency": "usd"
+              },
+              "source": null
+            },
+            {
+              "sku": "signs and dots",
+              "unit": "page",
+              "unit_price": {
+                "amount": 0.25,
+                "amount_decimal": "0.25",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 0.25,
+                "amount_decimal": "0.25",
+                "currency": "usd"
+              },
+              "source": null
+            },
+            {
+              "sku": "trailing dot and newline",
+              "unit": "page",
+              "unit_price": {
+                "amount": 0.25,
+                "amount_decimal": "0.25",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 0.25,
+                "amount_decimal": "0.25",
+                "currency": "usd"
+              },
+              "source": null
+            },
+            {
+              "sku": "not ASCII digits",
+              "unit": "page",
+              "unit_price": {
+                "amount": 0.25,
+                "amount_decimal": "0.25",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 0,
+                "amount_decimal": "0",
                 "currency": "usd"
               },
               "source": null

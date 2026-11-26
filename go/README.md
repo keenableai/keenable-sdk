@@ -216,8 +216,21 @@ one, `Prices` are your organization's (with `ListUnitPrice` and `Source`,
 `"list"` or `"contract"`), and `Account` holds the available balance and
 `BillingURL`, the console page for adding funds. Amounts are numbers in US
 dollars (`Money.Amount`, a `float64` such as `0.004`, up to nine decimal
-places, negative for an account in debt). `opts` is a `*RequestOptions` and
-may be nil.
+places, negative for an account in debt). `Money.AmountDecimal` is the same
+amount as an exact decimal string (`"0.004"`); add amounts with it, not with
+the float, when they must match a bill:
+
+```go
+total := new(big.Rat)
+for _, p := range billing.Prices {
+	if r, ok := new(big.Rat).SetString(p.UnitPrice.AmountDecimal); ok {
+		total.Add(total, r)
+	}
+}
+fmt.Println(total.FloatString(9))
+```
+
+`opts` is a `*RequestOptions` and may be nil.
 
 ## Tool calling
 

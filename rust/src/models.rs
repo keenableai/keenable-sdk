@@ -681,8 +681,15 @@ mod tests {
 pub struct Money {
     /// The amount in the currency's major unit (US dollars), such as
     /// `0.004`, with up to nine decimal places. Negative for an account in
-    /// debt. `0.0` when the API sent no finite number.
+    /// debt. `0.0` when the API sent no finite number. For display: add
+    /// amounts with `amount_decimal`.
     pub amount: f64,
+    /// The same amount as an exact decimal string, such as `"0.004"`: up to
+    /// nine decimal places, no trailing zeros, no exponent, `-` when negative,
+    /// `"0"` for zero. Add amounts exactly with a decimal type (or as `i128`
+    /// nano-dollars), never by summing `amount`. From an older server that
+    /// sends none, `amount` written this way.
+    pub amount_decimal: String,
     /// The lowercase ISO 4217 code, such as `"usd"`.
     pub currency: String,
 }
@@ -758,10 +765,43 @@ fn as_amount(v: Option<&Value>) -> f64 {
         .unwrap_or(0.0)
 }
 
+/// `^-?[0-9]+(\.[0-9]{1,9})?$`: what the API sends as `amount_decimal`.
+fn is_decimal(s: &str) -> bool {
+    let unsigned = s.strip_prefix('-').unwrap_or(s);
+    let (whole, fraction) = match unsigned.split_once('.') {
+        Some((whole, fraction)) => (whole, Some(fraction)),
+        None => (unsigned, None),
+    };
+    let digits = |part: &str| part.bytes().all(|b| b.is_ascii_digit());
+    !whole.is_empty()
+        && digits(whole)
+        && match fraction {
+            Some(f) => (1..=9).contains(&f.len()) && digits(f),
+            None => true,
+        }
+}
+
+/// The API's exact decimal string when it is one, else `amount` as one: at
+/// most nine decimal places, trailing zeros trimmed, `"0"` for zero (an older
+/// server sends no `amount_decimal`).
+fn amount_decimal(v: Option<&Value>, amount: f64) -> String {
+    if let Some(s) = v.and_then(Value::as_str).filter(|s| is_decimal(s)) {
+        return s.to_string();
+    }
+    if !amount.is_finite() {
+        return "0".to_string();
+    }
+    let fixed = format!("{amount:.9}");
+    let text = fixed.trim_end_matches('0').trim_end_matches('.');
+    if text == "-0" { "0" } else { text }.to_string()
+}
+
 fn money(v: Option<&Value>) -> Money {
     let m = object_or_empty(v);
+    let amount = as_amount(m.get("amount"));
     Money {
-        amount: as_amount(m.get("amount")),
+        amount,
+        amount_decimal: amount_decimal(m.get("amount_decimal"), amount),
         currency: as_string(m.get("currency")),
     }
 }

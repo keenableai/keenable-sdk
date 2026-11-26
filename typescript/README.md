@@ -190,7 +190,19 @@ one, `prices` are your organization's (with `listUnitPrice` and `source`,
 `"list"` or `"contract"`), and `account` holds the available balance and
 `billingUrl`, the console page for adding funds. Amounts are numbers in US
 dollars (`Money.amount`, such as `0.004`, up to nine decimal places, negative
-for an account in debt).
+for an account in debt). `Money.amountDecimal` (the API's `amount_decimal`) is
+the same amount as an exact decimal string (`"0.004"`); add amounts with it,
+not with the float, when they must match a bill: with a decimal library, or as
+BigInt nano-dollars:
+
+```ts
+const nanos = (d: string) => {
+  const [whole, fraction = ""] = d.replace("-", "").split(".");
+  const n = BigInt(whole! + fraction.padEnd(9, "0"));
+  return d.startsWith("-") ? -n : n;
+};
+const total = billing.prices.reduce((sum, p) => sum + nanos(p.unitPrice.amountDecimal), 0n);
+```
 
 ## Tool calling
 

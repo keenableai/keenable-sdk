@@ -170,7 +170,15 @@ one, `prices` are your organization's (with `list_unit_price` and `source`,
 `"list"` or `"contract"`), and `account` holds the available balance and
 `billing_url`, the console page for adding funds. Amounts are numbers in US
 dollars (`Money.amount`, a `float` such as `0.004`, up to nine decimal places,
-negative for an account in debt).
+negative for an account in debt). `Money.amount_decimal` is the same amount as
+an exact decimal string (`"0.004"`); add amounts with it, not with the float,
+when they must match a bill:
+
+```python
+from decimal import Decimal
+
+total = sum(Decimal(p.unit_price.amount_decimal) for p in billing.prices)
+```
 
 ## Tool calling
 

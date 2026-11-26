@@ -186,7 +186,10 @@ organization's (with `list_unit_price` and `source`, `"list"` or
 `"contract"`), and `account` holds the available balance and `billing_url`,
 the console page for adding funds. Amounts are numbers in US dollars
 (`Money::amount`, an `f64` such as `0.004`, up to nine decimal places,
-negative for an account in debt).
+negative for an account in debt). `Money::amount_decimal` is the same amount
+as an exact decimal string (`"0.004"`); add amounts with it (with a decimal
+crate such as `rust_decimal`, or as integer nano-dollars), not with the
+float, when they must match a bill.
 
 ## Tool calling
 

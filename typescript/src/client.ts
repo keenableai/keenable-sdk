@@ -576,11 +576,32 @@ function toPage(data: Record<string, unknown>, url: string): Page {
 
 function toMoney(value: unknown): Money {
   const data = isRecord(value) ? value : {};
-  return { amount: amount(data.amount), currency: text(data.currency) };
+  const sent = amount(data.amount);
+  return {
+    amount: sent,
+    amountDecimal: amountDecimal(data.amount_decimal, sent),
+    currency: text(data.currency),
+  };
 }
 
 function amount(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+const DECIMAL = /^-?[0-9]+(\.[0-9]{1,9})?$/;
+
+/**
+ * The API's exact decimal string when it is one, else `amount` as one: at most
+ * nine decimal places, trailing zeros trimmed, "0" for zero (an older server
+ * sends no `amount_decimal`).
+ */
+function amountDecimal(value: unknown, dollars: number): string {
+  if (typeof value === "string" && DECIMAL.test(value)) return value;
+  if (!Number.isFinite(dollars)) return "0";
+  // toFixed writes 1e21 and above with an exponent; those are whole numbers.
+  if (Math.abs(dollars) >= 1e21) return BigInt(dollars).toString();
+  const fixed = dollars.toFixed(9).replace(/0+$/, "").replace(/\.$/, "");
+  return fixed === "-0" ? "0" : fixed;
 }
 
 function records(value: unknown): Record<string, unknown>[] {

@@ -195,9 +195,17 @@ export interface Money {
   /**
    * Amount in the currency's major unit (US dollars), such as 0.004, with up
    * to nine decimal places. Negative for an account in debt. 0 when the API
-   * sent no finite number.
+   * sent no finite number. For display: add amounts with `amountDecimal`.
    */
   amount: number;
+  /**
+   * The same amount as an exact decimal string (the API's `amount_decimal`),
+   * such as "0.004": up to nine decimal places, no trailing zeros, no
+   * exponent, "-" when negative, "0" for zero. Add amounts exactly with a
+   * decimal library (or as BigInt nano-dollars), never by summing `amount`.
+   * From an older server that sends none, `amount` written this way.
+   */
+  amountDecimal: string;
   /** Lowercase ISO 4217 code, such as "usd". */
   currency: string;
 }
