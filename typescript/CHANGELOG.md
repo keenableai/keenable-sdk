@@ -5,6 +5,7 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- **Changed:** the `keenable_search` tool's `objective` description is shorter (about 330 characters): use it for multi-step or ambiguous searches, say what the query leaves out and what earlier searches found, and stay within 1,000 characters.
 - **Added:** `moderation` option on `search()`: `"moderate"` or `"strict"` filters unsafe results; unset, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 when the query is a URL.
 - **Added:** `SearchResponse.warnings`, a list of `SearchWarning` (`code`, `path`, `message`) naming what a request should change, such as a deprecated parameter. Empty when the API sends none.
 
@@ -24,6 +25,7 @@ All notable changes to the `keenable` npm package. Versions follow
 - **Changed (may break code):** `Monitor.search` is now `MonitorSearch | null`: it is null for a page monitor. Code that reads `monitor.search.query` stops compiling under `strictNullChecks`, and fails at run time on a page monitor; check `monitor.type` or use `monitor.search?.query`.
 - **Changed:** the schedule docs give the API's limits: interval `10m` to `90d`, cron runs at least 10 minutes apart. The SDK does not check schedules itself.
 - **Changed:** the error contract fixtures follow the backend's current catalog, which adds `run_in_progress` (409: the monitor is already running).
+- **Changed:** the `objective` docs say what the API now does: the ranker scores results for it together with the query (retrieval reads only the query), at the same price. The option and its behaviour in the SDK are unchanged.
 
 ## 0.2.0
 

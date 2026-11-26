@@ -5,6 +5,7 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
+- **Changed:** the `keenable_search` tool's `objective` description is shorter (about 330 characters): use it for multi-step or ambiguous searches, say what the query leaves out and what earlier searches found, and stay within 1,000 characters.
 - **Added:** `moderation` on `search()` (sync and async): `"moderate"` or `"strict"` filters unsafe results; `None`, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 when the query is a URL.
 - **Added:** `SearchResponse.warnings`, a list of `SearchWarning` (`code`, `path`, `message`) naming what a request should change, such as a deprecated parameter. Empty when the API sends none.
 
@@ -23,6 +24,7 @@ All notable changes to the `keenable` Python package. Versions follow
 - **Changed (may break code):** `Monitor.search` is now `MonitorSearch | None`: it is None for a page monitor. Code that reads `monitor.search.query` unchecked fails on a page monitor; check `monitor.type` or `monitor.search is not None` first.
 - **Changed:** the schedule docstrings give the API's limits: interval `10m` to `90d`, cron runs at least 10 minutes apart. The SDK does not check schedules itself.
 - **Changed:** the error contract fixtures follow the backend's current catalog, which adds `run_in_progress` (409: the monitor is already running).
+- **Changed:** the `objective` docs say what the API now does: the ranker scores results for it together with the query (retrieval reads only the query), at the same price. The parameter and its behaviour in the SDK are unchanged.
 
 ## 0.2.0
 

@@ -11,6 +11,10 @@ import {
 } from "../src/index.js";
 import type { KeenableOptions } from "../src/index.js";
 
+// Canonical agent-facing objective description, shared with the Keenable MCP tool and the docs tool definitions.
+const CANONICAL_OBJECTIVE_DESCRIPTION =
+  "Optional. Use for multi-step or ambiguous searches; omit for simple lookups. In one to three plain sentences, say what the search is for, what the query leaves out (who, where, when, which sources count) and what earlier searches found. Don't restate the question or include personal or confidential details. At most 1,000 characters.";
+
 const SEARCH_BODY = {
   query: "wafer scale engine",
   mode: "pro",
@@ -538,7 +542,7 @@ describe("runToolCall", () => {
       { type: string; description: string }
     >;
     expect(properties.objective?.type).toBe("string");
-    expect(properties.objective?.description).toContain("self-contained");
+    expect(properties.objective?.description).toBe(CANONICAL_OBJECTIVE_DESCRIPTION);
   });
 
   it("sends disableCards only as true", async () => {
