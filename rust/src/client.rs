@@ -173,7 +173,11 @@ pub struct FetchOptions {
     pub links: Option<u32>,
     /// The most images per page to return.
     pub images: Option<u32>,
-    /// Use a stored copy only if younger than this; 0 reads every page live.
+    /// Use a stored copy only if younger than this many hours (0 to 720);
+    /// 0 reads every page live. -1 reads only the stored copy, of any age,
+    /// never the live page: a page with no stored copy comes back with
+    /// `error` set (404). Other negative values are refused with a 400.
+    /// `None` uses a stored copy of any age, or reads live when there is none.
     pub max_age_hours: Option<f64>,
     /// This call's timeout, retry budget and headers.
     pub request: RequestOptions,

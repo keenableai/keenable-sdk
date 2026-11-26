@@ -187,7 +187,7 @@ fields are sent only when set (the API checks their values):
 | `Schema` | A JSON Schema; each page's answer is in `page.Structured` |
 | `Links` | The most links per page to return, in `page.Links` |
 | `Images` | The most images per page to return, in `page.Images` |
-| `MaxAgeHours` | Use a stored copy only if younger than this; `0` reads every page live |
+| `MaxAgeHours` | Use a stored copy only if younger than this many hours; `0` reads every page live; `-1` reads only the stored copy, never the live page (no stored copy: a 404 error entry) |
 
 Internal hosts and private addresses are refused before a request is sent:
 `localhost` and names under `.localhost`, `metadata.google.internal`, and IP
@@ -227,8 +227,8 @@ The model may set `site`, `exclude_domains`, `published_after`, `objective`,
 
 On fetch the model sets `urls` (1 to 20) and may set `max_chars` (per page),
 `prompt` (applied to every page) and `max_age_hours` (0 reads every page
-live), as on the hosted MCP tool. A call without `urls` is an invalid
-request. Each page comes back as its own numbered block. A URL
+live, -1 only the stored copy), as on the hosted MCP tool. A call without
+`urls` is an invalid request. Each page comes back as its own numbered block. A URL
 that failed while others were read becomes a `[n] <url> - failed: <reason>`
 block; `RunToolCall` returns its error only when no URL could be read.
 

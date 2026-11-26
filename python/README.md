@@ -152,7 +152,7 @@ when set (the API checks their values):
 | `schema` | A JSON Schema; each page's answer is in `page.structured` |
 | `links` | The most links per page to return, in `page.links` |
 | `images` | The most images per page to return, in `page.images` |
-| `max_age_hours` | Use a stored copy only if younger than this; `0` reads every page live |
+| `max_age_hours` | Use a stored copy only if younger than this many hours; `0` reads every page live; `-1` reads only the stored copy, never the live page (no stored copy: a 404 error entry) |
 
 ## Tool calling
 
@@ -189,8 +189,8 @@ The model may set `site`, `exclude_domains`, `published_after`, `objective`,
 
 On fetch the model sets `urls` (1 to 20) and may set `max_chars` (per page),
 `prompt` (applied to every page) and `max_age_hours` (0 reads every page
-live), as on the hosted MCP tool. A call without `urls` is an invalid
-request. Each page comes back as its own numbered block. A URL
+live, -1 only the stored copy), as on the hosted MCP tool. A call without
+`urls` is an invalid request. Each page comes back as its own numbered block. A URL
 that failed while others were read becomes a `[n] <url> - failed: <reason>`
 block; `run_tool_call` raises its error only when no URL could be read.
 

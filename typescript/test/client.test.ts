@@ -6,6 +6,7 @@ import {
   KeenableConnectionError,
   KeenableInvalidRequestError,
   KeenableRateLimitError,
+  FETCH_TOOL,
   runToolCall,
   SEARCH_TOOL,
 } from "../src/index.js";
@@ -347,6 +348,22 @@ describe("fetch", () => {
     expect(JSON.parse(String(seen[1]?.init.body))).toEqual({ urls: ["https://example.com"] });
   });
 
+  it("sends maxAgeHours -1 with the content options", async () => {
+    const { client, seen } = mockClient(() => json(FETCH_BODY));
+    await client.fetch(["https://example.com"], {
+      prompt: "List the prices",
+      schema: { type: "object" },
+      links: 5,
+      images: 2,
+      maxAgeHours: -1,
+    });
+    expect(JSON.parse(String(seen[0]?.init.body))).toEqual({
+      urls: ["https://example.com"],
+      content: { prompt: "List the prices", schema: { type: "object" }, links: 5, images: 2 },
+      retrieval: { max_age_hours: -1 },
+    });
+  });
+
   it("parses a page and a failed URL", async () => {
     const failed = {
       url: "https://e.com/x",
@@ -502,6 +519,23 @@ describe("runToolCall", () => {
     });
     expect(out.startsWith("[1] Example Domain (https://example.com/)")).toBe(true);
     expect(out.endsWith("\n\n[2] https://e.com/x - failed: Not found")).toBe(true);
+  });
+
+  it("sends max_age_hours -1 from a fetch tool call", async () => {
+    const { client, seen } = mockClient(() => json({ results: [PAGE_BODY] }));
+    await runToolCall(client, "keenable_fetch", '{"urls": ["https://example.com"], "max_age_hours": -1}');
+    expect(JSON.parse(String(seen[0]?.init.body))).toEqual({
+      urls: ["https://example.com"],
+      retrieval: { max_age_hours: -1 },
+    });
+  });
+
+  it("lets the fetch tool's max_age_hours be -1", () => {
+    const prop = (FETCH_TOOL.function.parameters.properties as Record<string, Record<string, unknown>>)
+      .max_age_hours;
+    expect(prop?.minimum).toBe(-1);
+    expect(prop?.maximum).toBe(720);
+    expect(String(prop?.description)).toContain("-1 reads only the stored copy");
   });
 
   // A caller catching KeenableError should never see a raw TypeError.

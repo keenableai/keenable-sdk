@@ -682,6 +682,19 @@ func TestFetchPostsTheURLsAndOnlyTheOptionsSet(t *testing.T) {
 	}
 }
 
+func TestFetchSendsMinusOneMaxAgeHoursWithTheContentOptions(t *testing.T) {
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
+	storedOnly, images := -1.0, 2
+	opts := &keenable.FetchOptions{Prompt: "List the prices", Schema: map[string]any{"type": "object"}, Links: 5, Images: &images, MaxAgeHours: &storedOnly}
+	if _, err := c.FetchWithOptions(context.Background(), []string{"https://example.com"}, opts); err != nil {
+		t.Fatal(err)
+	}
+	want := `{"content":{"images":2,"links":5,"prompt":"List the prices","schema":{"type":"object"}},"retrieval":{"max_age_hours":-1},"urls":["https://example.com"]}`
+	if got := string(one(t, seen).Body); got != want {
+		t.Fatalf("sent %s, want %s", got, want)
+	}
+}
+
 func TestFetchParsesAPageAndAFailedURL(t *testing.T) {
 	failed := map[string]any{
 		"url":   "https://e.com/x",
@@ -934,6 +947,32 @@ func TestFetchToolReadsSeveralURLs(t *testing.T) {
 	}
 	if !strings.HasPrefix(out, "[1] Example Domain (https://example.com/)") || !strings.HasSuffix(out, "\n\n[2] https://e.com/x - failed: Not found") {
 		t.Fatal(out)
+	}
+}
+
+func TestFetchToolSendsMinusOneMaxAgeHours(t *testing.T) {
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, map[string]any{"results": []any{pageBody}}), nil)
+	if _, err := keenable.RunToolCall(context.Background(), c, "keenable_fetch",
+		`{"urls":["https://example.com"],"max_age_hours":-1}`); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{
+		"urls":      []any{"https://example.com"},
+		"retrieval": map[string]any{"max_age_hours": float64(-1)},
+	}
+	if got := payloadOf(t, (*seen)[0]); !reflect.DeepEqual(got, want) {
+		t.Fatal(got)
+	}
+}
+
+func TestFetchToolDefinitionAllowsMinusOneMaxAgeHours(t *testing.T) {
+	props := keenable.FetchTool.Function.Parameters["properties"].(map[string]any)
+	prop := props["max_age_hours"].(map[string]any)
+	if prop["minimum"] != -1 || prop["maximum"] != 720 {
+		t.Fatal(prop)
+	}
+	if !strings.Contains(prop["description"].(string), "-1 reads only the stored copy") {
+		t.Fatal(prop["description"])
 	}
 }
 

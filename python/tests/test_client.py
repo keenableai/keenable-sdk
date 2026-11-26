@@ -386,6 +386,28 @@ def test_fetch_posts_the_urls_and_only_the_options_set() -> None:
     assert json.loads(seen[1].content) == {"urls": ["https://example.com"]}
 
 
+def test_fetch_sends_minus_one_max_age_hours_with_the_content_options() -> None:
+    keenable, seen = _client(_ok(FETCH_BODY))
+    keenable.fetch(
+        ["https://example.com"],
+        prompt="List the prices",
+        schema={"type": "object"},
+        links=5,
+        images=2,
+        max_age_hours=-1,
+    )
+    assert json.loads(seen[0].content) == {
+        "urls": ["https://example.com"],
+        "content": {
+            "prompt": "List the prices",
+            "schema": {"type": "object"},
+            "links": 5,
+            "images": 2,
+        },
+        "retrieval": {"max_age_hours": -1},
+    }
+
+
 def test_fetch_parses_a_page_and_a_failed_url() -> None:
     failed = {
         "url": "https://e.com/x",
@@ -687,3 +709,25 @@ async def test_async_search_matches_the_sync_payloads() -> None:
     assert mixed["exclude_domains"] == ["export.arxiv.org"]
     assert lone["exclude_domains"] == ["x"]
     assert blank["exclude_domains"] == [""]
+
+
+def test_fetch_tool_sends_minus_one_max_age_hours() -> None:
+    keenable, seen = _client(_ok({"results": [PAGE_BODY]}))
+    run_tool_call(
+        keenable,
+        "keenable_fetch",
+        '{"urls": ["https://example.com"], "max_age_hours": -1}',
+    )
+    assert json.loads(seen[0].content) == {
+        "urls": ["https://example.com"],
+        "retrieval": {"max_age_hours": -1},
+    }
+
+
+def test_fetch_tool_definition_allows_minus_one_max_age_hours() -> None:
+    from keenable.tools import FETCH_TOOL
+
+    prop = FETCH_TOOL["function"]["parameters"]["properties"]["max_age_hours"]
+    assert prop["minimum"] == -1
+    assert prop["maximum"] == 720
+    assert "-1 reads only the stored copy" in prop["description"]

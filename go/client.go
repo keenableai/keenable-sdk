@@ -165,8 +165,12 @@ type FetchOptions struct {
 	Links int
 	// Images is the most images per page to return. Nil means unset.
 	Images *int
-	// MaxAgeHours uses a stored copy only if younger than this; 0 reads
-	// every page live. Nil means unset.
+	// MaxAgeHours uses a stored copy only if younger than this many hours
+	// (0 to 720); 0 reads every page live. -1 reads only the stored copy, of
+	// any age, never the live page: a page with no stored copy comes back
+	// with Error set (404). Other negative values are refused with a 400.
+	// Nil means unset: a stored copy of any age, or a live read when there
+	// is none.
 	MaxAgeHours *float64
 }
 
