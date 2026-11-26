@@ -55,6 +55,9 @@ type captured struct {
 
 var captureMu sync.Mutex
 
+// Canonical agent-facing objective description, shared with the Keenable MCP tool and the docs tool definitions.
+const canonicalObjectiveDescription = "Optional. Use for multi-step or ambiguous searches; omit for simple lookups. In one to three plain sentences, say what the search is for, what the query leaves out (who, where, when, which sources count) and what earlier searches found. Don't restate the question or include personal or confidential details. At most 1,000 characters."
+
 func capture(next http.Handler) (*[]captured, http.Handler) {
 	seen := &[]captured{}
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -367,7 +370,7 @@ func TestToolSchemaOffersObjectiveAsAString(t *testing.T) {
 	if prop["type"] != "string" {
 		t.Fatalf("objective should be a string: %#v", prop)
 	}
-	if desc, _ := prop["description"].(string); !strings.Contains(desc, "self-contained") {
+	if desc, _ := prop["description"].(string); desc != canonicalObjectiveDescription {
 		t.Fatalf("objective description: %#v", prop)
 	}
 }

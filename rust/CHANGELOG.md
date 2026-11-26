@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Added:** `billing()` and `billing_with(&RequestOptions)` read `GET /v1/billing` (read-only, free) as a `Billing`: `prices` (`BillingPrice` with `sku`, `unit`, `unit_price`, and with a key `list_unit_price` and `source`) and `account` (`Option<BillingAccount>`, `None` without a key: `balance.available`, `billing_url`, `as_of`). Amounts are `Money { amount, currency }` with `amount` an `f64` in US dollars (up to nine decimal places, negative for an account in debt; 0.0 when the API sends no finite number, such as an older server's string). The billing models are `PartialEq` but not `Eq`. The key is optional and the path is `/v1/billing` either way (no `/public` variant).
+- **Changed:** the `keenable_search` tool's `objective` description is shorter (about 330 characters): use it for multi-step or ambiguous searches, say what the query leaves out and what earlier searches found, and stay within 1,000 characters.
 - **Added:** `SearchOptions::moderation`: `"moderate"` or `"strict"` filters unsafe results; `None`, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 when the query is a URL.
 - **Added:** `SearchResponse::warnings`, a `Vec<SearchWarning>` (`code`, `path`, `message`) naming what a request should change, such as a deprecated parameter. Empty when the API sends none.
 
@@ -21,6 +22,7 @@
 - **Changed (breaking):** `Monitor::search` is now `Option<MonitorSearch>`, `None` for a page monitor; `MonitorRun::changes` changes from `Option<Value>` to an `Option<MonitorRunChanges>`. Code that reads `monitor.search.query` no longer compiles. Before this, a page monitor's `"search": null` failed to parse.
 - **Changed:** the schedule docs give the API's limits: interval `10m` to `90d`, cron runs at least 10 minutes apart. The SDK does not check schedules itself.
 - **Changed:** the error contract fixtures follow the backend's current catalog, which adds `run_in_progress` (409: the monitor is already running).
+- **Changed:** the `objective` docs say what the API now does: the ranker scores results for it together with the query (retrieval reads only the query), at the same price. The option and its behaviour in the SDK are unchanged.
 
 ## 0.2.0
 

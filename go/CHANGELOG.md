@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Added:** `client.Billing(ctx, opts)` reads `GET /v1/billing` (read-only, free) as a `*Billing`: `Prices` (`[]BillingPrice` with `SKU`, `Unit`, `UnitPrice`, and with a key `ListUnitPrice` and `Source`) and `Account` (`*BillingAccount`, nil without a key: `Balance.Available`, `BillingURL`, `AsOf`). Amounts are `Money{Amount, Currency}` with `Amount` a `float64` in US dollars (up to nine decimal places, negative for an account in debt; 0 when the API sends no finite number, such as an older server's string). The key is optional and the path is `/v1/billing` either way (no `/public` variant). `opts` (`*RequestOptions`) may be nil.
+- **Changed:** the `keenable_search` tool's `objective` description is shorter (about 330 characters): use it for multi-step or ambiguous searches, say what the query leaves out and what earlier searches found, and stay within 1,000 characters.
 - **Added:** `SearchOptions.Moderation`: `"moderate"` or `"strict"` filters unsafe results; empty, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 when the query is a URL.
 - **Added:** `SearchResponse.Warnings`, a slice of `SearchWarning` (`Code`, `Path`, `Message`) naming what a request should change, such as a deprecated parameter. Nil when the API sends none.
 
@@ -21,6 +22,7 @@
 - **Changed (breaking):** `Monitor.Search` is now `*MonitorSearch`, nil for a page monitor; `MonitorRun.Changes` changes from `any` to a typed pointer. Code that passes `m.Search` as a `MonitorSearch` no longer compiles, and `m.Search.Query` panics on a page monitor; check `m.Type` or `m.Search != nil` first.
 - **Changed:** the schedule docs give the API's limits: interval `10m` to `90d`, cron runs at least 10 minutes apart. The SDK does not check schedules itself.
 - **Changed:** the error contract fixtures follow the backend's current catalog, which adds `run_in_progress` (409: the monitor is already running).
+- **Changed:** the `Objective` docs say what the API now does: the ranker scores results for it together with the query (retrieval reads only the query), at the same price. The option and its behaviour in the SDK are unchanged.
 
 ## 0.2.0
 
