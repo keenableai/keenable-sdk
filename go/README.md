@@ -74,7 +74,7 @@ results, err := client.Search(context.Background(), "post-training quantization 
 | `SnippetMaxLength` | Cap the page text returned per result. Nil means unset; a pointer to zero is sent |
 | `MaxResults` | How many results to return, 1 to 50. Zero means the API default of 10 |
 | `QueryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `Objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price. Not sent when empty |
+| `Objective` | What the search is for, in two or three sentences (up to 1,000 characters); the ranker scores results for it together with the query (retrieval reads only the query), same price. Not sent when empty |
 | `Mode` | Search mode: `"pro"` does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops. Empty means `"pro"` |
 | `DisableCards` | `true` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). False, the default, is not sent. In the next release after `v0.1.1` |
 | `Moderation` | Filter unsafe results: `"moderate"` or `"strict"`. Empty, the default, is no moderation and is not sent. Works in `"pro"` and `"realtime"` modes, and not when the query is a URL (the API answers 400) |
@@ -216,8 +216,21 @@ one, `Prices` are your organization's (with `ListUnitPrice` and `Source`,
 `"list"` or `"contract"`), and `Account` holds the available balance and
 `BillingURL`, the console page for adding funds. Amounts are numbers in US
 dollars (`Money.Amount`, a `float64` such as `0.004`, up to nine decimal
-places, negative for an account in debt). `opts` is a `*RequestOptions` and
-may be nil.
+places, negative for an account in debt). `Money.AmountDecimal` is the same
+amount as an exact decimal string (`"0.004"`); add amounts with it, not with
+the float, when they must match a bill:
+
+```go
+total := new(big.Rat)
+for _, p := range billing.Prices {
+	if r, ok := new(big.Rat).SetString(p.UnitPrice.AmountDecimal); ok {
+		total.Add(total, r)
+	}
+}
+fmt.Println(total.FloatString(9))
+```
+
+`opts` is a `*RequestOptions` and may be nil.
 
 ## Tool calling
 

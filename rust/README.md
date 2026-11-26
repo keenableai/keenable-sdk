@@ -101,7 +101,7 @@ for result in &results {
 | `snippet_max_length` | Cap the page text returned per result, 180 to 10000 characters |
 | `max_results` | How many results to return, 1 to 50. The API default is 10 |
 | `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price |
+| `objective` | What the search is for, in two or three sentences (up to 1,000 characters); the ranker scores results for it together with the query (retrieval reads only the query), same price |
 | `disable_cards` | `true` returns ordinary web pages in place of Keenable's cards |
 | `moderation` | Filter unsafe results: `"moderate"` or `"strict"`. `None` is no moderation. Works in `"pro"` and `"realtime"` modes, and not when the query is a URL (the API answers 400) |
 | `request` | This call's timeout, retry budget and headers (`RequestOptions`) |
@@ -186,7 +186,10 @@ organization's (with `list_unit_price` and `source`, `"list"` or
 `"contract"`), and `account` holds the available balance and `billing_url`,
 the console page for adding funds. Amounts are numbers in US dollars
 (`Money::amount`, an `f64` such as `0.004`, up to nine decimal places,
-negative for an account in debt).
+negative for an account in debt). `Money::amount_decimal` is the same amount
+as an exact decimal string (`"0.004"`); add amounts with it (with a decimal
+crate such as `rust_decimal`, or as integer nano-dollars), not with the
+float, when they must match a bill.
 
 ## Tool calling
 

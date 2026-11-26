@@ -103,8 +103,9 @@ export interface SearchOptions extends RequestOptions {
    * What the search is for, in two or three natural sentences: the facts a
    * useful page must contain, the task context the query leaves out, the
    * sources to prefer or exclude, and what is already known. Up to 1,000
-   * characters. The API validates and logs it; it does not change results or
-   * price yet.
+   * characters. The ranker scores results for it together with the query;
+   * retrieval reads only the query, so keep the key words there. It does not
+   * change the price.
    */
   objective?: string;
   /**
@@ -207,9 +208,17 @@ export interface Money {
   /**
    * Amount in the currency's major unit (US dollars), such as 0.004, with up
    * to nine decimal places. Negative for an account in debt. 0 when the API
-   * sent no finite number.
+   * sent no finite number. For display: add amounts with `amountDecimal`.
    */
   amount: number;
+  /**
+   * The same amount as an exact decimal string (the API's `amount_decimal`),
+   * such as "0.004": up to nine decimal places, no trailing zeros, no
+   * exponent, "-" when negative, "0" for zero. Add amounts exactly with a
+   * decimal library (or as BigInt nano-dollars), never by summing `amount`.
+   * From an older server that sends none, `amount` written this way.
+   */
+  amountDecimal: string;
   /** Lowercase ISO 4217 code, such as "usd". */
   currency: string;
 }

@@ -3,6 +3,7 @@ package keenable
 import (
 	"encoding/json"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -48,8 +49,9 @@ type SearchOptions struct {
 	// Objective says what the search is for, in two or three natural
 	// sentences: the facts a useful page must contain, the task context the
 	// query leaves out, the sources to prefer or exclude, and what is already
-	// known. Up to 1,000 characters. The API validates and logs it; it does
-	// not change results or price yet.
+	// known. Up to 1,000 characters. The ranker scores results for it
+	// together with the query; retrieval reads only the query, so keep the key
+	// words there. It does not change the price.
 	Objective string
 	// DisableCards returns ordinary web pages in place of Keenable's cards,
 	// results Keenable writes for queries such as prices, exchange rates or
@@ -591,8 +593,15 @@ func asString(v any) string {
 type Money struct {
 	// Amount is the amount in the currency's major unit (US dollars), such
 	// as 0.004, with up to nine decimal places. Negative for an account in
-	// debt. 0 when the API sent no finite number.
+	// debt. 0 when the API sent no finite number. For display: add amounts
+	// with AmountDecimal.
 	Amount float64 `json:"amount"`
+	// AmountDecimal is the same amount as an exact decimal string, such as
+	// "0.004": up to nine decimal places, no trailing zeros, no exponent, "-"
+	// when negative, "0" for zero. Add amounts exactly with
+	// new(big.Rat).SetString(m.AmountDecimal), never by summing Amount. From
+	// an older server that sends none, Amount written this way.
+	AmountDecimal string `json:"amount_decimal"`
 	// Currency is the lowercase ISO 4217 code, such as "usd".
 	Currency string `json:"currency"`
 }
@@ -669,9 +678,33 @@ func asAmount(v any) float64 {
 	return f
 }
 
+var decimalPattern = regexp.MustCompile(`^-?[0-9]+(\.[0-9]{1,9})?$`)
+
+// amountDecimal is the API's exact decimal string when it is one, else amount
+// as one: at most nine decimal places, trailing zeros trimmed, "0" for zero
+// (an older server sends no amount_decimal).
+func amountDecimal(v any, amount float64) string {
+	if s, ok := v.(string); ok && decimalPattern.MatchString(s) {
+		return s
+	}
+	if math.IsNaN(amount) || math.IsInf(amount, 0) {
+		return "0"
+	}
+	s := strings.TrimSuffix(strings.TrimRight(strconv.FormatFloat(amount, 'f', 9, 64), "0"), ".")
+	if s == "-0" {
+		return "0"
+	}
+	return s
+}
+
 func moneyFromJSON(v any) Money {
 	m := objectOrEmpty(v)
-	return Money{Amount: asAmount(m["amount"]), Currency: asString(m["currency"])}
+	amount := asAmount(m["amount"])
+	return Money{
+		Amount:        amount,
+		AmountDecimal: amountDecimal(m["amount_decimal"], amount),
+		Currency:      asString(m["currency"]),
+	}
 }
 
 func billingFromJSON(data map[string]any) *Billing {

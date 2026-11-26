@@ -48,7 +48,7 @@ results = keenable.search(
 | `snippet_max_length` | Cap the page text returned per result |
 | `max_results` | How many results to return, 1 to 50 (default 10) |
 | `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price. Not sent when empty |
+| `objective` | What the search is for, in two or three sentences (up to 1,000 characters); the ranker scores results for it together with the query (retrieval reads only the query), same price. Not sent when empty |
 | `mode` | Search mode: `"pro"` (default) does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops |
 | `disable_cards` | `True` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). Default `False`, which is not sent; any other value raises `KeenableInvalidRequestError`. In the next release after 0.1.3 |
 | `moderation` | Filter unsafe results: `"moderate"` or `"strict"`. `None`, the default, is no moderation and is not sent. Works in `"pro"` and `"realtime"` modes, and not when the query is a URL (the API answers 400) |
@@ -170,7 +170,15 @@ one, `prices` are your organization's (with `list_unit_price` and `source`,
 `"list"` or `"contract"`), and `account` holds the available balance and
 `billing_url`, the console page for adding funds. Amounts are numbers in US
 dollars (`Money.amount`, a `float` such as `0.004`, up to nine decimal places,
-negative for an account in debt).
+negative for an account in debt). `Money.amount_decimal` is the same amount as
+an exact decimal string (`"0.004"`); add amounts with it, not with the float,
+when they must match a bill:
+
+```python
+from decimal import Decimal
+
+total = sum(Decimal(p.unit_price.amount_decimal) for p in billing.prices)
+```
 
 ## Tool calling
 

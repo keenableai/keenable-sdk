@@ -342,7 +342,11 @@ describe("success bodies", () => {
 });
 
 describe("billing", () => {
-  const money = (m: Money) => ({ amount: m.amount, currency: m.currency });
+  const money = (m: Money) => ({
+    amount: m.amount,
+    amount_decimal: m.amountDecimal,
+    currency: m.currency,
+  });
   it.each(FIXTURE.billing.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
     const outcome = await call([c], { apiKey: c.keyed ? "k" : "", maxRetries: 0 }, (client) =>
       client.billing(),
