@@ -1558,8 +1558,12 @@ class Keenable(_BaseClient):
             schema: A JSON Schema; each page's answer is in ``Page.structured``.
             links: The most links per page to return.
             images: The most images per page to return.
-            max_age_hours: Use a stored copy only if younger than this; 0
-                reads every page live.
+            max_age_hours: Use a stored copy only if younger than this many
+                hours (0 to 720); 0 reads every page live. -1 reads only the
+                stored copy, of any age, never the live page: a page with no
+                stored copy comes back with ``error`` set (404). Other negative
+                values are refused with a 400. Unset uses a stored copy of any
+                age, or reads live when there is none.
             timeout: Deadline for each attempt of this call, as in
                 :meth:`search`.
             max_retries: Retry budget for this call, as in :meth:`search`.

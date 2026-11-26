@@ -6,6 +6,7 @@ import {
   KeenableConnectionError,
   KeenableInvalidRequestError,
   KeenableRateLimitError,
+  FETCH_TOOL,
   runToolCall,
   SEARCH_TOOL,
 } from "../src/index.js";
@@ -543,6 +544,13 @@ describe("runToolCall", () => {
     });
     expect(out.startsWith("[1] Example Domain (https://example.com/)")).toBe(true);
     expect(out.endsWith("\n\n[2] https://e.com/x - failed: Not found")).toBe(true);
+  });
+
+  it("lets the fetch tool's max_age_hours be -1", () => {
+    const prop = (FETCH_TOOL.function.parameters.properties as Record<string, Record<string, unknown>>)
+      .max_age_hours;
+    expect(prop?.minimum).toBe(-1);
+    expect(String(prop?.description)).toContain("-1 reads only the stored copy");
   });
 
   // A caller catching KeenableError should never see a raw TypeError.

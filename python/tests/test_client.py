@@ -721,6 +721,14 @@ async def test_async_search_matches_the_sync_payloads() -> None:
     assert blank["exclude_domains"] == [""]
 
 
+def test_fetch_tool_definition_allows_minus_one_max_age_hours() -> None:
+    from keenable.tools import FETCH_TOOL
+
+    prop = FETCH_TOOL["function"]["parameters"]["properties"]["max_age_hours"]
+    assert prop["minimum"] == -1
+    assert "-1 reads only the stored copy" in prop["description"]
+
+
 def test_billing_retries_and_sends_the_call_headers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

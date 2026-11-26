@@ -967,6 +967,17 @@ func TestFetchToolReadsSeveralURLs(t *testing.T) {
 	}
 }
 
+func TestFetchToolDefinitionAllowsMinusOneMaxAgeHours(t *testing.T) {
+	props := keenable.FetchTool.Function.Parameters["properties"].(map[string]any)
+	prop := props["max_age_hours"].(map[string]any)
+	if prop["minimum"] != -1 {
+		t.Fatal(prop)
+	}
+	if !strings.Contains(prop["description"].(string), "-1 reads only the stored copy") {
+		t.Fatal(prop["description"])
+	}
+}
+
 func TestToolArgumentTypes(t *testing.T) {
 	c, _ := startKeyless(t, routed(), nil)
 	for _, args := range []any{123, nil, []any{}, true} {

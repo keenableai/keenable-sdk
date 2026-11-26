@@ -12,6 +12,7 @@ All notable changes to the `keenable` Python package. Versions follow
 - **Changed:** the `keenable_search` tool's `objective` description is shorter (about 330 characters): use it for multi-step or ambiguous searches, say what the query leaves out and what earlier searches found, and stay within 1,000 characters.
 - **Added:** `moderation` on `search()` (sync and async): `"moderate"` or `"strict"` filters unsafe results; `None`, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 when the query is a URL.
 - **Added:** `SearchResponse.warnings`, a list of `SearchWarning` (`code`, `path`, `message`) naming what a request should change, such as a deprecated parameter. Empty when the API sends none.
+- **Changed:** `max_age_hours` on `fetch()` (sync and async) documents `-1`: read only Keenable's stored copy, of any age, never the live page; a page with no stored copy comes back with `error` set (404). It works with `prompt`, `schema`, `links` and `images`. The API accepts `-1` or `0` to `720` and answers any other negative value with a 400. The `keenable_fetch` tool's `max_age_hours` now allows `-1` (`minimum: -1`) and its description says so. The SDK sends the value as given, as before.
 
 ## 0.3.0
 

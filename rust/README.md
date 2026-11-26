@@ -158,8 +158,9 @@ for page in &response.results {
 failed has `error` set instead of returning `Err`. `FetchOptions` has
 `max_chars`, `prompt` (each page's `content` is then only an LLM's answer to
 it), `schema` (each page's answer is in `page.structured`), `links`,
-`images` and `max_age_hours` (`Some(0.0)` reads every page live), sent only
-when set; the API checks their values.
+`images` and `max_age_hours` (`Some(0.0)` reads every page live, `Some(-1.0)`
+only the stored copy, never the live page), sent only when set; the API
+checks their values.
 
 Internal hosts and private addresses are refused before a request is sent:
 `localhost` and names under `.localhost`, `metadata.google.internal`, and IP
@@ -213,8 +214,8 @@ model may set `site`, `exclude_domains`, `published_after`, `objective`,
 
 On fetch the model sets `urls` (1 to 20) and may set `max_chars` (per page),
 `prompt` (applied to every page) and `max_age_hours` (0 reads every page
-live), as on the hosted MCP tool. A call without `urls` is an invalid
-request. Each page comes back as its own numbered block. A URL
+live, -1 only the stored copy), as on the hosted MCP tool. A call without
+`urls` is an invalid request. Each page comes back as its own numbered block. A URL
 that failed while others were read becomes a `[n] <url> - failed: <reason>`
 block; `run_tool_call` returns its error only when no URL could be read.
 

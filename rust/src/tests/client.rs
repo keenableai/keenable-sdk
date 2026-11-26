@@ -206,6 +206,12 @@ fn the_tool_definitions_match_the_other_sdks() {
         .as_str()
         .unwrap()
         .contains("no moderation"));
+    let max_age = &tools[1]["function"]["parameters"]["properties"]["max_age_hours"];
+    assert_eq!(max_age["minimum"], json!(-1));
+    assert!(max_age["description"]
+        .as_str()
+        .unwrap()
+        .contains("-1 reads only the stored copy"));
 }
 
 #[tokio::test]

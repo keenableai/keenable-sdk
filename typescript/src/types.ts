@@ -137,7 +137,13 @@ export interface FetchOptions extends RequestOptions {
   links?: number;
   /** The most images per page to return. */
   images?: number;
-  /** Use a stored copy only if younger than this; 0 reads every page live. */
+  /**
+   * Use a stored copy only if younger than this many hours (0 to 720); 0 reads
+   * every page live. -1 reads only the stored copy, of any age, never the live
+   * page: a page with no stored copy comes back with `error` set (404). Other
+   * negative values are refused with a 400. Unset uses a stored copy of any
+   * age, or reads live when there is none.
+   */
   maxAgeHours?: number;
 }
 

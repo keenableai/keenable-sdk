@@ -149,10 +149,12 @@ pub fn fetch_tool() -> ToolDefinition {
                     },
                     "max_age_hours": {
                         "type": "number",
-                        "minimum": 0,
+                        "minimum": -1,
                         "maximum": 720,
                         "description": "How old Keenable's stored copy may be, in hours; an older \
-                            copy is read again from the source. 0 reads every page live.",
+                            copy is read again from the source. 0 reads every page live. -1 reads \
+                            only the stored copy, never the live page; other negative values are \
+                            refused.",
                     },
                 },
                 "required": ["urls"],
