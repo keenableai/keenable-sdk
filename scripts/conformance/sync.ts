@@ -173,6 +173,29 @@ function responses(): Obj[] {
   });
 }
 
+function billing(): Obj[] {
+  return (load("billing.json").cases as Obj[]).map((item) => {
+    const name = item.name as string;
+    if (typeof item.keyed !== "boolean") fail(`billing ${name}: keyed must be true or false`);
+    const given = item.expect as Obj;
+    if (typeof given.path !== "string") fail(`billing ${name}: expect needs a path`);
+    if (("error" in given) === ("billing" in given)) fail(`billing ${name}: give exactly one of "error" and "billing"`);
+    return {
+      name,
+      keyed: item.keyed,
+      status: (item.status as number | undefined) ?? 200,
+      headers: headers(item),
+      body: bodyText(item, `billing ${name}`),
+      expect: {
+        path: given.path,
+        error: (given.error as Json | undefined) ?? null,
+        request_id: (given.request_id as Json | undefined) ?? null,
+        billing: (given.billing as Json | undefined) ?? null,
+      },
+    };
+  });
+}
+
 const OPTIONS = new Set(["max_retries", "timeout", "headers", "query", "url", "disable_cards"]);
 
 function options(): Obj[] {
@@ -288,6 +311,7 @@ export function buildConformance(): string {
     retry: retries(),
     errors: errors(),
     responses: responses(),
+    billing: billing(),
     options: options(),
     search_body: searchBodies(),
     tool_call: toolCalls(),

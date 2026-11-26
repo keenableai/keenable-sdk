@@ -195,6 +195,43 @@ addresses in private, loopback, link-local, carrier-grade NAT, documentation,
 benchmarking, multicast and reserved ranges, however the address is spelled.
 The rules are the same in every SDK (`scripts/conformance/README.md`).
 
+## Billing
+
+```go
+billing, err := client.Billing(ctx, nil)
+if err != nil {
+	log.Fatal(err)
+}
+for _, p := range billing.Prices {
+	fmt.Println(p.SKU, p.UnitPrice.Amount, p.UnitPrice.Currency)
+}
+if billing.Account != nil { // nil without an API key
+	fmt.Println("available:", billing.Account.Balance.Available.Amount)
+}
+```
+
+`Billing` reads `GET /v1/billing`: read-only and free, with or without a key.
+Without one, `Prices` are the public list prices and `Account` is nil. With
+one, `Prices` are your organization's (with `ListUnitPrice` and `Source`,
+`"list"` or `"contract"`), and `Account` holds the available balance and
+`BillingURL`, the console page for adding funds. Amounts are numbers in US
+dollars (`Money.Amount`, a `float64` such as `0.004`, up to nine decimal
+places, negative for an account in debt). `Money.AmountDecimal` is the same
+amount as an exact decimal string (`"0.004"`); add amounts with it, not with
+the float, when they must match a bill:
+
+```go
+total := new(big.Rat)
+for _, p := range billing.Prices {
+	if r, ok := new(big.Rat).SetString(p.UnitPrice.AmountDecimal); ok {
+		total.Add(total, r)
+	}
+}
+fmt.Println(total.FloatString(9))
+```
+
+`opts` is a `*RequestOptions` and may be nil.
+
 ## Tool calling
 
 The SDK ships OpenAI-compatible tool definitions, so any inference API that

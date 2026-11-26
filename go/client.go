@@ -437,6 +437,30 @@ func retryDelay(err error, retry int, jitter float64) (time.Duration, bool) {
 	return 0, false
 }
 
+// Billing returns the prices and, with an API key, the organization's balance,
+// from GET /v1/billing. It is read-only and free. Without a key,
+// Prices are the public list prices and Account is nil. The path is the same
+// with and without a key: billing has no /public variant. opts may be nil.
+func (c *Client) Billing(ctx context.Context, opts *RequestOptions) (*Billing, error) {
+	if err := requireClient(c); err != nil {
+		return nil, err
+	}
+	if err := requireContext(ctx); err != nil {
+		return nil, err
+	}
+	rawURL, err := c.endpointURL("billing", nil)
+	if err != nil {
+		return nil, err
+	}
+	data, id, err := c.send(ctx, http.MethodGet, rawURL, nil, opts, nil, true)
+	if err != nil {
+		return nil, err
+	}
+	resp := billingFromJSON(data)
+	resp.RequestID = requestID(data, id)
+	return resp, nil
+}
+
 // isRateLimited reports a 429: the API refused the request before acting on it.
 func isRateLimited(err error) bool {
 	var api *APIError
@@ -667,13 +691,19 @@ func (c *Client) headers(jsonBody bool, extra map[string]string) http.Header {
 	return h
 }
 
+// hasPublicVariant names the endpoints with a /public keyless variant.
+// endpointURL adds the suffix to no other: billing has one path for both.
+var hasPublicVariant = map[string]bool{"search": true, "fetch": true}
+
+// endpointURL is the endpoint's keyed URL, or its /public variant when keyless
+// and it has one.
 func (c *Client) endpointURL(endpoint string, query url.Values) (string, error) {
 	u, err := url.Parse(c.baseURL)
 	if err != nil || u.Host == "" {
 		return "", &InvalidRequestError{msg: fmt.Sprintf("baseURL %q is not a valid URL. Pass an https URL with a host.", c.baseURL)}
 	}
 	u.Path = strings.TrimRight(u.Path, "/") + "/v1/" + endpoint
-	if c.apiKey == "" {
+	if c.apiKey == "" && hasPublicVariant[endpoint] {
 		u.Path += "/public"
 	}
 	u.RawQuery = ""

@@ -154,6 +154,32 @@ when set (the API checks their values):
 | `images` | The most images per page to return, in `page.images` |
 | `max_age_hours` | Use a stored copy only if younger than this; `0` reads every page live |
 
+## Billing
+
+```python
+billing = keenable.billing()
+for price in billing.prices:
+    print(price.sku, price.unit_price.amount, price.unit_price.currency)
+if billing.account:  # None without an API key
+    print("available:", billing.account.balance.available.amount)
+```
+
+`billing()` reads `GET /v1/billing`: read-only and free, with or without a key.
+Without one, `prices` are the public list prices and `account` is `None`. With
+one, `prices` are your organization's (with `list_unit_price` and `source`,
+`"list"` or `"contract"`), and `account` holds the available balance and
+`billing_url`, the console page for adding funds. Amounts are numbers in US
+dollars (`Money.amount`, a `float` such as `0.004`, up to nine decimal places,
+negative for an account in debt). `Money.amount_decimal` is the same amount as
+an exact decimal string (`"0.004"`); add amounts with it, not with the float,
+when they must match a bill:
+
+```python
+from decimal import Decimal
+
+total = sum(Decimal(p.unit_price.amount_decimal) for p in billing.prices)
+```
+
 ## Tool calling
 
 The SDK ships OpenAI-compatible tool definitions, so any inference API that

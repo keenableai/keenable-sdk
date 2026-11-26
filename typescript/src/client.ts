@@ -19,10 +19,16 @@ import {
   count,
   nonEmpty,
   normalizeHost,
+  num,
+  objects,
   readEnv,
   timestamp,
 } from "./internal.js";
 import type {
+  Billing,
+  BillingAccount,
+  BillingPrice,
+  Money,
   KeenableOptions,
   FetchOptions,
   RequestOptions,
@@ -56,7 +62,15 @@ const MAX_RETRY_AFTER_WAIT_SECONDS = 60;
 
 // Endpoints are named once; the keyless variant of each is the same path with a
 // `/public` suffix, so a new endpoint is one name rather than two constants.
-type Endpoint = "search" | "fetch";
+// Billing is the one endpoint with a single path for both: the key is optional.
+// Every endpoint states here whether it has a /public variant, so url() cannot
+// build a keyless path that does not exist.
+type Endpoint = "search" | "fetch" | "billing";
+const HAS_PUBLIC_VARIANT: Readonly<Record<Endpoint, boolean>> = {
+  search: true,
+  fetch: true,
+  billing: false,
+};
 
 /** Hosts that must never be fetched, whatever the backend would do. */
 const BLOCKED_HOSTS = new Set(["localhost", "metadata.google.internal"]);
@@ -562,6 +576,48 @@ function toPage(data: Record<string, unknown>, url: string): Page {
   });
 }
 
+function toMoney(value: unknown): Money {
+  const data = isRecord(value) ? value : {};
+  const sent = num(data.amount) ?? 0;
+  return {
+    amount: sent,
+    amountDecimal: amountDecimal(data.amount_decimal, sent),
+    currency: text(data.currency),
+  };
+}
+
+const DECIMAL = /^-?[0-9]+(\.[0-9]{1,9})?$/;
+
+/**
+ * The API's exact decimal string when it is one, else `amount` as one: at most
+ * nine decimal places, trailing zeros trimmed, "0" for zero (an older server
+ * sends no `amount_decimal`).
+ */
+function amountDecimal(value: unknown, dollars: number): string {
+  if (typeof value === "string" && DECIMAL.test(value)) return value;
+  const fixed = dollars.toFixed(9).replace(/0+$/, "").replace(/\.$/, "");
+  return fixed === "-0" ? "0" : fixed;
+}
+
+function toBillingPrice(data: Record<string, unknown>): BillingPrice {
+  return {
+    sku: text(data.sku),
+    unit: text(data.unit),
+    unitPrice: toMoney(data.unit_price),
+    listUnitPrice: isRecord(data.list_unit_price) ? toMoney(data.list_unit_price) : undefined,
+    source: nonEmpty(data.source),
+  };
+}
+
+function toBillingAccount(data: Record<string, unknown>): BillingAccount {
+  const balance = isRecord(data.balance) ? data.balance : {};
+  return {
+    balance: { available: toMoney(balance.available) },
+    billingUrl: text(data.billing_url),
+    asOf: text(data.as_of),
+  };
+}
+
 /** Wait `ms`, or reject with the signal's reason as soon as it aborts. */
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -771,9 +827,13 @@ export class Keenable {
     return headers;
   }
 
-  /** The endpoint URL, keyless or keyed depending on the configured key. */
+  /**
+   * The endpoint URL: its /public variant when keyless and it has one, else
+   * the keyed path.
+   */
   private url(endpoint: Endpoint): string {
-    return `${this.baseUrl}/v1/${endpoint}${this.keyless ? "/public" : ""}`;
+    const suffix = this.keyless && HAS_PUBLIC_VARIANT[endpoint] ? "/public" : "";
+    return `${this.baseUrl}/v1/${endpoint}${suffix}`;
   }
 
   /**
@@ -869,6 +929,23 @@ export class Keenable {
       results: entries.flatMap((entry, i) =>
         isRecord(entry) ? [toPage(entry, String(targets[i] ?? ""))] : [],
       ),
+      requestId,
+      raw: data,
+    };
+  }
+
+  /**
+   * Prices, and with an API key the balance, from `GET /v1/billing`.
+   *
+   * Read-only and free. Without a key, `prices` are the public list prices and
+   * `account` is null. Amounts are numbers in US dollars.
+   */
+  async billing(options: RequestOptions = {}): Promise<Billing> {
+    // The same path with and without a key: billing has no /public variant.
+    const { data, requestId } = await this.request("billing", { method: "GET" }, options);
+    return {
+      prices: objects(data.prices).map(toBillingPrice),
+      account: isRecord(data.account) ? toBillingAccount(data.account) : null,
       requestId,
       raw: data,
     };

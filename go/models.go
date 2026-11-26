@@ -3,6 +3,7 @@ package keenable
 import (
 	"encoding/json"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -550,4 +551,147 @@ func asString(v any) string {
 		return ""
 	}
 	return s
+}
+
+// Money is an amount of money, as the API sent it.
+type Money struct {
+	// Amount is the amount in the currency's major unit (US dollars), such
+	// as 0.004, with up to nine decimal places. Negative for an account in
+	// debt. 0 when the API sent no finite number. For display: add amounts
+	// with AmountDecimal.
+	Amount float64 `json:"amount"`
+	// AmountDecimal is the same amount as an exact decimal string, such as
+	// "0.004": up to nine decimal places, no trailing zeros, no exponent, "-"
+	// when negative, "0" for zero. Add amounts exactly with
+	// new(big.Rat).SetString(m.AmountDecimal), never by summing Amount. From
+	// an older server that sends none, Amount written this way.
+	AmountDecimal string `json:"amount_decimal"`
+	// Currency is the lowercase ISO 4217 code, such as "usd".
+	Currency string `json:"currency"`
+}
+
+// BillingPrice is the price of one SKU, from [Client.Billing].
+type BillingPrice struct {
+	// SKU is what is billed, such as "search.pro" or "fetch.live".
+	SKU string `json:"sku"`
+	// Unit is what one unit is: "search", "result" or "page".
+	Unit string `json:"unit"`
+	// UnitPrice is the price of one unit.
+	UnitPrice Money `json:"unit_price"`
+	// ListUnitPrice is the public list price of one unit. Only with an API key.
+	ListUnitPrice *Money `json:"list_unit_price"`
+	// Source is "list" when UnitPrice is the list price, "contract" when the
+	// organization has its own. Only with an API key.
+	Source *string `json:"source"`
+}
+
+// BillingBalance is what the organization can still spend.
+type BillingBalance struct {
+	// Available is the unused free allowance for this month plus the
+	// purchased balance.
+	Available Money `json:"available"`
+}
+
+// BillingAccount is the organization's balance.
+type BillingAccount struct {
+	Balance BillingBalance `json:"balance"`
+	// BillingURL is the console page where a person can add funds.
+	BillingURL string `json:"billing_url"`
+	// AsOf is when this was read (ISO 8601).
+	AsOf string `json:"as_of"`
+}
+
+// Billing is what [Client.Billing] returns: prices, and the account with an
+// API key.
+type Billing struct {
+	// Prices are the public list prices without an API key. With one, they
+	// are your organization's prices; a SKU without a price on your plan is
+	// left out.
+	Prices []BillingPrice `json:"prices"`
+	// Account is the balance. Nil without an API key.
+	Account *BillingAccount `json:"account"`
+	// RequestID is the API's id for this request. Quote it when reporting a
+	// problem. Empty when the API sent none.
+	RequestID string         `json:"request_id,omitempty"`
+	Raw       map[string]any `json:"-"`
+}
+
+func objectOrEmpty(v any) map[string]any {
+	if m, ok := v.(map[string]any); ok {
+		return m
+	}
+	return map[string]any{}
+}
+
+func objects(v any) []map[string]any {
+	items, _ := v.([]any)
+	out := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		if m, ok := item.(map[string]any); ok {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func asAmount(v any) float64 {
+	f, ok := v.(float64)
+	if !ok || math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0
+	}
+	return f
+}
+
+var decimalPattern = regexp.MustCompile(`^-?[0-9]+(\.[0-9]{1,9})?$`)
+
+// amountDecimal is the API's exact decimal string when it is one, else amount
+// as one: at most nine decimal places, trailing zeros trimmed, "0" for zero
+// (an older server sends no amount_decimal).
+func amountDecimal(v any, amount float64) string {
+	if s, ok := v.(string); ok && decimalPattern.MatchString(s) {
+		return s
+	}
+	s := strings.TrimSuffix(strings.TrimRight(strconv.FormatFloat(amount, 'f', 9, 64), "0"), ".")
+	if s == "-0" {
+		return "0"
+	}
+	return s
+}
+
+func moneyFromJSON(v any) Money {
+	m := objectOrEmpty(v)
+	amount := asAmount(m["amount"])
+	return Money{
+		Amount:        amount,
+		AmountDecimal: amountDecimal(m["amount_decimal"], amount),
+		Currency:      asString(m["currency"]),
+	}
+}
+
+func billingFromJSON(data map[string]any) *Billing {
+	b := &Billing{Prices: make([]BillingPrice, 0), Raw: data}
+	for _, p := range objects(data["prices"]) {
+		price := BillingPrice{
+			SKU:       asString(p["sku"]),
+			Unit:      asString(p["unit"]),
+			UnitPrice: moneyFromJSON(p["unit_price"]),
+			Source:    nonEmptyString(p["source"]),
+		}
+		if list, ok := p["list_unit_price"].(map[string]any); ok {
+			m := moneyFromJSON(list)
+			price.ListUnitPrice = &m
+		}
+		b.Prices = append(b.Prices, price)
+	}
+	account, ok := data["account"].(map[string]any)
+	if !ok {
+		return b
+	}
+	balance := objectOrEmpty(account["balance"])
+	b.Account = &BillingAccount{
+		Balance:    BillingBalance{Available: moneyFromJSON(balance["available"])},
+		BillingURL: asString(account["billing_url"]),
+		AsOf:       asString(account["as_of"]),
+	}
+	return b
 }

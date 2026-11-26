@@ -75,6 +75,33 @@ def _count_or_none(value: Any) -> int | None:
     return int(value)
 
 
+def _amount(value: Any) -> float:
+    """A finite JSON number as a float, or 0 for anything else (never parsed
+    from a string)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0.0
+    try:
+        amount = float(value)
+    except OverflowError:
+        return 0.0
+    return amount if math.isfinite(amount) else 0.0
+
+
+_DECIMAL = re.compile(r"-?[0-9]+(?:\.[0-9]{1,9})?")
+
+
+def _amount_decimal(value: Any, amount: float) -> str:
+    """The API's exact decimal string when it is one, else ``amount`` as one.
+
+    An older server sends no ``amount_decimal``: then it is ``amount`` with at
+    most nine decimal places, trailing zeros trimmed, and ``"0"`` for zero.
+    """
+    if isinstance(value, str) and _DECIMAL.fullmatch(value):
+        return value
+    text = f"{amount:.9f}".rstrip("0").rstrip(".")
+    return "0" if text == "-0" else text
+
+
 def _str_or_empty(value: Any) -> str:
     """Return the string as sent, or "" for anything else (never ``str()``)."""
     return value if isinstance(value, str) else ""
@@ -702,4 +729,134 @@ class FetchResponse:
                 if isinstance(entry, dict)
             ],
             request_id=_str_or_none(data.get("request_id")) or request_id,
+        )
+
+
+@dataclass
+class Money:
+    """An amount of money, as the API sent it."""
+
+    amount: float
+    """Amount in the currency's major unit (US dollars), such as ``0.004``,
+    with up to nine decimal places. Negative for an account in debt. 0 when
+    the API sent no finite number. For display: add amounts with
+    ``amount_decimal``."""
+
+    amount_decimal: str
+    """The same amount as an exact decimal string, such as ``"0.004"``: up to
+    nine decimal places, no trailing zeros, no exponent, ``"-"`` when
+    negative, ``"0"`` for zero. Add amounts exactly with
+    ``decimal.Decimal(money.amount_decimal)``, never by summing ``amount``.
+    From an older server that sends none, ``amount`` written this way."""
+
+    currency: str
+    """Lowercase ISO 4217 code, such as ``"usd"``."""
+
+    @classmethod
+    def _from_json(cls, value: Any) -> Money:
+        data = _dict_or_none(value) or {}
+        amount = _amount(data.get("amount"))
+        return cls(
+            amount=amount,
+            amount_decimal=_amount_decimal(data.get("amount_decimal"), amount),
+            currency=_str_or_empty(data.get("currency")),
+        )
+
+
+@dataclass
+class BillingPrice:
+    """The price of one SKU, from :meth:`Keenable.billing`."""
+
+    sku: str
+    """What is billed, such as ``"search.pro"`` or ``"fetch.live"``."""
+
+    unit: str
+    """What one unit is: ``"search"``, ``"result"`` or ``"page"``."""
+
+    unit_price: Money
+    """The price of one unit."""
+
+    list_unit_price: Money | None = None
+    """The public list price of one unit. Only with an API key."""
+
+    source: str | None = None
+    """``"list"`` when ``unit_price`` is the list price, ``"contract"`` when
+    the organization has its own. Only with an API key."""
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> BillingPrice:
+        list_price = data.get("list_unit_price")
+        return cls(
+            sku=_str_or_empty(data.get("sku")),
+            unit=_str_or_empty(data.get("unit")),
+            unit_price=Money._from_json(data.get("unit_price")),
+            list_unit_price=(
+                Money._from_json(list_price) if isinstance(list_price, dict) else None
+            ),
+            source=_str_or_none(data.get("source")),
+        )
+
+
+@dataclass
+class BillingBalance:
+    """What the organization can still spend."""
+
+    available: Money
+    """The unused free allowance for this month plus the purchased balance."""
+
+
+@dataclass
+class BillingAccount:
+    """The organization's balance, from :meth:`Keenable.billing`."""
+
+    balance: BillingBalance
+    billing_url: str
+    """Console page where a person can add funds."""
+
+    as_of: str
+    """When this was read (ISO 8601)."""
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> BillingAccount:
+        balance = _dict_or_none(data.get("balance")) or {}
+        return cls(
+            balance=BillingBalance(
+                available=Money._from_json(balance.get("available")),
+            ),
+            billing_url=_str_or_empty(data.get("billing_url")),
+            as_of=_str_or_empty(data.get("as_of")),
+        )
+
+
+@dataclass
+class Billing:
+    """What :meth:`Keenable.billing` returns: prices, and the account with a key."""
+
+    prices: list[BillingPrice] = field(default_factory=list)
+    """Without an API key, the public list prices. With one, your
+    organization's prices; a SKU without a price on your plan is left out."""
+
+    account: BillingAccount | None = None
+    """Balance. None without an API key."""
+
+    request_id: str | None = None
+    """The API's id for this request. Quote it when reporting a problem."""
+
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any], request_id: str | None) -> Billing:
+        account = data.get("account")
+        return cls(
+            prices=[
+                BillingPrice._from_json(price)
+                for price in _dicts(data.get("prices")) or []
+            ],
+            account=(
+                BillingAccount._from_json(account)
+                if isinstance(account, dict)
+                else None
+            ),
+            request_id=_str_or_none(data.get("request_id")) or request_id,
+            raw=data,
         )

@@ -672,3 +672,168 @@ mod tests {
         assert_eq!(timestamp(Some(&json!(true))), None);
     }
 }
+
+// ---- Billing ----------------------------------------------------------------
+
+/// An amount of money, as the API sent it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct Money {
+    /// The amount in the currency's major unit (US dollars), such as
+    /// `0.004`, with up to nine decimal places. Negative for an account in
+    /// debt. `0.0` when the API sent no finite number. For display: add
+    /// amounts with `amount_decimal`.
+    pub amount: f64,
+    /// The same amount as an exact decimal string, such as `"0.004"`: up to
+    /// nine decimal places, no trailing zeros, no exponent, `-` when negative,
+    /// `"0"` for zero. Add amounts exactly with a decimal type (or as `i128`
+    /// nano-dollars), never by summing `amount`. From an older server that
+    /// sends none, `amount` written this way.
+    pub amount_decimal: String,
+    /// The lowercase ISO 4217 code, such as `"usd"`.
+    pub currency: String,
+}
+
+/// The price of one SKU, from [`Client::billing`](crate::Client::billing).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct BillingPrice {
+    /// What is billed, such as `search.pro` or `fetch.live`.
+    pub sku: String,
+    /// What one unit is: `search`, `result` or `page`.
+    pub unit: String,
+    /// The price of one unit.
+    pub unit_price: Money,
+    /// The public list price of one unit. Only with an API key.
+    pub list_unit_price: Option<Money>,
+    /// `list` when `unit_price` is the list price, `contract` when the
+    /// organization has its own. Only with an API key.
+    pub source: Option<String>,
+}
+
+/// What the organization can still spend.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct BillingBalance {
+    /// The unused free allowance for this month plus the purchased balance.
+    pub available: Money,
+}
+
+/// The organization's balance.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct BillingAccount {
+    /// What the organization can still spend.
+    pub balance: BillingBalance,
+    /// The console page where a person can add funds.
+    pub billing_url: String,
+    /// When this was read (ISO 8601).
+    pub as_of: String,
+}
+
+/// What [`Client::billing`](crate::Client::billing) returns: prices, and the
+/// account with an API key.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct Billing {
+    /// The public list prices without an API key. With one, your
+    /// organization's prices; a SKU without a price on your plan is left out.
+    pub prices: Vec<BillingPrice>,
+    /// The balance. `None` without an API key.
+    pub account: Option<BillingAccount>,
+    /// The API's id for this request. Quote it when reporting a problem.
+    pub request_id: Option<String>,
+    /// The unmodified JSON body.
+    #[serde(skip)]
+    pub raw: Map<String, Value>,
+}
+
+fn object_or_empty(v: Option<&Value>) -> Map<String, Value> {
+    v.and_then(Value::as_object).cloned().unwrap_or_default()
+}
+
+fn objects(v: Option<&Value>) -> Vec<&Map<String, Value>> {
+    match v {
+        Some(Value::Array(items)) => items.iter().filter_map(Value::as_object).collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn as_amount(v: Option<&Value>) -> f64 {
+    v.and_then(Value::as_f64)
+        .filter(|f| f.is_finite())
+        .unwrap_or(0.0)
+}
+
+/// `^-?[0-9]+(\.[0-9]{1,9})?$`: what the API sends as `amount_decimal`.
+fn is_decimal(s: &str) -> bool {
+    let unsigned = s.strip_prefix('-').unwrap_or(s);
+    let (whole, fraction) = match unsigned.split_once('.') {
+        Some((whole, fraction)) => (whole, Some(fraction)),
+        None => (unsigned, None),
+    };
+    let digits = |part: &str| part.bytes().all(|b| b.is_ascii_digit());
+    !whole.is_empty()
+        && digits(whole)
+        && match fraction {
+            Some(f) => (1..=9).contains(&f.len()) && digits(f),
+            None => true,
+        }
+}
+
+/// The API's exact decimal string when it is one, else `amount` as one: at
+/// most nine decimal places, trailing zeros trimmed, `"0"` for zero (an older
+/// server sends no `amount_decimal`).
+fn amount_decimal(v: Option<&Value>, amount: f64) -> String {
+    if let Some(s) = v.and_then(Value::as_str).filter(|s| is_decimal(s)) {
+        return s.to_string();
+    }
+    let fixed = format!("{amount:.9}");
+    let text = fixed.trim_end_matches('0').trim_end_matches('.');
+    if text == "-0" { "0" } else { text }.to_string()
+}
+
+fn money(v: Option<&Value>) -> Money {
+    let m = object_or_empty(v);
+    let amount = as_amount(m.get("amount"));
+    Money {
+        amount,
+        amount_decimal: amount_decimal(m.get("amount_decimal"), amount),
+        currency: as_string(m.get("currency")),
+    }
+}
+
+pub(crate) fn billing_from_json(
+    data: Map<String, Value>,
+    header_request_id: Option<String>,
+) -> Billing {
+    let prices = objects(data.get("prices"))
+        .into_iter()
+        .map(|p| BillingPrice {
+            sku: as_string(p.get("sku")),
+            unit: as_string(p.get("unit")),
+            unit_price: money(p.get("unit_price")),
+            list_unit_price: p
+                .get("list_unit_price")
+                .filter(|v| v.is_object())
+                .map(|v| money(Some(v))),
+            source: non_blank(p.get("source")),
+        })
+        .collect();
+    let account = data.get("account").and_then(Value::as_object).map(|a| {
+        let balance = object_or_empty(a.get("balance"));
+        BillingAccount {
+            balance: BillingBalance {
+                available: money(balance.get("available")),
+            },
+            billing_url: as_string(a.get("billing_url")),
+            as_of: as_string(a.get("as_of")),
+        }
+    });
+    Billing {
+        prices,
+        account,
+        request_id: non_blank(data.get("request_id")).or(header_request_id),
+        raw: data,
+    }
+}
