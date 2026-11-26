@@ -20,7 +20,7 @@ import {
   verifyWebhook,
   WebhookVerificationError,
 } from "../src/index.js";
-import type { FetchOptions, KeenableOptions, Page, SearchOptions, SearchResponse } from "../src/index.js";
+import type { Billing, KeenableOptions, Money, SearchOptions, SearchResponse } from "../src/index.js";
 import { backoffMs, retryAfterHeader } from "../src/client.js";
 import { SEARCH_FILTERS } from "../src/filters.js";
 
@@ -46,9 +46,14 @@ interface Fixture {
   errors: (Reply & { name: string; expect: Record<string, Json> })[];
   responses: (Reply & {
     name: string;
-    endpoint: "search" | "fetch";
+    endpoint: "search";
     arg: string;
     expect: Record<string, Json>;
+  })[];
+  billing: (Reply & {
+    name: string;
+    keyed: boolean;
+    expect: { path: string; error: string | null; request_id: string | null; billing: Json };
   })[];
   options: {
     name: string;
@@ -63,13 +68,6 @@ interface Fixture {
     query: string;
     options: Record<string, Json>;
     sent: Json;
-    skip: Record<string, string>;
-  }[];
-  fetch_params: {
-    name: string;
-    url: string;
-    options: { max_chars?: number; live?: boolean; prompt?: string };
-    sent: Record<string, string>;
     skip: Record<string, string>;
   }[];
   tool_call: { name: string; arguments: string; sent: Json; invalid: boolean }[];
@@ -113,7 +111,7 @@ const SEARCH_OK: Reply = {
   headers: {},
   body: JSON.stringify({ query: "q", results: [] }),
 };
-const PAGE_OK: Reply = { status: 200, headers: {}, body: JSON.stringify({ content: "c" }) };
+const PAGE_OK: Reply = { status: 200, headers: {}, body: JSON.stringify({ results: [] }) };
 /** Fields the SDK reads from an error body but never exposes. */
 const UNEXPOSED = ["docsUrl", "billingUrl", "autoTopUpUrl", "payPerRequest", "raw"];
 
@@ -300,10 +298,17 @@ describe("errors", () => {
   });
 });
 
+/** A Money spelled the way the cases do. */
+const money = (m: Money) => ({
+  amount: m.amount,
+  amount_decimal: m.amountDecimal,
+  currency: m.currency,
+});
+
 describe("success bodies", () => {
   it.each(FIXTURE.responses.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
     const outcome = await call([c, c], { maxRetries: 0 }, (client) =>
-      c.endpoint === "search" ? client.search(c.arg) : client.fetch(c.arg),
+      client.search(c.arg),
     );
     expect(outcome.requests).toHaveLength(1);
     if (c.expect.error !== null) {
@@ -314,35 +319,73 @@ describe("success bodies", () => {
     }
     expect(outcome.error).toBeUndefined();
     const { error: _error, ...want } = c.expect;
-    if (c.endpoint === "search") {
-      const r = outcome.result as SearchResponse;
-      expect({
-        query: r.query,
-        mode: r.mode ?? null,
-        request_id: r.requestId ?? null,
-        results: r.results.map((x) => ({
-          title: x.title,
-          url: x.url,
-          snippet: x.snippet,
-          description: x.description ?? null,
-          published_at: x.publishedAt ?? null,
-          acquired_at: x.acquiredAt ?? null,
-        })),
-      }).toEqual(want);
-    } else {
-      const p = outcome.result as Page;
-      expect({
-        url: p.url,
-        title: p.title,
-        content: p.content,
-        description: p.description ?? null,
-        author: p.author ?? null,
-        published_at: p.publishedAt ?? null,
-        request_id: p.requestId ?? null,
-        truncated: p.truncated ?? null,
-        total_chars: p.totalChars ?? null,
-      }).toEqual(want);
+    const r = outcome.result as SearchResponse;
+    expect({
+      query: r.query,
+      mode: r.mode ?? null,
+      request_id: r.requestId ?? null,
+      results: r.results.map((x) => ({
+        title: x.title,
+        url: x.url,
+        snippet: x.snippet,
+        description: x.description ?? null,
+        published_at: x.publishedAt ?? null,
+        acquired_at: x.acquiredAt ?? null,
+      })),
+      warnings: r.warnings.map((w) => ({ code: w.code, path: w.path, message: w.message })),
+      usage: r.usage
+        ? {
+            sku: r.usage.sku,
+            amount: r.usage.amount,
+            credits: r.usage.credits,
+            paid: r.usage.paid,
+            credits_remaining: r.usage.credits_remaining ?? null,
+            cost: r.usage.cost ? money(r.usage.cost) : null,
+            balance: r.usage.balance ? money(r.usage.balance) : null,
+          }
+        : null,
+    }).toEqual(want);
+  });
+});
+
+describe("billing", () => {
+  it.each(FIXTURE.billing.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
+    const outcome = await call([c], { apiKey: c.keyed ? "k" : "", maxRetries: 0 }, (client) =>
+      client.billing(),
+    );
+    expect(outcome.requests).toHaveLength(1);
+    const { url, init } = outcome.requests[0]!;
+    const sent = new URL(url);
+    expect(init.method).toBe("GET");
+    expect(init.body).toBeUndefined();
+    expect(sent.pathname).toBe(c.expect.path);
+    expect(sent.search).toBe("");
+    expect(new Headers(init.headers).get("X-API-Key")).toBe(c.keyed ? "k" : null);
+    if (c.expect.error !== null) {
+      const kind = KINDS[c.expect.error];
+      if (!kind) throw new Error(`unknown kind ${c.expect.error}`);
+      expect(outcome.error).toBeInstanceOf(kind);
+      return;
     }
+    expect(outcome.error).toBeUndefined();
+    const b = outcome.result as Billing;
+    expect(b.requestId ?? null).toBe(c.expect.request_id);
+    expect({
+      prices: b.prices.map((p) => ({
+        sku: p.sku,
+        unit: p.unit,
+        unit_price: money(p.unitPrice),
+        list_unit_price: p.listUnitPrice ? money(p.listUnitPrice) : null,
+        source: p.source ?? null,
+      })),
+      account: b.account && {
+        balance: {
+          available: money(b.account.balance.available),
+        },
+        billing_url: b.account.billingUrl,
+        as_of: b.account.asOf,
+      },
+    }).toEqual(c.expect.billing);
   });
 });
 
@@ -399,24 +442,10 @@ describe("the search body", () => {
   });
 });
 
-describe("the fetch parameters", () => {
-  const cases = FIXTURE.fetch_params.filter((c) => !("typescript" in c.skip));
-  it.each(cases.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
-    const options: FetchOptions = {};
-    if ("max_chars" in c.options) options.maxChars = c.options.max_chars;
-    if ("live" in c.options) options.live = c.options.live;
-    if ("prompt" in c.options) options.prompt = c.options.prompt;
-    const outcome = await call([PAGE_OK], {}, (client) => client.fetch(c.url, options));
-    expect(outcome.error).toBeUndefined();
-    expect(outcome.requests).toHaveLength(1);
-    const sent = new URL(outcome.requests[0]!.url);
-    expect(sent.pathname).toBe("/v1/fetch");
-    expect([...sent.searchParams.entries()].sort()).toEqual(Object.entries(c.sent).sort());
-  });
-
+describe("the fetch body", () => {
   it("a refused URL sends nothing, whatever the options", async () => {
     const outcome = await call([PAGE_OK], {}, (client) =>
-      client.fetch("http://127.0.0.1/", { maxChars: 10, live: true, prompt: "p" }),
+      client.fetch("http://127.0.0.1/", { maxChars: 10, maxAgeHours: 0 }),
     );
     expect(outcome.error).toBeInstanceOf(KeenableInvalidRequestError);
     expect(outcome.requests).toHaveLength(0);

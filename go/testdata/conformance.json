@@ -3325,6 +3325,8 @@
       "body": "{\"query\":\"q\",\"mode\":\"pro\",\"results\":[{\"title\":\"T\",\"url\":\"https://e.com/\",\"snippet\":\"S\",\"description\":\"D\",\"published_at\":\"2024-01-01\",\"acquired_at\":\"2024-02-02\"}]}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": "pro",
         "request_id": null,
@@ -3349,6 +3351,8 @@
       "body": "{}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3364,6 +3368,8 @@
       "body": "{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\",\"score\":0.9}],\"took_ms\":12,\"debug\":{\"x\":1}}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3388,6 +3394,8 @@
       "body": "{\"results\":null}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3403,6 +3411,8 @@
       "body": "{\"results\":{\"title\":\"T\"}}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3418,6 +3428,8 @@
       "body": "{\"results\":\"none\"}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3433,6 +3445,8 @@
       "body": "{\"results\":[1,\"x\",null,[],true,{\"title\":\"kept\"}]}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3457,6 +3471,8 @@
       "body": "{\"results\":[{\"title\":42,\"url\":{\"href\":\"u\"},\"snippet\":true,\"description\":5,\"published_at\":[\"2024\"],\"acquired_at\":false}]}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3481,6 +3497,8 @@
       "body": "{\"results\":[{\"title\":null,\"url\":null,\"snippet\":null,\"description\":null}]}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3505,6 +3523,8 @@
       "body": "{\"results\":[{\"title\":0,\"url\":false,\"snippet\":0}]}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3529,6 +3549,8 @@
       "body": "{\"results\":[{\"title\":\"  \",\"url\":\"\",\"snippet\":\" \",\"description\":\"  \",\"published_at\":\"\",\"acquired_at\":\" \"}]}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3553,6 +3575,8 @@
       "body": "{\"query\":\"normalized q\"}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "normalized q",
         "mode": null,
         "request_id": null,
@@ -3568,6 +3592,8 @@
       "body": "{\"query\":\"  \"}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3583,6 +3609,8 @@
       "body": "{\"query\":5}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3598,6 +3626,8 @@
       "body": "{\"mode\":5}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3613,6 +3643,8 @@
       "body": "{\"mode\":\"\"}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3630,6 +3662,8 @@
       "body": "{\"request_id\":\"body\"}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": "body",
@@ -3647,6 +3681,8 @@
       "body": "{\"request_id\":\" \"}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": "hdr",
@@ -3664,6 +3700,8 @@
       "body": "{\"request_id\":9}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": "hdr",
@@ -3681,6 +3719,8 @@
       "body": "{}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3696,6 +3736,8 @@
       "body": "{\"results\":[]}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3711,6 +3753,8 @@
       "body": "﻿{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\"}]}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3735,6 +3779,8 @@
       "body": "{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\",\"score\":1e400}],\"took\":1e400}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -3839,679 +3885,6 @@
       }
     },
     {
-      "name": "a full page",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"url\":\"https://e.com/final\",\"title\":\"T\",\"content\":\"C\",\"description\":\"D\",\"author\":\"A\",\"published_at\":\"2024-01-01\"}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/final",
-        "title": "T",
-        "content": "C",
-        "description": "D",
-        "author": "A",
-        "published_at": "2024-01-01",
-        "request_id": null
-      }
-    },
-    {
-      "name": "an empty page",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "a blank page url falls back",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"url\":\"  \"}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "an empty page url falls back",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"url\":\"\"}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "a numeric page url falls back",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"url\":5}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "mistyped page fields",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"title\":5,\"content\":[\"x\"],\"description\":{},\"author\":1,\"published_at\":true}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "a page request id from the header",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {
-        "X-Request-Id": "hdr"
-      },
-      "body": "{\"content\":\"C\"}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "C",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": "hdr"
-      }
-    },
-    {
-      "name": "a page body that is an array",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "[{\"content\":\"C\"}]",
-      "expect": {
-        "error": "api"
-      }
-    },
-    {
-      "name": "a page date as an ISO string is kept",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"published_at\":\"2024-05-01T12:00:00Z\"}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": "2024-05-01T12:00:00Z",
-        "request_id": null
-      }
-    },
-    {
-      "name": "a page date in Unix seconds is ISO 8601 UTC",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"published_at\":1714564800}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": "2024-05-01T12:00:00Z",
-        "request_id": null
-      }
-    },
-    {
-      "name": "a page date in fractional seconds drops the fraction",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"published_at\":1714564800.75}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": "2024-05-01T12:00:00Z",
-        "request_id": null
-      }
-    },
-    {
-      "name": "a page date of 1 second is the epoch's first second",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"published_at\":1}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": "1970-01-01T00:00:01Z",
-        "request_id": null
-      }
-    },
-    {
-      "name": "a page date of 0 is unset",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"published_at\":0}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "a page date of half a second is unset",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"published_at\":0.5}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "a negative page date is unset",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"published_at\":-1}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "the last second of 9999 is kept",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"published_at\":253402300799}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": "9999-12-31T23:59:59Z",
-        "request_id": null
-      }
-    },
-    {
-      "name": "a page date past 9999 is unset",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"published_at\":253402300800}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "a page date in milliseconds is unset",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"published_at\":1714564800000}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "a huge page date is unset",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"published_at\":100000000000000000000}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "an overflowing page date is unset",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"published_at\":1e400}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "a page date as a numeric string is kept as sent",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"published_at\":\"1714564800\"}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": "1714564800",
-        "request_id": null
-      }
-    },
-    {
-      "name": "a null page date is unset",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"published_at\":null}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "a page date of false is unset",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"published_at\":false}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "a truncated page",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"content\":\"abc...\",\"truncated\":true,\"total_chars\":120000}",
-      "expect": {
-        "error": null,
-        "truncated": true,
-        "total_chars": 120000,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "abc...",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "a page that was not cut",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"content\":\"\",\"truncated\":false,\"total_chars\":0}",
-      "expect": {
-        "error": null,
-        "truncated": false,
-        "total_chars": 0,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "a whole-number float total_chars is kept",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"total_chars\":5.0}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": 5,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "the largest safe total_chars is kept",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"total_chars\":9007199254740991}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": 9007199254740991,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "total_chars past 2^53 - 1 is unset",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"total_chars\":9007199254740992}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "mistyped truncated and total_chars are unset",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"truncated\":\"true\",\"total_chars\":\"10\"}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "numeric truncated and boolean total_chars are unset",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"truncated\":1,\"total_chars\":true}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "a negative total_chars is unset",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"total_chars\":-1}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "a fractional total_chars is unset",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"total_chars\":1.5}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "an overflowing total_chars is unset",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"truncated\":true,\"total_chars\":1e400}",
-      "expect": {
-        "error": null,
-        "truncated": true,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
-      "name": "null truncated and total_chars are unset",
-      "endpoint": "fetch",
-      "arg": "https://e.com/p",
-      "status": 200,
-      "headers": {},
-      "body": "{\"truncated\":null,\"total_chars\":null}",
-      "expect": {
-        "error": null,
-        "truncated": null,
-        "total_chars": null,
-        "url": "https://e.com/p",
-        "title": "",
-        "content": "",
-        "description": null,
-        "author": null,
-        "published_at": null,
-        "request_id": null
-      }
-    },
-    {
       "name": "result dates as ISO strings are kept",
       "endpoint": "search",
       "arg": "q",
@@ -4520,6 +3893,8 @@
       "body": "{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\",\"published_at\":\"2024-05-01T12:00:00Z\",\"acquired_at\":\"2024-05-02T00:00:00Z\"}]}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -4544,6 +3919,8 @@
       "body": "{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\",\"published_at\":1714564800,\"acquired_at\":1714608000.5}]}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -4568,6 +3945,8 @@
       "body": "{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\",\"published_at\":-1,\"acquired_at\":100000000000000000000}]}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -4592,6 +3971,8 @@
       "body": "{\"results\":[{\"title\":\"T\",\"url\":\"u\",\"snippet\":\"s\",\"published_at\":0,\"acquired_at\":\"1714564800\"}]}",
       "expect": {
         "error": null,
+        "warnings": [],
+        "usage": null,
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -4605,6 +3986,858 @@
             "acquired_at": "1714564800"
           }
         ]
+      }
+    },
+    {
+      "name": "warnings are parsed",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"warnings\":[{\"code\":\"deprecated_parameter\",\"path\":\"/safety_mode\",\"message\":\"safety_mode is deprecated and stops working on 2027-03-01. Use moderation.\"}]}",
+      "expect": {
+        "error": null,
+        "warnings": [
+          {
+            "code": "deprecated_parameter",
+            "path": "/safety_mode",
+            "message": "safety_mode is deprecated and stops working on 2027-03-01. Use moderation."
+          }
+        ],
+        "usage": null,
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "malformed warnings",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[],\"warnings\":[1,\"x\",null,[],{\"code\":5,\"path\":null},{\"code\":\"c\",\"path\":\"/p\",\"message\":\"m\",\"extra\":true}]}",
+      "expect": {
+        "error": null,
+        "warnings": [
+          {
+            "code": "",
+            "path": "",
+            "message": ""
+          },
+          {
+            "code": "c",
+            "path": "/p",
+            "message": "m"
+          }
+        ],
+        "usage": null,
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "warnings as an object",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[],\"warnings\":{\"code\":\"c\"}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": null,
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "warnings null",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[],\"warnings\":null}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": null,
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "usage with the cost and balance in US dollars",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"sku\":\"search.pro\",\"amount\":1,\"credits\":1,\"paid\":true,\"credits_remaining\":11998,\"cost\":{\"amount\":0.004,\"amount_decimal\":\"0.004\",\"currency\":\"usd\"},\"balance\":{\"amount\":47.992,\"amount_decimal\":\"47.992\",\"currency\":\"usd\"}}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "sku": "search.pro",
+          "amount": 1,
+          "credits": 1,
+          "paid": true,
+          "credits_remaining": 11998,
+          "cost": {
+            "amount": 0.004,
+            "amount_decimal": "0.004",
+            "currency": "usd"
+          },
+          "balance": {
+            "amount": 47.992,
+            "amount_decimal": "47.992",
+            "currency": "usd"
+          }
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "usage money from an older server without amount_decimal",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"sku\":\"search.pro\",\"amount\":1,\"credits\":1,\"paid\":true,\"cost\":{\"amount\":0.004,\"currency\":\"usd\"},\"balance\":{\"amount\":-4e-10,\"currency\":\"usd\"}}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "sku": "search.pro",
+          "amount": 1,
+          "credits": 1,
+          "paid": true,
+          "credits_remaining": null,
+          "cost": {
+            "amount": 0.004,
+            "amount_decimal": "0.004",
+            "currency": "usd"
+          },
+          "balance": {
+            "amount": -4e-10,
+            "amount_decimal": "0",
+            "currency": "usd"
+          }
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "usage from a server that sends no money",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"sku\":\"search.realtime\",\"amount\":1,\"credits\":1,\"paid\":false}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "sku": "search.realtime",
+          "amount": 1,
+          "credits": 1,
+          "paid": false,
+          "credits_remaining": null,
+          "cost": null,
+          "balance": null
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "a usage money field that is not an object is null, the rest is kept",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"sku\":\"search.pro\",\"amount\":1,\"credits\":1,\"paid\":true,\"credits_remaining\":5,\"cost\":\"0.004\",\"balance\":[0.004]}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "sku": "search.pro",
+          "amount": 1,
+          "credits": 1,
+          "paid": true,
+          "credits_remaining": 5,
+          "cost": null,
+          "balance": null
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "a malformed usage money field reads as in billing, the rest is kept",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"sku\":\"search.pro\",\"amount\":1,\"credits\":1,\"paid\":true,\"cost\":{\"amount\":\"0.004\",\"currency\":\"usd\"},\"balance\":{\"amount\":47.992}}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "sku": "search.pro",
+          "amount": 1,
+          "credits": 1,
+          "paid": true,
+          "credits_remaining": null,
+          "cost": {
+            "amount": 0,
+            "amount_decimal": "0",
+            "currency": "usd"
+          },
+          "balance": {
+            "amount": 47.992,
+            "amount_decimal": "47.992",
+            "currency": ""
+          }
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "a usage amount in float form is the whole number",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\": \"q\", \"results\": [], \"usage\": {\"sku\": \"search.pro\", \"amount\": 1.0, \"credits\": 1, \"paid\": true}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "sku": "search.pro",
+          "amount": 1,
+          "credits": 1,
+          "paid": true,
+          "credits_remaining": null,
+          "cost": null,
+          "balance": null
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "usage that is not an object is null",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":\"1 credit\"}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": null,
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    }
+  ],
+  "billing": [
+    {
+      "name": "keyless: GET /v1/billing, not /public, list prices and no account",
+      "keyed": false,
+      "status": 200,
+      "headers": {},
+      "body": "{\"object\":\"billing\",\"prices\":[{\"sku\":\"search.pro\",\"unit\":\"search\",\"unit_price\":{\"amount\":0.004,\"amount_decimal\":\"0.004\",\"currency\":\"usd\"}},{\"sku\":\"fetch.live\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.002,\"amount_decimal\":\"0.002\",\"currency\":\"usd\"}}],\"account\":null}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [
+            {
+              "sku": "search.pro",
+              "unit": "search",
+              "unit_price": {
+                "amount": 0.004,
+                "amount_decimal": "0.004",
+                "currency": "usd"
+              },
+              "list_unit_price": null,
+              "source": null
+            },
+            {
+              "sku": "fetch.live",
+              "unit": "page",
+              "unit_price": {
+                "amount": 0.002,
+                "amount_decimal": "0.002",
+                "currency": "usd"
+              },
+              "list_unit_price": null,
+              "source": null
+            }
+          ],
+          "account": null
+        }
+      }
+    },
+    {
+      "name": "keyed: the key is sent, a contract price and a negative balance",
+      "keyed": true,
+      "status": 200,
+      "headers": {
+        "X-Request-Id": " req-1 "
+      },
+      "body": "{\"object\":\"billing\",\"prices\":[{\"sku\":\"search.pro\",\"unit\":\"search\",\"unit_price\":{\"amount\":0.003,\"amount_decimal\":\"0.003\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0.004,\"amount_decimal\":\"0.004\",\"currency\":\"usd\"},\"source\":\"contract\"},{\"sku\":\"fetch\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.001,\"amount_decimal\":\"0.001\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0.001,\"amount_decimal\":\"0.001\",\"currency\":\"usd\"},\"source\":\"list\"}],\"account\":{\"balance\":{\"available\":{\"amount\":-12.345678901,\"amount_decimal\":\"-12.345678901\",\"currency\":\"usd\"}},\"billing_url\":\"https://keenable.ai/console?tab=billing\",\"as_of\":\"2026-11-22T10:00:00.000Z\"}}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": "req-1",
+        "billing": {
+          "prices": [
+            {
+              "sku": "search.pro",
+              "unit": "search",
+              "unit_price": {
+                "amount": 0.003,
+                "amount_decimal": "0.003",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 0.004,
+                "amount_decimal": "0.004",
+                "currency": "usd"
+              },
+              "source": "contract"
+            },
+            {
+              "sku": "fetch",
+              "unit": "page",
+              "unit_price": {
+                "amount": 0.001,
+                "amount_decimal": "0.001",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 0.001,
+                "amount_decimal": "0.001",
+                "currency": "usd"
+              },
+              "source": "list"
+            }
+          ],
+          "account": {
+            "balance": {
+              "available": {
+                "amount": -12.345678901,
+                "amount_decimal": "-12.345678901",
+                "currency": "usd"
+              }
+            },
+            "billing_url": "https://keenable.ai/console?tab=billing",
+            "as_of": "2026-11-22T10:00:00.000Z"
+          }
+        }
+      }
+    },
+    {
+      "name": "an empty object",
+      "keyed": false,
+      "status": 200,
+      "headers": {},
+      "body": "{}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [],
+          "account": null
+        }
+      }
+    },
+    {
+      "name": "the body's request id over the header's",
+      "keyed": false,
+      "status": 200,
+      "headers": {
+        "X-Request-Id": "hdr"
+      },
+      "body": "{\"request_id\":\"body\",\"prices\":[]}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": "body",
+        "billing": {
+          "prices": [],
+          "account": null
+        }
+      }
+    },
+    {
+      "name": "mistyped prices fall back",
+      "keyed": false,
+      "status": 200,
+      "headers": {},
+      "body": "{\"prices\":[1,\"x\",null,[],{\"sku\":5,\"unit\":null,\"unit_price\":\"0.004\",\"list_unit_price\":7,\"source\":\" \"},{\"sku\":\"fetch\",\"unit\":\"page\",\"unit_price\":{\"amount\":\"0.001\",\"currency\":5},\"list_unit_price\":{\"amount\":true,\"currency\":\"usd\"},\"source\":1},{\"sku\":\"search\",\"unit\":\"search\",\"unit_price\":{\"amount\":1e-9,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":null}}]}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [
+            {
+              "sku": "",
+              "unit": "",
+              "unit_price": {
+                "amount": 0,
+                "amount_decimal": "0",
+                "currency": ""
+              },
+              "list_unit_price": null,
+              "source": null
+            },
+            {
+              "sku": "fetch",
+              "unit": "page",
+              "unit_price": {
+                "amount": 0,
+                "amount_decimal": "0",
+                "currency": ""
+              },
+              "list_unit_price": {
+                "amount": 0,
+                "amount_decimal": "0",
+                "currency": "usd"
+              },
+              "source": null
+            },
+            {
+              "sku": "search",
+              "unit": "search",
+              "unit_price": {
+                "amount": 1e-9,
+                "amount_decimal": "0.000000001",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 0,
+                "amount_decimal": "0",
+                "currency": ""
+              },
+              "source": null
+            }
+          ],
+          "account": null
+        }
+      }
+    },
+    {
+      "name": "prices as an object and account as a string",
+      "keyed": true,
+      "status": 200,
+      "headers": {},
+      "body": "{\"prices\":{\"sku\":\"search.pro\"},\"account\":\"none\"}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [],
+          "account": null
+        }
+      }
+    },
+    {
+      "name": "mistyped account fields fall back",
+      "keyed": true,
+      "status": 200,
+      "headers": {},
+      "body": "{\"prices\":[],\"account\":{\"balance\":{\"available\":{\"amount\":\"0.004\",\"currency\":5}},\"billing_url\":5,\"as_of\":null}}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [],
+          "account": {
+            "balance": {
+              "available": {
+                "amount": 0,
+                "amount_decimal": "0",
+                "currency": ""
+              }
+            },
+            "billing_url": "",
+            "as_of": ""
+          }
+        }
+      }
+    },
+    {
+      "name": "a balance that is not an object reads as {}",
+      "keyed": true,
+      "status": 200,
+      "headers": {},
+      "body": "{\"account\":{\"balance\":[],\"billing_url\":\"https://keenable.ai/console\",\"as_of\":\"2026-11-22T10:00:00Z\"}}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [],
+          "account": {
+            "balance": {
+              "available": {
+                "amount": 0,
+                "amount_decimal": "0",
+                "currency": ""
+              }
+            },
+            "billing_url": "https://keenable.ai/console",
+            "as_of": "2026-11-22T10:00:00Z"
+          }
+        }
+      }
+    },
+    {
+      "name": "the fields an older server sent (balance.purchased, usage) are ignored",
+      "keyed": true,
+      "status": 200,
+      "headers": {},
+      "body": "{\"account\":{\"balance\":{\"available\":{\"amount\":5.5,\"amount_decimal\":\"5.5\",\"currency\":\"usd\"},\"purchased\":{\"amount\":3,\"amount_decimal\":\"3\",\"currency\":\"usd\"}},\"usage\":{\"since\":\"2026-11-01T00:00:00.000Z\",\"cost\":{\"amount\":1.25,\"currency\":\"usd\"},\"line_items\":[{\"sku\":\"search\",\"quantity\":250,\"cost\":{\"amount\":1,\"currency\":\"usd\"}}]},\"billing_url\":\"https://keenable.ai/console\",\"as_of\":\"2026-11-22T10:00:00Z\"}}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [],
+          "account": {
+            "balance": {
+              "available": {
+                "amount": 5.5,
+                "amount_decimal": "5.5",
+                "currency": "usd"
+              }
+            },
+            "billing_url": "https://keenable.ai/console",
+            "as_of": "2026-11-22T10:00:00Z"
+          }
+        }
+      }
+    },
+    {
+      "name": "an amount too large for a double is 0, the rest is kept",
+      "keyed": false,
+      "status": 200,
+      "headers": {},
+      "body": "{\"prices\": [{\"sku\": \"huge\", \"unit\": \"page\", \"unit_price\": {\"amount\": 1e999, \"currency\": \"usd\"}, \"list_unit_price\": {\"amount\": [1], \"currency\": \"usd\"}}]}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [
+            {
+              "sku": "huge",
+              "unit": "page",
+              "unit_price": {
+                "amount": 0,
+                "amount_decimal": "0",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 0,
+                "amount_decimal": "0",
+                "currency": "usd"
+              },
+              "source": null
+            }
+          ],
+          "account": null
+        }
+      }
+    },
+    {
+      "name": "amount_decimal is kept as sent, exact where amount is not",
+      "keyed": true,
+      "status": 200,
+      "headers": {},
+      "body": "{\"prices\":[{\"sku\":\"a\",\"unit\":\"search\",\"unit_price\":{\"amount\":12345678.12345679,\"amount_decimal\":\"12345678.123456789\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0,\"amount_decimal\":\"0\",\"currency\":\"usd\"}}],\"account\":{\"balance\":{\"available\":{\"amount\":-0.5,\"amount_decimal\":\"-0.5\",\"currency\":\"usd\"}},\"billing_url\":\"https://keenable.ai/console\",\"as_of\":\"2026-11-22T10:00:00Z\"}}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [
+            {
+              "sku": "a",
+              "unit": "search",
+              "unit_price": {
+                "amount": 12345678.12345679,
+                "amount_decimal": "12345678.123456789",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 0,
+                "amount_decimal": "0",
+                "currency": "usd"
+              },
+              "source": null
+            }
+          ],
+          "account": {
+            "balance": {
+              "available": {
+                "amount": -0.5,
+                "amount_decimal": "-0.5",
+                "currency": "usd"
+              }
+            },
+            "billing_url": "https://keenable.ai/console",
+            "as_of": "2026-11-22T10:00:00Z"
+          }
+        }
+      }
+    },
+    {
+      "name": "an older server without amount_decimal: amount with at most nine decimals, trailing zeros trimmed",
+      "keyed": true,
+      "status": 200,
+      "headers": {},
+      "body": "{\"prices\":[{\"sku\":\"a\",\"unit\":\"search\",\"unit_price\":{\"amount\":0.004,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":100,\"currency\":\"usd\"}},{\"sku\":\"b\",\"unit\":\"page\",\"unit_price\":{\"amount\":1e-9,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":4e-10,\"currency\":\"usd\"}},{\"sku\":\"c\",\"unit\":\"page\",\"unit_price\":{\"amount\":-4e-10,\"currency\":\"usd\"}},{\"sku\":\"d\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.30000000000000004,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":25000000.5,\"currency\":\"usd\"}}],\"account\":{\"balance\":{\"available\":{\"amount\":-12.345678901,\"currency\":\"usd\"}},\"billing_url\":\"https://keenable.ai/console\",\"as_of\":\"2026-11-22T10:00:00Z\"}}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [
+            {
+              "sku": "a",
+              "unit": "search",
+              "unit_price": {
+                "amount": 0.004,
+                "amount_decimal": "0.004",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 100,
+                "amount_decimal": "100",
+                "currency": "usd"
+              },
+              "source": null
+            },
+            {
+              "sku": "b",
+              "unit": "page",
+              "unit_price": {
+                "amount": 1e-9,
+                "amount_decimal": "0.000000001",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 4e-10,
+                "amount_decimal": "0",
+                "currency": "usd"
+              },
+              "source": null
+            },
+            {
+              "sku": "c",
+              "unit": "page",
+              "unit_price": {
+                "amount": -4e-10,
+                "amount_decimal": "0",
+                "currency": "usd"
+              },
+              "list_unit_price": null,
+              "source": null
+            },
+            {
+              "sku": "d",
+              "unit": "page",
+              "unit_price": {
+                "amount": 0.30000000000000004,
+                "amount_decimal": "0.3",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 25000000.5,
+                "amount_decimal": "25000000.5",
+                "currency": "usd"
+              },
+              "source": null
+            }
+          ],
+          "account": {
+            "balance": {
+              "available": {
+                "amount": -12.345678901,
+                "amount_decimal": "-12.345678901",
+                "currency": "usd"
+              }
+            },
+            "billing_url": "https://keenable.ai/console",
+            "as_of": "2026-11-22T10:00:00Z"
+          }
+        }
+      }
+    },
+    {
+      "name": "an amount_decimal that is not a plain decimal string falls back to amount",
+      "keyed": false,
+      "status": 200,
+      "headers": {},
+      "body": "{\"prices\":[{\"sku\":\"number\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.25,\"amount_decimal\":0.25,\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0.25,\"amount_decimal\":null,\"currency\":\"usd\"}},{\"sku\":\"exponent\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.25,\"amount_decimal\":\"2.5e-1\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0.25,\"amount_decimal\":\"\",\"currency\":\"usd\"}},{\"sku\":\"ten decimals\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.25,\"amount_decimal\":\"0.2500000000\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0.25,\"amount_decimal\":\" 0.25\",\"currency\":\"usd\"}},{\"sku\":\"signs and dots\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.25,\"amount_decimal\":\"+0.25\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0.25,\"amount_decimal\":\".25\",\"currency\":\"usd\"}},{\"sku\":\"trailing dot and newline\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.25,\"amount_decimal\":\"0.\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":0.25,\"amount_decimal\":\"0.25\\n\",\"currency\":\"usd\"}},{\"sku\":\"not ASCII digits\",\"unit\":\"page\",\"unit_price\":{\"amount\":0.25,\"amount_decimal\":\"٠.٢٥\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":\"0.25\",\"amount_decimal\":[\"0.25\"],\"currency\":\"usd\"}}]}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [
+            {
+              "sku": "number",
+              "unit": "page",
+              "unit_price": {
+                "amount": 0.25,
+                "amount_decimal": "0.25",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 0.25,
+                "amount_decimal": "0.25",
+                "currency": "usd"
+              },
+              "source": null
+            },
+            {
+              "sku": "exponent",
+              "unit": "page",
+              "unit_price": {
+                "amount": 0.25,
+                "amount_decimal": "0.25",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 0.25,
+                "amount_decimal": "0.25",
+                "currency": "usd"
+              },
+              "source": null
+            },
+            {
+              "sku": "ten decimals",
+              "unit": "page",
+              "unit_price": {
+                "amount": 0.25,
+                "amount_decimal": "0.25",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 0.25,
+                "amount_decimal": "0.25",
+                "currency": "usd"
+              },
+              "source": null
+            },
+            {
+              "sku": "signs and dots",
+              "unit": "page",
+              "unit_price": {
+                "amount": 0.25,
+                "amount_decimal": "0.25",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 0.25,
+                "amount_decimal": "0.25",
+                "currency": "usd"
+              },
+              "source": null
+            },
+            {
+              "sku": "trailing dot and newline",
+              "unit": "page",
+              "unit_price": {
+                "amount": 0.25,
+                "amount_decimal": "0.25",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 0.25,
+                "amount_decimal": "0.25",
+                "currency": "usd"
+              },
+              "source": null
+            },
+            {
+              "sku": "not ASCII digits",
+              "unit": "page",
+              "unit_price": {
+                "amount": 0.25,
+                "amount_decimal": "0.25",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": 0,
+                "amount_decimal": "0",
+                "currency": "usd"
+              },
+              "source": null
+            }
+          ],
+          "account": null
+        }
+      }
+    },
+    {
+      "name": "a JSON array body",
+      "keyed": true,
+      "status": 200,
+      "headers": {},
+      "body": "[]",
+      "expect": {
+        "path": "/v1/billing",
+        "error": "api",
+        "request_id": null,
+        "billing": null
+      }
+    },
+    {
+      "name": "a keyless JSON null body",
+      "keyed": false,
+      "status": 200,
+      "headers": {},
+      "body": "null",
+      "expect": {
+        "path": "/v1/billing",
+        "error": "api",
+        "request_id": null,
+        "billing": null
       }
     }
   ],
@@ -5492,115 +5725,43 @@
         "disable_cards": true
       },
       "skip": {}
-    }
-  ],
-  "fetch_params": [
+    },
     {
-      "name": "no options sends only url",
-      "url": "https://example.com/",
-      "options": {},
+      "name": "moderation moderate is sent",
+      "query": "q",
+      "options": {
+        "moderation": "moderate"
+      },
       "sent": {
-        "url": "https://example.com/"
+        "query": "q",
+        "mode": "pro",
+        "moderation": "moderate"
       },
       "skip": {}
     },
     {
-      "name": "every option",
-      "url": "https://example.com/",
+      "name": "moderation strict with realtime mode",
+      "query": "q",
       "options": {
-        "max_chars": 5000,
-        "live": true,
-        "prompt": "List the prices"
+        "mode": "realtime",
+        "moderation": "strict"
       },
       "sent": {
-        "url": "https://example.com/",
-        "max_chars": "5000",
-        "live": "true",
-        "prompt": "List the prices"
+        "query": "q",
+        "mode": "realtime",
+        "moderation": "strict"
       },
       "skip": {}
     },
     {
-      "name": "max_chars alone",
-      "url": "https://example.com/",
+      "name": "an empty moderation is unset",
+      "query": "q",
       "options": {
-        "max_chars": 200
+        "moderation": ""
       },
       "sent": {
-        "url": "https://example.com/",
-        "max_chars": "200"
-      },
-      "skip": {}
-    },
-    {
-      "name": "live true is sent as true",
-      "url": "https://example.com/",
-      "options": {
-        "live": true
-      },
-      "sent": {
-        "url": "https://example.com/",
-        "live": "true"
-      },
-      "skip": {}
-    },
-    {
-      "name": "live false is not sent",
-      "url": "https://example.com/",
-      "options": {
-        "live": false
-      },
-      "sent": {
-        "url": "https://example.com/"
-      },
-      "skip": {}
-    },
-    {
-      "name": "empty prompt is unset",
-      "url": "https://example.com/",
-      "options": {
-        "prompt": ""
-      },
-      "sent": {
-        "url": "https://example.com/"
-      },
-      "skip": {}
-    },
-    {
-      "name": "the prompt is sent as given",
-      "url": "https://example.com/",
-      "options": {
-        "prompt": "  What's the price? 100% & more = é  "
-      },
-      "sent": {
-        "url": "https://example.com/",
-        "prompt": "  What's the price? 100% & more = é  "
-      },
-      "skip": {}
-    },
-    {
-      "name": "a zero max_chars is sent",
-      "url": "https://example.com/",
-      "options": {
-        "max_chars": 0
-      },
-      "sent": {
-        "url": "https://example.com/",
-        "max_chars": "0"
-      },
-      "skip": {
-        "go": "FetchOptions.MaxChars is an int whose zero means unset, like SearchOptions.MaxResults"
-      }
-    },
-    {
-      "name": "the page's own query stays inside url",
-      "url": "https://example.com/a?live=false&prompt=x#frag",
-      "options": {
-        "max_chars": 10
-      },
-      "sent": {
-        "url": "https://example.com/a?live=false&prompt=x#frag",
-        "max_chars": "10"
+        "query": "q",
+        "mode": "pro"
       },
       "skip": {}
     }
@@ -5824,6 +5985,44 @@
         "disable_cards": true
       },
       "invalid": false
+    },
+    {
+      "name": "moderation strict is sent",
+      "arguments": "{\"query\":\"q\",\"moderation\":\"strict\"}",
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "moderation": "strict"
+      },
+      "invalid": false
+    },
+    {
+      "name": "moderation off is sent for the API to judge",
+      "arguments": "{\"query\":\"q\",\"moderation\":\"off\"}",
+      "sent": {
+        "query": "q",
+        "mode": "pro",
+        "moderation": "off"
+      },
+      "invalid": false
+    },
+    {
+      "name": "moderation an empty string is unset",
+      "arguments": "{\"query\":\"q\",\"moderation\":\"\"}",
+      "sent": {
+        "query": "q",
+        "mode": "pro"
+      },
+      "invalid": false
+    },
+    {
+      "name": "moderation null is unset",
+      "arguments": "{\"query\":\"q\",\"moderation\":null}",
+      "sent": {
+        "query": "q",
+        "mode": "pro"
+      },
+      "invalid": false
     }
   ],
   "deadline": {
@@ -5892,13 +6091,13 @@
       "headers": {
         "webhook-id": "msg_2nY8kTestVector01",
         "webhook-timestamp": "1763400000",
-        "webhook-signature": "v1,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4="
+        "webhook-signature": "v1,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc="
       },
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"research\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"research\"}}",
       "now": 1763400000,
       "tolerance": 300,
       "valid": true,
-      "type": "monitor.hit"
+      "type": "monitor.result.found"
     },
     {
       "name": "the timestamp 300 s ago is within the default tolerance",
@@ -5906,13 +6105,13 @@
       "headers": {
         "webhook-id": "msg_2nY8kTestVector01",
         "webhook-timestamp": "1763400000",
-        "webhook-signature": "v1,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4="
+        "webhook-signature": "v1,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc="
       },
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"research\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"research\"}}",
       "now": 1763400300,
       "tolerance": 300,
       "valid": true,
-      "type": "monitor.hit"
+      "type": "monitor.result.found"
     },
     {
       "name": "the timestamp 300 s ahead is within the default tolerance",
@@ -5920,13 +6119,13 @@
       "headers": {
         "webhook-id": "msg_2nY8kTestVector01",
         "webhook-timestamp": "1763400000",
-        "webhook-signature": "v1,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4="
+        "webhook-signature": "v1,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc="
       },
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"research\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"research\"}}",
       "now": 1763399700,
       "tolerance": 300,
       "valid": true,
-      "type": "monitor.hit"
+      "type": "monitor.result.found"
     },
     {
       "name": "the timestamp 301 s ago is refused",
@@ -5934,9 +6133,9 @@
       "headers": {
         "webhook-id": "msg_2nY8kTestVector01",
         "webhook-timestamp": "1763400000",
-        "webhook-signature": "v1,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4="
+        "webhook-signature": "v1,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc="
       },
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"research\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"research\"}}",
       "now": 1763400301,
       "tolerance": 300,
       "valid": false,
@@ -5948,9 +6147,9 @@
       "headers": {
         "webhook-id": "msg_2nY8kTestVector01",
         "webhook-timestamp": "1763400000",
-        "webhook-signature": "v1,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4="
+        "webhook-signature": "v1,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc="
       },
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"research\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"research\"}}",
       "now": 1763399699,
       "tolerance": 300,
       "valid": false,
@@ -5962,13 +6161,13 @@
       "headers": {
         "webhook-id": "msg_2nY8kTestVector01",
         "webhook-timestamp": "1763400000",
-        "webhook-signature": "v1,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4="
+        "webhook-signature": "v1,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc="
       },
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"research\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"research\"}}",
       "now": 1763400500,
       "tolerance": 600,
       "valid": true,
-      "type": "monitor.hit"
+      "type": "monitor.result.found"
     },
     {
       "name": "one of several signatures matches",
@@ -5976,13 +6175,13 @@
       "headers": {
         "webhook-id": "msg_2nY8kTestVector01",
         "webhook-timestamp": "1763400000",
-        "webhook-signature": "v1,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= v1,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4="
+        "webhook-signature": "v1,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= v1,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc="
       },
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"research\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"research\"}}",
       "now": 1763400000,
       "tolerance": 300,
       "valid": true,
-      "type": "monitor.hit"
+      "type": "monitor.result.found"
     },
     {
       "name": "a signature of another version is not read",
@@ -5990,9 +6189,9 @@
       "headers": {
         "webhook-id": "msg_2nY8kTestVector01",
         "webhook-timestamp": "1763400000",
-        "webhook-signature": "v2,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4="
+        "webhook-signature": "v2,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc="
       },
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"research\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"research\"}}",
       "now": 1763400000,
       "tolerance": 300,
       "valid": false,
@@ -6006,7 +6205,7 @@
         "webhook-timestamp": "1763400000",
         "webhook-signature": "v1,noB5V+ul+iAA7vE7NbTU0qBxjbNcDIujPgS9detWC+o="
       },
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"research\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"research\"}}",
       "now": 1763400000,
       "tolerance": 300,
       "valid": false,
@@ -6018,9 +6217,9 @@
       "headers": {
         "webhook-id": "msg_2nY8kTestVector01",
         "webhook-timestamp": "1763400000",
-        "webhook-signature": "9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4="
+        "webhook-signature": "ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc="
       },
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"research\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"research\"}}",
       "now": 1763400000,
       "tolerance": 300,
       "valid": false,
@@ -6032,9 +6231,9 @@
       "headers": {
         "webhook-id": "msg_2nY8kTestVector01",
         "webhook-timestamp": "1763400000",
-        "webhook-signature": "v1,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4="
+        "webhook-signature": "v1,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc="
       },
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"marketing\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"marketing\"}}",
       "now": 1763400000,
       "tolerance": 300,
       "valid": false,
@@ -6046,9 +6245,9 @@
       "headers": {
         "webhook-id": "msg_other",
         "webhook-timestamp": "1763400000",
-        "webhook-signature": "v1,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4="
+        "webhook-signature": "v1,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc="
       },
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"research\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"research\"}}",
       "now": 1763400000,
       "tolerance": 300,
       "valid": false,
@@ -6059,9 +6258,9 @@
       "secret": "whsec_a2VlbmFibGUtbW9uaXRvcnMtd2ViaG9vay10ZXN0ISE=",
       "headers": {
         "webhook-timestamp": "1763400000",
-        "webhook-signature": "v1,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4="
+        "webhook-signature": "v1,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc="
       },
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"research\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"research\"}}",
       "now": 1763400000,
       "tolerance": 300,
       "valid": false,
@@ -6072,9 +6271,9 @@
       "secret": "whsec_a2VlbmFibGUtbW9uaXRvcnMtd2ViaG9vay10ZXN0ISE=",
       "headers": {
         "webhook-id": "msg_2nY8kTestVector01",
-        "webhook-signature": "v1,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4="
+        "webhook-signature": "v1,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc="
       },
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"research\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"research\"}}",
       "now": 1763400000,
       "tolerance": 300,
       "valid": false,
@@ -6087,7 +6286,7 @@
         "webhook-id": "msg_2nY8kTestVector01",
         "webhook-timestamp": "1763400000"
       },
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"research\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"research\"}}",
       "now": 1763400000,
       "tolerance": 300,
       "valid": false,
@@ -6099,9 +6298,9 @@
       "headers": {
         "webhook-id": "msg_2nY8kTestVector01",
         "webhook-timestamp": "soon",
-        "webhook-signature": "v1,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4="
+        "webhook-signature": "v1,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc="
       },
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"research\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"research\"}}",
       "now": 1763400000,
       "tolerance": 300,
       "valid": false,
@@ -6113,9 +6312,9 @@
       "headers": {
         "webhook-id": "msg_2nY8kTestVector01",
         "webhook-timestamp": "1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
-        "webhook-signature": "v1,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4="
+        "webhook-signature": "v1,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc="
       },
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"research\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"research\"}}",
       "now": 1763400000,
       "tolerance": 300,
       "valid": false,
@@ -6127,9 +6326,9 @@
       "headers": {
         "webhook-id": "msg_2nY8kTestVector01",
         "webhook-timestamp": "0001763400000",
-        "webhook-signature": "v1,24rwSfPZu2R5b5Az4x1BO97a/Enu1Z4ZmzI9kKSqrUE="
+        "webhook-signature": "v1,lxdzPfDgYBsTS5dEapLZ1CgQ0cWYz8ep2y4cmi+QaqQ="
       },
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"research\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"research\"}}",
       "now": 1763400000,
       "tolerance": 300,
       "valid": false,
@@ -6141,13 +6340,13 @@
       "headers": {
         "WEBHOOK-ID": "msg_2nY8kTestVector01",
         "WEBHOOK-TIMESTAMP": "1763400000",
-        "WEBHOOK-SIGNATURE": "v1,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4="
+        "WEBHOOK-SIGNATURE": "v1,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc="
       },
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"research\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"research\"}}",
       "now": 1763400000,
       "tolerance": 300,
       "valid": true,
-      "type": "monitor.hit"
+      "type": "monitor.result.found"
     },
     {
       "name": "a secret without the whsec_ prefix",
@@ -6155,13 +6354,13 @@
       "headers": {
         "webhook-id": "msg_2nY8kTestVector01",
         "webhook-timestamp": "1763400000",
-        "webhook-signature": "v1,9+ChBZb9nSbPYLix6nY+Pd+ykv10PwAjK5TDBLb2qp4="
+        "webhook-signature": "v1,ifN2KIni7msErjuVooGtcP9OlWfUymaJfl41PUpTBMc="
       },
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"research\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"research\"}}",
       "now": 1763400000,
       "tolerance": 300,
       "valid": true,
-      "type": "monitor.hit"
+      "type": "monitor.result.found"
     },
     {
       "name": "a secret that is not base64 is used as its bytes",
@@ -6169,13 +6368,13 @@
       "headers": {
         "webhook-id": "msg_2nY8kTestVector01",
         "webhook-timestamp": "1763400000",
-        "webhook-signature": "v1,uXnm9PAKBqRoaXzXrdbeIz+EvYI7yhVPSL/5CAF5K7c="
+        "webhook-signature": "v1,84S6wGp5ppG5rr1fsjjMUdecv4BWy3Nb64bR61AX/hg="
       },
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"research\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"research\"}}",
       "now": 1763400000,
       "tolerance": 300,
       "valid": true,
-      "type": "monitor.hit"
+      "type": "monitor.result.found"
     },
     {
       "name": "a secret of only whsec_ has no key and is refused, even signed with the empty key",
@@ -6183,9 +6382,9 @@
       "headers": {
         "webhook-id": "msg_2nY8kTestVector01",
         "webhook-timestamp": "1763400000",
-        "webhook-signature": "v1,gE2yS/eBL1nnn74P1Rfi52r9XeQ3JOR2psw/MA1j4ss="
+        "webhook-signature": "v1,dgPMsxW48usGC4XJvBLel2TSXb/Vd0LWfPcWqzd5wfc="
       },
-      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.hit\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"favicon\":null,\"highlights\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\",\"score\":0.82}},\"metadata\":{\"team\":\"research\"}}",
+      "body": "{\"id\":\"msg_2nY8kTestVector01\",\"type\":\"monitor.result.found\",\"created_at\":\"2026-11-17T17:20:00Z\",\"data\":{\"monitor_id\":\"mon_test01\",\"result\":{\"url\":\"https://example.com/news/1\",\"title\":\"Open weights model released\",\"author\":null,\"published_at\":\"2026-11-17T16:00:00Z\",\"acquired_at\":\"2026-11-17T16:05:00Z\",\"image\":null,\"matched_at\":\"2026-11-17T16:10:00Z\",\"published_at_source\":\"declared\",\"summary\":\"A lab released an open-weights model.\",\"importance\":4,\"kind\":\"news\",\"source_type\":\"original\"}},\"metadata\":{\"team\":\"research\"}}",
       "now": 1763400000,
       "tolerance": 300,
       "valid": false,

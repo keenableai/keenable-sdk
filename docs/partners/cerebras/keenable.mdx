@@ -127,6 +127,7 @@ keywords. Filters are optional and combine freely.
 | `published_after` / `published_before` | Time-boxing by when the page was published |
 | `acquired_after` / `acquired_before` | Time-boxing by when Keenable indexed the page. Use this for "what is new since ..." queries, where publication dates are unreliable or missing |
 | `snippet_max_length` | Capping how much page text comes back per result, to control prompt size |
+| `moderation` | Removing unsafe results: `"moderate"` or `"strict"`. Leave it out for no moderation. Works in `pro` and `realtime` modes, and not when the query is a URL |
 
 Dates are `YYYY-MM-DD`. In Node the same filters are camelCase
 (`publishedAfter`, `acquiredAfter`, `snippetMaxLength`, `excludeDomains`).
@@ -148,14 +149,14 @@ full page as markdown.
 
 <CodeGroup>
 ```python Python theme={null}
-page = keenable.fetch("https://cerebras.ai/chip")
+page = keenable.fetch(["https://cerebras.ai/chip"]).results[0]
 
 print(page.title)
 print(page.content)  # markdown, boilerplate stripped
 ```
 
 ```javascript Node.js theme={null}
-const page = await keenable.fetch('https://cerebras.ai/chip');
+const [page] = (await keenable.fetch(['https://cerebras.ai/chip'])).results;
 
 console.log(page.title);
 console.log(page.content); // markdown, boilerplate stripped

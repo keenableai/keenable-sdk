@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 
 use super::server::{start, Reply, Script};
 use super::*;
-use crate::{Error, RequestOptions, SearchOptions};
+use crate::{Error, FetchOptions, RequestOptions, SearchOptions};
 
 fn search_reply() -> Reply {
     Reply::new(
@@ -38,7 +38,7 @@ async fn a_keyed_search_sends_the_key_and_the_sdk_headers() {
 async fn a_keyless_client_calls_the_public_endpoints_without_a_key() {
     let server = start(Script::Replies(vec![
         search_reply(),
-        Reply::new(200, r#"{"content":"c"}"#),
+        Reply::new(200, r#"{"results":[{"content":"c"}]}"#),
     ]))
     .await;
     let client = Client::with_options(Options {
@@ -50,13 +50,13 @@ async fn a_keyless_client_calls_the_public_endpoints_without_a_key() {
     .unwrap();
     assert!(client.is_keyless());
     client.search("q").await.unwrap();
-    let page = client.fetch("https://example.com/a").await.unwrap();
+    let page = client.fetch(["https://example.com/a"]).await.unwrap();
     let seen = server.requests();
     assert_eq!(seen[0].path, "/v1/search/public");
     assert_eq!(seen[1].path, "/v1/fetch/public");
     assert!(seen.iter().all(|r| r.header("X-API-Key").is_none()));
     assert_eq!(seen[0].header("X-Keenable-Title"), Some("My Agent"));
-    assert_eq!(page.url, "https://example.com/a");
+    assert_eq!(page.results[0].url, "https://example.com/a");
 }
 
 #[tokio::test]
@@ -191,6 +191,7 @@ fn the_tool_definitions_match_the_other_sdks() {
         [
             "disable_cards",
             "exclude_domains",
+            "moderation",
             "objective",
             "published_after",
             "query",
@@ -199,22 +200,186 @@ fn the_tool_definitions_match_the_other_sdks() {
     );
     assert_eq!(props["exclude_domains"]["items"], json!({"type": "string"}));
     assert_eq!(props["disable_cards"]["type"], "boolean");
+    assert_eq!(props["moderation"]["type"], "string");
+    assert_eq!(props["moderation"]["enum"], json!(["moderate", "strict"]));
+    assert!(props["moderation"]["description"]
+        .as_str()
+        .unwrap()
+        .contains("no moderation"));
+    let max_age = &tools[1]["function"]["parameters"]["properties"]["max_age_hours"];
+    assert_eq!(max_age["minimum"], json!(-1));
+    assert!(max_age["description"]
+        .as_str()
+        .unwrap()
+        .contains("-1 reads only the stored copy"));
+}
+
+#[tokio::test]
+async fn search_sends_moderation_only_when_set() {
+    let server = start(Script::Replies(vec![search_reply(), search_reply()])).await;
+    let client = keyed(&server);
+    let opts = SearchOptions {
+        mode: Some("realtime".into()),
+        moderation: Some("strict".into()),
+        ..Default::default()
+    };
+    client.search_with("q", &opts).await.unwrap();
+    client.search("q").await.unwrap();
+    let first: Value = serde_json::from_slice(&server.requests()[0].body).unwrap();
+    assert_eq!(
+        first,
+        json!({"query": "q", "mode": "realtime", "moderation": "strict"})
+    );
+    let second: Value = serde_json::from_slice(&server.requests()[1].body).unwrap();
+    assert!(second.get("moderation").is_none());
+}
+
+#[tokio::test]
+async fn search_parses_warnings() {
+    let server = start(Script::Replies(vec![
+        Reply::new(
+            200,
+            r#"{"query":"q","results":[],"warnings":[{"code":"deprecated_parameter","path":"/safety_mode","message":"safety_mode is deprecated. Use moderation."}]}"#,
+        ),
+        search_reply(),
+    ]))
+    .await;
+    let client = keyed(&server);
+    let resp = client.search("q").await.unwrap();
+    assert_eq!(resp.warnings.len(), 1);
+    assert_eq!(resp.warnings[0].code, "deprecated_parameter");
+    assert_eq!(resp.warnings[0].path, "/safety_mode");
+    assert_eq!(
+        resp.warnings[0].message,
+        "safety_mode is deprecated. Use moderation."
+    );
+    assert!(client.search("q").await.unwrap().warnings.is_empty());
+}
+
+#[tokio::test]
+async fn fetch_posts_the_urls_and_only_the_options_set() {
+    let server = start(Script::Replies(vec![
+        Reply::new(200, r#"{"results":[]}"#),
+        Reply::new(200, r#"{"results":[]}"#),
+    ]))
+    .await;
+    let opts = FetchOptions {
+        max_chars: Some(500),
+        prompt: Some("List the prices".into()),
+        schema: Some(json!({"type": "object"})),
+        links: Some(5),
+        images: Some(2),
+        max_age_hours: Some(0.0),
+        ..Default::default()
+    };
+    let client = keyed(&server);
+    client
+        .fetch_with(["https://example.com"], &opts)
+        .await
+        .unwrap();
+    let empty_prompt = FetchOptions {
+        prompt: Some(String::new()),
+        ..Default::default()
+    };
+    client
+        .fetch_with(["https://example.com"], &empty_prompt)
+        .await
+        .unwrap();
+    let seen = &server.requests()[0];
+    assert_eq!(
+        (seen.method.as_str(), seen.path.as_str()),
+        ("POST", "/v1/fetch")
+    );
+    let body: Value = serde_json::from_slice(&seen.body).unwrap();
+    assert_eq!(
+        body,
+        json!({
+            "urls": ["https://example.com"],
+            "content": {
+                "max_chars": 500,
+                "prompt": "List the prices",
+                "schema": {"type": "object"},
+                "links": 5,
+                "images": 2,
+            },
+            "retrieval": {"max_age_hours": 0.0},
+        })
+    );
+    let body: Value = serde_json::from_slice(&server.requests()[1].body).unwrap();
+    assert_eq!(body, json!({"urls": ["https://example.com"]}));
+}
+
+#[tokio::test]
+async fn fetch_parses_a_page_and_a_failed_url() {
+    let server = start(Script::Replies(vec![Reply::new(
+        200,
+        r#"{"results":[{"url":"https://e.com/","title":"T","content":"Body"},{"url":"https://e.com/x","error":{"status":404,"error":"Not found","code":"page_not_found"}},{"url":"https://e.com/y","error":{"message":"gone"}}]}"#,
+    )]))
+    .await;
+    let resp = keyed(&server)
+        .fetch(["https://e.com/", "https://e.com/x", "https://e.com/y"])
+        .await
+        .unwrap();
+    let (page, missing) = (&resp.results[0], &resp.results[1]);
+    assert_eq!((page.title.as_str(), page.content.as_str()), ("T", "Body"));
+    assert!(page.error.is_none());
+    assert_eq!(missing.url, "https://e.com/x");
+    let error = missing.error.as_ref().unwrap();
+    assert_eq!(
+        (error.status, error.code.as_deref()),
+        (404, Some("page_not_found"))
+    );
+    let partial = resp.results[2].error.as_ref().unwrap();
+    assert_eq!(
+        (partial.status, partial.message.as_deref()),
+        (0, Some("gone"))
+    );
 }
 
 #[tokio::test]
 async fn a_fetch_tool_call_renders_the_page() {
     let server = start(Script::Replies(vec![Reply::new(
         200,
-        r#"{"url":"https://e.com/","title":"T","content":"Body","published_at":1714564800}"#,
+        r#"{"results":[{"url":"https://e.com/","title":"T","content":"Body","published_at":1714564800}]}"#,
     )]))
     .await;
     let text = keyed(&server)
-        .run_tool_call("keenable_fetch", json!({"url": "https://e.com/"}))
+        .run_tool_call("keenable_fetch", json!({"urls": ["https://e.com/"]}))
         .await
         .unwrap();
     assert_eq!(
         text,
         "[1] T (https://e.com/) - published 2024-05-01T12:00:00Z\nBody"
+    );
+}
+
+#[tokio::test]
+async fn a_fetch_tool_call_reads_several_urls_and_keeps_a_failed_one() {
+    let server = start(Script::Replies(vec![Reply::new(
+        200,
+        r#"{"results":[{"url":"https://e.com/","title":"T","content":"Body"},{"url":"https://e.com/x","error":{"status":404,"error":"Not found"}}]}"#,
+    )]))
+    .await;
+    let text = keyed(&server)
+        .run_tool_call(
+            "keenable_fetch",
+            json!({"urls": ["https://e.com/", "https://e.com/x"], "max_chars": 500,
+                   "prompt": "Who runs it?", "max_age_hours": 0}),
+        )
+        .await
+        .unwrap();
+    let body: Value = serde_json::from_slice(&server.requests()[0].body).unwrap();
+    assert_eq!(
+        body,
+        json!({
+            "urls": ["https://e.com/", "https://e.com/x"],
+            "content": {"max_chars": 500, "prompt": "Who runs it?"},
+            "retrieval": {"max_age_hours": 0.0},
+        })
+    );
+    assert_eq!(
+        text,
+        "[1] T (https://e.com/)\nBody\n\n[2] https://e.com/x - failed: Not found"
     );
 }
 
@@ -226,16 +391,45 @@ async fn a_bad_tool_call_sends_nothing() {
         ("keenable_search", Value::from("{}")),
         ("keenable_search", Value::from("[1]")),
         ("keenable_search", Value::from("not json")),
-        (
-            "keenable_fetch",
-            Value::from(r#"{"url":"http://localhost/"}"#),
-        ),
+        ("keenable_fetch", Value::from(r#"{"url":"https://e.com/"}"#)),
         ("other_tool", Value::from(r#"{"query":"q"}"#)),
     ] {
         let got = client.run_tool_call(name, args.as_str().unwrap()).await;
         assert!(
             matches!(got, Err(Error::InvalidRequest(_))),
             "{name} {args}: {got:?}"
+        );
+    }
+    let got = client
+        .run_tool_call("keenable_fetch", json!({"url": "https://e.com/"}))
+        .await;
+    assert!(
+        matches!(&got, Err(Error::InvalidRequest(m)) if m.to_string().contains("'urls'")),
+        "{got:?}"
+    );
+    assert_eq!(server.count(), 0);
+}
+
+#[tokio::test]
+async fn a_tool_call_with_a_moderation_that_is_not_a_string_sends_nothing() {
+    let server = start(Script::Replies(vec![search_reply()])).await;
+    let client = keyed(&server);
+    for moderation in [
+        json!(true),
+        json!(false),
+        json!(1),
+        json!(["strict"]),
+        json!({"level": "strict"}),
+    ] {
+        let got = client
+            .run_tool_call(
+                "keenable_search",
+                json!({"query": "q", "moderation": moderation}),
+            )
+            .await;
+        assert!(
+            matches!(&got, Err(Error::InvalidRequest(m)) if m.to_string().contains(r#"moderation must be "moderate" or "strict""#)),
+            "{moderation}: {got:?}"
         );
     }
     assert_eq!(server.count(), 0);
@@ -282,4 +476,26 @@ async fn parsed_null_arguments_are_rejected_like_the_text_null() {
         assert!(e.to_string().contains("must be a JSON object"), "{e}");
     }
     assert_eq!(server.count(), 0);
+}
+
+#[tokio::test]
+async fn billing_retries_and_sends_the_call_headers() {
+    let server = start(Script::Replies(vec![
+        Reply::new(503, "{}"),
+        Reply::new(200, r#"{"object":"billing","prices":[],"account":null}"#),
+    ]))
+    .await;
+    let opts = RequestOptions {
+        max_retries: Some(1),
+        headers: [("X-Trace".to_string(), "t".to_string())].into(),
+        ..Default::default()
+    };
+    let billing = keyed(&server).billing_with(&opts).await.unwrap();
+    assert!(billing.prices.is_empty());
+    assert!(billing.account.is_none());
+    assert_eq!(crate::test_hooks::take_waits().len(), 1);
+    let seen = server.requests();
+    assert!(seen.iter().all(|r| r.path == "/v1/billing"));
+    assert_eq!(seen[1].header("X-Trace"), Some("t"));
+    assert_eq!(seen[1].header("X-API-Key"), Some("k"));
 }

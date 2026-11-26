@@ -10,7 +10,8 @@ use serde_json::{Map, Value};
 use crate::error::{ApiError, ConnectionError, Error, RateLimitError, RateLimitInfo, Result};
 use crate::guard::{reject_private_fetch_target, resolve_base_url};
 use crate::models::{
-    non_blank, page_from_json, safe_count, search_response_from_json, Page, SearchResponse,
+    billing_from_json, non_blank, page_from_json, safe_count, search_response_from_json, Billing,
+    FetchResponse, SearchResponse,
 };
 use crate::retry::{retry_after_header, retry_delay, seconds};
 use crate::{json, types, VERSION};
@@ -24,6 +25,10 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 /// How many times a failed request is retried when [`Options::max_retries`]
 /// is `None`.
 pub const DEFAULT_MAX_RETRIES: u32 = 2;
+
+/// The endpoints with a `/public` keyless variant. `endpoint_url` adds the
+/// suffix to no other: billing has one path with and without a key.
+const PUBLIC_VARIANT: [&str; 2] = ["search", "fetch"];
 
 const DEFAULT_CLIENT_SOURCE: &str = "Keenable SDK";
 /// The longest per-attempt deadline: about 24.8 days, the longest a
@@ -138,33 +143,47 @@ pub struct SearchOptions {
     /// What the search is for, in two or three natural sentences: the facts a
     /// useful page must contain, the task context the query leaves out, the
     /// sources to prefer or exclude, and what is already known. Up to 1,000
-    /// characters. The API validates and logs it; it does not change results
-    /// or price yet.
+    /// characters. The ranker scores results for it together with the query;
+    /// retrieval reads only the query, so keep the key words there. It does
+    /// not change the price.
     pub objective: Option<String>,
     /// Returns ordinary web pages in place of Keenable's cards, results
     /// Keenable writes for queries such as prices, exchange rates or company
     /// facts (their URLs expire after one day). `false`, the API default, is
     /// not sent.
     pub disable_cards: bool,
+    /// Filters unsafe results: "moderate" or "strict" removes results a
+    /// safety model judges unsafe at that level, so a search can return fewer
+    /// results or none. `None` (or "") is no moderation and is not sent; any
+    /// other value is sent as given for the API to judge. It works in the
+    /// "pro" and "realtime" modes, and not when the query is a URL or with
+    /// `query_time`; the API rejects it there.
+    pub moderation: Option<String>,
     /// This call's timeout, retry budget and headers.
     pub request: RequestOptions,
 }
 
-/// The optional arguments to [`Client::fetch_with`]. An unset option is not
-/// sent.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// The optional arguments to [`Client::fetch_with`]. Only the options set are
+/// sent, and the API checks their values.
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct FetchOptions {
-    /// Caps the characters of content returned. `None` means the API's
-    /// default of 50000. [`Page::truncated`] and [`Page::total_chars`] say
-    /// whether the page was cut and how long it was.
+    /// The most characters of content per page.
     pub max_chars: Option<u32>,
-    /// Fetches the page from its source now instead of reading Keenable's
-    /// indexed copy. `false` is the API's default and is not sent.
-    pub live: bool,
-    /// An extraction instruction, up to 2000 characters, such as "list the
-    /// pricing tiers". [`Page::content`] is then only the model's output for
-    /// it, not the page. An empty prompt is unset.
+    /// Up to 2,000 characters; each page's `content` is then only an LLM's
+    /// answer to it.
     pub prompt: Option<String>,
+    /// A JSON Schema; each page's answer is in `Page::structured`.
+    pub schema: Option<Value>,
+    /// The most links per page to return.
+    pub links: Option<u32>,
+    /// The most images per page to return.
+    pub images: Option<u32>,
+    /// Use a stored copy only if younger than this many hours (0 to 720);
+    /// 0 reads every page live. -1 reads only the stored copy, of any age,
+    /// never the live page: a page with no stored copy comes back with
+    /// `error` set (404). Other negative values are refused with a 400.
+    /// `None` uses a stored copy of any age, or reads live when there is none.
+    pub max_age_hours: Option<f64>,
     /// This call's timeout, retry budget and headers.
     pub request: RequestOptions,
 }
@@ -284,7 +303,7 @@ impl Client {
         })
     }
 
-    /// Keenable Monitors: standing searches that report new pages as they
+    /// Keenable Monitors: standing searches that report new results as they
     /// appear. Monitors need an API key.
     pub fn monitors(&self) -> crate::monitors::Monitors<'_> {
         crate::monitors::Monitors::new(self)
@@ -334,6 +353,7 @@ impl Client {
         if opts.disable_cards {
             payload.insert("disable_cards".into(), Value::Bool(true));
         }
+        put(&mut payload, "moderation", &opts.moderation);
         self.search_payload(query, opts.mode.as_deref(), payload, &opts.request)
             .await
     }
@@ -371,39 +391,110 @@ impl Client {
         Ok(search_response_from_json(data, query, id))
     }
 
-    /// Returns one URL's main content as markdown.
-    ///
-    /// Use it after [`Client::search`] when a snippet is not enough. Internal
-    /// hosts and private addresses are refused here, before a request is
-    /// sent.
-    pub async fn fetch(&self, url: &str) -> Result<Page> {
-        self.fetch_with(url, &FetchOptions::default()).await
+    /// Reads pages as markdown with `POST /v1/fetch`. `results[i]` is for
+    /// `urls[i]`: a [`Page`](crate::Page), with `error` set when that URL
+    /// failed. Internal hosts and private addresses are refused here, before
+    /// a request is sent.
+    pub async fn fetch<I>(&self, urls: I) -> Result<FetchResponse>
+    where
+        I: IntoIterator,
+        I::Item: AsRef<str>,
+    {
+        self.fetch_with(urls, &FetchOptions::default()).await
     }
 
-    /// [`Client::fetch`] with a content cap, a live fetch, an extraction
-    /// prompt, or per-call settings.
-    pub async fn fetch_with(&self, url: &str, opts: &FetchOptions) -> Result<Page> {
-        reject_private_fetch_target(url)?;
-        let mut query = vec![("url".to_string(), url.to_string())];
-        if let Some(n) = opts.max_chars {
-            query.push(("max_chars".into(), n.to_string()));
+    /// [`Client::fetch`] with the options in [`FetchOptions`] and per-call
+    /// settings.
+    pub async fn fetch_with<I>(&self, urls: I, opts: &FetchOptions) -> Result<FetchResponse>
+    where
+        I: IntoIterator,
+        I::Item: AsRef<str>,
+    {
+        let urls: Vec<String> = urls.into_iter().map(|u| u.as_ref().to_string()).collect();
+        for url in &urls {
+            reject_private_fetch_target(url)?;
         }
-        // The API reads only "true" and "false", and an absent live is false.
-        if opts.live {
-            query.push(("live".into(), "true".into()));
+        let mut content = Map::new();
+        let options = [
+            ("max_chars", opts.max_chars.map(Value::from)),
+            (
+                "prompt",
+                opts.prompt
+                    .clone()
+                    .filter(|p| !p.is_empty())
+                    .map(Value::from),
+            ),
+            ("schema", opts.schema.clone()),
+            ("links", opts.links.map(Value::from)),
+            ("images", opts.images.map(Value::from)),
+        ];
+        for (name, value) in options {
+            if let Some(value) = value {
+                content.insert(name.into(), value);
+            }
         }
-        if let Some(prompt) = opts.prompt.as_deref().filter(|p| !p.is_empty()) {
-            query.push(("prompt".into(), prompt.to_string()));
+        let mut payload = Map::new();
+        payload.insert("urls".into(), Value::from(urls.clone()));
+        if !content.is_empty() {
+            payload.insert("content".into(), Value::Object(content));
         }
+        if let Some(hours) = opts.max_age_hours {
+            payload.insert(
+                "retrieval".into(),
+                serde_json::json!({ "max_age_hours": hours }),
+            );
+        }
+        let body = serde_json::to_vec(&payload)
+            .map_err(|e| Error::invalid(format!("could not encode the fetch request: {e}")))?;
         let (data, id) = self
-            .send(reqwest::Method::GET, "fetch", None, query, &opts.request)
+            .send(
+                reqwest::Method::POST,
+                "fetch",
+                Some(body),
+                Vec::new(),
+                &opts.request,
+            )
             .await?;
-        Ok(page_from_json(data, url, id))
+        let results = match data.get("results") {
+            Some(Value::Array(items)) => items
+                .iter()
+                .enumerate()
+                .filter_map(|(i, item)| {
+                    let asked = urls.get(i).map_or("", String::as_str);
+                    Some(page_from_json(item.as_object()?.clone(), asked))
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        Ok(FetchResponse {
+            results,
+            request_id: non_blank(data.get("request_id")).or(id),
+            raw: data,
+        })
     }
 
+    /// The prices and, with an API key, the organization's balance, from
+    /// `GET /v1/billing`. Read-only and free. Without a key, `prices` are the
+    /// public list prices and `account` is `None`. Amounts are numbers in US
+    /// dollars.
+    pub async fn billing(&self) -> Result<Billing> {
+        self.billing_with(&RequestOptions::default()).await
+    }
+
+    /// [`Client::billing`] with per-call settings.
+    pub async fn billing_with(&self, opts: &RequestOptions) -> Result<Billing> {
+        // The same path with and without a key: billing has no /public variant.
+        let url = self.endpoint_url("billing", &[]);
+        let (data, id) = self
+            .send_url(reqwest::Method::GET, url, None, &HashMap::new(), opts, true)
+            .await?;
+        Ok(billing_from_json(data, id))
+    }
+
+    /// The endpoint URL: its `/public` variant when keyless and it has one.
     fn endpoint_url(&self, endpoint: &str, query: &[(String, String)]) -> String {
         let mut url = format!("{}/v1/{endpoint}", self.inner.base_url);
-        if self.is_keyless() {
+        if self.is_keyless() && PUBLIC_VARIANT.contains(&endpoint) {
             url.push_str("/public");
         }
         if !query.is_empty() {

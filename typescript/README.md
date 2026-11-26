@@ -53,9 +53,10 @@ const results = await keenable.search("post-training quantization results", {
 | `snippetMaxLength` | Cap the page text returned per result |
 | `maxResults` | How many results to return, 1 to 50 (default 10) |
 | `queryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price. Not sent when empty |
+| `objective` | What the search is for, in two or three sentences (up to 1,000 characters); the ranker scores results for it together with the query (retrieval reads only the query), same price. Not sent when empty |
 | `mode` | Search mode: `"pro"` (default) does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops |
 | `disableCards` | `true` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). Default `false`, which is not sent; a non-boolean throws `KeenableInvalidRequestError`. In the next release after 0.1.4 |
+| `moderation` | Filter unsafe results: `"moderate"` or `"strict"`. Unset, the default, is no moderation and is not sent. Works in `"pro"` and `"realtime"` modes, and not when the query is a URL (the API answers 400) |
 | `signal` | An `AbortSignal` to cancel the request |
 
 ### Excluding domains
@@ -141,28 +142,67 @@ results.cited().forEach((result, index) => {
 });
 ```
 
-## Read a full page
+## Read full pages
 
 ```ts
-const page = await keenable.fetch("https://cerebras.ai/chip");
+const response = await keenable.fetch(["https://cerebras.ai/chip", "https://cerebras.ai/blog"]);
 
-console.log(page.title);
-console.log(page.content); // markdown, boilerplate stripped
-console.log(page.toContext()); // same citable block shape as search results
+for (const page of response.results) {
+  if (page.error) {
+    console.log(page.url, page.error.code);
+    continue;
+  }
+  console.log(page.title);
+  console.log(page.content); // markdown, boilerplate stripped
+  console.log(page.toContext()); // same citable block shape as search results
+}
 ```
 
-`fetch()` takes three options (`FetchOptions`), next to the per-request ones. They ship in the next release after 0.1.4, so the version on npm doesn't have them yet:
-
-```ts
-const capped = await keenable.fetch("https://cerebras.ai/chip", { maxChars: 5000, live: true });
-const answer = await keenable.fetch("https://cerebras.ai/chip", { prompt: "List the chip's specs" });
-```
+`fetch()` sends one `POST /v1/fetch`. `results[i]` is for `urls[i]`; a URL
+that failed has `error` set instead of throwing. `FetchOptions`, next to the
+per-request ones, are sent only when set (the API checks their values):
 
 | Option | What it does |
 |---|---|
-| `maxChars` | Cap the characters of content returned, a positive integer. The API default is 50000; `page.truncated` and `page.totalChars` say whether the page was cut |
-| `live` | `true` fetches the page from its source now instead of reading Keenable's indexed copy. Default `false` |
-| `prompt` | An extraction instruction, up to 2000 characters. `page.content` is then only the model's output for it, not the page |
+| `maxChars` | The most characters of content per page. The API default is 50000 |
+| `prompt` | Up to 2,000 characters; each page's `content` is then only an LLM's answer to it |
+| `schema` | A JSON Schema; each page's answer is in `page.structured` |
+| `links` | The most links per page to return, in `page.links` |
+| `images` | The most images per page to return, in `page.images` |
+| `maxAgeHours` | Use a stored copy only if younger than this many hours; `0` reads every page live; `-1` reads only the stored copy, never the live page (no stored copy: a 404 error entry) |
+
+## Billing
+
+```ts
+const billing = await keenable.billing();
+for (const price of billing.prices) {
+  console.log(price.sku, price.unitPrice.amount, price.unitPrice.currency);
+}
+if (billing.account) {
+  // null without an API key
+  console.log("available:", billing.account.balance.available.amount);
+}
+```
+
+`billing()` reads `GET /v1/billing`: read-only and free, with or without a key.
+Without one, `prices` are the public list prices and `account` is `null`. With
+one, `prices` are your organization's (with `listUnitPrice` and `source`,
+`"list"` or `"contract"`), and `account` holds the available balance and
+`billingUrl`, the console page for adding funds. Amounts are numbers in US
+dollars (`Money.amount`, such as `0.004`, up to nine decimal places, negative
+for an account in debt). `Money.amountDecimal` (the API's `amount_decimal`) is
+the same amount as an exact decimal string (`"0.004"`); add amounts with it,
+not with the float, when they must match a bill: with a decimal library, or as
+BigInt nano-dollars:
+
+```ts
+const nanos = (d: string) => {
+  const [whole, fraction = ""] = d.replace("-", "").split(".");
+  const n = BigInt(whole! + fraction.padEnd(9, "0"));
+  return d.startsWith("-") ? -n : n;
+};
+const total = billing.prices.reduce((sum, p) => sum + nanos(p.unitPrice.amountDecimal), 0n);
+```
 
 ## Tool calling
 
@@ -189,17 +229,25 @@ whichever the model picked and returns text ready for the `tool` message. Both
 tools render the same numbered, citable block, so the model can cite a fetched
 page the way it cites a search result.
 
-The model may set `site`, `exclude_domains`, `published_after` and
-`disable_cards` on search. The other filters stay on `search()` for you to set
-yourself.
+The model may set `site`, `exclude_domains`, `published_after`, `objective`,
+`disable_cards` and `moderation` on search. The other filters stay on
+`search()` for you to set yourself.
+
+On fetch the model sets `urls` (1 to 20) and may set `max_chars` (per page),
+`prompt` (applied to every page) and `max_age_hours` (0 reads every page
+live, -1 only the stored copy), as on the hosted MCP tool. A call without
+`urls` is an invalid request. Each page comes back as its own numbered block. A URL
+that failed while others were read becomes a `[n] <url> - failed: <reason>`
+block; `runToolCall` throws its error only when no URL could be read.
 
 ## Monitors
 
-A monitor is a standing search: it watches the web for a topic and hands over
-every new page that matches, by webhook, in scheduled runs, or when you poll
-it. Monitors need an API key (`KEENABLE_API_KEY`); without one, every call
-throws `KeenableAuthError` with `code === "missing_api_key"` and sends nothing.
-An organization can have 100 active monitors.
+A search monitor is a standing search: it watches the web for a topic and
+hands over every new result that matches, by webhook, in scheduled runs, or when
+you poll it. A page monitor (`type: "page"`) reads one page on a schedule and
+reports the changes worth telling. Monitors need an API key
+(`KEENABLE_API_KEY`); without one, every call throws `KeenableAuthError` with
+`code === "missing_api_key"` and sends nothing. An organization can have 100 active monitors.
 
 ```ts
 import { Keenable } from "keenable";
@@ -208,24 +256,51 @@ const keenable = new Keenable();
 const monitor = await keenable.monitors.create({
   search: { query: "new open-weights LLM releases", maxResults: 20 },
   schedule: { type: "cron", value: "0 9 * * 1-5", timezone: "Europe/Paris" },
-  webhook: { url: "https://example.com/keenable", events: ["monitor.hit"] },
+  webhook: { url: "https://example.com/keenable" },
   metadata: { team: "research" },
 });
 const secret = monitor.webhook?.secret; // whsec_..., returned by create() only
 
-const pages = await keenable.monitors.pages(monitor.id, { minImportance: 4 });
-for (const page of pages.data) console.log(page.importance, page.title, page.url);
+const results = await keenable.monitors.results(monitor.id, { minImportance: 4 });
+for (const result of results.data) console.log(result.importance, result.title, result.url);
 ```
+
+A page monitor watches one page, here a pricing page every 6 hours:
+
+```ts
+const pricing = await keenable.monitors.create({
+  type: "page",
+  page: {
+    url: "https://example.com/pricing",
+    watchFor: "plan prices and new plans",
+    sensitivity: "meaningful", // or "any": every change that is not cosmetic
+  },
+  schedule: { type: "interval", value: "6h" },
+});
+const runs = await keenable.monitors.runs(pricing.id);
+for (const run of runs.data) {
+  if (run.changes?.notified) console.log(run.changes.summary, run.changes.items);
+}
+const versions = await keenable.monitors.versions(pricing.id, { limit: 10 });
+for (const version of versions.data) console.log(version.version, version.fetchedAt, version.diff?.added);
+```
+
+Schedules: `cron` (runs at least 10 minutes apart, in `timezone`), `interval`
+(`"10m"` to `"90d"`) or `once`. Without one, a search monitor runs only on
+`trigger()` and a page monitor every hour. The API checks the schedule and the
+`outputSchema`: one that breaks a rule throws `KeenableAPIError` with status
+400, `code === "invalid_request"` and a message that names the rule.
 
 | Method | What it does |
 |---|---|
-| `create({ search, name, schedule, outputSchema, webhook, metadata, idempotencyKey })` | Make a monitor (`POST /v1/monitors`) |
+| `create({ type, search, page, name, schedule, outputSchema, webhook, metadata, idempotencyKey })` | Make a search monitor (`search`) or a page monitor (`type: "page"`, `page`) (`POST /v1/monitors`) |
 | `list({ status, name, metadata, limit, cursor })` / `listAll(...)` | One page of monitors / an async iterator over all of them |
-| `get(id)`, `update(id, fields)`, `delete(id)` | Read, change (only the fields set; `null` removes the schedule, webhook or output schema), delete |
+| `get(id)`, `update(id, fields)`, `delete(id)` | Read, change (only the fields set; `search`, `page` and `webhook` are merged; `null` removes the schedule, webhook or output schema), delete |
 | `pause(id)`, `resume(id)` | `update(id, { status: "paused" / "active" })` |
 | `trigger(id)` | Start a run now; returns the queued `MonitorRun` |
 | `runs(id, { limit, cursor })`, `run(id, runId)` | A monitor's runs |
-| `pages(id, { limit, cursor, minImportance })` | The pages it accepted, newest first, one per story |
+| `results(id, { limit, cursor, minImportance })` | The results a search monitor accepted, newest first, one per story (`GET /v1/monitors/{id}/results`) |
+| `versions(id, { limit, cursor })` | A page monitor's history, newest first: each version whose text changed, with its `diff` |
 | `deliveries(id, { limit, cursor })` | Webhook events of the last 7 days, with attempts and errors |
 | `stats()` | Counts by status and by kind of schedule |
 | `bulk(action, { ids, filter, limit, dryRun })` | Pause, resume or delete many; a dry run unless `dryRun: false` |
@@ -234,6 +309,14 @@ Every call also takes `signal`, `timeoutMs`, `maxRetries` and `headers`. Reads
 and deletes are retried like a search; `create()` sends an `Idempotency-Key`
 (yours, or a new one per call), so its retries cannot make a second monitor;
 `update()`, `trigger()` and `bulk()` are retried only on a 429.
+
+A `Monitor` has `type` (`"search"` or `"page"`), `search` (null for a page
+monitor), `page` (null for a search monitor), `disabledReason` (`code`
+`runs_failed`, `webhook_unreachable` or `data_policy` (a page monitor whose organization turned on zero data retention), while it is
+disabled). A completed `MonitorRun`
+has, for a page monitor, `changes`
+(`changed`, `notified`, `baseline`, `version`, `source`, `summary`, `items`,
+`diff`). With an output schema, `output` has `structured`, `fresh` and `error`.
 
 ### Verify webhooks
 
@@ -245,7 +328,8 @@ import { verifyWebhook, WebhookVerificationError } from "keenable";
 
 try {
   const event = await verifyWebhook(rawBody, request.headers, secret);
-  if (event.type === "monitor.hit") console.log(event.data.result?.url);
+  if (event.type === "monitor.result.found") console.log(event.data.result?.url);
+  if (event.type === "monitor.page.changed") console.log(event.data.run?.changes?.summary);
 } catch (error) {
   if (error instanceof WebhookVerificationError) return new Response(null, { status: 400 });
   throw error;
@@ -338,12 +422,14 @@ const keenable = new Keenable({
   defaultHeaders: { "X-Team": "search" },
 });
 await keenable.search("wafer scale engine", { maxRetries: 0 }); // no retries for this call
-await keenable.fetch("https://example.com", { timeoutMs: 60_000, headers: { "X-Trace": "abc" } });
+await keenable.fetch(["https://example.com"], { timeoutMs: 60_000, headers: { "X-Trace": "abc" } });
 ```
 
 Every call takes `signal`, `timeoutMs`, `maxRetries` and `headers`, which
 override the client's settings for that call. Results carry `requestId` (quote
-it when reporting a problem). Redirects are never followed, so the API key
+it when reporting a problem). A search response's `warnings` lists what the
+request should change, such as a deprecated parameter it used; it is empty
+otherwise. Redirects are never followed, so the API key
 cannot leak to another host.
 
 ## Configuration

@@ -1,6 +1,6 @@
 //! What `search` and `fetch` return, and the citable block they render.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::context_clean::clean_context_text;
@@ -51,13 +51,118 @@ pub struct SearchResponse {
     pub results: Vec<SearchResult>,
     /// The API's id for this request. Quote it when reporting a problem.
     pub request_id: Option<String>,
+    /// What the request should change, such as a deprecated parameter it
+    /// used; the request was still served. Empty when the API sent none.
+    pub warnings: Vec<SearchWarning>,
+    /// What the search cost and, with a key, the balance left after it.
+    /// `None` when the API sent none, as on keyless calls.
+    pub usage: Option<Usage>,
     /// The unmodified JSON body.
     #[serde(skip)]
     pub raw: Map<String, Value>,
 }
 
-/// A URL fetched by [`Client::fetch`](crate::Client::fetch), with its main
-/// content as markdown.
+/// Something in a search request to change, such as a deprecated parameter.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct SearchWarning {
+    /// The kind of warning, such as `deprecated_parameter`.
+    pub code: String,
+    /// A JSON pointer to the request parameter, such as `/safety_mode`.
+    pub path: String,
+    /// What to change and by when.
+    pub message: String,
+}
+
+/// What [`Client::fetch`](crate::Client::fetch) returns: `results[i]` is for
+/// `urls[i]`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct FetchResponse {
+    /// One page per URL asked for.
+    pub results: Vec<Page>,
+    /// The API's id for this request. Quote it when reporting a problem.
+    pub request_id: Option<String>,
+    /// The unmodified JSON body.
+    #[serde(skip)]
+    pub raw: Map<String, Value>,
+}
+
+/// Why one URL of a fetch failed, as the API sent it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct FetchError {
+    /// The HTTP status this URL failed with.
+    pub status: u16,
+    /// The API's short error title.
+    pub error: String,
+    /// The API's machine-readable reason.
+    pub code: Option<String>,
+    /// The error's category.
+    #[serde(rename = "type")]
+    pub error_type: Option<String>,
+    /// The API's message.
+    pub message: Option<String>,
+    /// One sentence on what to do next.
+    pub fix: Option<String>,
+    /// Whether trying this URL again can succeed.
+    pub retryable: Option<bool>,
+}
+
+/// A link on a fetched page.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct PageLink {
+    /// Where the link goes.
+    pub url: String,
+    /// The link's text.
+    pub text: Option<String>,
+}
+
+/// An image on a fetched page.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct PageImage {
+    /// The image URL.
+    pub url: String,
+    /// The image's alt text.
+    pub alt: Option<String>,
+}
+
+/// Why the answer for [`FetchOptions::schema`](crate::FetchOptions::schema)
+/// could not be made.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct AnswerError {
+    /// The machine-readable reason.
+    pub code: String,
+    /// What went wrong.
+    pub message: String,
+}
+
+/// What reading one page cost.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct Usage {
+    /// The billed item.
+    pub sku: String,
+    /// How many were billed.
+    pub amount: u64,
+    /// The credits spent.
+    pub credits: f64,
+    /// `true` when paid credits were spent.
+    pub paid: bool,
+    /// The credits left after this page.
+    pub credits_remaining: Option<f64>,
+    /// What this page cost, in US dollars. `None` when the API did not send it.
+    pub cost: Option<Money>,
+    /// The organization's balance after this page, in US dollars. `None` when
+    /// the API did not send it.
+    pub balance: Option<Money>,
+}
+
+/// One result of [`Client::fetch`](crate::Client::fetch): a page as markdown,
+/// or [`Page::error`] when that URL failed.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct Page {
@@ -75,15 +180,31 @@ pub struct Page {
     /// When the page was published, as ISO 8601 UTC to the second, such as
     /// `2024-05-01T12:00:00Z`. `None` when unknown.
     pub published_at: Option<String>,
-    /// The API's id for this request. Quote it when reporting a problem.
-    pub request_id: Option<String>,
     /// `true` when the page was longer than `max_chars` and `content` was cut
     /// (cut content ends with "..."). `None` when the API did not say.
     pub truncated: Option<bool>,
     /// The length of the full extracted content in Unicode code points,
     /// before any cut. `None` when the API did not say.
     pub total_chars: Option<u64>,
-    /// The unmodified JSON body.
+    /// The page's preview image URL.
+    pub image: Option<String>,
+    /// The page's favicon URL.
+    pub favicon: Option<String>,
+    /// The page's links, when [`FetchOptions::links`](crate::FetchOptions::links) was set.
+    pub links: Option<Vec<PageLink>>,
+    /// The page's images.
+    pub images: Option<Vec<PageImage>>,
+    /// The answer for [`FetchOptions::schema`](crate::FetchOptions::schema).
+    pub structured: Option<Map<String, Value>>,
+    /// Why the answer for the schema could not be made.
+    pub answer_error: Option<AnswerError>,
+    /// `true` when an older stored copy was returned because a fresh read failed.
+    pub stale: Option<bool>,
+    /// What reading this page cost.
+    pub usage: Option<Usage>,
+    /// Set when this URL failed; the other fields are then empty.
+    pub error: Option<FetchError>,
+    /// The unmodified JSON object.
     #[serde(skip)]
     pub raw: Map<String, Value>,
 }
@@ -386,20 +507,51 @@ pub(crate) fn search_response_from_json(
             .collect(),
         _ => Vec::new(),
     };
+    let warnings = match data.get("warnings") {
+        Some(Value::Array(items)) => items
+            .iter()
+            .filter_map(|item| item.as_object())
+            .map(|obj| SearchWarning {
+                code: as_string(obj.get("code")),
+                path: as_string(obj.get("path")),
+                message: as_string(obj.get("message")),
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
     SearchResponse {
         query: non_blank(data.get("query")).unwrap_or_else(|| query.to_string()),
         mode: non_blank(data.get("mode")),
         results,
         request_id: non_blank(data.get("request_id")).or(header_request_id),
+        warnings,
+        usage: usage_from_json(data.get("usage")),
         raw: data,
     }
 }
 
-pub(crate) fn page_from_json(
-    data: Map<String, Value>,
-    fallback_url: &str,
-    header_request_id: Option<String>,
-) -> Page {
+/// Reads a usage object field by field, so one malformed field (such as a
+/// `cost` whose amount is a string) does not lose the others.
+pub(crate) fn usage_from_json(v: Option<&Value>) -> Option<Usage> {
+    let u = v?.as_object()?;
+    Some(Usage {
+        sku: as_string(u.get("sku")),
+        amount: safe_count(u.get("amount")).unwrap_or(0),
+        credits: as_amount(u.get("credits")),
+        paid: u.get("paid").and_then(Value::as_bool).unwrap_or(false),
+        credits_remaining: u
+            .get("credits_remaining")
+            .and_then(Value::as_f64)
+            .filter(|f| f.is_finite()),
+        cost: optional_money(u.get("cost")),
+        balance: optional_money(u.get("balance")),
+    })
+}
+
+pub(crate) fn page_from_json(data: Map<String, Value>, fallback_url: &str) -> Page {
+    fn typed<T: serde::de::DeserializeOwned>(v: Option<&Value>) -> Option<T> {
+        serde_json::from_value(v?.clone()).ok()
+    }
     Page {
         url: non_blank(data.get("url")).unwrap_or_else(|| fallback_url.to_string()),
         title: as_string(data.get("title")),
@@ -407,10 +559,39 @@ pub(crate) fn page_from_json(
         description: non_blank(data.get("description")),
         author: non_blank(data.get("author")),
         published_at: timestamp(data.get("published_at")),
-        request_id: non_blank(data.get("request_id")).or(header_request_id),
         truncated: data.get("truncated").and_then(Value::as_bool),
         total_chars: safe_count(data.get("total_chars")),
+        image: non_blank(data.get("image")),
+        favicon: non_blank(data.get("favicon")),
+        links: typed(data.get("links")),
+        images: typed(data.get("images")),
+        structured: data.get("structured").and_then(Value::as_object).cloned(),
+        answer_error: typed(data.get("answer_error")),
+        stale: data.get("stale").and_then(Value::as_bool),
+        usage: usage_from_json(data.get("usage")),
+        error: data
+            .get("error")
+            .and_then(Value::as_object)
+            .map(fetch_error),
         raw: data,
+    }
+}
+
+/// A per-URL error from whatever fields it has, so a failed URL never reads
+/// as a successful page.
+fn fetch_error(e: &Map<String, Value>) -> FetchError {
+    FetchError {
+        status: e
+            .get("status")
+            .and_then(Value::as_u64)
+            .and_then(|s| u16::try_from(s).ok())
+            .unwrap_or(0),
+        error: as_string(e.get("error")),
+        code: non_blank(e.get("code")),
+        error_type: non_blank(e.get("type")),
+        message: non_blank(e.get("message")),
+        fix: non_blank(e.get("fix")),
+        retryable: e.get("retryable").and_then(Value::as_bool),
     }
 }
 
@@ -436,6 +617,8 @@ mod tests {
             mode: None,
             results,
             request_id: None,
+            warnings: Vec::new(),
+            usage: None,
             raw: Map::new(),
         }
     }
@@ -488,6 +671,62 @@ mod tests {
     }
 
     #[test]
+    fn reads_the_cost_and_balance_in_usage() {
+        let data = json!({
+            "url": "https://example.com", "title": "Example Domain", "content": "# Example Domain",
+            "usage": {
+                "sku": "fetch", "amount": 1, "credits": 1.0, "paid": true, "credits_remaining": 11998.0,
+                "cost": {"amount": 0.004, "amount_decimal": "0.004", "currency": "usd"},
+                "balance": {"amount": 47.992, "amount_decimal": "47.992", "currency": "usd"}
+            }
+        });
+        let page = page_from_json(data.as_object().unwrap().clone(), "https://example.com");
+        let usage = page.usage.expect("usage");
+        assert_eq!(
+            usage.cost,
+            Some(Money {
+                amount: 0.004,
+                amount_decimal: "0.004".into(),
+                currency: "usd".into()
+            })
+        );
+        assert_eq!(
+            usage.balance,
+            Some(Money {
+                amount: 47.992,
+                amount_decimal: "47.992".into(),
+                currency: "usd".into()
+            })
+        );
+
+        let older = json!({"url": "https://example.com", "usage": {"sku": "fetch", "amount": 1, "credits": 1.0, "paid": false}});
+        let usage = page_from_json(older.as_object().unwrap().clone(), "https://example.com")
+            .usage
+            .expect("usage");
+        assert_eq!((usage.cost, usage.balance), (None, None));
+    }
+
+    #[test]
+    fn reads_a_whole_usage_amount_in_float_form() {
+        let amount = |v: Value| {
+            usage_from_json(Some(&json!({ "amount": v })))
+                .expect("usage")
+                .amount
+        };
+        assert_eq!(amount(json!(1.0)), 1);
+        assert_eq!(amount(json!(3)), 3);
+        assert_eq!(
+            amount(json!(9_007_199_254_740_991.0)),
+            9_007_199_254_740_991
+        );
+        assert_eq!(amount(json!(1.5)), 0);
+        assert_eq!(amount(json!(-1.0)), 0);
+        assert_eq!(amount(json!(-1)), 0);
+        assert_eq!(amount(json!(1e300)), 0);
+        assert_eq!(amount(json!("1")), 0);
+    }
+
+    #[test]
     fn cuts_a_page_at_the_budget() {
         let page = page_from_json(
             json!({"title": "T", "content": "abcdefghij  "})
@@ -495,7 +734,6 @@ mod tests {
                 .unwrap()
                 .clone(),
             "https://e.com/",
-            None,
         );
         let opts = ContextOptions {
             max_chars: 30,
@@ -516,5 +754,184 @@ mod tests {
         assert_eq!(timestamp(Some(&json!(0.5))), None);
         assert_eq!(timestamp(Some(&json!(253402300800_u64))), None);
         assert_eq!(timestamp(Some(&json!(true))), None);
+    }
+}
+
+// ---- Billing ----------------------------------------------------------------
+
+/// An amount of money, as the API sent it.
+///
+/// Deserializing reads it as the client does: a missing or malformed
+/// `amount_decimal` (an older server) is `amount` written as a decimal.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(from = "Value")]
+#[non_exhaustive]
+pub struct Money {
+    /// The amount in the currency's major unit (US dollars), such as
+    /// `0.004`, with up to nine decimal places. Negative for an account in
+    /// debt. `0.0` when the API sent no finite number. For display: add
+    /// amounts with `amount_decimal`.
+    pub amount: f64,
+    /// The same amount as an exact decimal string, such as `"0.004"`: up to
+    /// nine decimal places, no trailing zeros, no exponent, `-` when negative,
+    /// `"0"` for zero. Add amounts exactly with a decimal type (or as `i128`
+    /// nano-dollars), never by summing `amount`. From an older server that
+    /// sends none, `amount` written this way.
+    pub amount_decimal: String,
+    /// The lowercase ISO 4217 code, such as `"usd"`.
+    pub currency: String,
+}
+
+/// The price of one SKU, from [`Client::billing`](crate::Client::billing).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct BillingPrice {
+    /// What is billed, such as `search.pro` or `fetch.live`.
+    pub sku: String,
+    /// What one unit is: `search`, `result` or `page`.
+    pub unit: String,
+    /// The price of one unit.
+    pub unit_price: Money,
+    /// The public list price of one unit. Only with an API key.
+    pub list_unit_price: Option<Money>,
+    /// `list` when `unit_price` is the list price, `contract` when the
+    /// organization has its own. Only with an API key.
+    pub source: Option<String>,
+}
+
+/// What the organization can still spend.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct BillingBalance {
+    /// The unused free allowance for this month plus the purchased balance.
+    pub available: Money,
+}
+
+/// The organization's balance.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct BillingAccount {
+    /// What the organization can still spend.
+    pub balance: BillingBalance,
+    /// The console page where a person can add funds.
+    pub billing_url: String,
+    /// When this was read (ISO 8601).
+    pub as_of: String,
+}
+
+/// What [`Client::billing`](crate::Client::billing) returns: prices, and the
+/// account with an API key.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct Billing {
+    /// The public list prices without an API key. With one, your
+    /// organization's prices; a SKU without a price on your plan is left out.
+    pub prices: Vec<BillingPrice>,
+    /// The balance. `None` without an API key.
+    pub account: Option<BillingAccount>,
+    /// The API's id for this request. Quote it when reporting a problem.
+    pub request_id: Option<String>,
+    /// The unmodified JSON body.
+    #[serde(skip)]
+    pub raw: Map<String, Value>,
+}
+
+/// A field of an object that may be missing.
+fn field<'a>(object: Option<&'a Map<String, Value>>, key: &str) -> Option<&'a Value> {
+    object.and_then(|o| o.get(key))
+}
+
+fn objects(v: Option<&Value>) -> Vec<&Map<String, Value>> {
+    match v {
+        Some(Value::Array(items)) => items.iter().filter_map(Value::as_object).collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn as_amount(v: Option<&Value>) -> f64 {
+    v.and_then(Value::as_f64)
+        .filter(|f| f.is_finite())
+        .unwrap_or(0.0)
+}
+
+/// `^-?[0-9]+(\.[0-9]{1,9})?$`: what the API sends as `amount_decimal`.
+fn is_decimal(s: &str) -> bool {
+    let unsigned = s.strip_prefix('-').unwrap_or(s);
+    let (whole, fraction) = match unsigned.split_once('.') {
+        Some((whole, fraction)) => (whole, Some(fraction)),
+        None => (unsigned, None),
+    };
+    let digits = |part: &str| part.bytes().all(|b| b.is_ascii_digit());
+    !whole.is_empty()
+        && digits(whole)
+        && match fraction {
+            Some(f) => (1..=9).contains(&f.len()) && digits(f),
+            None => true,
+        }
+}
+
+/// The API's exact decimal string when it is one, else `amount` as one: at
+/// most nine decimal places, trailing zeros trimmed, `"0"` for zero (an older
+/// server sends no `amount_decimal`).
+fn amount_decimal(v: Option<&Value>, amount: f64) -> String {
+    if let Some(s) = v.and_then(Value::as_str).filter(|s| is_decimal(s)) {
+        return s.to_string();
+    }
+    let fixed = format!("{amount:.9}");
+    let text = fixed.trim_end_matches('0').trim_end_matches('.');
+    if text == "-0" { "0" } else { text }.to_string()
+}
+
+/// A Money; anything but an object reads as `{}`.
+fn money(v: Option<&Value>) -> Money {
+    let m = v.and_then(Value::as_object);
+    let amount = as_amount(field(m, "amount"));
+    Money {
+        amount,
+        amount_decimal: amount_decimal(field(m, "amount_decimal"), amount),
+        currency: as_string(field(m, "currency")),
+    }
+}
+
+/// A Money when the value is an object, else `None`.
+fn optional_money(v: Option<&Value>) -> Option<Money> {
+    v.filter(|v| v.is_object()).map(|v| money(Some(v)))
+}
+
+impl From<Value> for Money {
+    fn from(v: Value) -> Self {
+        money(Some(&v))
+    }
+}
+
+pub(crate) fn billing_from_json(
+    data: Map<String, Value>,
+    header_request_id: Option<String>,
+) -> Billing {
+    let prices = objects(data.get("prices"))
+        .into_iter()
+        .map(|p| BillingPrice {
+            sku: as_string(p.get("sku")),
+            unit: as_string(p.get("unit")),
+            unit_price: money(p.get("unit_price")),
+            list_unit_price: optional_money(p.get("list_unit_price")),
+            source: non_blank(p.get("source")),
+        })
+        .collect();
+    let account = data.get("account").and_then(Value::as_object).map(|a| {
+        let balance = a.get("balance").and_then(Value::as_object);
+        BillingAccount {
+            balance: BillingBalance {
+                available: money(field(balance, "available")),
+            },
+            billing_url: as_string(a.get("billing_url")),
+            as_of: as_string(a.get("as_of")),
+        }
+    });
+    Billing {
+        prices,
+        account,
+        request_id: non_blank(data.get("request_id")).or(header_request_id),
+        raw: data,
     }
 }

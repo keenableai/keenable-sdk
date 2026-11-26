@@ -127,19 +127,52 @@ with a caller's own `httpx` client, `http.Client` or `fetch` too.
 ## Success bodies (`responses`)
 
 A body that is not a JSON object is an API error and is not retried. Required
-text fields (`title`, `url`, `snippet`, `content`) are the string sent or `""`;
-optional ones are a string with more than whitespace or null. A date
-(`published_at`, `acquired_at`) is such a string, kept as sent, or a number of
-Unix seconds, which fetch sends: it becomes ISO 8601 UTC to the second,
-`2024-05-01T12:00:00Z`, with any fraction dropped. A number below 1, past
-`253402300799` (the end of the year 9999, so a millisecond value too) or not
-finite is null, as is a boolean or any other type. A page's `truncated` is a
-boolean and its `total_chars` an integer from 0 to 2^53 - 1, else null. A search echoes
-the query the API sent back when it is such a string, else the query asked; a
-page's `url` likewise falls back to the URL asked for. The request id is the
-body's, else the trimmed `X-Request-Id` header.
+text fields (`title`, `url`, `snippet`) are the string sent or `""`; optional
+ones are a string with more than whitespace or null. A date (`published_at`,
+`acquired_at`) is such a string, kept as sent, or a number of Unix seconds: it
+becomes ISO 8601 UTC to the second, `2024-05-01T12:00:00Z`, with any fraction
+dropped. A number below 1, past `253402300799` (the end of the year 9999, so a
+millisecond value too) or not finite is null, as is a boolean or any other
+type. A search echoes the query the API sent back when it is such a string,
+else the query asked. The request id is the body's, else the trimmed
+`X-Request-Id` header.
+`warnings` is the body's list, each object entry kept as `code`, `path` and
+`message`, each the string sent or `""`; any other entry is skipped, and a
+missing or non-list `warnings` is empty.
 
-## Arguments (`options`, `search_body`, `fetch_params`)
+## Billing (`billing`)
+
+`billing()` sends `GET /v1/billing` with no body and no query. The path is the
+same with and without a key: billing has no `/public` variant, and the key is
+sent only when the client has one. The body is read like the other success
+bodies (not a JSON object is an API error), with these fields:
+
+- Required text (`sku`, `unit`, `billing_url`, `as_of`, and a Money's
+  `currency`) is the string sent or `""`.
+- A Money's `amount` is a number in US dollars (Python `float`, TypeScript
+  `number`, Go `float64`, Rust `f64`): the JSON number sent, with its sign and
+  fraction, when it is finite, else `0`. This is the rule for every required
+  number: a wrong type reads as `0`, never parsed or coerced. A string (an older
+  server's `"0.004"`), a boolean, null, a list or an object is `0`, and so is a
+  number too large for a double (`1e999`), which drops only that amount.
+- A Money's `amount_decimal` is the same amount as an exact decimal string,
+  for adding amounts without float error. It is the string sent when it
+  matches `^-?[0-9]+(\.[0-9]{1,9})?$` (ASCII digits, nothing before or after).
+  Otherwise (an older server sends none, or a wrong type) it is `amount`
+  above written in fixed point with nine decimal places, correctly rounded,
+  then with trailing zeros and a bare trailing point removed, and `-0` written
+  as `0`: `0.004` is `"0.004"`, `100` is `"100"`, `0.30000000000000004` is
+  `"0.3"`, `0.0000000004` is `"0"`.
+- A required Money (`unit_price`, `available`) that is not an object reads as
+  `{}`. `list_unit_price` is a Money when an object, else null; `source` is a
+  string with more than whitespace, else null.
+- `account` is null unless it is an object; a `balance` that is not an object
+  reads as `{}`. Fields an older server sent (`balance.purchased`, `usage`) are
+  ignored.
+- `prices` keeps its object entries and is empty when not a list.
+- The request id follows the success-body rule above.
+
+## Arguments (`options`, `search_body`)
 
 - `max_retries` is an integer of 0 or more; unset means the default (client) or
   the client's (call).
@@ -168,12 +201,9 @@ body's, else the trimmed `X-Request-Id` header.
   default, so it is not sent, and unset (or `""`) is not sent either. Any other
   value, such as the string `"true"` or `1`, is the invalid-request error and
   sends nothing (Go's `bool` cannot hold one).
-- fetch() sends its options as query parameters next to `url`, and only the
-  ones that are set: `max_chars` as the number's digits, `live` as `true` and
-  only when it is true (the API reads `true` and `false` and nothing else, and
-  an absent `live` is false), and `prompt` as given. An empty prompt is unset.
-  The URL is checked first (`fetch_url`), so a refused URL sends nothing
-  whatever the options.
+- `moderation` is sent as given (`moderate` or `strict`); the SDKs do not
+  check it, and the API rejects any other value. `""` is unset, as for any
+  other string option.
 
 ## The whole-attempt deadline (`deadline`)
 
@@ -204,7 +234,9 @@ invalid-request error. A list filter (`exclude_domains`) is sent as the model
 gave it for the API to judge: a lone string is wrapped, not split; `""` and
 null are unset; anything else, an empty list or a blank entry included, is
 sent unchanged. `disable_cards` is sent only as `true`; `false`, `""` and null
-are unset, and any other value is the invalid-request error. Arguments JSON
+are unset, and any other value is the invalid-request error. `moderation` is
+sent as the model gave it for the API to judge; `""` and null are unset.
+Arguments JSON
 cannot encode (`NaN`, `Infinity`) are the invalid-request error and send
 nothing.
 

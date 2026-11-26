@@ -21,6 +21,7 @@ export {
   Page,
   SearchResponse,
 } from "./client.js";
+export type { FetchError, FetchResponse } from "./client.js";
 export {
   KeenableAPIError,
   KeenableAuthError,
@@ -37,12 +38,18 @@ export type { KeenableAPIErrorDetails, KeenableErrorType, RateLimitInfo } from "
 export { FETCH_TOOL, SEARCH_TOOL, TOOLS, runToolCall } from "./tools.js";
 export type { ToolDefinition } from "./tools.js";
 export type {
+  Billing,
+  BillingAccount,
+  BillingPrice,
+  Money,
   KeenableOptions,
   FetchOptions,
   RequestOptions,
   SearchOptions,
   SearchResult,
+  SearchWarning,
   ToContextOptions,
+  Usage,
 } from "./types.js";
 export { Monitors } from "./monitors.js";
 export type {
@@ -53,29 +60,43 @@ export type {
   ListPage,
   Monitor,
   MonitorBulkParams,
+  MonitorCreateCommonParams,
   MonitorCreateParams,
   MonitorDelivery,
+  MonitorDiff,
+  MonitorDisabledReason,
   MonitorEvent,
   MonitorList,
   MonitorListParams,
   MonitorPageParams,
-  MonitorPagesParams,
+  MonitorPageSensitivity,
+  MonitorPageTarget,
+  MonitorPageCreateParams,
+  MonitorPageTargetParams,
   MonitorResult,
+  MonitorResultsParams,
   MonitorResultChange,
   MonitorRun,
+  MonitorRunChanges,
   MonitorRunOutput,
+  MonitorRunOutputError,
   MonitorRunStatus,
   MonitorSchedule,
   MonitorScheduleParams,
   MonitorSearch,
+  MonitorSearchCreateParams,
   MonitorSearchParams,
   MonitorStats,
   MonitorStatus,
+  MonitorType,
   MonitorUpdateParams,
+  MonitorVersion,
+  MonitorVersionsParams,
   MonitorWebhook,
   MonitorWebhookParams,
-  PageList,
+  ResultList,
   RunList,
+  VersionList,
 } from "./monitors.js";
 export { DEFAULT_WEBHOOK_TOLERANCE_SECONDS, verifyWebhook } from "./webhooks.js";
 export type {

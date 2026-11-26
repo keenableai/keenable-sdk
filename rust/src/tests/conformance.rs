@@ -12,7 +12,7 @@ use super::server::{deadline_server, start, Reply, Script, Server};
 use super::*;
 use crate::retry::retry_after_at;
 use crate::test_hooks::{start_recording, take_waits};
-use crate::{Error, FetchOptions, Options, RequestOptions, SearchOptions};
+use crate::{Client, Error, FetchOptions, Options, RequestOptions, SearchOptions};
 
 fn fixture() -> Value {
     load_fixture("conformance.json")
@@ -34,7 +34,10 @@ fn skipped(case: &Value) -> Option<&str> {
 fn ok_both() -> Script {
     Script::ByPath {
         search: Reply::new(200, r#"{"query":"q","results":[]}"#),
-        fetch: Reply::new(200, r#"{"url":"https://e.com","content":"c"}"#),
+        fetch: Reply::new(
+            200,
+            r#"{"results":[{"url":"https://e.com","content":"c"}]}"#,
+        ),
     }
 }
 
@@ -49,6 +52,18 @@ fn reply_for(case: &Value) -> Reply {
         }
     }
     reply
+}
+
+/// Every number as an f64, so an amount of `-1.0` matches the fixture's `-1`.
+fn as_floats(v: &Value) -> Value {
+    match v {
+        Value::Number(n) => n.as_f64().map_or(Value::Null, Value::from),
+        Value::Array(items) => Value::Array(items.iter().map(as_floats).collect()),
+        Value::Object(m) => {
+            Value::Object(m.iter().map(|(k, v)| (k.clone(), as_floats(v))).collect())
+        }
+        other => other.clone(),
+    }
 }
 
 /// Fails with every failing case at once, so one run shows them all.
@@ -90,7 +105,7 @@ async fn fetch_url() {
         let server = start(ok_both()).await;
         let client = keyed(&server);
         let url = case["url"].as_str().unwrap();
-        let got = client.fetch(url).await;
+        let got = client.fetch([url]).await;
         let allowed = case["allowed"].as_bool().unwrap();
         let ok = if allowed {
             got.is_ok() && server.count() == 1
@@ -316,17 +331,16 @@ async fn responses() {
         let client = keyed(&server);
         let want = &case["expect"];
         let arg = case["arg"].as_str().unwrap();
-        let problem = if case["endpoint"] == "search" {
-            match (client.search(arg).await, want["error"].as_str()) {
-                (Err(e), Some(kind)) => {
-                    (!kind_matches(&e, kind) || server.count() != 1).then(|| format!("{e:?}"))
-                }
-                (Ok(r), None) => {
-                    let mut got = Map::new();
-                    got.insert("query".into(), r.query.clone().into());
-                    got.insert("mode".into(), r.mode.clone().into());
-                    got.insert("request_id".into(), r.request_id.clone().into());
-                    let results: Vec<Value> = r
+        let problem = match (client.search(arg).await, want["error"].as_str()) {
+            (Err(e), Some(kind)) => {
+                (!kind_matches(&e, kind) || server.count() != 1).then(|| format!("{e:?}"))
+            }
+            (Ok(r), None) => {
+                let mut got = Map::new();
+                got.insert("query".into(), r.query.clone().into());
+                got.insert("mode".into(), r.mode.clone().into());
+                got.insert("request_id".into(), r.request_id.clone().into());
+                let results: Vec<Value> = r
                         .results
                         .iter()
                         .map(|x| {
@@ -340,25 +354,69 @@ async fn responses() {
                             })
                         })
                         .collect();
-                    got.insert("results".into(), results.into());
-                    got.insert("error".into(), Value::Null);
-                    (Value::Object(got) != *want).then(|| format!("got {r:?}"))
-                }
-                (got, _) => Some(format!("{got:?}")),
+                got.insert("results".into(), results.into());
+                let warnings: Vec<Value> = r
+                    .warnings
+                    .iter()
+                    .map(|w| serde_json::json!({"code": w.code, "path": w.path, "message": w.message}))
+                    .collect();
+                got.insert("warnings".into(), warnings.into());
+                got.insert("usage".into(), serde_json::to_value(&r.usage).unwrap());
+                got.insert("error".into(), Value::Null);
+                (as_floats(&Value::Object(got)) != as_floats(want)).then(|| format!("got {r:?}"))
             }
+            (got, _) => Some(format!("{got:?}")),
+        };
+        if let Some(p) = problem {
+            failures.push(format!("{}: {p}, want {want}", name(case)));
+        }
+    }
+    report("responses", failures);
+}
+
+#[tokio::test]
+async fn billing() {
+    let fixture = fixture();
+    let mut failures = Vec::new();
+    for case in cases(&fixture, "billing") {
+        let server = start(Script::Replies(vec![reply_for(case)])).await;
+        let keyed_case = case["keyed"].as_bool().unwrap();
+        let client = Client::with_options(Options {
+            api_key: Some(if keyed_case { "k" } else { "" }.into()),
+            base_url: Some(server.base_url.clone()),
+            max_retries: Some(0),
+            ..Default::default()
+        })
+        .unwrap();
+        let want = &case["expect"];
+        let result = client.billing().await;
+        let seen = server.requests();
+        let sent_ok = seen.len() == 1
+            && seen[0].method == "GET"
+            && seen[0].path == want["path"].as_str().unwrap()
+            && seen[0].query.is_empty()
+            && seen[0].body.is_empty()
+            && seen[0].header("X-API-Key") == keyed_case.then_some("k");
+        let problem = if !sent_ok {
+            Some(format!(
+                "sent {:?}",
+                seen.iter()
+                    .map(|r| (
+                        r.method.clone(),
+                        r.path.clone(),
+                        r.header("X-API-Key").map(str::to_string)
+                    ))
+                    .collect::<Vec<_>>()
+            ))
         } else {
-            match (client.fetch(arg).await, want["error"].as_str()) {
-                (Err(e), Some(kind)) => {
-                    (!kind_matches(&e, kind) || server.count() != 1).then(|| format!("{e:?}"))
-                }
-                (Ok(p), None) => {
-                    let got = serde_json::json!({
-                        "error": null, "url": p.url, "title": p.title, "content": p.content,
-                        "description": p.description, "author": p.author,
-                        "published_at": p.published_at, "request_id": p.request_id,
-                        "truncated": p.truncated, "total_chars": p.total_chars,
-                    });
-                    (got != *want).then(|| format!("got {got}"))
+            match (result, want["error"].as_str()) {
+                (Err(e), Some(kind)) => (!kind_matches(&e, kind)).then(|| format!("{e:?}")),
+                (Ok(b), None) => {
+                    let mut got = serde_json::to_value(&b).unwrap();
+                    let request_id = got.as_object_mut().unwrap().remove("request_id");
+                    (as_floats(&got) != as_floats(&want["billing"])
+                        || request_id.as_ref() != Some(&want["request_id"]))
+                    .then(|| format!("got {got} with request id {request_id:?}"))
                 }
                 (got, _) => Some(format!("{got:?}")),
             }
@@ -367,7 +425,7 @@ async fn responses() {
             failures.push(format!("{}: {p}, want {want}", name(case)));
         }
     }
-    report("responses", failures);
+    report("billing", failures);
 }
 
 #[tokio::test]
@@ -487,6 +545,7 @@ async fn search_body() {
                 "snippet_max_length" => opts.snippet_max_length = v.as_u64().map(|n| n as u32),
                 "max_results" => opts.max_results = v.as_u64().map(|n| n as u32),
                 "disable_cards" => opts.disable_cards = v.as_bool().unwrap(),
+                "moderation" => opts.moderation = opt_string(v),
                 other => failures.push(format!("{}: no Rust mapping for {other}", name(case))),
             }
         }
@@ -508,45 +567,6 @@ fn only_body(server: &Server) -> Value {
         [one] => serde_json::from_slice(&one.body).unwrap_or(Value::Null),
         _ => Value::Null,
     }
-}
-
-#[tokio::test]
-async fn fetch_params() {
-    let fixture = fixture();
-    let mut failures = Vec::new();
-    for case in cases(&fixture, "fetch_params") {
-        if skipped(case).is_some() {
-            continue;
-        }
-        let mut opts = FetchOptions::default();
-        for (wire, v) in case["options"].as_object().unwrap() {
-            match wire.as_str() {
-                "max_chars" => opts.max_chars = v.as_u64().map(|n| n as u32),
-                "live" => opts.live = v.as_bool().unwrap(),
-                "prompt" => opts.prompt = opt_string(v),
-                other => failures.push(format!("{}: no Rust mapping for {other}", name(case))),
-            }
-        }
-        let server = start(ok_both()).await;
-        let got = keyed(&server)
-            .fetch_with(case["url"].as_str().unwrap(), &opts)
-            .await;
-        let seen = server.requests();
-        let mut sent = Map::new();
-        let mut twice = false;
-        if let [one] = seen.as_slice() {
-            if one.path != "/v1/fetch" {
-                failures.push(format!("{}: path {}", name(case), one.path));
-            }
-            for (k, v) in &one.query {
-                twice |= sent.insert(k.clone(), Value::String(v.clone())).is_some();
-            }
-        }
-        if got.is_err() || twice || Value::Object(sent.clone()) != case["sent"] {
-            failures.push(format!("{}: {:?} sent {sent:?}", name(case), got.err()));
-        }
-    }
-    report("fetch_params", failures);
 }
 
 #[tokio::test]
@@ -580,11 +600,12 @@ async fn fetch_options_do_not_bypass_the_url_refusal() {
     let server = start(ok_both()).await;
     let opts = FetchOptions {
         max_chars: Some(10),
-        live: true,
-        prompt: Some("p".into()),
+        max_age_hours: Some(0.0),
         ..Default::default()
     };
-    let got = keyed(&server).fetch_with("http://127.0.0.1/", &opts).await;
+    let got = keyed(&server)
+        .fetch_with(["http://127.0.0.1/"], &opts)
+        .await;
     assert!(is_invalid(&got) && server.count() == 0, "{got:?}");
 }
 

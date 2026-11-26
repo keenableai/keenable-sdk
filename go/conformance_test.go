@@ -94,6 +94,19 @@ type conformance struct {
 		Body     string            `json:"body"`
 		Expect   map[string]any    `json:"expect"`
 	} `json:"responses"`
+	Billing []struct {
+		Name    string            `json:"name"`
+		Keyed   bool              `json:"keyed"`
+		Status  int               `json:"status"`
+		Headers map[string]string `json:"headers"`
+		Body    string            `json:"body"`
+		Expect  struct {
+			Path      string  `json:"path"`
+			Error     *string `json:"error"`
+			RequestID *string `json:"request_id"`
+			Billing   any     `json:"billing"`
+		} `json:"expect"`
+	} `json:"billing"`
 	Options []struct {
 		Name   string            `json:"name"`
 		Option string            `json:"option"`
@@ -109,13 +122,6 @@ type conformance struct {
 		Sent    map[string]any    `json:"sent"`
 		Skip    map[string]string `json:"skip"`
 	} `json:"search_body"`
-	FetchParams []struct {
-		Name    string            `json:"name"`
-		URL     string            `json:"url"`
-		Options map[string]any    `json:"options"`
-		Sent    map[string]string `json:"sent"`
-		Skip    map[string]string `json:"skip"`
-	} `json:"fetch_params"`
 	ToolCall []struct {
 		Name      string         `json:"name"`
 		Arguments string         `json:"arguments"`
@@ -227,7 +233,7 @@ func TestConformanceFetchURL(t *testing.T) {
 	for _, tc := range loadConformance(t).FetchURL {
 		t.Run(tc.Name, func(t *testing.T) {
 			c, n := counted(t, nil, okBoth)
-			_, err := c.Fetch(context.Background(), tc.URL)
+			_, err := c.Fetch(context.Background(), []string{tc.URL})
 			if tc.Allowed {
 				if err != nil || n.Load() != 1 {
 					t.Fatalf("refused: err=%v requests=%d", err, n.Load())
@@ -448,15 +454,7 @@ func TestConformanceResponses(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			c, n := counted(t, nil, raw(tc.Status, tc.Body, headerList(tc.Headers)...))
 			want := tc.Expect
-			var (
-				result any
-				err    error
-			)
-			if tc.Endpoint == "search" {
-				result, err = c.Search(context.Background(), tc.Arg, nil)
-			} else {
-				result, err = c.Fetch(context.Background(), tc.Arg)
-			}
+			resp, err := c.Search(context.Background(), tc.Arg, nil)
 			if kind, ok := want["error"].(string); ok {
 				if err == nil || n.Load() != 1 {
 					t.Fatalf("err=%v requests=%d", err, n.Load())
@@ -467,20 +465,6 @@ func TestConformanceResponses(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if tc.Endpoint == "fetch" {
-				page := result.(*keenable.Page)
-				if page.URL != want["url"] || page.Title != want["title"] || page.Content != want["content"] ||
-					!ptrEqual(page.Description, optional(want["description"])) ||
-					!ptrEqual(page.Author, optional(want["author"])) ||
-					!ptrEqual(page.PublishedAt, optional(want["published_at"])) ||
-					page.RequestID != deref(optional(want["request_id"])) ||
-					!ptrEqual(page.Truncated, optionalOf[bool](want["truncated"])) ||
-					!ptrEqual(page.TotalChars, optionalInt(want["total_chars"])) {
-					t.Fatalf("got %+v, want %v", page, want)
-				}
-				return
-			}
-			resp := result.(*keenable.SearchResponse)
 			if resp.Query != want["query"] || !ptrEqual(resp.Mode, optional(want["mode"])) ||
 				resp.RequestID != deref(optional(want["request_id"])) {
 				t.Fatalf("got query %q mode %v request id %q, want %v", resp.Query, resp.Mode, resp.RequestID, want)
@@ -498,6 +482,94 @@ func TestConformanceResponses(t *testing.T) {
 					!ptrEqual(r.AcquiredAt, optional(w["acquired_at"])) {
 					t.Fatalf("result %d: got %+v, want %v", i, r, w)
 				}
+			}
+			warnings := want["warnings"].([]any)
+			if len(resp.Warnings) != len(warnings) {
+				t.Fatalf("got %d warnings, want %d", len(resp.Warnings), len(warnings))
+			}
+			for i, w := range warnings {
+				w := w.(map[string]any)
+				got := resp.Warnings[i]
+				if got.Code != w["code"] || got.Path != w["path"] || got.Message != w["message"] {
+					t.Fatalf("warning %d: got %+v, want %v", i, got, w)
+				}
+			}
+			if gotUsage, wantUsage := usageJSON(resp.Usage), want["usage"]; !reflect.DeepEqual(gotUsage, wantUsage) {
+				t.Fatalf("usage: got %#v, want %#v", gotUsage, wantUsage)
+			}
+		})
+	}
+}
+
+// usageJSON spells a Usage the way the cases do, with JSON number types.
+func usageJSON(u *keenable.Usage) any {
+	if u == nil {
+		return nil
+	}
+	money := func(m *keenable.Money) any {
+		if m == nil {
+			return nil
+		}
+		return map[string]any{"amount": m.Amount, "amount_decimal": m.AmountDecimal, "currency": m.Currency}
+	}
+	var remaining any
+	if u.CreditsRemaining != nil {
+		remaining = *u.CreditsRemaining
+	}
+	return map[string]any{
+		"sku": u.SKU, "amount": float64(u.Amount), "credits": u.Credits, "paid": u.Paid,
+		"credits_remaining": remaining, "cost": money(u.Cost), "balance": money(u.Balance),
+	}
+}
+
+func TestConformanceBilling(t *testing.T) {
+	for _, tc := range loadConformance(t).Billing {
+		t.Run(tc.Name, func(t *testing.T) {
+			var methods []string
+			reply := raw(tc.Status, tc.Body, headerList(tc.Headers)...)
+			h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				methods = append(methods, r.Method)
+				reply(w, r)
+			})
+			var c *keenable.Client
+			var seen *[]captured
+			if tc.Keyed {
+				key := "k"
+				c, seen = start(t, h, &keenable.Options{APIKey: &key})
+			} else {
+				c, seen = startKeyless(t, h, nil)
+			}
+			resp, err := c.Billing(context.Background(), nil)
+			req := one(t, seen)
+			if methods[0] != http.MethodGet || req.Path != tc.Expect.Path || len(req.Query) != 0 || len(req.Body) != 0 {
+				t.Fatalf("sent %s %s?%v with %d body bytes, want GET %s", methods[0], req.Path, req.Query, len(req.Body), tc.Expect.Path)
+			}
+			wantKey := ""
+			if tc.Keyed {
+				wantKey = "k"
+			}
+			if got := req.Header.Get("X-API-Key"); got != wantKey {
+				t.Fatalf("X-API-Key %q, want %q", got, wantKey)
+			}
+			if tc.Expect.Error != nil {
+				if err == nil {
+					t.Fatal("want an error")
+				}
+				assertKind(t, err, *tc.Expect.Error)
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resp.RequestID != deref(tc.Expect.RequestID) {
+				t.Fatalf("request id %q, want %v", resp.RequestID, tc.Expect.RequestID)
+			}
+			encoded, _ := json.Marshal(resp)
+			var got map[string]any
+			_ = json.Unmarshal(encoded, &got)
+			delete(got, "request_id")
+			if !reflect.DeepEqual(got, tc.Expect.Billing) {
+				t.Fatalf("got %s, want %v", encoded, tc.Expect.Billing)
 			}
 		})
 	}
@@ -635,6 +707,8 @@ func TestConformanceSearchBody(t *testing.T) {
 					opts.MaxResults = int(v.(float64))
 				case "disable_cards":
 					opts.DisableCards = v.(bool)
+				case "moderation":
+					opts.Moderation = str
 				default:
 					t.Fatalf("no Go mapping for %q", wire)
 				}
@@ -647,49 +721,6 @@ func TestConformanceSearchBody(t *testing.T) {
 			var sent map[string]any
 			if err := json.Unmarshal(one(t, seen).Body, &sent); err != nil {
 				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(sent, tc.Sent) {
-				t.Fatalf("sent %v, want %v", sent, tc.Sent)
-			}
-		})
-	}
-}
-
-func TestConformanceFetchParams(t *testing.T) {
-	for _, tc := range loadConformance(t).FetchParams {
-		t.Run(tc.Name, func(t *testing.T) {
-			skipKnown(t, tc.Name)
-			if why, ok := tc.Skip["go"]; ok {
-				t.Skip(why)
-			}
-			opts := &keenable.FetchOptions{}
-			for wire, v := range tc.Options {
-				switch wire {
-				case "max_chars":
-					opts.MaxChars = int(v.(float64))
-				case "live":
-					opts.Live = v.(bool)
-				case "prompt":
-					opts.Prompt = v.(string)
-				default:
-					t.Fatalf("no Go mapping for %q", wire)
-				}
-			}
-			key := "k"
-			c, seen := start(t, okBoth, &keenable.Options{APIKey: &key})
-			if _, err := c.FetchWithOptions(context.Background(), tc.URL, opts); err != nil {
-				t.Fatal(err)
-			}
-			req := one(t, seen)
-			if req.Path != "/v1/fetch" {
-				t.Fatalf("path %q, want /v1/fetch", req.Path)
-			}
-			sent := map[string]string{}
-			for name, values := range req.Query {
-				if len(values) != 1 {
-					t.Fatalf("%s sent %d times", name, len(values))
-				}
-				sent[name] = values[0]
 			}
 			if !reflect.DeepEqual(sent, tc.Sent) {
 				t.Fatalf("sent %v, want %v", sent, tc.Sent)
@@ -727,8 +758,8 @@ func TestConformanceToolCall(t *testing.T) {
 
 func TestFetchOptionsDoNotBypassTheURLRefusal(t *testing.T) {
 	c, n := counted(t, nil, okBoth)
-	_, err := c.FetchWithOptions(context.Background(), "http://127.0.0.1/", &keenable.FetchOptions{
-		MaxChars: 10, Live: true, Prompt: "p",
+	_, err := c.FetchWithOptions(context.Background(), []string{"http://127.0.0.1/"}, &keenable.FetchOptions{
+		MaxChars: 10, Links: 5,
 	})
 	if !isInvalid(err) || n.Load() != 0 {
 		t.Fatalf("err=%v requests=%d", err, n.Load())

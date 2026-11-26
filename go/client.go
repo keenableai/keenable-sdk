@@ -125,7 +125,7 @@ type Client struct {
 	maxRetries    int
 	// defaultHeaders is a copy of Options.Headers.
 	defaultHeaders map[string]string
-	// Monitors is Keenable Monitors: standing searches that report new pages
+	// Monitors is Keenable Monitors: standing searches that report new results
 	// as they appear. It needs an API key.
 	Monitors *MonitorsService
 }
@@ -151,42 +151,58 @@ type RequestOptions struct {
 }
 
 // FetchOptions are the optional arguments to [Client.FetchWithOptions].
-//
-// The zero value of each field means unset, and an unset option is not sent.
+// Only the options set are sent, and the API checks their values.
 type FetchOptions struct {
 	// RequestOptions holds this call's timeout, retry budget and headers.
 	RequestOptions
-	// MaxChars caps the characters of content returned, a positive integer.
-	// Zero means unset, and the API applies its default of 50000.
-	// Page.Truncated and Page.TotalChars say whether the page was cut and
-	// how long it was.
+	// MaxChars is the most characters of content per page. Zero means unset.
 	MaxChars int
-	// Live fetches the page from its source now instead of reading
-	// Keenable's indexed copy. False is the API's default and is not sent.
-	Live bool
-	// Prompt is an extraction instruction, up to 2000 characters, such as
-	// "list the pricing tiers". Page.Content is then only the model's
-	// output for it, not the page. Empty means unset.
+	// Prompt, when set, makes each page's content only an LLM's answer to it.
 	Prompt string
+	// Schema is a JSON Schema; each page's answer is in Page.Structured.
+	Schema map[string]any
+	// Links is the most links per page to return. Zero means unset.
+	Links int
+	// Images is the most images per page to return. Nil means unset.
+	Images *int
+	// MaxAgeHours uses a stored copy only if younger than this many hours
+	// (0 to 720); 0 reads every page live. -1 reads only the stored copy, of
+	// any age, never the live page: a page with no stored copy comes back
+	// with Error set (404). Other negative values are refused with a 400.
+	// Nil means unset: a stored copy of any age, or a live read when there
+	// is none.
+	MaxAgeHours *float64
 }
 
-// params is the query string fetch sends after url, unset options left out.
-func (o *FetchOptions) params() url.Values {
-	q := url.Values{}
+// body is the POST /v1/fetch request, unset options and empty groups left out.
+func (o *FetchOptions) body(urls []string) map[string]any {
+	payload := map[string]any{"urls": urls}
 	if o == nil {
-		return q
+		return payload
 	}
+	content := map[string]any{}
 	if o.MaxChars != 0 {
-		q.Set("max_chars", strconv.Itoa(o.MaxChars))
-	}
-	// The API reads only "true" and "false", and an absent live is false.
-	if o.Live {
-		q.Set("live", "true")
+		content["max_chars"] = o.MaxChars
 	}
 	if o.Prompt != "" {
-		q.Set("prompt", o.Prompt)
+		content["prompt"] = o.Prompt
 	}
-	return q
+	if o.Schema != nil {
+		content["schema"] = o.Schema
+	}
+	if o.Links != 0 {
+		content["links"] = o.Links
+	}
+	if o.Images != nil {
+		content["images"] = *o.Images
+	}
+	if len(content) > 0 {
+		payload["content"] = content
+	}
+	if o.MaxAgeHours != nil {
+		payload["retrieval"] = map[string]any{"max_age_hours": *o.MaxAgeHours}
+	}
+	return payload
 }
 
 // New builds a client. A nil opts reads the environment and uses the defaults.
@@ -309,41 +325,53 @@ func requestID(data map[string]any, header string) string {
 	return header
 }
 
-// Fetch returns one URL's main content as markdown.
-//
-// Use it after Search when a snippet is not enough. Internal hosts and private
-// addresses are refused here, before a request is sent. Use
-// [Client.FetchWithOptions] to cap the content, fetch the page live, pass an
-// extraction prompt, or set a timeout, retries or headers for one call.
-func (c *Client) Fetch(ctx context.Context, pageURL string) (*Page, error) {
-	return c.FetchWithOptions(ctx, pageURL, nil)
+// Fetch reads pages as markdown with POST /v1/fetch. Results[i] is for
+// urls[i]: a [Page], with Error set when that URL failed. Internal hosts and
+// private addresses are refused here, before a request is sent.
+func (c *Client) Fetch(ctx context.Context, urls []string) (*FetchResponse, error) {
+	return c.FetchWithOptions(ctx, urls, nil)
 }
 
 // FetchWithOptions is [Client.Fetch] with the options in [FetchOptions] and
 // per-call settings. opts may be nil.
-func (c *Client) FetchWithOptions(ctx context.Context, pageURL string, opts *FetchOptions) (*Page, error) {
+func (c *Client) FetchWithOptions(ctx context.Context, urls []string, opts *FetchOptions) (*FetchResponse, error) {
 	if err := requireClient(c); err != nil {
 		return nil, err
 	}
 	if err := requireContext(ctx); err != nil {
 		return nil, err
 	}
-	if err := rejectPrivateFetchTarget(pageURL); err != nil {
-		return nil, err
+	for _, u := range urls {
+		if err := rejectPrivateFetchTarget(u); err != nil {
+			return nil, err
+		}
+	}
+	body, err := json.Marshal(opts.body(urls))
+	if err != nil {
+		return nil, &InvalidRequestError{msg: "could not encode the fetch request: " + err.Error()}
 	}
 	var req *RequestOptions
 	if opts != nil {
 		req = &opts.RequestOptions
 	}
-	query := opts.params()
-	query.Set("url", pageURL)
-	data, id, err := c.do(ctx, http.MethodGet, "fetch", nil, query, req)
+	data, id, err := c.do(ctx, http.MethodPost, "fetch", body, nil, req)
 	if err != nil {
 		return nil, err
 	}
-	page := pageFromJSON(data, pageURL)
-	page.RequestID = requestID(data, id)
-	return page, nil
+	resp := &FetchResponse{RequestID: requestID(data, id), Raw: data}
+	entries, _ := data["results"].([]any)
+	for i, entry := range entries {
+		obj, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		asked := ""
+		if i < len(urls) {
+			asked = urls[i]
+		}
+		resp.Results = append(resp.Results, *pageFromJSON(obj, asked))
+	}
+	return resp, nil
 }
 
 func requireClient(c *Client) error {
@@ -411,6 +439,30 @@ func retryDelay(err error, retry int, jitter float64) (time.Duration, bool) {
 		return backoff(retry, jitter), true
 	}
 	return 0, false
+}
+
+// Billing returns the prices and, with an API key, the organization's balance,
+// from GET /v1/billing. It is read-only and free. Without a key,
+// Prices are the public list prices and Account is nil. The path is the same
+// with and without a key: billing has no /public variant. opts may be nil.
+func (c *Client) Billing(ctx context.Context, opts *RequestOptions) (*Billing, error) {
+	if err := requireClient(c); err != nil {
+		return nil, err
+	}
+	if err := requireContext(ctx); err != nil {
+		return nil, err
+	}
+	rawURL, err := c.endpointURL("billing", nil)
+	if err != nil {
+		return nil, err
+	}
+	data, id, err := c.send(ctx, http.MethodGet, rawURL, nil, opts, nil, true)
+	if err != nil {
+		return nil, err
+	}
+	resp := billingFromJSON(data)
+	resp.RequestID = requestID(data, id)
+	return resp, nil
 }
 
 // isRateLimited reports a 429: the API refused the request before acting on it.
@@ -643,13 +695,19 @@ func (c *Client) headers(jsonBody bool, extra map[string]string) http.Header {
 	return h
 }
 
+// hasPublicVariant names the endpoints with a /public keyless variant.
+// endpointURL adds the suffix to no other: billing has one path for both.
+var hasPublicVariant = map[string]bool{"search": true, "fetch": true}
+
+// endpointURL is the endpoint's keyed URL, or its /public variant when keyless
+// and it has one.
 func (c *Client) endpointURL(endpoint string, query url.Values) (string, error) {
 	u, err := url.Parse(c.baseURL)
 	if err != nil || u.Host == "" {
 		return "", &InvalidRequestError{msg: fmt.Sprintf("baseURL %q is not a valid URL. Pass an https URL with a host.", c.baseURL)}
 	}
 	u.Path = strings.TrimRight(u.Path, "/") + "/v1/" + endpoint
-	if c.apiKey == "" {
+	if c.apiKey == "" && hasPublicVariant[endpoint] {
 		u.Path += "/public"
 	}
 	u.RawQuery = ""

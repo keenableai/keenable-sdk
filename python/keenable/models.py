@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urljoin, urlsplit
@@ -73,6 +73,33 @@ def _count_or_none(value: Any) -> int | None:
     if not 0 <= value <= _MAX_SAFE_INTEGER:
         return None
     return int(value)
+
+
+def _amount(value: Any) -> float:
+    """A finite JSON number as a float, or 0 for anything else (never parsed
+    from a string)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0.0
+    try:
+        amount = float(value)
+    except OverflowError:
+        return 0.0
+    return amount if math.isfinite(amount) else 0.0
+
+
+_DECIMAL = re.compile(r"-?[0-9]+(?:\.[0-9]{1,9})?")
+
+
+def _amount_decimal(value: Any, amount: float) -> str:
+    """The API's exact decimal string when it is one, else ``amount`` as one.
+
+    An older server sends no ``amount_decimal``: then it is ``amount`` with at
+    most nine decimal places, trailing zeros trimmed, and ``"0"`` for zero.
+    """
+    if isinstance(value, str) and _DECIMAL.fullmatch(value):
+        return value
+    text = f"{amount:.9f}".rstrip("0").rstrip(".")
+    return "0" if text == "-0" else text
 
 
 def _str_or_empty(value: Any) -> str:
@@ -391,6 +418,31 @@ def _result_body(result: SearchResult, max_snippet_chars: int | None) -> str:
 
 
 @dataclass
+class SearchWarning:
+    """Something in the request to change, such as a deprecated parameter.
+
+    The request was still served.
+    """
+
+    code: str
+    """What kind of warning, such as ``"deprecated_parameter"``."""
+
+    path: str
+    """JSON pointer to the request parameter, such as ``"/safety_mode"``."""
+
+    message: str
+    """What to change and by when."""
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> SearchWarning:
+        return cls(
+            code=_str_or_empty(data.get("code")),
+            path=_str_or_empty(data.get("path")),
+            message=_str_or_empty(data.get("message")),
+        )
+
+
+@dataclass
 class SearchResponse:
     """The result set for one :meth:`Keenable.search` call."""
 
@@ -400,6 +452,17 @@ class SearchResponse:
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
     request_id: str | None = None
     """The API's id for this request. Quote it when reporting a problem."""
+    warnings: list[SearchWarning] = field(default_factory=list)
+    """What the request should change, such as a deprecated parameter it
+    used. Empty when the API sent none."""
+    usage: dict[str, Any] | None = None
+    """What the search cost: the dict the API sent (``sku``, ``credits``, ...)
+    with, when a key is set, ``cost`` and ``balance`` in US dollars, each read
+    as a :class:`Money` and given as its dict ``{"amount": 0.004,
+    "amount_decimal": "0.004", "currency": "usd"}``. Add costs with
+    ``Decimal(usage["cost"]["amount_decimal"])``, not the float ``amount``.
+    A ``cost`` or ``balance`` that is not an object is left out. None on
+    keyless calls."""
 
     def __iter__(self) -> Iterator[SearchResult]:
         return iter(self.results)
@@ -427,6 +490,10 @@ class SearchResponse:
             mode=_str_or_none(data.get("mode")),
             raw=data,
             request_id=_str_or_none(data.get("request_id")) or request_id,
+            warnings=[
+                SearchWarning._from_json(w) for w in _dicts(data.get("warnings")) or []
+            ],
+            usage=_usage(data.get("usage")),
         )
 
     def cited(
@@ -518,8 +585,61 @@ class SearchResponse:
 
 
 @dataclass
+class FetchError:
+    """Why one URL of a :meth:`Keenable.fetch` call failed, as the API sent it."""
+
+    status: int
+    error: str
+    code: str | None = None
+    type: str | None = None
+    message: str | None = None
+    fix: str | None = None
+    retryable: bool | None = None
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> FetchError:
+        retryable = data.get("retryable")
+        return cls(
+            status=_count_or_none(data.get("status")) or 0,
+            error=_str_or_empty(data.get("error")),
+            code=_str_or_none(data.get("code")),
+            type=_str_or_none(data.get("type")),
+            message=_str_or_none(data.get("message")),
+            fix=_str_or_none(data.get("fix")),
+            retryable=retryable if isinstance(retryable, bool) else None,
+            raw=data,
+        )
+
+
+def _dicts(value: Any) -> list[dict[str, Any]] | None:
+    if not isinstance(value, list):
+        return None
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _dict_or_none(value: Any) -> dict[str, Any] | None:
+    return value if isinstance(value, dict) else None
+
+
+def _usage(value: Any) -> dict[str, Any] | None:
+    """The usage dict as sent, with ``cost`` and ``balance`` read as Money
+    dicts, so money from an older server gains ``amount_decimal``; a
+    money field that is not an object is left out."""
+    usage = _dict_or_none(value)
+    if usage is None:
+        return None
+    usage = dict(usage)
+    for key in ("cost", "balance"):
+        money = usage.pop(key, None)
+        if isinstance(money, dict):
+            usage[key] = asdict(Money._from_json(money))
+    return usage
+
+
+@dataclass
 class Page:
-    """A web page fetched by :meth:`Keenable.fetch`, extracted as markdown."""
+    """One result of :meth:`Keenable.fetch`: a page as markdown, or ``error``."""
 
     url: str
     title: str
@@ -539,8 +659,6 @@ class Page:
     unknown."""
 
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
-    request_id: str | None = None
-    """The API's id for this request. Quote it when reporting a problem."""
 
     truncated: bool | None = None
     """True when the page was longer than the API's ``max_chars`` and
@@ -551,10 +669,29 @@ class Page:
     """Length of the full extracted content in Unicode code points, before
     any cut. None when the API did not say."""
 
+    image: str | None = None
+    favicon: str | None = None
+    links: list[dict[str, Any]] | None = None
+    """``{"url", "text"}`` for each link, when ``links`` was asked for."""
+
+    images: list[dict[str, Any]] | None = None
+    """``{"url", "alt"}`` for each image."""
+
+    structured: dict[str, Any] | None = None
+    """The answer for ``schema``."""
+
+    answer_error: dict[str, Any] | None = None
+    """``{"code", "message"}`` when the answer for ``schema`` failed."""
+
+    stale: bool | None = None
+    usage: dict[str, Any] | None = None
+    """What this page cost, read like :attr:`SearchResponse.usage`."""
+    error: FetchError | None = None
+    """Set when this URL failed; the other fields are then empty."""
+
     @classmethod
-    def _from_json(
-        cls, data: dict[str, Any], url: str, request_id: str | None = None
-    ) -> Page:
+    def _from_json(cls, data: dict[str, Any], url: str) -> Page:
+        error = data.get("error")
         return cls(
             url=_str_or_none(data.get("url")) or url,
             title=_str_or_empty(data.get("title")),
@@ -563,9 +700,17 @@ class Page:
             author=_str_or_none(data.get("author")),
             published_at=_timestamp_or_none(data.get("published_at")),
             raw=data,
-            request_id=_str_or_none(data.get("request_id")) or request_id,
             truncated=_bool_or_none(data.get("truncated")),
             total_chars=_count_or_none(data.get("total_chars")),
+            image=_str_or_none(data.get("image")),
+            favicon=_str_or_none(data.get("favicon")),
+            links=_dicts(data.get("links")),
+            images=_dicts(data.get("images")),
+            structured=_dict_or_none(data.get("structured")),
+            answer_error=_dict_or_none(data.get("answer_error")),
+            stale=_bool_or_none(data.get("stale")),
+            usage=_usage(data.get("usage")),
+            error=FetchError._from_json(error) if isinstance(error, dict) else None,
         )
 
     def to_context(self, max_chars: int = DEFAULT_CONTEXT_MAX_CHARS) -> str:
@@ -587,3 +732,156 @@ class Page:
             return header
         content = _clean_context_text(self.content, self.url)
         return _context_block(header, content[:budget].rstrip())
+
+
+@dataclass
+class FetchResponse:
+    """What :meth:`Keenable.fetch` returns: ``results[i]`` is for ``urls[i]``."""
+
+    results: list[Page] = field(default_factory=list)
+    request_id: str | None = None
+    """The API's id for this request. Quote it when reporting a problem."""
+
+    @classmethod
+    def _from_json(
+        cls, data: dict[str, Any], urls: list[str], request_id: str | None
+    ) -> FetchResponse:
+        entries = data.get("results")
+        return cls(
+            results=[
+                Page._from_json(entry, urls[i] if i < len(urls) else "")
+                for i, entry in enumerate(entries if isinstance(entries, list) else [])
+                if isinstance(entry, dict)
+            ],
+            request_id=_str_or_none(data.get("request_id")) or request_id,
+        )
+
+
+@dataclass
+class Money:
+    """An amount of money, as the API sent it."""
+
+    amount: float
+    """Amount in the currency's major unit (US dollars), such as ``0.004``,
+    with up to nine decimal places. Negative for an account in debt. 0 when
+    the API sent no finite number. For display: add amounts with
+    ``amount_decimal``."""
+
+    amount_decimal: str
+    """The same amount as an exact decimal string, such as ``"0.004"``: up to
+    nine decimal places, no trailing zeros, no exponent, ``"-"`` when
+    negative, ``"0"`` for zero. Add amounts exactly with
+    ``decimal.Decimal(money.amount_decimal)``, never by summing ``amount``.
+    From an older server that sends none, ``amount`` written this way."""
+
+    currency: str
+    """Lowercase ISO 4217 code, such as ``"usd"``."""
+
+    @classmethod
+    def _from_json(cls, value: Any) -> Money:
+        data = _dict_or_none(value) or {}
+        amount = _amount(data.get("amount"))
+        return cls(
+            amount=amount,
+            amount_decimal=_amount_decimal(data.get("amount_decimal"), amount),
+            currency=_str_or_empty(data.get("currency")),
+        )
+
+
+@dataclass
+class BillingPrice:
+    """The price of one SKU, from :meth:`Keenable.billing`."""
+
+    sku: str
+    """What is billed, such as ``"search.pro"`` or ``"fetch.live"``."""
+
+    unit: str
+    """What one unit is: ``"search"``, ``"result"`` or ``"page"``."""
+
+    unit_price: Money
+    """The price of one unit."""
+
+    list_unit_price: Money | None = None
+    """The public list price of one unit. Only with an API key."""
+
+    source: str | None = None
+    """``"list"`` when ``unit_price`` is the list price, ``"contract"`` when
+    the organization has its own. Only with an API key."""
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> BillingPrice:
+        list_price = data.get("list_unit_price")
+        return cls(
+            sku=_str_or_empty(data.get("sku")),
+            unit=_str_or_empty(data.get("unit")),
+            unit_price=Money._from_json(data.get("unit_price")),
+            list_unit_price=(
+                Money._from_json(list_price) if isinstance(list_price, dict) else None
+            ),
+            source=_str_or_none(data.get("source")),
+        )
+
+
+@dataclass
+class BillingBalance:
+    """What the organization can still spend."""
+
+    available: Money
+    """The unused free allowance for this month plus the purchased balance."""
+
+
+@dataclass
+class BillingAccount:
+    """The organization's balance, from :meth:`Keenable.billing`."""
+
+    balance: BillingBalance
+    billing_url: str
+    """Console page where a person can add funds."""
+
+    as_of: str
+    """When this was read (ISO 8601)."""
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> BillingAccount:
+        balance = _dict_or_none(data.get("balance")) or {}
+        return cls(
+            balance=BillingBalance(
+                available=Money._from_json(balance.get("available")),
+            ),
+            billing_url=_str_or_empty(data.get("billing_url")),
+            as_of=_str_or_empty(data.get("as_of")),
+        )
+
+
+@dataclass
+class Billing:
+    """What :meth:`Keenable.billing` returns: prices, and the account with a key."""
+
+    prices: list[BillingPrice] = field(default_factory=list)
+    """Without an API key, the public list prices. With one, your
+    organization's prices; a SKU without a price on your plan is left out."""
+
+    account: BillingAccount | None = None
+    """Balance. None without an API key."""
+
+    request_id: str | None = None
+    """The API's id for this request. Quote it when reporting a problem."""
+
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any], request_id: str | None) -> Billing:
+        account = data.get("account")
+        return cls(
+            prices=[
+                BillingPrice._from_json(price)
+                for price in _dicts(data.get("prices")) or []
+            ],
+            account=(
+                BillingAccount._from_json(account)
+                if isinstance(account, dict)
+                else None
+            ),
+            request_id=_str_or_none(data.get("request_id")) or request_id,
+            raw=data,
+        )

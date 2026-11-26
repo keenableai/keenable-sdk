@@ -74,9 +74,10 @@ results, err := client.Search(context.Background(), "post-training quantization 
 | `SnippetMaxLength` | Cap the page text returned per result. Nil means unset; a pointer to zero is sent |
 | `MaxResults` | How many results to return, 1 to 50. Zero means the API default of 10 |
 | `QueryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `Objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price. Not sent when empty |
+| `Objective` | What the search is for, in two or three sentences (up to 1,000 characters); the ranker scores results for it together with the query (retrieval reads only the query), same price. Not sent when empty |
 | `Mode` | Search mode: `"pro"` does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops. Empty means `"pro"` |
 | `DisableCards` | `true` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). False, the default, is not sent. In the next release after `v0.1.1` |
+| `Moderation` | Filter unsafe results: `"moderate"` or `"strict"`. Empty, the default, is no moderation and is not sent. Works in `"pro"` and `"realtime"` modes, and not when the query is a URL (the API answers 400) |
 
 ### Excluding domains
 
@@ -154,41 +155,82 @@ for i, result := range results.Cited(nil) {
 }
 ```
 
-## Read a full page
+## Read full pages
 
 ```go
-page, err := client.Fetch(context.Background(), "https://cerebras.ai/chip")
+live := 0.0
+resp, err := client.FetchWithOptions(context.Background(),
+	[]string{"https://cerebras.ai/chip", "https://cerebras.ai/blog"},
+	&keenable.FetchOptions{MaxChars: 5000, MaxAgeHours: &live})
 if err != nil {
 	log.Fatal(err)
 }
-fmt.Println(page.Title)
-fmt.Println(page.Content)       // markdown, boilerplate stripped
-fmt.Println(page.ToContext(nil)) // same citable block shape as search results
+for _, page := range resp.Results {
+	if page.Error != nil {
+		fmt.Println(page.URL, page.Error.Code)
+		continue
+	}
+	fmt.Println(page.Title)
+	fmt.Println(page.Content)        // markdown, boilerplate stripped
+	fmt.Println(page.ToContext(nil)) // same citable block shape as search results
+}
 ```
 
-`FetchWithOptions` takes three optional fields on `FetchOptions`. They ship in the next release after `v0.1.1`, so a released version doesn't have them yet:
-
-```go
-page, err := client.FetchWithOptions(context.Background(), "https://cerebras.ai/chip", &keenable.FetchOptions{
-	MaxChars: 5000,
-	Live:     true,
-})
-answer, err := client.FetchWithOptions(context.Background(), "https://cerebras.ai/chip", &keenable.FetchOptions{
-	Prompt: "List the chip's specs",
-})
-```
+`Fetch` sends one `POST /v1/fetch`. `Results[i]` is for `urls[i]`; a URL that
+failed has `Error` set instead of returning an error. The `FetchOptions`
+fields are sent only when set (the API checks their values):
 
 | Field | What it does |
 |---|---|
-| `MaxChars` | Cap the characters of content returned, a positive integer. Zero means the API default of 50000; `page.Truncated` and `page.TotalChars` say whether the page was cut |
-| `Live` | `true` fetches the page from its source now instead of reading Keenable's indexed copy. `false` is the default and is not sent |
-| `Prompt` | An extraction instruction, up to 2000 characters. `page.Content` is then only the model's output for it, not the page. Empty means unset |
+| `MaxChars` | The most characters of content per page. Zero means the API default of 50000 |
+| `Prompt` | Up to 2,000 characters; each page's `Content` is then only an LLM's answer to it |
+| `Schema` | A JSON Schema; each page's answer is in `page.Structured` |
+| `Links` | The most links per page to return, in `page.Links` |
+| `Images` | The most images per page to return, in `page.Images` |
+| `MaxAgeHours` | Use a stored copy only if younger than this many hours; `0` reads every page live; `-1` reads only the stored copy, never the live page (no stored copy: a 404 error entry) |
 
 Internal hosts and private addresses are refused before a request is sent:
 `localhost` and names under `.localhost`, `metadata.google.internal`, and IP
 addresses in private, loopback, link-local, carrier-grade NAT, documentation,
 benchmarking, multicast and reserved ranges, however the address is spelled.
 The rules are the same in every SDK (`scripts/conformance/README.md`).
+
+## Billing
+
+```go
+billing, err := client.Billing(ctx, nil)
+if err != nil {
+	log.Fatal(err)
+}
+for _, p := range billing.Prices {
+	fmt.Println(p.SKU, p.UnitPrice.Amount, p.UnitPrice.Currency)
+}
+if billing.Account != nil { // nil without an API key
+	fmt.Println("available:", billing.Account.Balance.Available.Amount)
+}
+```
+
+`Billing` reads `GET /v1/billing`: read-only and free, with or without a key.
+Without one, `Prices` are the public list prices and `Account` is nil. With
+one, `Prices` are your organization's (with `ListUnitPrice` and `Source`,
+`"list"` or `"contract"`), and `Account` holds the available balance and
+`BillingURL`, the console page for adding funds. Amounts are numbers in US
+dollars (`Money.Amount`, a `float64` such as `0.004`, up to nine decimal
+places, negative for an account in debt). `Money.AmountDecimal` is the same
+amount as an exact decimal string (`"0.004"`); add amounts with it, not with
+the float, when they must match a bill:
+
+```go
+total := new(big.Rat)
+for _, p := range billing.Prices {
+	if r, ok := new(big.Rat).SetString(p.UnitPrice.AmountDecimal); ok {
+		total.Add(total, r)
+	}
+}
+fmt.Println(total.FloatString(9))
+```
+
+`opts` is a `*RequestOptions` and may be nil.
 
 ## Tool calling
 
@@ -216,9 +258,16 @@ tools render the same numbered, citable block, so the model can cite a fetched
 page the way it cites a search result. Arguments may be a JSON string,
 `[]byte`, `json.RawMessage`, or `map[string]any`.
 
-The model may set `site`, `exclude_domains`, `published_after` and
-`disable_cards` on search. The other filters stay on `Search` for you to set
-yourself.
+The model may set `site`, `exclude_domains`, `published_after`, `objective`,
+`disable_cards` and `moderation` on search. The other filters stay on
+`Search` for you to set yourself.
+
+On fetch the model sets `urls` (1 to 20) and may set `max_chars` (per page),
+`prompt` (applied to every page) and `max_age_hours` (0 reads every page
+live, -1 only the stored copy), as on the hosted MCP tool. A call without
+`urls` is an invalid request. Each page comes back as its own numbered block. A URL
+that failed while others were read becomes a `[n] <url> - failed: <reason>`
+block; `RunToolCall` returns its error only when no URL could be read.
 
 ## Context and timeouts
 
@@ -240,18 +289,19 @@ this SDK created, and does nothing when you passed your own `http.Client`.
 
 ## Monitors
 
-A monitor is a standing search: it watches the web for a topic and hands over
-every new page that matches, by webhook, in scheduled runs, or when you poll
-it. Monitors need an API key (`KEENABLE_API_KEY`); without one, every call
-returns an `*AuthError` with `APICode == "missing_api_key"` and sends nothing.
-An organization can have 100 active monitors.
+A search monitor is a standing search: it watches the web for a topic and
+hands over every new result that matches, by webhook, in scheduled runs, or when
+you poll it. A page monitor (`Type: "page"`) reads one page on a schedule and
+reports the changes worth telling. Monitors need an API key
+(`KEENABLE_API_KEY`); without one, every call returns an `*AuthError` with
+`APICode == "missing_api_key"` and sends nothing. An organization can have 100 active monitors.
 
 ```go
 ctx := context.Background()
 monitor, err := client.Monitors.Create(ctx, &keenable.MonitorCreateParams{
 	Search:   keenable.MonitorSearchParams{Query: "new open-weights LLM releases", MaxResults: 20},
 	Schedule: &keenable.MonitorScheduleParams{Type: "cron", Value: "0 9 * * 1-5", Timezone: "Europe/Paris"},
-	Webhook:  &keenable.MonitorWebhookParams{URL: "https://example.com/keenable", Events: []string{"monitor.hit"}},
+	Webhook:  &keenable.MonitorWebhookParams{URL: "https://example.com/keenable"},
 	Metadata: map[string]string{"team": "research"},
 })
 if err != nil {
@@ -259,24 +309,57 @@ if err != nil {
 }
 secret := *monitor.Webhook.Secret // whsec_..., returned by Create only
 
-pages, err := client.Monitors.Pages(ctx, monitor.ID, &keenable.MonitorPagesParams{MinImportance: 4})
+results, err := client.Monitors.Results(ctx, monitor.ID, &keenable.MonitorResultsParams{MinImportance: 4})
 if err != nil {
 	log.Fatal(err)
 }
-for _, page := range pages.Data {
-	fmt.Println(page.URL)
+for _, result := range results.Data {
+	fmt.Println(result.URL)
 }
 ```
 
+A page monitor watches one page, here a pricing page every 6 hours:
+
+```go
+pricing, err := client.Monitors.Create(ctx, &keenable.MonitorCreateParams{
+	Type: "page",
+	Page: &keenable.MonitorPageTarget{
+		URL:         "https://example.com/pricing",
+		WatchFor:    "plan prices and new plans",
+		Sensitivity: "meaningful", // or "any": every change that is not cosmetic
+	},
+	Schedule: &keenable.MonitorScheduleParams{Type: "interval", Value: "6h"},
+})
+if err != nil {
+	log.Fatal(err)
+}
+versions, err := client.Monitors.Versions(ctx, pricing.ID, &keenable.MonitorVersionsParams{Limit: 10})
+if err != nil {
+	log.Fatal(err)
+}
+for _, v := range versions.Data {
+	if v.Diff != nil {
+		fmt.Println(v.Version, v.Diff.Added)
+	}
+}
+```
+
+Schedules: `cron` (runs at least 10 minutes apart, in `Timezone`), `interval`
+(`"10m"` to `"90d"`) or `once`. Without one, a search monitor runs only on
+`Trigger` and a page monitor every hour. The API checks the schedule and the
+`OutputSchema`: one that breaks a rule returns an `*APIError` with status 400,
+`APICode == "invalid_request"` and a message that names the rule.
+
 | Method | What it does |
 |---|---|
-| `Create(ctx, *MonitorCreateParams)` | Make a monitor (`POST /v1/monitors`) |
+| `Create(ctx, *MonitorCreateParams)` | Make a search monitor (`Search`) or a page monitor (`Type: "page"`, `Page`) (`POST /v1/monitors`) |
 | `List(ctx, *MonitorListParams)` / `ListAll(ctx, *MonitorListParams)` | One page of monitors / a `*MonitorIterator` over all of them |
-| `Get(ctx, id, *RequestOptions)`, `Update(ctx, id, *MonitorUpdateParams)`, `Delete(ctx, id, *RequestOptions)` | Read, change (only what is set; `RemoveName`, `RemoveSchedule`, `RemoveWebhook`, ... send null and win over the value), delete |
+| `Get(ctx, id, *RequestOptions)`, `Update(ctx, id, *MonitorUpdateParams)`, `Delete(ctx, id, *RequestOptions)` | Read, change (only what is set; `Search`, `Page` and `Webhook` are merged; `RemoveName`, `RemoveSchedule`, `RemoveWebhook`, `RemovePageWatchFor`, ... send null and win over the value), delete |
 | `Pause(ctx, id, *RequestOptions)`, `Resume(ctx, id, *RequestOptions)` | Update with Status "paused" / "active" |
 | `Trigger(ctx, id, *RequestOptions)` | Start a run now; returns the queued `*MonitorRun` |
 | `Runs(ctx, id, *MonitorPageParams)`, `Run(ctx, id, runID, *RequestOptions)` | A monitor's runs |
-| `Pages(ctx, id, *MonitorPagesParams)` | The pages it accepted, newest first, one per story |
+| `Results(ctx, id, *MonitorResultsParams)` | The results a search monitor accepted, newest first, one per story (`GET /v1/monitors/{id}/results`) |
+| `Versions(ctx, id, *MonitorVersionsParams)` | A page monitor's history, newest first: each version whose text changed, with its `Diff` |
 | `Deliveries(ctx, id, *MonitorPageParams)` | Webhook events of the last 7 days, with attempts and errors |
 | `Stats(ctx, *RequestOptions)` | Counts by status and by kind of schedule |
 | `Bulk(ctx, action, *MonitorBulkParams)` | Pause, resume or delete many; a dry run unless `DryRun` points to false |
@@ -285,6 +368,13 @@ Every params struct embeds `RequestOptions`. Reads and deletes are retried like
 a search; `Create` sends an `Idempotency-Key` (yours, or a new one per call), so
 its retries cannot make a second monitor; `Update`, `Trigger` and `Bulk` are
 retried only on a 429.
+
+A `Monitor` has `Type` ("search" or "page"), `Search` (nil for a page monitor),
+`Page` (nil for a search monitor), `DisabledReason` (`Code` `runs_failed`,
+`webhook_unreachable` or `data_policy` (a page monitor whose organization turned on zero data retention), while it is disabled).
+A completed `MonitorRun` has, for a page monitor, `Changes` (`Changed`,
+`Notified`, `Baseline`, `Version`, `Source`, `Summary`, `Items`, `Diff`). With
+an output schema, `Output` has `Structured`, `Fresh` and `Error`.
 
 ### Verify webhooks
 
@@ -299,8 +389,15 @@ func hook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad signature", http.StatusBadRequest)
 		return
 	}
-	if event.Type == "monitor.hit" {
-		fmt.Println(event.Data.Result.URL)
+	switch event.Type {
+	case "monitor.result.found":
+		if event.Data.Result != nil {
+			fmt.Println(event.Data.Result.URL)
+		}
+	case "monitor.page.changed": // a page monitor's change worth telling
+		if run := event.Data.Run; run != nil && run.Changes != nil && run.Changes.Summary != nil {
+			fmt.Println(*run.Changes.Summary)
+		}
 	}
 }
 ```
@@ -409,7 +506,7 @@ resp, err := client.Search(ctx, "wafer scale engine", &keenable.SearchOptions{
     RequestOptions: keenable.RequestOptions{MaxRetries: &none},
 })
 minute := time.Minute
-page, err := client.FetchWithOptions(ctx, "https://example.com", &keenable.FetchOptions{
+resp, err := client.FetchWithOptions(ctx, []string{"https://example.com"}, &keenable.FetchOptions{
     RequestOptions: keenable.RequestOptions{
         Timeout: &minute, // nil keeps the client's
         Headers: map[string]string{"X-Trace": "abc"},
@@ -423,8 +520,10 @@ the client's `Timeout`, `MaxRetries` and `Headers` for one call. `Timeout` is a
 pointer: nil keeps the client's, and zero or less is an `InvalidRequestError`.
 A header whose name is not an HTTP token, or whose value has a CR, LF or NUL, is
 an `InvalidRequestError` too, before anything is sent. `X-API-Key`
-always comes from `APIKey`. `SearchResponse.RequestID` and `Page.RequestID`
+always comes from `APIKey`. `SearchResponse.RequestID` and `FetchResponse.RequestID`
 carry the API's request id; quote it when reporting a problem.
+`SearchResponse.Warnings` lists what the request should change, such as a
+deprecated parameter it used; it is nil otherwise.
 
 ## Configuration
 

@@ -19,7 +19,8 @@ from typing import Any, Callable, NamedTuple
 
 from ._filters import tool_filter_kwargs, tool_properties
 from .client import AsyncKeenable, Keenable
-from .errors import KeenableInvalidRequestError
+from .errors import KeenableAPIError, KeenableInvalidRequestError
+from .models import DEFAULT_CONTEXT_MAX_CHARS, FetchError, FetchResponse
 
 __all__ = ["SEARCH_TOOL", "FETCH_TOOL", "TOOLS", "run_tool_call", "arun_tool_call"]
 
@@ -55,18 +56,49 @@ FETCH_TOOL: dict[str, Any] = {
     "function": {
         "name": "keenable_fetch",
         "description": (
-            "Fetch one web page and return its main content as markdown. Use "
-            "after keenable_search when a search snippet is not enough."
+            "Fetch up to 20 web pages and return each one's main content as "
+            "markdown. Use after keenable_search when a search snippet is not "
+            "enough. Add a prompt to get back only the part you need from long "
+            "pages."
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "url": {
+                "urls": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "description": "The URLs of the pages to read, 1 to 20.",
+                },
+                "max_chars": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": (
+                        "The most characters of content to return for each page."
+                    ),
+                },
+                "prompt": {
                     "type": "string",
-                    "description": "The URL of the page to read.",
+                    "description": (
+                        "An instruction applied to every page; each page's content "
+                        "is then only the answer to it. Use it to get one detail "
+                        "from long pages."
+                    ),
+                },
+                "max_age_hours": {
+                    "type": "number",
+                    "minimum": -1,
+                    "maximum": 720,
+                    "description": (
+                        "How old Keenable's stored copy may be, in hours; an older "
+                        "copy is read again from the source. 0 reads every page live. "
+                        "-1 reads only the stored copy, never the live page; other "
+                        "negative values are refused."
+                    ),
                 },
             },
-            "required": ["url"],
+            "required": ["urls"],
         },
     },
 }
@@ -81,6 +113,61 @@ class _Call(NamedTuple):
     args: tuple[Any, ...]
     kwargs: dict[str, Any]
     render: Callable[[Any], str]
+
+
+def _page_error(e: FetchError) -> KeenableAPIError:
+    """A failed URL's error, raised as the API error it stands for."""
+    return KeenableAPIError(
+        e.message or e.error or "the page could not be read",
+        e.status,
+        code=e.code,
+        type=e.type,
+        error=e.error,
+        fix=e.fix,
+        retryable=e.retryable,
+    )
+
+
+def _pages_context(response: FetchResponse, max_chars: Any) -> str:
+    """Each page as a numbered, citable block; a failed URL as an error block.
+
+    Raised only when no URL could be read.
+    """
+    pages = response.results
+    if not pages:
+        raise KeenableAPIError("the Keenable API returned no result for the URL", 200)
+    failed = [page.error for page in pages if page.error is not None]
+    if len(failed) == len(pages):
+        raise _page_error(failed[0])
+    # The API already cut each page to max_chars; leave room for its header.
+    # Without max_chars, the default budget is split across the pages.
+    budget = max(DEFAULT_CONTEXT_MAX_CHARS // len(pages), 1_000)
+    if isinstance(max_chars, int) and not isinstance(max_chars, bool):
+        budget = max_chars + 1_000
+    blocks = []
+    for n, page in enumerate(pages, 1):
+        if page.error is None:
+            blocks.append(f"[{n}]" + page.to_context(budget)[len("[1]") :])
+        else:
+            e = page.error
+            message = e.message or e.error or "the page could not be read"
+            blocks.append(f"[{n}] {page.url} - failed: {message}")
+    return "\n\n".join(blocks)
+
+
+def _fetch_urls(args: dict[str, Any]) -> list[str]:
+    """The ``urls`` a model sent: 1 to 20 non-blank strings."""
+    raw = args.get("urls")
+    urls = [raw] if isinstance(raw, str) else raw
+    if (
+        not isinstance(urls, list)
+        or not urls
+        or not all(isinstance(u, str) and u.strip() for u in urls)
+    ):
+        raise KeenableInvalidRequestError(
+            "keenable_fetch needs 'urls': a list of 1 to 20 URLs"
+        )
+    return urls
 
 
 def _parse_arguments(arguments: str | dict[str, Any]) -> dict[str, Any]:
@@ -134,8 +221,17 @@ def _plan(name: str, arguments: str | dict[str, Any]) -> _Call:
             lambda response: response.to_context(),
         )
     if name == "keenable_fetch":
-        url = _require_str(args.get("url"), "keenable_fetch needs a 'url'")
-        return _Call("fetch", (url,), {}, lambda page: page.to_context())
+        options = {
+            key: args[key]
+            for key in ("max_chars", "prompt", "max_age_hours")
+            if args.get(key) not in (None, "")
+        }
+        return _Call(
+            "fetch",
+            (_fetch_urls(args),),
+            options,
+            lambda response: _pages_context(response, options.get("max_chars")),
+        )
 
     raise KeenableInvalidRequestError(f"unknown Keenable tool: {name!r}")
 
@@ -156,7 +252,9 @@ def run_tool_call(
 
     Returns:
         Text ready to be attached to a ``role="tool"`` message, rendered as the
-        same numbered, citable block for both tools.
+        same numbered, citable block for both tools. A URL that failed while
+        others were read becomes an error block; if none was read, its error
+        is raised.
     """
     call = _plan(name, arguments)
     return call.render(getattr(client, call.method)(*call.args, **call.kwargs))

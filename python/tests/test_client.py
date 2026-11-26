@@ -16,6 +16,7 @@ from keenable import (
     KeenableAuthError,
     KeenableInvalidRequestError,
     KeenableRateLimitError,
+    SearchWarning,
     arun_tool_call,
     run_tool_call,
 )
@@ -40,12 +41,13 @@ SEARCH_BODY: dict[str, Any] = {
     ],
 }
 
-FETCH_BODY: dict[str, Any] = {
+PAGE_BODY: dict[str, Any] = {
     "url": "https://example.com/",
     "title": "Example Domain",
     "content": "# Example Domain\n\nThis domain is for use in examples.",
     "description": "",
 }
+FETCH_BODY: dict[str, Any] = {"results": [PAGE_BODY]}
 
 Handler = Any
 Seen = list[httpx.Request]
@@ -154,6 +156,14 @@ def test_tool_schema_offers_objective() -> None:
     search = next(t for t in TOOLS if t["function"]["name"] == "keenable_search")
     properties = search["function"]["parameters"]["properties"]
     assert properties["objective"]["type"] == "string"
+    # Canonical agent-facing description, shared with the MCP tool and docs.
+    assert properties["objective"]["description"] == (
+        "Optional. Use for multi-step or ambiguous searches; omit for simple "
+        "lookups. In one to three plain sentences, say what the search is for, "
+        "what the query leaves out (who, where, when, which sources count) and "
+        "what earlier searches found. Don't restate the question or include "
+        "personal or confidential details. At most 1,000 characters."
+    )
 
 
 @pytest.mark.parametrize(
@@ -235,6 +245,16 @@ async def test_async_an_unencodable_domain_list_is_an_invalid_request() -> None:
             await arun_tool_call(
                 keenable, "keenable_search", {"query": "q", "exclude_domains": [b"x"]}
             )
+    assert seen == []
+
+
+@pytest.mark.parametrize("value", [True, False, 1, ["strict"], {"level": "strict"}])
+def test_a_tool_call_rejects_a_moderation_that_is_not_a_string(value: Any) -> None:
+    keenable, seen = _client(_routed)
+    with pytest.raises(
+        KeenableInvalidRequestError, match='moderation must be "moderate" or "strict"'
+    ):
+        run_tool_call(keenable, "keenable_search", {"query": "q", "moderation": value})
     assert seen == []
 
 
@@ -337,19 +357,87 @@ def test_cited_reports_the_results_that_were_rendered() -> None:
     assert [r.title for r in response.cited(max_chars=120)] == ["How Cerebras works"]
 
 
-def test_fetch_returns_markdown() -> None:
+def test_fetch_posts_the_urls_and_only_the_options_set() -> None:
     keenable, seen = _client(_ok(FETCH_BODY))
-    page = keenable.fetch("https://example.com")
+    keenable.fetch(
+        ["https://example.com"],
+        max_chars=500,
+        prompt="List the prices",
+        schema={"type": "object"},
+        links=5,
+        images=2,
+        max_age_hours=0,
+    )
+    keenable.fetch("https://example.com", prompt="")
 
+    assert seen[0].method == "POST"
     assert seen[0].url.path == "/v1/fetch/public"
-    assert seen[0].url.params["url"] == "https://example.com"
+    assert json.loads(seen[0].content) == {
+        "urls": ["https://example.com"],
+        "content": {
+            "max_chars": 500,
+            "prompt": "List the prices",
+            "schema": {"type": "object"},
+            "links": 5,
+            "images": 2,
+        },
+        "retrieval": {"max_age_hours": 0},
+    }
+    assert json.loads(seen[1].content) == {"urls": ["https://example.com"]}
+
+
+def test_fetch_parses_a_page_and_a_failed_url() -> None:
+    failed = {
+        "url": "https://e.com/x",
+        "error": {"status": 404, "error": "Not found", "code": "page_not_found"},
+    }
+    keenable, _ = _client(_ok({"results": [PAGE_BODY, failed]}))
+    response = keenable.fetch(["https://example.com", "https://e.com/x"])
+
+    page, missing = response.results
     assert page.title == "Example Domain"
     assert page.content.startswith("# Example Domain")
+    assert page.error is None
+    assert missing.url == "https://e.com/x"
+    assert missing.error is not None
+    assert (missing.error.status, missing.error.code) == (404, "page_not_found")
+
+
+def test_fetch_keeps_the_cost_and_balance_in_usage() -> None:
+    billed = {
+        **PAGE_BODY,
+        "usage": {
+            "sku": "fetch",
+            "amount": 1,
+            "credits": 1,
+            "paid": True,
+            "cost": {"amount": 0.004, "amount_decimal": "0.004", "currency": "usd"},
+            "balance": {
+                "amount": 47.992,
+                "amount_decimal": "47.992",
+                "currency": "usd",
+            },
+        },
+    }
+    keenable, _ = _client(_ok({"results": [billed]}))
+    page = keenable.fetch("https://example.com").results[0]
+
+    assert page.usage is not None
+    assert page.usage["cost"] == {
+        "amount": 0.004,
+        "amount_decimal": "0.004",
+        "currency": "usd",
+    }
+    assert page.usage["balance"] == {
+        "amount": 47.992,
+        "amount_decimal": "47.992",
+        "currency": "usd",
+    }
 
 
 def test_page_to_context_is_citable_like_search_results() -> None:
     keenable, _ = _client(_ok(FETCH_BODY))
-    page = keenable.fetch("https://example.com")
+    page = keenable.fetch("https://example.com").results[0]
 
     context = page.to_context()
     assert context.startswith("[1] Example Domain (https://example.com/)")
@@ -418,7 +506,9 @@ def test_run_tool_call_dispatches_search_and_fetch() -> None:
     assert searched.startswith("[1] How Cerebras works")
     assert json.loads(seen[0].content)["site"] == "cerebras.ai"
 
-    fetched = run_tool_call(keenable, "keenable_fetch", {"url": "https://example.com"})
+    fetched = run_tool_call(
+        keenable, "keenable_fetch", {"urls": ["https://example.com"]}
+    )
     # Both tools render the same citable shape, so a model can cite either.
     assert fetched.startswith("[1] Example Domain (https://example.com/)")
 
@@ -426,6 +516,28 @@ def test_run_tool_call_dispatches_search_and_fetch() -> None:
         run_tool_call(keenable, "keenable_search", "not json")
     with pytest.raises(KeenableInvalidRequestError):
         run_tool_call(keenable, "nope", "{}")
+
+
+def test_fetch_tool_reads_several_urls_and_keeps_a_failed_one_as_a_block() -> None:
+    failed = {"url": "https://e.com/x", "error": {"status": 404, "error": "Not found"}}
+    keenable, seen = _client(_ok({"results": [PAGE_BODY, failed]}))
+    out = run_tool_call(
+        keenable,
+        "keenable_fetch",
+        {
+            "urls": ["https://example.com", "https://e.com/x"],
+            "max_chars": 500,
+            "prompt": "Who runs it?",
+            "max_age_hours": 0,
+        },
+    )
+    assert json.loads(seen[0].content) == {
+        "urls": ["https://example.com", "https://e.com/x"],
+        "content": {"max_chars": 500, "prompt": "Who runs it?"},
+        "retrieval": {"max_age_hours": 0},
+    }
+    assert out.startswith("[1] Example Domain (https://example.com/)")
+    assert out.endswith("\n\n[2] https://e.com/x - failed: Not found")
 
 
 @pytest.mark.parametrize("arguments", [123, None, [], b"{}"])
@@ -498,6 +610,72 @@ async def test_async_search_sends_disable_cards() -> None:
     }
 
 
+def test_search_sends_moderation_only_when_set() -> None:
+    keenable, seen = _client(_routed)
+    keenable.search("q", moderation="strict")
+    keenable.search("q", mode="realtime", moderation="moderate")
+    keenable.search("q", moderation=None)
+    keenable.search("q")
+    sent = [json.loads(request.content) for request in seen]
+    assert sent[0] == {"query": "q", "mode": "pro", "moderation": "strict"}
+    assert sent[1] == {"query": "q", "mode": "realtime", "moderation": "moderate"}
+    assert "moderation" not in sent[2]
+    assert "moderation" not in sent[3]
+
+
+async def test_async_search_sends_moderation() -> None:
+    keenable, seen = _aclient(_routed)
+    async with keenable:
+        await keenable.search("q", moderation="moderate")
+    assert json.loads(seen[0].content) == {
+        "query": "q",
+        "mode": "pro",
+        "moderation": "moderate",
+    }
+
+
+def test_tool_schema_offers_moderation_as_an_enum() -> None:
+    search = next(t for t in TOOLS if t["function"]["name"] == "keenable_search")
+    prop = search["function"]["parameters"]["properties"]["moderation"]
+    assert prop["type"] == "string"
+    assert prop["enum"] == ["moderate", "strict"]
+    assert "no moderation" in prop["description"]
+
+
+def test_tool_call_passes_moderation() -> None:
+    keenable, seen = _client(_routed)
+    run_tool_call(keenable, "keenable_search", {"query": "q", "moderation": "strict"})
+    assert json.loads(seen[0].content)["moderation"] == "strict"
+
+
+def test_search_response_parses_warnings() -> None:
+    body = {
+        "query": "q",
+        "results": [],
+        "warnings": [
+            {
+                "code": "deprecated_parameter",
+                "path": "/safety_mode",
+                "message": "safety_mode is deprecated. Use moderation.",
+            }
+        ],
+    }
+    keenable, _ = _client(_ok(body))
+    response = keenable.search("q")
+    assert response.warnings == [
+        SearchWarning(
+            code="deprecated_parameter",
+            path="/safety_mode",
+            message="safety_mode is deprecated. Use moderation.",
+        )
+    ]
+
+
+def test_search_response_warnings_default_to_empty() -> None:
+    keenable, _ = _client(_ok(SEARCH_BODY))
+    assert keenable.search("q").warnings == []
+
+
 def test_tool_schema_keeps_max_results_and_query_time_out() -> None:
     from keenable import TOOLS
 
@@ -512,7 +690,7 @@ async def test_async_client_mirrors_the_sync_one() -> None:
     async with keenable:
         response = await keenable.search("wafer scale engine")
         rendered = await arun_tool_call(
-            keenable, "keenable_fetch", {"url": "https://example.com"}
+            keenable, "keenable_fetch", {"urls": ["https://example.com"]}
         )
 
     assert [r.title for r in response] == ["How Cerebras works", "MoE guide"]
@@ -541,3 +719,31 @@ async def test_async_search_matches_the_sync_payloads() -> None:
     assert mixed["exclude_domains"] == ["export.arxiv.org"]
     assert lone["exclude_domains"] == ["x"]
     assert blank["exclude_domains"] == [""]
+
+
+def test_fetch_tool_definition_allows_minus_one_max_age_hours() -> None:
+    from keenable.tools import FETCH_TOOL
+
+    prop = FETCH_TOOL["function"]["parameters"]["properties"]["max_age_hours"]
+    assert prop["minimum"] == -1
+    assert "-1 reads only the stored copy" in prop["description"]
+
+
+def test_billing_retries_and_sends_the_call_headers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("keenable.client.time.sleep", lambda _: None)
+    replies = iter(
+        [
+            httpx.Response(503, json={"error": "busy"}),
+            httpx.Response(
+                200, json={"object": "billing", "prices": [], "account": None}
+            ),
+        ]
+    )
+    client, seen = _client(lambda _: next(replies), api_key="sk-test")
+    billing = client.billing(max_retries=1, extra_headers={"X-Trace": "t"})
+    assert billing.prices == [] and billing.account is None
+    assert [r.url.path for r in seen] == ["/v1/billing", "/v1/billing"]
+    assert seen[-1].headers["X-Trace"] == "t"
+    assert seen[-1].headers["X-API-Key"] == "sk-test"

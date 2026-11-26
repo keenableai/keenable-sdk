@@ -48,9 +48,10 @@ results = keenable.search(
 | `snippet_max_length` | Cap the page text returned per result |
 | `max_results` | How many results to return, 1 to 50 (default 10) |
 | `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price. Not sent when empty |
+| `objective` | What the search is for, in two or three sentences (up to 1,000 characters); the ranker scores results for it together with the query (retrieval reads only the query), same price. Not sent when empty |
 | `mode` | Search mode: `"pro"` (default) does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops |
 | `disable_cards` | `True` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). Default `False`, which is not sent; any other value raises `KeenableInvalidRequestError`. In the next release after 0.1.3 |
+| `moderation` | Filter unsafe results: `"moderate"` or `"strict"`. `None`, the default, is no moderation and is not sent. Works in `"pro"` and `"realtime"` modes, and not when the query is a URL (the API answers 400) |
 
 ### Excluding domains
 
@@ -127,27 +128,57 @@ for index, result in enumerate(results.cited(), start=1):
     print(f"[{index}] {result.title} - {result.url}")
 ```
 
-## Read a full page
+## Read full pages
 
 ```python
-page = keenable.fetch("https://cerebras.ai/chip")
-print(page.title)
-print(page.content)  # markdown, boilerplate stripped
-print(page.to_context())  # same citable block shape as search results
+response = keenable.fetch(["https://cerebras.ai/chip", "https://cerebras.ai/blog"])
+for page in response.results:
+    if page.error:
+        print(page.url, page.error.code)
+        continue
+    print(page.title)
+    print(page.content)  # markdown, boilerplate stripped
+    print(page.to_context())  # same citable block shape as search results
 ```
 
-`fetch()` takes three optional arguments. They ship in the next release after 0.1.3, so the version on PyPI doesn't have them yet:
-
-```python
-page = keenable.fetch("https://cerebras.ai/chip", max_chars=5000, live=True)
-answer = keenable.fetch("https://cerebras.ai/chip", prompt="List the chip's specs")
-```
+`fetch()` sends one `POST /v1/fetch`. `results[i]` is for `urls[i]`; a URL
+that failed has `error` set instead of raising. Optional arguments, sent only
+when set (the API checks their values):
 
 | Option | What it does |
 |---|---|
-| `max_chars` | Cap the characters of content returned, a positive integer. The API default is 50000; `page.truncated` and `page.total_chars` say whether the page was cut |
-| `live` | `True` fetches the page from its source now instead of reading Keenable's indexed copy. Default `False` |
-| `prompt` | An extraction instruction, up to 2000 characters. `page.content` is then only the model's output for it, not the page |
+| `max_chars` | The most characters of content per page. The API default is 50000 |
+| `prompt` | Up to 2,000 characters; each page's `content` is then only an LLM's answer to it |
+| `schema` | A JSON Schema; each page's answer is in `page.structured` |
+| `links` | The most links per page to return, in `page.links` |
+| `images` | The most images per page to return, in `page.images` |
+| `max_age_hours` | Use a stored copy only if younger than this many hours; `0` reads every page live; `-1` reads only the stored copy, never the live page (no stored copy: a 404 error entry) |
+
+## Billing
+
+```python
+billing = keenable.billing()
+for price in billing.prices:
+    print(price.sku, price.unit_price.amount, price.unit_price.currency)
+if billing.account:  # None without an API key
+    print("available:", billing.account.balance.available.amount)
+```
+
+`billing()` reads `GET /v1/billing`: read-only and free, with or without a key.
+Without one, `prices` are the public list prices and `account` is `None`. With
+one, `prices` are your organization's (with `list_unit_price` and `source`,
+`"list"` or `"contract"`), and `account` holds the available balance and
+`billing_url`, the console page for adding funds. Amounts are numbers in US
+dollars (`Money.amount`, a `float` such as `0.004`, up to nine decimal places,
+negative for an account in debt). `Money.amount_decimal` is the same amount as
+an exact decimal string (`"0.004"`); add amounts with it, not with the float,
+when they must match a bill:
+
+```python
+from decimal import Decimal
+
+total = sum(Decimal(p.unit_price.amount_decimal) for p in billing.prices)
+```
 
 ## Tool calling
 
@@ -178,9 +209,16 @@ tools render the same numbered, citable block, so the model can cite a fetched
 page the way it cites a search result. `arun_tool_call` is the async
 counterpart, for use with `AsyncKeenable`.
 
-The model may set `site`, `exclude_domains`, `published_after` and
-`disable_cards` on search. The other filters stay on `search()` for you to set
-yourself.
+The model may set `site`, `exclude_domains`, `published_after`, `objective`,
+`disable_cards` and `moderation` on search. The other filters stay on
+`search()` for you to set yourself.
+
+On fetch the model sets `urls` (1 to 20) and may set `max_chars` (per page),
+`prompt` (applied to every page) and `max_age_hours` (0 reads every page
+live, -1 only the stored copy), as on the hosted MCP tool. A call without
+`urls` is an invalid request. Each page comes back as its own numbered block. A URL
+that failed while others were read becomes a `[n] <url> - failed: <reason>`
+block; `run_tool_call` raises its error only when no URL could be read.
 
 ## Async
 
@@ -202,11 +240,12 @@ asyncio.run(main())
 
 ## Monitors
 
-A monitor is a standing search: it watches the web for a topic and hands over
-every new page that matches, by webhook, in scheduled runs, or when you poll
-it. Monitors need an API key (`KEENABLE_API_KEY`); without one, every call
-raises `KeenableAuthError` with `code == "missing_api_key"` and sends nothing.
-An organization can have 100 active monitors.
+A search monitor is a standing search: it watches the web for a topic and
+hands over every new result that matches, by webhook, in scheduled runs, or when
+you poll it. A page monitor (`type="page"`) reads one page on a schedule and
+reports the changes worth telling. Monitors need an API key
+(`KEENABLE_API_KEY`); without one, every call raises `KeenableAuthError` with
+`code == "missing_api_key"` and sends nothing. An organization can have 100 active monitors.
 
 ```python
 from keenable import Keenable
@@ -215,24 +254,50 @@ keenable = Keenable()
 monitor = keenable.monitors.create(
     search={"query": "new open-weights LLM releases", "max_results": 20},
     schedule={"type": "cron", "value": "0 9 * * 1-5", "timezone": "Europe/Paris"},
-    webhook={"url": "https://example.com/keenable", "events": ["monitor.hit"]},
+    webhook={"url": "https://example.com/keenable"},
     metadata={"team": "research"},
 )
 secret = monitor.webhook.secret  # whsec_..., returned by create() only
 
-for page in keenable.monitors.pages(monitor.id, min_importance=4):
-    print(page.importance, page.title, page.url)
+for result in keenable.monitors.results(monitor.id, min_importance=4):
+    print(result.importance, result.title, result.url)
 ```
+
+A page monitor watches one page, here a pricing page every 6 hours:
+
+```python
+pricing = keenable.monitors.create(
+    type="page",
+    page={
+        "url": "https://example.com/pricing",
+        "watch_for": "plan prices and new plans",
+        "sensitivity": "meaningful",  # or "any": every change that is not cosmetic
+    },
+    schedule={"type": "interval", "value": "6h"},
+)
+for run in keenable.monitors.runs(pricing.id):
+    if run.changes and run.changes.notified:
+        print(run.changes.summary, run.changes.items)
+for version in keenable.monitors.versions(pricing.id):
+    print(version.version, version.fetched_at, version.diff and version.diff.added)
+```
+
+Schedules: `cron` (runs at least 10 minutes apart, in `timezone`), `interval`
+(`"10m"` to `"90d"`) or `once`. Without one, a search monitor runs only on
+`trigger()` and a page monitor every hour. The API checks the schedule and the
+`output_schema`: one that breaks a rule raises `KeenableAPIError` with status
+400, `code == "invalid_request"` and a message that names the rule.
 
 | Method | What it does |
 |---|---|
-| `create(*, search, name, schedule, output_schema, webhook, metadata, idempotency_key)` | Make a monitor (`POST /v1/monitors`) |
+| `create(*, search, type, page, name, schedule, output_schema, webhook, metadata, idempotency_key)` | Make a search monitor (`search`) or a page monitor (`type="page"`, `page`) (`POST /v1/monitors`) |
 | `list(*, status, name, metadata, limit, cursor)` / `list_all(...)` | One page of monitors / an iterator over all of them |
-| `get(id)`, `update(id, **fields)`, `delete(id)` | Read, change (only the fields passed; `None` removes the schedule, webhook or output schema), delete |
+| `get(id)`, `update(id, **fields)`, `delete(id)` | Read, change (only the fields passed; `search`, `page` and `webhook` are merged; `None` removes the schedule, webhook or output schema), delete |
 | `pause(id)`, `resume(id)` | `update(id, status="paused" / "active")` |
 | `trigger(id)` | Start a run now; returns the queued `MonitorRun` |
 | `runs(id, *, limit, cursor)`, `run(id, run_id)` | A monitor's runs |
-| `pages(id, *, limit, cursor, min_importance)` | The pages it accepted, newest first, one per story |
+| `results(id, *, limit, cursor, min_importance)` | The results a search monitor accepted, newest first, one per story (`GET /v1/monitors/{id}/results`) |
+| `versions(id, *, limit, cursor)` | A page monitor's history, newest first: each version whose text changed, with its `diff` |
 | `deliveries(id, *, limit, cursor)` | Webhook events of the last 7 days, with attempts and errors |
 | `stats()` | Counts by status and by kind of schedule |
 | `bulk(action, *, ids, filter, limit, dry_run=True)` | Pause, resume or delete many; a dry run unless `dry_run=False` |
@@ -242,6 +307,14 @@ async iterator). Every call also takes `timeout`, `max_retries` and
 `extra_headers`. Reads and deletes are retried like a search; `create()` sends
 an `Idempotency-Key` (yours, or a new one per call), so its retries cannot make
 a second monitor; `update()`, `trigger()` and `bulk()` are retried only on a 429.
+
+A `Monitor` has `type` (`"search"` or `"page"`), `search` (None for a page
+monitor), `page` (None for a search monitor), `disabled_reason` (`code`
+`runs_failed`, `webhook_unreachable` or `data_policy` (a page monitor whose organization turned on zero data retention), while it is
+disabled). A completed `MonitorRun` has, for a page
+monitor, `changes` (`changed`, `notified`, `baseline`, `version`, `source`,
+`summary`, `items`, `diff`). With an `output_schema`, `output` has
+`structured`, `fresh` and `error`.
 
 ### Verify webhooks
 
@@ -255,8 +328,10 @@ try:
     event = verify_webhook(raw_body, request.headers, secret)
 except WebhookVerificationError:
     ...  # answer 400
-if event.type == "monitor.hit":
+if event.type == "monitor.result.found":
     print(event.data.result.url)
+elif event.type == "monitor.page.changed":  # a page monitor's change worth telling
+    print(event.data.run.changes.summary)
 ```
 
 `verify_webhook` checks the HMAC-SHA256 signature in constant time and refuses
@@ -346,12 +421,13 @@ way.
 ```python
 keenable = Keenable(max_retries=4, timeout=10, default_headers={"X-Team": "search"})
 keenable.search("wafer scale engine", max_retries=0)  # no retries for this call
-keenable.fetch("https://example.com", timeout=60, extra_headers={"X-Trace": "abc"})
+keenable.fetch(["https://example.com"], timeout=60, extra_headers={"X-Trace": "abc"})
 ```
 
 Every call takes `timeout`, `max_retries` and `extra_headers`, which override
 the client's settings for that call. Results carry `request_id` (quote it when
-reporting a problem). Redirects are never followed, so the API key cannot leak
+reporting a problem). A search response's `warnings` lists what the request
+should change, such as a deprecated parameter it used; it is empty otherwise. Redirects are never followed, so the API key cannot leak
 to another host.
 
 ## Configuration

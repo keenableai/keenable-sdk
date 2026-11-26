@@ -803,6 +803,40 @@
       }
     },
     {
+      "name": "endpoint_moved",
+      "source": "keenable-backend-ts docs/error-catalog.json#endpoint_moved",
+      "status": 410,
+      "headers": {
+        "X-Request-Id": "req-endpoint_moved"
+      },
+      "body": {
+        "error": "Endpoint moved",
+        "type": "invalid_request_error",
+        "code": "endpoint_moved",
+        "message": "This endpoint was removed after its sunset date; the message and the Link header name the one that replaces it.",
+        "fix": "This endpoint was removed, so retrying returns the same 410. Send the request to the endpoint named in the message and the Link header, with the field changes the message lists. See https://docs.keenable.ai/api-reference.",
+        "docs_url": "https://docs.keenable.ai/errors#endpoint-moved",
+        "request_id": "req-endpoint_moved",
+        "retryable": false
+      },
+      "expect": {
+        "kind": "api",
+        "code": "endpoint_moved",
+        "type": "invalid_request_error",
+        "derived_type": "invalid_request_error",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-endpoint_moved",
+        "param": null,
+        "fix": "This endpoint was removed, so retrying returns the same 410. Send the request to the endpoint named in the message and the Link header, with the field changes the message lists. See https://docs.keenable.ai/api-reference.",
+        "limit": null,
+        "message_contains": "This endpoint was removed after its sunset date; the message and the Link header name the one that replaces it.",
+        "absent": [
+          "https://docs.keenable.ai/errors#endpoint-moved"
+        ]
+      }
+    },
+    {
       "name": "fetch_mode_unavailable",
       "source": "keenable-backend-ts docs/error-catalog.json#fetch_mode_unavailable",
       "status": 500,
@@ -1980,6 +2014,40 @@
       }
     },
     {
+      "name": "not_stored",
+      "source": "keenable-backend-ts docs/error-catalog.json#not_stored",
+      "status": 404,
+      "headers": {
+        "X-Request-Id": "req-not_stored"
+      },
+      "body": {
+        "error": "No stored copy",
+        "type": "invalid_request_error",
+        "code": "not_stored",
+        "message": "Keenable has no stored copy of this page, and max_age_hours -1 never reads the live page.",
+        "fix": "Keenable has no stored copy of this URL, and max_age_hours -1 never reads the live page, so the URL may still exist. Retrying the same request returns the same 404 until the page is indexed. To read the page live, send max_age_hours 0. Also check the URL: http:// and https:// are looked up as different URLs.",
+        "docs_url": "https://docs.keenable.ai/errors#not-stored",
+        "request_id": "req-not_stored",
+        "retryable": false
+      },
+      "expect": {
+        "kind": "api",
+        "code": "not_stored",
+        "type": "invalid_request_error",
+        "derived_type": "invalid_request_error",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-not_stored",
+        "param": null,
+        "fix": "Keenable has no stored copy of this URL, and max_age_hours -1 never reads the live page, so the URL may still exist. Retrying the same request returns the same 404 until the page is indexed. To read the page live, send max_age_hours 0. Also check the URL: http:// and https:// are looked up as different URLs.",
+        "limit": null,
+        "message_contains": "Keenable has no stored copy of this page, and max_age_hours -1 never reads the live page.",
+        "absent": [
+          "https://docs.keenable.ai/errors#not-stored"
+        ]
+      }
+    },
+    {
       "name": "page_not_found",
       "source": "keenable-backend-ts docs/error-catalog.json#page_not_found",
       "status": 404,
@@ -2882,6 +2950,40 @@
       }
     },
     {
+      "name": "run_in_progress",
+      "source": "keenable-backend-ts docs/error-catalog.json#run_in_progress",
+      "status": 409,
+      "headers": {
+        "X-Request-Id": "req-run_in_progress"
+      },
+      "body": {
+        "error": "Monitor run in progress",
+        "type": "invalid_request_error",
+        "code": "run_in_progress",
+        "message": "The monitor is already running, so the request was not applied: a triggered run was not started, or a new page.url was not saved.",
+        "fix": "The monitor is already running. Wait for its current run to finish (GET /v1/monitors/{id}/runs shows it), then send the same request again: trigger it again, or resend the update with the new page.url. Retrying while it runs returns the same 409.",
+        "docs_url": "https://docs.keenable.ai/errors#run-in-progress",
+        "request_id": "req-run_in_progress",
+        "retryable": false
+      },
+      "expect": {
+        "kind": "api",
+        "code": "run_in_progress",
+        "type": "invalid_request_error",
+        "derived_type": "invalid_request_error",
+        "retryable": false,
+        "retry_after_seconds": null,
+        "request_id": "req-run_in_progress",
+        "param": null,
+        "fix": "The monitor is already running. Wait for its current run to finish (GET /v1/monitors/{id}/runs shows it), then send the same request again: trigger it again, or resend the update with the new page.url. Retrying while it runs returns the same 409.",
+        "limit": null,
+        "message_contains": "The monitor is already running, so the request was not applied: a triggered run was not started, or a new page.url was not saved.",
+        "absent": [
+          "https://docs.keenable.ai/errors#run-in-progress"
+        ]
+      }
+    },
+    {
       "name": "search_failed_upstream",
       "source": "keenable-backend-ts docs/error-catalog.json#search_failed_upstream",
       "status": 422,
@@ -3662,8 +3764,8 @@
         "error": "Time Machine not enabled",
         "type": "permission_error",
         "code": "time_machine_not_enabled",
-        "message": "The request used Time Machine (query_time), which is not enabled for the organization.",
-        "fix": "Time Machine is not enabled for your organization, so retrying returns the same 403. To use it, contact Keenable support at support@keenable.ai and ask them to enable Time Machine for your organization; include the request_id from this response. For current results meanwhile, drop query_time and call /v1/search or /v1/fetch.",
+        "message": "The request called a Time Machine endpoint, which is not enabled for the organization.",
+        "fix": "Time Machine is not enabled for your organization, so retrying returns the same 403. To use it, contact Keenable support at support@keenable.ai and ask them to enable Time Machine for your organization; include the request_id from this response. For current results meanwhile, drop as_of and send the request to /v1/search or /v1/fetch.",
         "docs_url": "https://docs.keenable.ai/errors#time-machine-not-enabled",
         "request_id": "req-time_machine_not_enabled",
         "retryable": false
@@ -3677,11 +3779,47 @@
         "retry_after_seconds": null,
         "request_id": "req-time_machine_not_enabled",
         "param": null,
-        "fix": "Time Machine is not enabled for your organization, so retrying returns the same 403. To use it, contact Keenable support at support@keenable.ai and ask them to enable Time Machine for your organization; include the request_id from this response. For current results meanwhile, drop query_time and call /v1/search or /v1/fetch.",
+        "fix": "Time Machine is not enabled for your organization, so retrying returns the same 403. To use it, contact Keenable support at support@keenable.ai and ask them to enable Time Machine for your organization; include the request_id from this response. For current results meanwhile, drop as_of and send the request to /v1/search or /v1/fetch.",
         "limit": null,
-        "message_contains": "The request used Time Machine (query_time), which is not enabled for the organization.",
+        "message_contains": "The request called a Time Machine endpoint, which is not enabled for the organization.",
         "absent": [
           "https://docs.keenable.ai/errors#time-machine-not-enabled"
+        ]
+      }
+    },
+    {
+      "name": "time_machine_versions_unavailable",
+      "source": "keenable-backend-ts docs/error-catalog.json#time_machine_versions_unavailable",
+      "status": 503,
+      "headers": {
+        "X-Request-Id": "req-time_machine_versions_unavailable",
+        "Retry-After": "1"
+      },
+      "body": {
+        "error": "Time Machine versions unavailable",
+        "type": "api_error",
+        "code": "time_machine_versions_unavailable",
+        "message": "Keenable could not list stored page versions just now.",
+        "fix": "Keenable could not reach the store of page versions just now; your request is fine. Wait for Retry-After and retry. If it keeps failing, contact support with the request_id.",
+        "docs_url": "https://docs.keenable.ai/errors#time-machine-versions-unavailable",
+        "request_id": "req-time_machine_versions_unavailable",
+        "retryable": true,
+        "retry_after_seconds": 1
+      },
+      "expect": {
+        "kind": "api",
+        "code": "time_machine_versions_unavailable",
+        "type": "api_error",
+        "derived_type": "api_error",
+        "retryable": true,
+        "retry_after_seconds": 1,
+        "request_id": "req-time_machine_versions_unavailable",
+        "param": null,
+        "fix": "Keenable could not reach the store of page versions just now; your request is fine. Wait for Retry-After and retry. If it keeps failing, contact support with the request_id.",
+        "limit": null,
+        "message_contains": "Keenable could not list stored page versions just now.",
+        "absent": [
+          "https://docs.keenable.ai/errors#time-machine-versions-unavailable"
         ]
       }
     },
@@ -3968,8 +4106,8 @@
         "error": "No stored version",
         "type": "invalid_request_error",
         "code": "version_not_found",
-        "message": "Time Machine has no copy of this page at or before query_time.",
-        "fix": "No copy of this page is stored at or before query_time. Try a later query_time, or check that the URL is correct. Retrying the same request returns the same 404.",
+        "message": "Time Machine has no copy of this page at or before as_of.",
+        "fix": "No copy of this page was captured in the time you asked for. On POST /v1/time-machine/fetch this is not an HTTP error: it arrives as that page's result, with status not_captured, inside a 200 response. Try a later as_of. Also check the URL: http:// and https:// are looked up as different URLs. Retrying the same request returns the same result. The deprecated GET /v1/time_machine/fetch returns it as a 404; there, try a later query_time.",
         "docs_url": "https://docs.keenable.ai/errors#version-not-found",
         "request_id": "req-version_not_found",
         "retryable": false
@@ -3983,9 +4121,9 @@
         "retry_after_seconds": null,
         "request_id": "req-version_not_found",
         "param": null,
-        "fix": "No copy of this page is stored at or before query_time. Try a later query_time, or check that the URL is correct. Retrying the same request returns the same 404.",
+        "fix": "No copy of this page was captured in the time you asked for. On POST /v1/time-machine/fetch this is not an HTTP error: it arrives as that page's result, with status not_captured, inside a 200 response. Try a later as_of. Also check the URL: http:// and https:// are looked up as different URLs. Retrying the same request returns the same result. The deprecated GET /v1/time_machine/fetch returns it as a 404; there, try a later query_time.",
         "limit": null,
-        "message_contains": "Time Machine has no copy of this page at or before query_time.",
+        "message_contains": "Time Machine has no copy of this page at or before as_of.",
         "absent": [
           "https://docs.keenable.ai/errors#version-not-found"
         ]

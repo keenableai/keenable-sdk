@@ -6,10 +6,15 @@ import {
   KeenableConnectionError,
   KeenableInvalidRequestError,
   KeenableRateLimitError,
+  FETCH_TOOL,
   runToolCall,
   SEARCH_TOOL,
 } from "../src/index.js";
 import type { KeenableOptions } from "../src/index.js";
+
+// Canonical agent-facing objective description, shared with the Keenable MCP tool and the docs tool definitions.
+const CANONICAL_OBJECTIVE_DESCRIPTION =
+  "Optional. Use for multi-step or ambiguous searches; omit for simple lookups. In one to three plain sentences, say what the search is for, what the query leaves out (who, where, when, which sources count) and what earlier searches found. Don't restate the question or include personal or confidential details. At most 1,000 characters.";
 
 const SEARCH_BODY = {
   query: "wafer scale engine",
@@ -31,12 +36,13 @@ const SEARCH_BODY = {
   ],
 };
 
-const FETCH_BODY = {
+const PAGE_BODY = {
   url: "https://example.com/",
   title: "Example Domain",
   content: "# Example Domain\n\nThis domain is for use in examples.",
   description: "",
 };
+const FETCH_BODY = { results: [PAGE_BODY] };
 
 /** A client whose transport records requests and replays canned responses. */
 function mockClient(
@@ -195,6 +201,16 @@ describe("search", () => {
     expect(seen).toHaveLength(0);
   });
 
+  it("refuses a tool call whose moderation is not a string, sending nothing", async () => {
+    const { client, seen } = mockClient(() => json(SEARCH_BODY));
+    for (const moderation of [true, false, 1, ["strict"], { level: "strict" }]) {
+      await expect(
+        runToolCall(client, "keenable_search", { query: "q", moderation }),
+      ).rejects.toThrow(/moderation must be "moderate" or "strict"/);
+    }
+    expect(seen).toHaveLength(0);
+  });
+
   it("still sends malformed but encodable values for the API to judge", async () => {
     const { client, seen } = mockClient(() => json(SEARCH_BODY));
     await client.search("q", { excludeDomains: [42, null, "", { host: "a.com" }] as unknown as string[] });
@@ -304,20 +320,94 @@ describe("toContext", () => {
 });
 
 describe("fetch", () => {
-  it("returns markdown", async () => {
+  it("posts the URLs and only the options set", async () => {
     const { client, seen } = mockClient(() => json(FETCH_BODY));
-    const page = await client.fetch("https://example.com");
+    await client.fetch(["https://example.com"], {
+      maxChars: 500,
+      prompt: "List the prices",
+      schema: { type: "object" },
+      links: 5,
+      images: 2,
+      maxAgeHours: 0,
+    });
+    await client.fetch("https://example.com", { prompt: "" });
 
-    expect(seen[0]?.url).toBe(
-      "https://api.keenable.ai/v1/fetch/public?url=https%3A%2F%2Fexample.com",
-    );
-    expect(page.title).toBe("Example Domain");
-    expect(page.content.startsWith("# Example Domain")).toBe(true);
+    expect(seen[0]?.url).toBe("https://api.keenable.ai/v1/fetch/public");
+    expect(seen[0]?.init.method).toBe("POST");
+    expect(JSON.parse(String(seen[0]?.init.body))).toEqual({
+      urls: ["https://example.com"],
+      content: {
+        max_chars: 500,
+        prompt: "List the prices",
+        schema: { type: "object" },
+        links: 5,
+        images: 2,
+      },
+      retrieval: { max_age_hours: 0 },
+    });
+    expect(JSON.parse(String(seen[1]?.init.body))).toEqual({ urls: ["https://example.com"] });
+  });
+
+  it("parses a page and a failed URL", async () => {
+    const failed = {
+      url: "https://e.com/x",
+      error: { status: 404, error: "Not found", code: "page_not_found" },
+    };
+    const { client } = mockClient(() => json({ results: [PAGE_BODY, failed] }));
+    const [page, missing] = (await client.fetch(["https://example.com", "https://e.com/x"]))
+      .results;
+
+    expect(page?.title).toBe("Example Domain");
+    expect(page?.error).toBeUndefined();
+    expect(missing?.url).toBe("https://e.com/x");
+    expect(missing?.error).toMatchObject({ status: 404, code: "page_not_found" });
+  });
+
+  it("parses the cost and balance in usage", async () => {
+    const billed = {
+      ...PAGE_BODY,
+      usage: {
+        sku: "fetch",
+        amount: 1,
+        credits: 1,
+        paid: true,
+        cost: { amount: 0.004, amount_decimal: "0.004", currency: "usd" },
+        balance: { amount: 47.992, amount_decimal: "47.992", currency: "usd" },
+      },
+    };
+    const { client } = mockClient(() => json({ results: [billed] }));
+    const [page] = (await client.fetch("https://example.com")).results;
+
+    expect(page?.usage?.cost).toEqual({ amount: 0.004, amountDecimal: "0.004", currency: "usd" });
+    expect(page?.usage?.balance).toEqual({ amount: 47.992, amountDecimal: "47.992", currency: "usd" });
+  });
+
+  it("normalizes a fetched page's usage field by field", async () => {
+    const billed = {
+      ...PAGE_BODY,
+      usage: {
+        sku: 5,
+        amount: "1",
+        credits: "1",
+        paid: "yes",
+        credits_remaining: "10",
+      },
+    };
+    const { client } = mockClient(() => json({ results: [billed] }));
+    const [page] = (await client.fetch("https://example.com")).results;
+
+    expect(page?.usage).toEqual({
+      sku: "",
+      amount: 0,
+      credits: 0,
+      paid: false,
+    });
   });
 
   it("renders a citable block like search results do", async () => {
     const { client } = mockClient(() => json(FETCH_BODY));
-    const page = await client.fetch("https://example.com");
+    const [page] = (await client.fetch("https://example.com")).results;
+    if (!page) throw new Error("no page");
 
     expect(page.toContext().startsWith("[1] Example Domain (https://example.com/)")).toBe(
       true,
@@ -422,7 +512,7 @@ describe("runToolCall", () => {
     expect(JSON.parse(String(seen[0]?.init.body)).site).toBe("cerebras.ai");
 
     const fetched = await runToolCall(client, "keenable_fetch", {
-      url: "https://example.com",
+      urls: ["https://example.com"],
     });
     // Both tools render the same citable shape, so a model can cite either.
     expect(fetched.startsWith("[1] Example Domain (https://example.com/)")).toBe(true);
@@ -433,6 +523,34 @@ describe("runToolCall", () => {
     await expect(runToolCall(client, "nope", "{}")).rejects.toBeInstanceOf(
       KeenableInvalidRequestError,
     );
+    const noUrls = runToolCall(client, "keenable_fetch", { url: "https://example.com" });
+    await expect(noUrls).rejects.toBeInstanceOf(KeenableInvalidRequestError);
+    await expect(noUrls).rejects.toThrow("'urls'");
+  });
+
+  it("fetches several URLs in one tool call and keeps a failed one as a block", async () => {
+    const failed = { url: "https://e.com/x", error: { status: 404, error: "Not found" } };
+    const { client, seen } = mockClient(() => json({ results: [PAGE_BODY, failed] }));
+    const out = await runToolCall(client, "keenable_fetch", {
+      urls: ["https://example.com", "https://e.com/x"],
+      max_chars: 500,
+      prompt: "Who runs it?",
+      max_age_hours: 0,
+    });
+    expect(JSON.parse(String(seen[0]?.init.body))).toEqual({
+      urls: ["https://example.com", "https://e.com/x"],
+      content: { max_chars: 500, prompt: "Who runs it?" },
+      retrieval: { max_age_hours: 0 },
+    });
+    expect(out.startsWith("[1] Example Domain (https://example.com/)")).toBe(true);
+    expect(out.endsWith("\n\n[2] https://e.com/x - failed: Not found")).toBe(true);
+  });
+
+  it("lets the fetch tool's max_age_hours be -1", () => {
+    const prop = (FETCH_TOOL.function.parameters.properties as Record<string, Record<string, unknown>>)
+      .max_age_hours;
+    expect(prop?.minimum).toBe(-1);
+    expect(String(prop?.description)).toContain("-1 reads only the stored copy");
   });
 
   // A caller catching KeenableError should never see a raw TypeError.
@@ -473,7 +591,7 @@ describe("runToolCall", () => {
       { type: string; description: string }
     >;
     expect(properties.objective?.type).toBe("string");
-    expect(properties.objective?.description).toContain("self-contained");
+    expect(properties.objective?.description).toBe(CANONICAL_OBJECTIVE_DESCRIPTION);
   });
 
   it("sends disableCards only as true", async () => {
@@ -498,6 +616,49 @@ describe("runToolCall", () => {
     },
   );
 
+  it("offers moderation in the search tool schema as an enum", () => {
+    const properties = SEARCH_TOOL.function.parameters.properties as Record<
+      string,
+      { type: string; enum?: string[]; description: string }
+    >;
+    expect(properties.moderation?.type).toBe("string");
+    expect(properties.moderation?.enum).toEqual(["moderate", "strict"]);
+    expect(properties.moderation?.description).toContain("no moderation");
+  });
+
+  it("sends moderation only when it is set", async () => {
+    const { client, seen } = mockClient(routed);
+    await client.search("q", { moderation: "strict" });
+    await client.search("q", { mode: "realtime", moderation: "moderate" });
+    await client.search("q", { moderation: undefined });
+    const [strict, realtime, unset] = seen.map((r) => JSON.parse(String(r.init.body)));
+    expect(strict).toEqual({ query: "q", mode: "pro", moderation: "strict" });
+    expect(realtime).toEqual({ query: "q", mode: "realtime", moderation: "moderate" });
+    expect(unset).toEqual({ query: "q", mode: "pro" });
+  });
+
+  it("passes a tool call's moderation", async () => {
+    const { client, seen } = mockClient(routed);
+    await runToolCall(client, "keenable_search", { query: "q", moderation: "moderate" });
+    expect(JSON.parse(String(seen[0]?.init.body)).moderation).toBe("moderate");
+  });
+
+  it("parses the response's warnings", async () => {
+    const warning = {
+      code: "deprecated_parameter",
+      path: "/safety_mode",
+      message: "safety_mode is deprecated. Use moderation.",
+    };
+    const { client } = mockClient(() => json({ query: "q", results: [], warnings: [warning] }));
+    const response = await client.search("q");
+    expect(response.warnings).toEqual([warning]);
+  });
+
+  it("leaves warnings empty when the API sent none", async () => {
+    const { client } = mockClient(() => json(SEARCH_BODY));
+    expect((await client.search("q")).warnings).toEqual([]);
+  });
+
   it("forwards only the filters the schema offers the model", async () => {
     const { client, seen } = mockClient(routed);
     await runToolCall(client, "keenable_search", {
@@ -511,5 +672,22 @@ describe("runToolCall", () => {
     // acquired_after is a real client filter but is not in the tool schema, so
     // a model cannot reach past the subset it was offered.
     expect(payload.acquired_after).toBeUndefined();
+  });
+});
+
+describe("billing", () => {
+  it("retries like any GET and sends the call's headers with the key", async () => {
+    let n = 0;
+    const { client, seen } = mockClient(
+      () => (n++ === 0 ? json({ error: "busy", retry_after_seconds: 0 }, 503) : json({ prices: [], account: null })),
+      { apiKey: "sk-test" },
+    );
+    const billing = await client.billing({ maxRetries: 1, headers: { "X-Trace": "t" } });
+    expect(billing.prices).toEqual([]);
+    expect(billing.account).toBeNull();
+    expect(seen.map((s) => new URL(s.url).pathname)).toEqual(["/v1/billing", "/v1/billing"]);
+    const headers = new Headers(seen[1]?.init.headers);
+    expect(headers.get("X-Trace")).toBe("t");
+    expect(headers.get("X-API-Key")).toBe("sk-test");
   });
 });

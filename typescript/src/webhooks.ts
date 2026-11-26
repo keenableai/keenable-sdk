@@ -3,13 +3,14 @@
  *
  * ```ts
  * const event = await verifyWebhook(rawBody, request.headers, process.env.KEENABLE_WEBHOOK_SECRET!);
- * if (event.type === "monitor.hit") console.log(event.data.result?.url);
+ * if (event.type === "monitor.result.found") console.log(event.data.result?.url);
+ * if (event.type === "monitor.page.changed") console.log(event.data.run?.changes?.summary);
  * ```
  */
 
 import { WebhookVerificationError } from "./errors.js";
 import { toMonitor, toMonitorResult, toMonitorRun } from "./monitors.js";
-import type { Monitor, MonitorResult, MonitorRun } from "./monitors.js";
+import type { Monitor, MonitorEvent, MonitorResult, MonitorRun } from "./monitors.js";
 
 /** How far, in seconds, a delivery's timestamp may be from now by default. */
 export const DEFAULT_WEBHOOK_TOLERANCE_SECONDS = 300;
@@ -18,9 +19,9 @@ export interface WebhookEventData {
   monitorId: string;
   /** On monitor.created, updated, deleted and disabled. */
   monitor?: Monitor;
-  /** On monitor.run.created, completed and failed. */
+  /** On monitor.run.created, completed and failed, and on a page monitor's monitor.page.changed (its run, with its `changes`). */
   run?: MonitorRun;
-  /** On monitor.hit and monitor.update. */
+  /** On monitor.result.found and monitor.result.changed. */
   result?: MonitorResult;
   /** Why, on monitor.disabled. */
   reason?: string;
@@ -30,7 +31,7 @@ export interface WebhookEventData {
 export interface WebhookEvent {
   /** The delivery's id, the same across retries: use it to drop repeats. */
   id: string;
-  type: string;
+  type: MonitorEvent | (string & {});
   createdAt: string;
   data: WebhookEventData;
   /** The monitor's metadata. */

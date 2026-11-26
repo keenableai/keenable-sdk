@@ -13,8 +13,10 @@ HMAC-SHA256 of ``"<id>.<timestamp>.<body>"`` keyed by the monitor's
             event = verify_webhook(await request.body(), request.headers, SECRET)
         except WebhookVerificationError:
             return Response(status_code=400)
-        if event.type == "monitor.hit":
+        if event.type == "monitor.result.found":
             print(event.data.result.url)
+        elif event.type == "monitor.page.changed":
+            print(event.data.run.changes.summary)
 """
 
 from __future__ import annotations
@@ -54,9 +56,11 @@ class WebhookEventData:
     monitor: Monitor | None = None
     """Set on ``monitor.created``, ``updated``, ``deleted`` and ``disabled``."""
     run: MonitorRun | None = None
-    """Set on ``monitor.run.created``, ``completed`` and ``failed``."""
+    """Set on ``monitor.run.created``, ``completed`` and ``failed``, and on
+    ``monitor.page.changed`` from a page monitor (its run, with its
+    ``changes``)."""
     result: MonitorResult | None = None
-    """Set on ``monitor.hit`` and ``monitor.update``."""
+    """Set on ``monitor.result.found`` and ``monitor.result.changed``."""
     reason: str | None = None
     """Why, on ``monitor.disabled``."""
     raw: dict[str, Any] = field(default_factory=dict, repr=False)

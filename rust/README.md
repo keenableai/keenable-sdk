@@ -101,13 +101,17 @@ for result in &results {
 | `snippet_max_length` | Cap the page text returned per result, 180 to 10000 characters |
 | `max_results` | How many results to return, 1 to 50. The API default is 10 |
 | `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price |
+| `objective` | What the search is for, in two or three sentences (up to 1,000 characters); the ranker scores results for it together with the query (retrieval reads only the query), same price |
 | `disable_cards` | `true` returns ordinary web pages in place of Keenable's cards |
+| `moderation` | Filter unsafe results: `"moderate"` or `"strict"`. `None` is no moderation. Works in `"pro"` and `"realtime"` modes, and not when the query is a URL (the API answers 400) |
 | `request` | This call's timeout, retry budget and headers (`RequestOptions`) |
 
 An empty string is unset and is not sent. When the API rejects an
 `exclude_domains` entry, the error is an `Error::Api` whose `ApiError` has
 `param` (`exclude_domains`), `value` (the rejected entry) and `reason`.
+
+`SearchResponse::warnings` lists what the request should change, such as a
+deprecated parameter it used; it is empty otherwise.
 
 ## Ground a model in one line
 
@@ -130,33 +134,63 @@ for (i, result) in results.cited().iter().enumerate() {
 Pass a `ContextOptions` to `to_context_with` and `cited_with` to change
 `max_chars`, `max_results`, `include_dates` or `max_snippet_chars`.
 
-## Read a full page
+## Read full pages
 
 ```rust
-let page = client.fetch("https://cerebras.ai/chip").await?;
-println!("{}", page.content); // markdown, boilerplate stripped
-println!("{}", page.to_context()); // same citable block shape as search results
-
-let answer = client
+let response = client
     .fetch_with(
-        "https://cerebras.ai/chip",
+        ["https://cerebras.ai/chip", "https://cerebras.ai/blog"],
         &keenable::FetchOptions {
-            prompt: Some("List the chip's specs".into()),
+            max_chars: Some(5000),
             ..Default::default()
         },
     )
     .await?;
+for page in &response.results {
+    match &page.error {
+        Some(error) => println!("{} failed: {:?}", page.url, error.code),
+        None => println!("{}", page.to_context()), // same citable block as search results
+    }
+}
 ```
 
-`FetchOptions` has `max_chars` (the API default is 50000; `page.truncated` and
-`page.total_chars` say whether the page was cut), `live` (fetch from the source
-now instead of Keenable's indexed copy) and `prompt` (an extraction
-instruction, up to 2000 characters).
+`fetch` sends one `POST /v1/fetch`. `results[i]` is for `urls[i]`; a URL that
+failed has `error` set instead of returning `Err`. `FetchOptions` has
+`max_chars`, `prompt` (each page's `content` is then only an LLM's answer to
+it), `schema` (each page's answer is in `page.structured`), `links`,
+`images` and `max_age_hours` (`Some(0.0)` reads every page live, `Some(-1.0)`
+only the stored copy, never the live page), sent only when set; the API
+checks their values.
 
 Internal hosts and private addresses are refused before a request is sent:
 `localhost` and names under `.localhost`, `metadata.google.internal`, and IP
 addresses in private, loopback, link-local, carrier-grade NAT, documentation,
 benchmarking, multicast and reserved ranges, however the address is spelled.
+
+## Billing
+
+```rust
+let billing = client.billing().await?;
+for price in &billing.prices {
+    println!("{} {} {}", price.sku, price.unit_price.amount, price.unit_price.currency);
+}
+if let Some(account) = &billing.account {
+    // None without an API key
+    println!("available: {}", account.balance.available.amount);
+}
+```
+
+`billing()` (or `billing_with(&RequestOptions)`) reads `GET /v1/billing`:
+read-only and free, with or without a key. Without one, `prices` are the public
+list prices and `account` is `None`. With one, `prices` are your
+organization's (with `list_unit_price` and `source`, `"list"` or
+`"contract"`), and `account` holds the available balance and `billing_url`,
+the console page for adding funds. Amounts are numbers in US dollars
+(`Money::amount`, an `f64` such as `0.004`, up to nine decimal places,
+negative for an account in debt). `Money::amount_decimal` is the same amount
+as an exact decimal string (`"0.004"`); add amounts with it (with a decimal
+crate such as `rust_decimal`, or as integer nano-dollars), not with the
+float, when they must match a bill.
 
 ## Tool calling
 
@@ -175,8 +209,15 @@ let content = match client.run_tool_call(&call.name, &call.arguments).await {
 ```
 
 `arguments` is the JSON text the model sent, or a `serde_json::Value`. The
-model may set `site`, `exclude_domains`, `published_after`, `objective` and
-`disable_cards` on search.
+model may set `site`, `exclude_domains`, `published_after`, `objective`,
+`disable_cards` and `moderation` on search.
+
+On fetch the model sets `urls` (1 to 20) and may set `max_chars` (per page),
+`prompt` (applied to every page) and `max_age_hours` (0 reads every page
+live, -1 only the stored copy), as on the hosted MCP tool. A call without
+`urls` is an invalid request. Each page comes back as its own numbered block. A URL
+that failed while others were read becomes a `[n] <url> - failed: <reason>`
+block; `run_tool_call` returns its error only when no URL could be read.
 
 ## Retries
 
@@ -189,14 +230,15 @@ goes only to the configured host.
 
 ## Monitors
 
-A monitor is a standing search: it watches the web for a topic and hands over
-every new page that matches, by webhook, in scheduled runs, or when you poll
-it. Monitors need an API key (`KEENABLE_API_KEY`); without one, every call
-returns `Error::Auth` with code `missing_api_key` and sends nothing. An
-organization can have 100 active monitors.
+A search monitor is a standing search: it watches the web for a topic and
+hands over every new result that matches, by webhook, in scheduled runs, or when
+you poll it. A page monitor (`monitor_type: Some("page".into())`, sent as
+`type`) reads one page on a schedule and reports the changes worth telling.
+Monitors need an API key (`KEENABLE_API_KEY`); without one, every call returns
+`Error::Auth` with code `missing_api_key` and sends nothing. An organization can have 100 active monitors.
 
 ```rust
-use keenable::{MonitorCreateParams, MonitorPagesParams, MonitorScheduleParams, MonitorSearchParams};
+use keenable::{MonitorCreateParams, MonitorResultsParams, MonitorScheduleParams, MonitorSearchParams};
 
 let client = keenable::Client::new()?;
 let monitor = client
@@ -211,24 +253,62 @@ let monitor = client
         ..Default::default()
     })
     .await?;
-let pages = client
+let results = client
     .monitors()
-    .pages(&monitor.id, &MonitorPagesParams { min_importance: Some(4), ..Default::default() })
+    .results(&monitor.id, &MonitorResultsParams { min_importance: Some(4), ..Default::default() })
     .await?;
-for page in pages.data {
-    println!("{}", page.url);
+for result in results.data {
+    println!("{}", result.url);
 }
 ```
 
+A page monitor watches one page, here a pricing page every 6 hours:
+
+```rust
+use keenable::{MonitorPageTarget, MonitorVersionsParams};
+
+let pricing = client
+    .monitors()
+    .create(&MonitorCreateParams {
+        monitor_type: Some("page".into()),
+        page: Some(MonitorPageTarget {
+            watch_for: Some("plan prices and new plans".into()),
+            sensitivity: Some("meaningful".into()), // or "any": every change that is not cosmetic
+            ..MonitorPageTarget::new("https://example.com/pricing")
+        }),
+        schedule: Some(MonitorScheduleParams {
+            schedule_type: "interval".into(),
+            value: Some("6h".into()),
+            timezone: None,
+        }),
+        ..Default::default()
+    })
+    .await?;
+let versions = client
+    .monitors()
+    .versions(&pricing.id, &MonitorVersionsParams { limit: Some(10), ..Default::default() })
+    .await?;
+for v in versions.data {
+    println!("{} {:?}", v.version, v.diff.map(|d| d.added));
+}
+```
+
+Schedules: `cron` (runs at least 10 minutes apart, in `timezone`), `interval`
+("10m" to "90d") or `once`. Without one, a search monitor runs only on
+`trigger` and a page monitor every hour. The API checks the schedule and the
+`output_schema`: one that breaks a rule returns `Error::Api` with status 400,
+code `invalid_request` and a message that names the rule.
+
 | Method on `client.monitors()` | What it does |
 |---|---|
-| `create(&MonitorCreateParams)` | Make a monitor (`POST /v1/monitors`) |
+| `create(&MonitorCreateParams)` | Make a search monitor (`search`) or a page monitor (`monitor_type` "page", `page`) (`POST /v1/monitors`) |
 | `list(&MonitorListParams)` / `list_all(&MonitorListParams)` | One page of monitors / a `MonitorPager` over all of them |
-| `get(id)`, `update(id, &MonitorUpdateParams)`, `delete(id)` | Read, change (only what is set; `Some(None)` removes the name, schedule, webhook, output schema or metadata), delete |
+| `get(id)`, `update(id, &MonitorUpdateParams)`, `delete(id)` | Read, change (only what is set; `search`, `page` and `webhook` are merged; `Some(None)` removes the name, schedule, webhook, output schema or metadata), delete |
 | `pause(id)`, `resume(id)` | Update with status "paused" / "active" |
 | `trigger(id)` | Start a run now; returns the queued `MonitorRun` |
 | `runs(id, &MonitorPageParams)`, `run(id, run_id)` | A monitor's runs |
-| `pages(id, &MonitorPagesParams)` | The pages it accepted, newest first, one per story |
+| `results(id, &MonitorResultsParams)` | The results a search monitor accepted, newest first, one per story (`GET /v1/monitors/{id}/results`) |
+| `versions(id, &MonitorVersionsParams)` | A page monitor's history, newest first: each version whose text changed, with its `diff` |
 | `deliveries(id, &MonitorPageParams)` | Webhook events of the last 7 days, with attempts and errors |
 | `stats()` | Counts by status and by kind of schedule |
 | `bulk(action, &MonitorBulkParams)` | Pause, resume or delete many; a dry run unless `dry_run: Some(false)` |
@@ -239,6 +319,14 @@ like a search; `create` sends an `Idempotency-Key` (yours, or a new one per
 call), so its retries cannot make a second monitor; `update`, `trigger` and
 `bulk` are retried only on a 429.
 
+A `Monitor` has `monitor_type` ("search" or "page"), `search` (`None` for a
+page monitor), `page` (`None` for a search monitor), `disabled_reason` (`code`
+`runs_failed`, `webhook_unreachable` or `data_policy` (a page monitor whose organization turned on zero data retention), while it is
+disabled). A completed `MonitorRun` has, for a page
+monitor, `changes` (`changed`, `notified`, `baseline`, `version`, `source`,
+`summary`, `items`, `diff`). With an output schema, `output` has `structured`,
+`fresh` and `error`.
+
 ### Verify webhooks
 
 Deliveries are signed as [Standard Webhooks](https://www.standardwebhooks.com).
@@ -247,8 +335,13 @@ Verify the raw body before trusting it:
 ```rust
 // body: the raw request body; headers: a keenable::reqwest::header::HeaderMap
 match keenable::verify_webhook(body, &headers, secret) {
-    Ok(event) if event.event_type == "monitor.hit" => {
+    Ok(event) if event.event_type == "monitor.result.found" => {
         println!("{}", event.data.result.map(|r| r.url).unwrap_or_default());
+    }
+    Ok(event) if event.event_type == "monitor.page.changed" => {
+        // a page monitor's change worth telling
+        let changes = event.data.run.and_then(|r| r.changes);
+        println!("{:?}", changes.and_then(|c| c.summary));
     }
     Ok(_) => {}
     Err(_) => { /* answer 400 */ }

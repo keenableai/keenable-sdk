@@ -21,6 +21,8 @@ export interface Filter {
    * kept small: a model picks better from fewer knobs.
    */
   readonly toolExposed?: boolean;
+  /** The values the tool schema offers, when the filter takes a fixed set. */
+  readonly enum?: readonly string[];
 }
 
 export const SEARCH_FILTERS: readonly Filter[] = [
@@ -86,7 +88,7 @@ export const SEARCH_FILTERS: readonly Filter[] = [
     wire: "objective",
     option: "objective",
     description:
-      "Optional. Two or three natural sentences, with no field labels and no line breaks, that cover: the exact facts, entities, numbers, dates or names a useful page must contain; task context the query does not state (who, where, when, eligibility, date window); which kinds of sources count or must be excluded; what is already established from earlier steps; and what is still unknown. Every sentence must be self-contained: name the entities, places, dates and figures explicitly, and never refer to 'the task', 'the clue', 'the question', 'above' or earlier results. Do not paste the conversation, and do not include personal, confidential or sensitive information. At most 1,000 characters.",
+      "Optional. Use for multi-step or ambiguous searches; omit for simple lookups. In one to three plain sentences, say what the search is for, what the query leaves out (who, where, when, which sources count) and what earlier searches found. Don't restate the question or include personal or confidential details. At most 1,000 characters.",
     toolExposed: true,
   },
   {
@@ -98,6 +100,15 @@ export const SEARCH_FILTERS: readonly Filter[] = [
       "whose URLs expire after one day). Default false.",
     jsonType: "boolean",
     toolExposed: true,
+  },
+  {
+    wire: "moderation",
+    option: "moderation",
+    description:
+      "Filter unsafe results: 'moderate' or 'strict'. Leave it out for no moderation. " +
+      "Not supported for a URL query unless exclude_domains is set.",
+    toolExposed: true,
+    enum: ["moderate", "strict"],
   },
 ];
 
@@ -112,7 +123,11 @@ export function toolProperties(): Record<string, unknown> {
       f.wire,
       f.jsonType === "array"
         ? { type: "array", items: { type: "string" }, description: f.description }
-        : { type: f.jsonType ?? "string", description: f.description },
+        : {
+            type: f.jsonType ?? "string",
+            ...(f.enum ? { enum: [...f.enum] } : {}),
+            description: f.description,
+          },
     ]),
   );
 }

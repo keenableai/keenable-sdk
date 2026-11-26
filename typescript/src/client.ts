@@ -19,15 +19,23 @@ import {
   count,
   nonEmpty,
   normalizeHost,
+  num,
+  objects,
   readEnv,
   timestamp,
 } from "./internal.js";
 import type {
+  Billing,
+  BillingAccount,
+  BillingPrice,
+  Money,
   KeenableOptions,
   FetchOptions,
   RequestOptions,
   SearchOptions,
   SearchResult,
+  SearchWarning,
+  Usage,
   ToContextOptions,
 } from "./types.js";
 
@@ -55,7 +63,15 @@ const MAX_RETRY_AFTER_WAIT_SECONDS = 60;
 
 // Endpoints are named once; the keyless variant of each is the same path with a
 // `/public` suffix, so a new endpoint is one name rather than two constants.
-type Endpoint = "search" | "fetch";
+// Billing is the one endpoint with a single path for both: the key is optional.
+// Every endpoint states here whether it has a /public variant, so url() cannot
+// build a keyless path that does not exist.
+type Endpoint = "search" | "fetch" | "billing";
+const HAS_PUBLIC_VARIANT: Readonly<Record<Endpoint, boolean>> = {
+  search: true,
+  fetch: true,
+  billing: false,
+};
 
 /** Hosts that must never be fetched, whatever the backend would do. */
 const BLOCKED_HOSTS = new Set(["localhost", "metadata.google.internal"]);
@@ -330,6 +346,10 @@ export class SearchResponse {
   readonly results: SearchResult[];
   /** The API's id for this request. Quote it when reporting a problem. */
   readonly requestId?: string;
+  /** What the request should change, such as a deprecated parameter it used. Empty when the API sent none. */
+  readonly warnings: SearchWarning[];
+  /** What the search cost and, with a key, the balance left after it. Undefined on keyless calls. */
+  readonly usage?: Usage;
   readonly raw: Record<string, unknown>;
 
   constructor(init: {
@@ -337,12 +357,16 @@ export class SearchResponse {
     mode?: string;
     results: SearchResult[];
     requestId?: string;
+    warnings?: SearchWarning[];
+    usage?: Usage;
     raw: Record<string, unknown>;
   }) {
     this.query = init.query;
     this.mode = init.mode;
     this.results = init.results;
     this.requestId = init.requestId;
+    this.warnings = init.warnings ?? [];
+    this.usage = init.usage;
     this.raw = init.raw;
   }
 
@@ -424,12 +448,31 @@ export class SearchResponse {
   }
 }
 
-/** A web page fetched by `fetch()`, extracted as markdown. */
+/** Why one URL of a `fetch()` call failed, as the API sent it. */
+export interface FetchError {
+  status: number;
+  error: string;
+  code?: string;
+  type?: string;
+  message?: string;
+  fix?: string;
+  retryable?: boolean;
+}
+
+/** What `fetch()` returns: `results[i]` is for `urls[i]`. */
+export interface FetchResponse {
+  results: Page[];
+  /** The API's id for this request. Quote it when reporting a problem. */
+  requestId?: string;
+  raw: Record<string, unknown>;
+}
+
+/** One result of `fetch()`: a page as markdown, or `error` when that URL failed. */
 export class Page {
-  readonly url: string;
-  readonly title: string;
+  readonly url!: string;
+  readonly title!: string;
   /** The page's main content as markdown, with boilerplate stripped. */
-  readonly content: string;
+  readonly content!: string;
   /**
    * @deprecated Always empty: the API no longer fills it. Read `content`.
    * Kept for compatibility; see https://docs.keenable.ai/versioning.
@@ -443,8 +486,6 @@ export class Page {
    * unknown.
    */
   readonly publishedAt?: string;
-  /** The API's id for this request. Quote it when reporting a problem. */
-  readonly requestId?: string;
   /**
    * True when the page was longer than the API's `max_chars` and `content`
    * was cut (cut content ends with `...`). Undefined when the API did not say.
@@ -455,30 +496,24 @@ export class Page {
    * cut. Undefined when the API did not say.
    */
   readonly totalChars?: number;
-  readonly raw: Record<string, unknown>;
+  readonly image?: string;
+  readonly favicon?: string;
+  /** The page's links, when `links` was asked for. */
+  readonly links?: { url: string; text: string | null }[];
+  readonly images?: { url: string; alt: string | null }[];
+  /** The answer for `schema`. */
+  readonly structured?: Record<string, unknown>;
+  /** Why the answer for `schema` could not be made. */
+  readonly answerError?: { code: string; message: string };
+  readonly stale?: boolean;
+  /** What this page cost and, with a key, the balance after it, as the API sent it. */
+  readonly usage?: Usage;
+  /** Set when this URL failed; the other fields are then empty. */
+  readonly error?: FetchError;
+  readonly raw!: Record<string, unknown>;
 
-  constructor(init: {
-    url: string;
-    title: string;
-    content: string;
-    description?: string;
-    author?: string;
-    publishedAt?: string;
-    requestId?: string;
-    truncated?: boolean;
-    totalChars?: number;
-    raw: Record<string, unknown>;
-  }) {
-    this.url = init.url;
-    this.title = init.title;
-    this.content = init.content;
-    this.description = init.description;
-    this.author = init.author;
-    this.publishedAt = init.publishedAt;
-    this.requestId = init.requestId;
-    this.truncated = init.truncated;
-    this.totalChars = init.totalChars;
-    this.raw = init.raw;
+  constructor(init: Omit<Page, "toContext">) {
+    Object.assign(this, init);
   }
 
   /**
@@ -517,7 +552,13 @@ function toSearchResult(data: Record<string, unknown>): SearchResult {
   };
 }
 
-function toPage(data: Record<string, unknown>, url: string, requestId?: string): Page {
+function toSearchWarning(data: Record<string, unknown>): SearchWarning {
+  return { code: text(data.code), path: text(data.path), message: text(data.message) };
+}
+
+function toPage(data: Record<string, unknown>, url: string): Page {
+  const record = (value: unknown) => (isRecord(value) ? (value as never) : undefined);
+  const list = (value: unknown) => (Array.isArray(value) ? (value.filter(isRecord) as never) : undefined);
   return new Page({
     // An empty url falls back to the one asked for, as in Python and Go.
     url: nonEmpty(data.url) ?? url,
@@ -526,11 +567,81 @@ function toPage(data: Record<string, unknown>, url: string, requestId?: string):
     description: nonEmpty(data.description),
     author: nonEmpty(data.author),
     publishedAt: timestamp(data.published_at),
-    requestId,
     truncated: bool(data.truncated),
     totalChars: count(data.total_chars),
+    image: nonEmpty(data.image),
+    favicon: nonEmpty(data.favicon),
+    links: list(data.links),
+    images: list(data.images),
+    structured: record(data.structured),
+    answerError: record(data.answer_error),
+    stale: bool(data.stale),
+    usage: toUsage(data.usage),
+    error: record(data.error),
     raw: data,
   });
+}
+
+/** Reads a usage object field by field, so one malformed field does not lose the others. */
+function toUsage(value: unknown): Usage | undefined {
+  if (!isRecord(value)) return undefined;
+  const remaining = value.credits_remaining;
+  return {
+    sku: text(value.sku),
+    amount: count(value.amount) ?? 0,
+    credits: num(value.credits) ?? 0,
+    paid: value.paid === true,
+    ...(typeof remaining === "number" && Number.isFinite(remaining) && { credits_remaining: remaining }),
+    cost: optionalMoney(value.cost),
+    balance: optionalMoney(value.balance),
+  };
+}
+
+/** A Money when the value is an object, else undefined. */
+function optionalMoney(value: unknown): Money | undefined {
+  return isRecord(value) ? toMoney(value) : undefined;
+}
+
+function toMoney(value: unknown): Money {
+  const data = isRecord(value) ? value : {};
+  const sent = num(data.amount) ?? 0;
+  return {
+    amount: sent,
+    amountDecimal: amountDecimal(data.amount_decimal, sent),
+    currency: text(data.currency),
+  };
+}
+
+const DECIMAL = /^-?[0-9]+(\.[0-9]{1,9})?$/;
+
+/**
+ * The API's exact decimal string when it is one, else `amount` as one: at most
+ * nine decimal places, trailing zeros trimmed, "0" for zero (an older server
+ * sends no `amount_decimal`).
+ */
+function amountDecimal(value: unknown, dollars: number): string {
+  if (typeof value === "string" && DECIMAL.test(value)) return value;
+  const fixed = dollars.toFixed(9).replace(/0+$/, "").replace(/\.$/, "");
+  return fixed === "-0" ? "0" : fixed;
+}
+
+function toBillingPrice(data: Record<string, unknown>): BillingPrice {
+  return {
+    sku: text(data.sku),
+    unit: text(data.unit),
+    unitPrice: toMoney(data.unit_price),
+    listUnitPrice: optionalMoney(data.list_unit_price),
+    source: nonEmpty(data.source),
+  };
+}
+
+function toBillingAccount(data: Record<string, unknown>): BillingAccount {
+  const balance = isRecord(data.balance) ? data.balance : {};
+  return {
+    balance: { available: toMoney(balance.available) },
+    billingUrl: text(data.billing_url),
+    asOf: text(data.as_of),
+  };
 }
 
 /** Wait `ms`, or reject with the signal's reason as soon as it aborts. */
@@ -658,7 +769,7 @@ export class Keenable {
   private readonly maxRetries: number;
   private readonly defaultHeaders: Record<string, string>;
   private readonly fetchImpl: typeof globalThis.fetch;
-  /** Keenable Monitors: standing searches that report new pages. Needs an API key. */
+  /** Keenable Monitors: standing searches that report new results. Needs an API key. */
   readonly monitors: Monitors;
 
   constructor(options: KeenableOptions = {}) {
@@ -742,9 +853,13 @@ export class Keenable {
     return headers;
   }
 
-  /** The endpoint URL, keyless or keyed depending on the configured key. */
+  /**
+   * The endpoint URL: its /public variant when keyless and it has one, else
+   * the keyed path.
+   */
   private url(endpoint: Endpoint): string {
-    return `${this.baseUrl}/v1/${endpoint}${this.keyless ? "/public" : ""}`;
+    const suffix = this.keyless && HAS_PUBLIC_VARIANT[endpoint] ? "/public" : "";
+    return `${this.baseUrl}/v1/${endpoint}${suffix}`;
   }
 
   /**
@@ -799,40 +914,68 @@ export class Keenable {
         .filter(isRecord)
         .map(toSearchResult),
       requestId,
+      warnings: Array.isArray(data.warnings)
+        ? data.warnings.filter(isRecord).map(toSearchWarning)
+        : [],
+      usage: toUsage(data.usage),
       raw: data,
     });
   }
 
   /**
-   * Fetch one URL and return its main content as markdown.
+   * Read pages as markdown with `POST /v1/fetch`.
    *
-   * Use this after `search()` when a snippet is not enough and the model needs
-   * the full page. `maxChars` caps the content, `live` reads the page from its
-   * source instead of the indexed copy, and `prompt` returns only what the
-   * instruction asks for.
+   * `results[i]` is for `urls[i]`: a `Page`, with `error` set when that URL
+   * failed. Only the options set are sent, and the API checks their values.
+   * Internal hosts and private addresses are refused before sending.
    */
-  async fetch(url: string, options: FetchOptions = {}): Promise<Page> {
-    rejectPrivateFetchTarget(url);
-
-    const target = new URL(this.url("fetch"));
-    target.searchParams.set("url", url);
-    if (options.maxChars !== undefined) {
-      target.searchParams.set("max_chars", String(options.maxChars));
+  async fetch(urls: string | string[], options: FetchOptions = {}): Promise<FetchResponse> {
+    const targets: unknown[] = Array.isArray(urls) ? urls : [urls];
+    targets.forEach(rejectPrivateFetchTarget);
+    const content = {
+      max_chars: options.maxChars,
+      prompt: options.prompt === "" ? undefined : options.prompt,
+      schema: options.schema,
+      links: options.links,
+      images: options.images,
+    };
+    const payload: Record<string, unknown> = { urls: targets };
+    if (Object.values(content).some((value) => value !== undefined)) payload.content = content;
+    if (options.maxAgeHours !== undefined) payload.retrieval = { max_age_hours: options.maxAgeHours };
+    let body: string;
+    try {
+      body = JSON.stringify(payload);
+    } catch (err) {
+      throw new KeenableInvalidRequestError(
+        `could not encode the fetch request: ${err instanceof Error ? err.message : String(err)}. Pass JSON-encodable options.`,
+      );
     }
-    // The API reads only "true" and "false", and an absent live is false.
-    if (options.live === true) target.searchParams.set("live", "true");
-    // An empty string is unset, as Go cannot tell the two apart.
-    if (options.prompt !== undefined && options.prompt !== "") {
-      target.searchParams.set("prompt", options.prompt);
-    }
+    const { data, requestId } = await this.request("fetch", { method: "POST", body }, options);
+    const entries: unknown[] = Array.isArray(data.results) ? data.results : [];
+    return {
+      results: entries.flatMap((entry, i) =>
+        isRecord(entry) ? [toPage(entry, String(targets[i] ?? ""))] : [],
+      ),
+      requestId,
+      raw: data,
+    };
+  }
 
-    const { data, requestId } = await this.request(
-      "fetch",
-      { method: "GET" },
-      options,
-      target.toString(),
-    );
-    return toPage(data, url, requestId);
+  /**
+   * Prices, and with an API key the balance, from `GET /v1/billing`.
+   *
+   * Read-only and free. Without a key, `prices` are the public list prices and
+   * `account` is null. Amounts are numbers in US dollars.
+   */
+  async billing(options: RequestOptions = {}): Promise<Billing> {
+    // The same path with and without a key: billing has no /public variant.
+    const { data, requestId } = await this.request("billing", { method: "GET" }, options);
+    return {
+      prices: objects(data.prices).map(toBillingPrice),
+      account: isRecord(data.account) ? toBillingAccount(data.account) : null,
+      requestId,
+      raw: data,
+    };
   }
 
   /**

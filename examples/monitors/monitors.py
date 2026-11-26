@@ -20,8 +20,8 @@ print(f"created {monitor.id}, next run {monitor.next_run_at}")
 run = keenable.monitors.trigger(monitor.id)
 print(f"run {run.id} is {run.status}")
 
-for page in keenable.monitors.pages(monitor.id, min_importance=4):
-    print(f"[{page.importance}] {page.title}\n    {page.url}\n    {page.summary}")
+for result in keenable.monitors.results(monitor.id, min_importance=4):
+    print(f"[{result.importance}] {result.title}\n    {result.url}\n    {result.summary}")
 
 
 def handle_webhook(raw_body: bytes, headers: dict[str, str], secret: str) -> int:
@@ -30,8 +30,8 @@ def handle_webhook(raw_body: bytes, headers: dict[str, str], secret: str) -> int
         event = verify_webhook(raw_body, headers, secret)
     except WebhookVerificationError:
         return 400
-    if event.type == "monitor.hit" and event.data.result:
-        print("new page:", event.data.result.url)
+    if event.type == "monitor.result.found" and event.data.result:
+        print("new result:", event.data.result.url)
     return 200
 
 

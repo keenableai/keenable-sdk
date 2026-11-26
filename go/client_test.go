@@ -37,12 +37,14 @@ var searchBody = map[string]any{
 	},
 }
 
-var fetchBody = map[string]any{
+var pageBody = map[string]any{
 	"url":         "https://example.com/",
 	"title":       "Example Domain",
 	"content":     "# Example Domain\n\nThis domain is for use in examples.",
 	"description": "",
 }
+
+var fetchBody = map[string]any{"results": []any{pageBody}}
 
 type captured struct {
 	Path   string
@@ -52,6 +54,9 @@ type captured struct {
 }
 
 var captureMu sync.Mutex
+
+// Canonical agent-facing objective description, shared with the Keenable MCP tool and the docs tool definitions.
+const canonicalObjectiveDescription = "Optional. Use for multi-step or ambiguous searches; omit for simple lookups. In one to three plain sentences, say what the search is for, what the query leaves out (who, where, when, which sources count) and what earlier searches found. Don't restate the question or include personal or confidential details. At most 1,000 characters."
 
 func capture(next http.Handler) (*[]captured, http.Handler) {
 	seen := &[]captured{}
@@ -257,6 +262,77 @@ func TestSearchSendsObjectiveOnlyWhenSet(t *testing.T) {
 	}
 }
 
+func TestSearchSendsModerationOnlyWhenSet(t *testing.T) {
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, searchBody), nil)
+	ctx := context.Background()
+	for _, opts := range []*keenable.SearchOptions{
+		{Moderation: "strict"},
+		{Mode: "realtime", Moderation: "moderate"},
+		{},
+	} {
+		if _, err := c.Search(ctx, "q", opts); err != nil {
+			t.Fatal(err)
+		}
+	}
+	requests := *seen
+	if got := payloadOf(t, requests[0])["moderation"]; got != "strict" {
+		t.Fatalf("moderation not sent: %#v", got)
+	}
+	second := payloadOf(t, requests[1])
+	if second["moderation"] != "moderate" || second["mode"] != "realtime" {
+		t.Fatalf("realtime moderation: %#v", second)
+	}
+	if _, ok := payloadOf(t, requests[2])["moderation"]; ok {
+		t.Fatal("sent an unset moderation")
+	}
+}
+
+func TestToolSchemaOffersModerationAsAnEnum(t *testing.T) {
+	prop, _ := searchToolProperties(t)["moderation"].(map[string]any)
+	if prop["type"] != "string" {
+		t.Fatalf("moderation should be a string: %#v", prop)
+	}
+	enum, _ := prop["enum"].([]any)
+	if len(enum) != 2 || enum[0] != "moderate" || enum[1] != "strict" {
+		t.Fatalf("moderation enum: %#v", prop)
+	}
+	if desc, _ := prop["description"].(string); !strings.Contains(desc, "no moderation") {
+		t.Fatalf("moderation description: %#v", prop)
+	}
+}
+
+func TestSearchParsesWarnings(t *testing.T) {
+	body := map[string]any{
+		"query":   "q",
+		"results": []any{},
+		"warnings": []any{map[string]any{
+			"code":    "deprecated_parameter",
+			"path":    "/safety_mode",
+			"message": "safety_mode is deprecated. Use moderation.",
+		}},
+	}
+	c, _ := startKeyless(t, jsonHandler(http.StatusOK, body), nil)
+	resp, err := c.Search(context.Background(), "q", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []keenable.SearchWarning{{Code: "deprecated_parameter", Path: "/safety_mode", Message: "safety_mode is deprecated. Use moderation."}}
+	if !reflect.DeepEqual(resp.Warnings, want) {
+		t.Fatalf("warnings: %#v", resp.Warnings)
+	}
+}
+
+func TestSearchWarningsEmptyWhenNoneSent(t *testing.T) {
+	c, _ := startKeyless(t, jsonHandler(http.StatusOK, searchBody), nil)
+	resp, err := c.Search(context.Background(), "q", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Warnings) != 0 {
+		t.Fatalf("warnings: %#v", resp.Warnings)
+	}
+}
+
 func TestSearchRawKeepsWarning(t *testing.T) {
 	body := map[string]any{
 		"query":   "q",
@@ -294,7 +370,7 @@ func TestToolSchemaOffersObjectiveAsAString(t *testing.T) {
 	if prop["type"] != "string" {
 		t.Fatalf("objective should be a string: %#v", prop)
 	}
-	if desc, _ := prop["description"].(string); !strings.Contains(desc, "self-contained") {
+	if desc, _ := prop["description"].(string); desc != canonicalObjectiveDescription {
 		t.Fatalf("objective description: %#v", prop)
 	}
 }
@@ -374,6 +450,20 @@ func TestToolCallUnencodableDomainListIsInvalidRequest(t *testing.T) {
 	}
 	if len(*seen) != 0 {
 		t.Fatal("an unencodable argument sent a request")
+	}
+}
+
+func TestToolCallNonStringModerationIsInvalidRequest(t *testing.T) {
+	c, seen := startKeyless(t, routed(), nil)
+	for _, v := range []any{true, false, 1, []string{"strict"}, map[string]any{"level": "strict"}} {
+		_, err := keenable.RunToolCall(context.Background(), c, "keenable_search", map[string]any{"query": "q", "moderation": v})
+		var invalid *keenable.InvalidRequestError
+		if !errors.As(err, &invalid) || !strings.Contains(err.Error(), `moderation must be "moderate" or "strict"`) {
+			t.Fatalf("moderation %#v: want an InvalidRequestError naming the values, got %v", v, err)
+		}
+	}
+	if len(*seen) != 0 {
+		t.Fatal("a malformed moderation sent a request")
 	}
 }
 
@@ -575,33 +665,75 @@ func TestCitedMatchesRendered(t *testing.T) {
 	}
 }
 
-func TestFetchReturnsMarkdown(t *testing.T) {
+func TestFetchPostsTheURLsAndOnlyTheOptionsSet(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
-	page, err := c.Fetch(context.Background(), "https://example.com")
-	if err != nil {
+	live, images := 0.0, 2
+	opts := &keenable.FetchOptions{MaxChars: 500, Prompt: "List the prices", Schema: map[string]any{"type": "object"}, Links: 5, Images: &images, MaxAgeHours: &live}
+	if _, err := c.FetchWithOptions(context.Background(), []string{"https://example.com"}, opts); err != nil {
 		t.Fatal(err)
 	}
 	req := one(t, seen)
 	if req.Path != "/v1/fetch/public" {
 		t.Fatal(req.Path)
 	}
-	if req.Query.Get("url") != "https://example.com" {
-		t.Fatal(req.Query.Get("url"))
+	want := `{"content":{"images":2,"links":5,"max_chars":500,"prompt":"List the prices","schema":{"type":"object"}},"retrieval":{"max_age_hours":0},"urls":["https://example.com"]}`
+	if string(req.Body) != want {
+		t.Fatalf("sent %s, want %s", req.Body, want)
 	}
-	if req.Header.Get("Content-Type") != "" {
-		t.Fatal(req.Header.Get("Content-Type"))
+}
+
+func TestFetchParsesAPageAndAFailedURL(t *testing.T) {
+	failed := map[string]any{
+		"url":   "https://e.com/x",
+		"error": map[string]any{"status": 404, "error": "Not found", "code": "page_not_found"},
 	}
-	if page.Title != "Example Domain" || !strings.HasPrefix(page.Content, "# Example Domain") {
+	c, _ := startKeyless(t, jsonHandler(http.StatusOK, map[string]any{"results": []any{pageBody, failed}}), nil)
+	resp, err := c.Fetch(context.Background(), []string{"https://example.com", "https://e.com/x"})
+	if err != nil || len(resp.Results) != 2 {
+		t.Fatalf("resp=%+v err=%v", resp, err)
+	}
+	page, missing := resp.Results[0], resp.Results[1]
+	if page.Title != "Example Domain" || !strings.HasPrefix(page.Content, "# Example Domain") || page.Error != nil {
 		t.Fatalf("%#v", page)
 	}
-	if page.URL != "https://example.com/" {
-		t.Fatal(page.URL)
+	if missing.URL != "https://e.com/x" || missing.Error == nil || missing.Error.Status != 404 || missing.Error.Code != "page_not_found" {
+		t.Fatalf("%#v", missing)
+	}
+}
+
+func TestFetchParsesTheCostAndBalanceInUsage(t *testing.T) {
+	billed := map[string]any{
+		"url": "https://example.com", "title": "Example Domain", "content": "# Example Domain",
+		"usage": map[string]any{
+			"sku": "fetch", "amount": 1, "credits": 1, "paid": true, "credits_remaining": 11998,
+			"cost":    map[string]any{"amount": 0.004, "amount_decimal": "0.004", "currency": "usd"},
+			"balance": map[string]any{"amount": 47.992, "amount_decimal": "47.992", "currency": "usd"},
+		},
+	}
+	c, _ := startKeyless(t, jsonHandler(http.StatusOK, map[string]any{"results": []any{billed, pageBody}}), nil)
+	resp, err := c.Fetch(context.Background(), []string{"https://example.com", "https://example.org"})
+	if err != nil || len(resp.Results) != 2 {
+		t.Fatalf("resp=%+v err=%v", resp, err)
+	}
+	usage := resp.Results[0].Usage
+	if usage == nil || usage.Cost == nil || usage.Balance == nil {
+		t.Fatalf("usage=%#v", usage)
+	}
+	want := [2]keenable.Money{
+		{Amount: 0.004, AmountDecimal: "0.004", Currency: "usd"},
+		{Amount: 47.992, AmountDecimal: "47.992", Currency: "usd"},
+	}
+	if *usage.Cost != want[0] || *usage.Balance != want[1] {
+		t.Fatalf("cost=%#v balance=%#v", usage.Cost, usage.Balance)
+	}
+	if resp.Results[1].Usage != nil {
+		t.Fatalf("a page without usage got %#v", resp.Results[1].Usage)
 	}
 }
 
 func TestFetchAllowsPublicAddress(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
-	if _, err := c.Fetch(context.Background(), "https://8.8.8.8/path"); err != nil {
+	if _, err := c.Fetch(context.Background(), []string{"https://8.8.8.8/path"}); err != nil {
 		t.Fatal(err)
 	}
 	if len(*seen) != 1 {
@@ -611,10 +743,11 @@ func TestFetchAllowsPublicAddress(t *testing.T) {
 
 func TestPageToContextCuts(t *testing.T) {
 	c, _ := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
-	page, err := c.Fetch(context.Background(), "https://example.com")
+	resp, err := c.Fetch(context.Background(), []string{"https://example.com"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	page := resp.Results[0]
 	context := page.ToContext(nil)
 	if !strings.HasPrefix(context, "[1] Example Domain (https://example.com/)") {
 		t.Fatal(context)
@@ -647,7 +780,7 @@ func TestFetchRefusesInternalTargets(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
 	for _, raw := range urls {
 		before := len(*seen)
-		_, err := c.Fetch(context.Background(), raw)
+		_, err := c.Fetch(context.Background(), []string{raw})
 		var inv *keenable.InvalidRequestError
 		if !errors.As(err, &inv) {
 			t.Fatalf("%s: %v", raw, err)
@@ -679,7 +812,7 @@ func TestNilContext(t *testing.T) {
 	if _, err := c.Search(nil, "q", nil); !errors.As(err, new(*keenable.InvalidRequestError)) {
 		t.Fatal(err)
 	}
-	if _, err := c.Fetch(nil, "https://example.com"); !errors.As(err, new(*keenable.InvalidRequestError)) {
+	if _, err := c.Fetch(nil, []string{"https://example.com"}); !errors.As(err, new(*keenable.InvalidRequestError)) {
 		t.Fatal(err)
 	}
 	if len(*seen) != 0 {
@@ -789,7 +922,7 @@ func TestRunToolCall(t *testing.T) {
 		t.Fatal(payloadOf(t, (*seen)[0]))
 	}
 
-	fetched, err := keenable.RunToolCall(context.Background(), c, "keenable_fetch", map[string]any{"url": "https://example.com"})
+	fetched, err := keenable.RunToolCall(context.Background(), c, "keenable_fetch", map[string]any{"urls": []string{"https://example.com"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -803,9 +936,45 @@ func TestRunToolCall(t *testing.T) {
 	if _, err := keenable.RunToolCall(context.Background(), c, "nope", "{}"); !errors.As(err, new(*keenable.InvalidRequestError)) {
 		t.Fatal(err)
 	}
+	_, err = keenable.RunToolCall(context.Background(), c, "keenable_fetch", map[string]any{"url": "https://example.com"})
+	if !errors.As(err, new(*keenable.InvalidRequestError)) || !strings.Contains(err.Error(), "'urls'") {
+		t.Fatal(err)
+	}
 	var syntax *json.SyntaxError
 	if _, err := keenable.RunToolCall(context.Background(), c, "keenable_search", "not json"); errors.As(err, &syntax) {
 		t.Fatal("leaked json.SyntaxError")
+	}
+}
+
+func TestFetchToolReadsSeveralURLs(t *testing.T) {
+	failed := map[string]any{"url": "https://e.com/x", "error": map[string]any{"status": 404, "error": "Not found"}}
+	c, seen := startKeyless(t, jsonHandler(http.StatusOK, map[string]any{"results": []any{pageBody, failed}}), nil)
+	out, err := keenable.RunToolCall(context.Background(), c, "keenable_fetch",
+		`{"urls":["https://example.com","https://e.com/x"],"max_chars":500,"prompt":"Who runs it?","max_age_hours":0}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{
+		"urls":      []any{"https://example.com", "https://e.com/x"},
+		"content":   map[string]any{"max_chars": float64(500), "prompt": "Who runs it?"},
+		"retrieval": map[string]any{"max_age_hours": float64(0)},
+	}
+	if got := payloadOf(t, (*seen)[0]); !reflect.DeepEqual(got, want) {
+		t.Fatal(got)
+	}
+	if !strings.HasPrefix(out, "[1] Example Domain (https://example.com/)") || !strings.HasSuffix(out, "\n\n[2] https://e.com/x - failed: Not found") {
+		t.Fatal(out)
+	}
+}
+
+func TestFetchToolDefinitionAllowsMinusOneMaxAgeHours(t *testing.T) {
+	props := keenable.FetchTool.Function.Parameters["properties"].(map[string]any)
+	prop := props["max_age_hours"].(map[string]any)
+	if prop["minimum"] != -1 {
+		t.Fatal(prop)
+	}
+	if !strings.Contains(prop["description"].(string), "-1 reads only the stored copy") {
+		t.Fatal(prop["description"])
 	}
 }
 
@@ -960,7 +1129,7 @@ func TestNilClientDoesNotPanic(t *testing.T) {
 	if _, err := client.Search(context.Background(), "q", nil); !errors.As(err, new(*keenable.InvalidRequestError)) {
 		t.Fatal(err)
 	}
-	if _, err := client.Fetch(context.Background(), "https://example.com"); !errors.As(err, new(*keenable.InvalidRequestError)) {
+	if _, err := client.Fetch(context.Background(), []string{"https://example.com"}); !errors.As(err, new(*keenable.InvalidRequestError)) {
 		t.Fatal(err)
 	}
 	if (*keenable.SearchResponse)(nil).ToContext(nil) != "" {
@@ -1147,7 +1316,7 @@ func TestLocalErrorsNameTheFix(t *testing.T) {
 	if !strings.Contains(err.Error(), "query argument") {
 		t.Fatal(err)
 	}
-	_, err = c.Fetch(context.Background(), "http://127.0.0.1/")
+	_, err = c.Fetch(context.Background(), []string{"http://127.0.0.1/"})
 	if !strings.Contains(err.Error(), "public http(s) URL") {
 		t.Fatal(err)
 	}

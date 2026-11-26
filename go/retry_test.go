@@ -91,7 +91,7 @@ func TestPerCallMaxRetriesZero(t *testing.T) {
 	}
 	c, n, _ = scripted(t, nil, busy)
 	fo := &keenable.FetchOptions{RequestOptions: keenable.RequestOptions{MaxRetries: intPtr(0)}}
-	if _, err := c.FetchWithOptions(context.Background(), "https://example.com", fo); err == nil {
+	if _, err := c.FetchWithOptions(context.Background(), []string{"https://example.com"}, fo); err == nil {
 		t.Fatal("want an error")
 	}
 	if n.Load() != 1 {
@@ -222,19 +222,11 @@ func TestRequestID(t *testing.T) {
 		t.Fatalf("resp=%+v err=%v", resp, err)
 	}
 	c, _, _ = scripted(t, nil, reply(200, `{"url":"https://e.com","request_id":"body"}`, "X-Request-Id", "h"))
-	page, err := c.Fetch(context.Background(), "https://e.com")
+	page, err := c.Fetch(context.Background(), []string{"https://e.com"})
 	if err != nil || page.RequestID != "body" {
 		t.Fatalf("page=%+v err=%v", page, err)
 	}
 }
-
-// Fetch keeps its two-argument method type, so interfaces that mock it and
-// method values of that type still compile.
-var _ interface {
-	Fetch(context.Context, string) (*keenable.Page, error)
-} = (*keenable.Client)(nil)
-
-var _ func(context.Context, string) (*keenable.Page, error) = (*keenable.Client)(nil).Fetch
 
 func TestPerCallTimeoutLongerThanClientDefault(t *testing.T) {
 	slowOK := func(w http.ResponseWriter, r *http.Request) {
@@ -262,5 +254,21 @@ func TestReturnsTheErrorWhenTheWaitOutlastsTheDeadline(t *testing.T) {
 	}
 	if waits := keenable.TakeWaits(); len(waits) != 0 {
 		t.Fatalf("waited %v past the deadline", waits)
+	}
+}
+
+func TestBillingRetriesAndSendsTheCallHeaders(t *testing.T) {
+	c, n, seen := scripted(t, nil, busy, reply(200, `{"object":"billing","prices":[],"account":null}`))
+	one := 1
+	resp, err := c.Billing(context.Background(), &keenable.RequestOptions{MaxRetries: &one, Headers: map[string]string{"X-Trace": "t"}})
+	if err != nil || n.Load() != 2 {
+		t.Fatalf("err=%v requests=%d", err, n.Load())
+	}
+	if len(resp.Prices) != 0 || resp.Account != nil {
+		t.Fatalf("got %+v", resp)
+	}
+	last := (*seen)[1]
+	if last.Path != "/v1/billing" || last.Header.Get("X-Trace") != "t" || last.Header.Get("X-API-Key") != "k" {
+		t.Fatalf("sent %s with %v", last.Path, last.Header)
 	}
 }
