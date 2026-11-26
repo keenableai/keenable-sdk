@@ -651,9 +651,6 @@ func amountDecimal(v any, amount float64) string {
 	if s, ok := v.(string); ok && decimalPattern.MatchString(s) {
 		return s
 	}
-	if math.IsNaN(amount) || math.IsInf(amount, 0) {
-		return "0"
-	}
 	s := strings.TrimSuffix(strings.TrimRight(strconv.FormatFloat(amount, 'f', 9, 64), "0"), ".")
 	if s == "-0" {
 		return "0"

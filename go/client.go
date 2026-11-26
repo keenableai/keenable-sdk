@@ -698,19 +698,14 @@ var hasPublicVariant = map[string]bool{"search": true, "fetch": true}
 // endpointURL is the endpoint's keyed URL, or its /public variant when keyless
 // and it has one.
 func (c *Client) endpointURL(endpoint string, query url.Values) (string, error) {
-	if c.apiKey == "" && hasPublicVariant[endpoint] {
-		endpoint += "/public"
-	}
-	return c.apiURL(endpoint, query)
-}
-
-// apiURL is /v1/<path> on the base URL, the same with and without a key.
-func (c *Client) apiURL(path string, query url.Values) (string, error) {
 	u, err := url.Parse(c.baseURL)
 	if err != nil || u.Host == "" {
 		return "", &InvalidRequestError{msg: fmt.Sprintf("baseURL %q is not a valid URL. Pass an https URL with a host.", c.baseURL)}
 	}
-	u.Path = strings.TrimRight(u.Path, "/") + "/v1/" + path
+	u.Path = strings.TrimRight(u.Path, "/") + "/v1/" + endpoint
+	if c.apiKey == "" && hasPublicVariant[endpoint] {
+		u.Path += "/public"
+	}
 	u.RawQuery = ""
 	u.Fragment = ""
 	u.RawQuery = query.Encode()

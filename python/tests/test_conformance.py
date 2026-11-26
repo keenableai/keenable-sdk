@@ -101,6 +101,10 @@ def waits(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     return recorded
 
 
+NO_ARG = object()
+"""``run``'s arg for a method that takes none (None is a real argument)."""
+
+
 async def run(
     kind: str,
     replies: list[Reply],
@@ -111,7 +115,8 @@ async def run(
     options: dict[str, Any] | None = None,
     call: dict[str, Any] | None = None,
 ) -> Outcome:
-    """Call ``method(arg)`` on a client whose attempt n gets ``replies[n]``."""
+    """Call ``method(arg)`` (``method()`` for ``NO_ARG``) on a client whose
+    attempt n gets ``replies[n]``."""
     outcome = Outcome()
     outcome.waits = waits
 
@@ -122,15 +127,16 @@ async def run(
 
     transport = httpx.MockTransport(handler)
     settings = {"api_key": "k", **(options or {})}
+    args = () if arg is NO_ARG else (arg,)
     try:
         if kind == "sync":
             with Keenable(client=httpx.Client(transport=transport), **settings) as c:
-                outcome.result = getattr(c, method)(arg, **(call or {}))
+                outcome.result = getattr(c, method)(*args, **(call or {}))
         else:
             async with AsyncKeenable(
                 client=httpx.AsyncClient(transport=transport), **settings
             ) as ac:
-                outcome.result = await getattr(ac, method)(arg, **(call or {}))
+                outcome.result = await getattr(ac, method)(*args, **(call or {}))
     except KeenableError as error:
         outcome.error = error
     return outcome
@@ -291,30 +297,14 @@ async def test_responses(kind: str, case: dict[str, Any], waits: list[float]) ->
 @pytest.mark.parametrize("kind", CLIENTS)
 @pytest.mark.parametrize("case", cases("billing"))
 async def test_billing(kind: str, case: dict[str, Any], waits: list[float]) -> None:
-    outcome = Outcome()
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        outcome.requests.append(request)
-        return httpx.Response(
-            case["status"], headers=case["headers"], content=case["body"].encode()
-        )
-
-    transport = httpx.MockTransport(handler)
-    settings: dict[str, Any] = {
-        "api_key": "k" if case["keyed"] else "",
-        "max_retries": 0,
-    }
-    try:
-        if kind == "sync":
-            with Keenable(client=httpx.Client(transport=transport), **settings) as c:
-                outcome.result = c.billing()
-        else:
-            async with AsyncKeenable(
-                client=httpx.AsyncClient(transport=transport), **settings
-            ) as ac:
-                outcome.result = await ac.billing()
-    except KeenableError as error:
-        outcome.error = error
+    outcome = await run(
+        kind,
+        [reply(case)],
+        waits,
+        method="billing",
+        arg=NO_ARG,
+        options={"api_key": "k" if case["keyed"] else "", "max_retries": 0},
+    )
 
     want = case["expect"]
     assert len(outcome.requests) == 1

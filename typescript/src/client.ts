@@ -19,6 +19,8 @@ import {
   count,
   nonEmpty,
   normalizeHost,
+  num,
+  objects,
   readEnv,
   timestamp,
 } from "./internal.js";
@@ -576,16 +578,12 @@ function toPage(data: Record<string, unknown>, url: string): Page {
 
 function toMoney(value: unknown): Money {
   const data = isRecord(value) ? value : {};
-  const sent = amount(data.amount);
+  const sent = num(data.amount) ?? 0;
   return {
     amount: sent,
     amountDecimal: amountDecimal(data.amount_decimal, sent),
     currency: text(data.currency),
   };
-}
-
-function amount(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 const DECIMAL = /^-?[0-9]+(\.[0-9]{1,9})?$/;
@@ -597,15 +595,8 @@ const DECIMAL = /^-?[0-9]+(\.[0-9]{1,9})?$/;
  */
 function amountDecimal(value: unknown, dollars: number): string {
   if (typeof value === "string" && DECIMAL.test(value)) return value;
-  if (!Number.isFinite(dollars)) return "0";
-  // toFixed writes 1e21 and above with an exponent; those are whole numbers.
-  if (Math.abs(dollars) >= 1e21) return BigInt(dollars).toString();
   const fixed = dollars.toFixed(9).replace(/0+$/, "").replace(/\.$/, "");
   return fixed === "-0" ? "0" : fixed;
-}
-
-function records(value: unknown): Record<string, unknown>[] {
-  return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
 function toBillingPrice(data: Record<string, unknown>): BillingPrice {
@@ -953,7 +944,7 @@ export class Keenable {
     // The same path with and without a key: billing has no /public variant.
     const { data, requestId } = await this.request("billing", { method: "GET" }, options);
     return {
-      prices: records(data.prices).map(toBillingPrice),
+      prices: objects(data.prices).map(toBillingPrice),
       account: isRecord(data.account) ? toBillingAccount(data.account) : null,
       requestId,
       raw: data,

@@ -788,9 +788,6 @@ fn amount_decimal(v: Option<&Value>, amount: f64) -> String {
     if let Some(s) = v.and_then(Value::as_str).filter(|s| is_decimal(s)) {
         return s.to_string();
     }
-    if !amount.is_finite() {
-        return "0".to_string();
-    }
     let fixed = format!("{amount:.9}");
     let text = fixed.trim_end_matches('0').trim_end_matches('.');
     if text == "-0" { "0" } else { text }.to_string()
