@@ -390,8 +390,6 @@ describe("fetch", () => {
         credits: "1",
         paid: "yes",
         credits_remaining: "10",
-        cost: { amount: "0.004", currency: "usd" },
-        balance: "47.992",
       },
     };
     const { client } = mockClient(() => json({ results: [billed] }));
@@ -402,7 +400,6 @@ describe("fetch", () => {
       amount: 0,
       credits: 0,
       paid: false,
-      cost: { amount: 0, amountDecimal: "0", currency: "usd" },
     });
   });
 

@@ -461,14 +461,8 @@ func usageFromJSON(v any) *Usage {
 	if f, ok := obj["credits_remaining"].(float64); ok && !math.IsNaN(f) && !math.IsInf(f, 0) {
 		u.CreditsRemaining = &f
 	}
-	if _, ok := obj["cost"].(map[string]any); ok {
-		cost := moneyFromJSON(obj["cost"])
-		u.Cost = &cost
-	}
-	if _, ok := obj["balance"].(map[string]any); ok {
-		balance := moneyFromJSON(obj["balance"])
-		u.Balance = &balance
-	}
+	u.Cost = optionalMoney(obj["cost"])
+	u.Balance = optionalMoney(obj["balance"])
 	return u
 }
 
@@ -704,20 +698,26 @@ func moneyFromJSON(v any) Money {
 	}
 }
 
+// optionalMoney is a Money when v is an object, else nil.
+func optionalMoney(v any) *Money {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return nil
+	}
+	money := moneyFromJSON(m)
+	return &money
+}
+
 func billingFromJSON(data map[string]any) *Billing {
 	b := &Billing{Prices: make([]BillingPrice, 0), Raw: data}
 	for _, p := range objects(data["prices"]) {
-		price := BillingPrice{
-			SKU:       asString(p["sku"]),
-			Unit:      asString(p["unit"]),
-			UnitPrice: moneyFromJSON(p["unit_price"]),
-			Source:    nonEmptyString(p["source"]),
-		}
-		if list, ok := p["list_unit_price"].(map[string]any); ok {
-			m := moneyFromJSON(list)
-			price.ListUnitPrice = &m
-		}
-		b.Prices = append(b.Prices, price)
+		b.Prices = append(b.Prices, BillingPrice{
+			SKU:           asString(p["sku"]),
+			Unit:          asString(p["unit"]),
+			UnitPrice:     moneyFromJSON(p["unit_price"]),
+			ListUnitPrice: optionalMoney(p["list_unit_price"]),
+			Source:        nonEmptyString(p["source"]),
+		})
 	}
 	account, ok := data["account"].(map[string]any)
 	if !ok {

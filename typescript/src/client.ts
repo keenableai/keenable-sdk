@@ -588,13 +588,18 @@ function toUsage(value: unknown): Usage | undefined {
   const remaining = value.credits_remaining;
   return {
     sku: text(value.sku),
-    amount: typeof value.amount === "number" && Number.isSafeInteger(value.amount) && value.amount >= 0 ? value.amount : 0,
+    amount: count(value.amount) ?? 0,
     credits: num(value.credits) ?? 0,
     paid: value.paid === true,
     ...(typeof remaining === "number" && Number.isFinite(remaining) && { credits_remaining: remaining }),
-    ...(isRecord(value.cost) && { cost: toMoney(value.cost) }),
-    ...(isRecord(value.balance) && { balance: toMoney(value.balance) }),
+    cost: optionalMoney(value.cost),
+    balance: optionalMoney(value.balance),
   };
+}
+
+/** A Money when the value is an object, else undefined. */
+function optionalMoney(value: unknown): Money | undefined {
+  return isRecord(value) ? toMoney(value) : undefined;
 }
 
 function toMoney(value: unknown): Money {
@@ -625,7 +630,7 @@ function toBillingPrice(data: Record<string, unknown>): BillingPrice {
     sku: text(data.sku),
     unit: text(data.unit),
     unitPrice: toMoney(data.unit_price),
-    listUnitPrice: isRecord(data.list_unit_price) ? toMoney(data.list_unit_price) : undefined,
+    listUnitPrice: optionalMoney(data.list_unit_price),
     source: nonEmpty(data.source),
   };
 }

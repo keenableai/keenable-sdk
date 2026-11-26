@@ -361,20 +361,7 @@ async fn responses() {
                     .map(|w| serde_json::json!({"code": w.code, "path": w.path, "message": w.message}))
                     .collect();
                 got.insert("warnings".into(), warnings.into());
-                let money = |m: &Option<crate::models::Money>| {
-                    m.as_ref().map_or(
-                        Value::Null,
-                        |m| serde_json::json!({"amount": m.amount, "amount_decimal": m.amount_decimal, "currency": m.currency}),
-                    )
-                };
-                let usage = r.usage.as_ref().map_or(Value::Null, |u| {
-                    serde_json::json!({
-                        "sku": u.sku, "amount": u.amount, "credits": u.credits, "paid": u.paid,
-                        "credits_remaining": u.credits_remaining,
-                        "cost": money(&u.cost), "balance": money(&u.balance),
-                    })
-                });
-                got.insert("usage".into(), usage);
+                got.insert("usage".into(), serde_json::to_value(&r.usage).unwrap());
                 got.insert("error".into(), Value::Null);
                 (as_floats(&Value::Object(got)) != as_floats(want)).then(|| format!("got {r:?}"))
             }

@@ -3340,8 +3340,7 @@
             "acquired_at": "2024-02-02"
           }
         ]
-      },
-      "skip": {}
+      }
     },
     {
       "name": "an empty object",
@@ -3358,8 +3357,7 @@
         "mode": null,
         "request_id": null,
         "results": []
-      },
-      "skip": {}
+      }
     },
     {
       "name": "extra fields are ignored",
@@ -3385,8 +3383,7 @@
             "acquired_at": null
           }
         ]
-      },
-      "skip": {}
+      }
     },
     {
       "name": "results null",
@@ -3403,8 +3400,7 @@
         "mode": null,
         "request_id": null,
         "results": []
-      },
-      "skip": {}
+      }
     },
     {
       "name": "results as an object",
@@ -3421,8 +3417,7 @@
         "mode": null,
         "request_id": null,
         "results": []
-      },
-      "skip": {}
+      }
     },
     {
       "name": "results as a string",
@@ -3439,8 +3434,7 @@
         "mode": null,
         "request_id": null,
         "results": []
-      },
-      "skip": {}
+      }
     },
     {
       "name": "non-object results are skipped",
@@ -3466,8 +3460,7 @@
             "acquired_at": null
           }
         ]
-      },
-      "skip": {}
+      }
     },
     {
       "name": "mistyped result fields",
@@ -3493,8 +3486,7 @@
             "acquired_at": null
           }
         ]
-      },
-      "skip": {}
+      }
     },
     {
       "name": "null result fields",
@@ -3520,8 +3512,7 @@
             "acquired_at": null
           }
         ]
-      },
-      "skip": {}
+      }
     },
     {
       "name": "zero and false result fields",
@@ -3547,8 +3538,7 @@
             "acquired_at": null
           }
         ]
-      },
-      "skip": {}
+      }
     },
     {
       "name": "blank strings are kept in required fields and dropped in optional ones",
@@ -3574,8 +3564,7 @@
             "acquired_at": null
           }
         ]
-      },
-      "skip": {}
+      }
     },
     {
       "name": "a different query echo is kept",
@@ -3592,8 +3581,7 @@
         "mode": null,
         "request_id": null,
         "results": []
-      },
-      "skip": {}
+      }
     },
     {
       "name": "a blank query echo keeps the query sent",
@@ -3610,8 +3598,7 @@
         "mode": null,
         "request_id": null,
         "results": []
-      },
-      "skip": {}
+      }
     },
     {
       "name": "a numeric query echo keeps the query sent",
@@ -3628,8 +3615,7 @@
         "mode": null,
         "request_id": null,
         "results": []
-      },
-      "skip": {}
+      }
     },
     {
       "name": "a mistyped mode is null",
@@ -3646,8 +3632,7 @@
         "mode": null,
         "request_id": null,
         "results": []
-      },
-      "skip": {}
+      }
     },
     {
       "name": "an empty mode is null",
@@ -3664,8 +3649,7 @@
         "mode": null,
         "request_id": null,
         "results": []
-      },
-      "skip": {}
+      }
     },
     {
       "name": "the body's request id over the header's",
@@ -3684,8 +3668,7 @@
         "mode": null,
         "request_id": "body",
         "results": []
-      },
-      "skip": {}
+      }
     },
     {
       "name": "the header's request id, trimmed",
@@ -3704,8 +3687,7 @@
         "mode": null,
         "request_id": "hdr",
         "results": []
-      },
-      "skip": {}
+      }
     },
     {
       "name": "a numeric body request id falls back to the header",
@@ -3724,8 +3706,7 @@
         "mode": null,
         "request_id": "hdr",
         "results": []
-      },
-      "skip": {}
+      }
     },
     {
       "name": "a blank header request id is none",
@@ -3744,8 +3725,7 @@
         "mode": null,
         "request_id": null,
         "results": []
-      },
-      "skip": {}
+      }
     },
     {
       "name": "a 201 is a success",
@@ -3762,8 +3742,7 @@
         "mode": null,
         "request_id": null,
         "results": []
-      },
-      "skip": {}
+      }
     },
     {
       "name": "a leading byte order mark is ignored",
@@ -3789,8 +3768,7 @@
             "acquired_at": null
           }
         ]
-      },
-      "skip": {}
+      }
     },
     {
       "name": "an overflowing number in an extra field is not an error",
@@ -3816,8 +3794,7 @@
             "acquired_at": null
           }
         ]
-      },
-      "skip": {}
+      }
     },
     {
       "name": "a JSON array body",
@@ -3828,8 +3805,7 @@
       "body": "[]",
       "expect": {
         "error": "api"
-      },
-      "skip": {}
+      }
     },
     {
       "name": "a JSON string body",
@@ -3840,8 +3816,7 @@
       "body": "\"ok\"",
       "expect": {
         "error": "api"
-      },
-      "skip": {}
+      }
     },
     {
       "name": "a JSON null body",
@@ -3852,8 +3827,7 @@
       "body": "null",
       "expect": {
         "error": "api"
-      },
-      "skip": {}
+      }
     },
     {
       "name": "an empty body",
@@ -3864,8 +3838,7 @@
       "body": "",
       "expect": {
         "error": "api"
-      },
-      "skip": {}
+      }
     },
     {
       "name": "a 204",
@@ -3876,8 +3849,7 @@
       "body": "",
       "expect": {
         "error": "api"
-      },
-      "skip": {}
+      }
     },
     {
       "name": "an HTML body",
@@ -3888,8 +3860,7 @@
       "body": "<html>ok</html>",
       "expect": {
         "error": "api"
-      },
-      "skip": {}
+      }
     },
     {
       "name": "a NaN literal is not JSON",
@@ -3900,8 +3871,7 @@
       "body": "{\"results\":[],\"score\":NaN}",
       "expect": {
         "error": "api"
-      },
-      "skip": {}
+      }
     },
     {
       "name": "trailing data is not JSON",
@@ -3912,8 +3882,7 @@
       "body": "{\"results\":[]}{}",
       "expect": {
         "error": "api"
-      },
-      "skip": {}
+      }
     },
     {
       "name": "result dates as ISO strings are kept",
@@ -3939,8 +3908,7 @@
             "acquired_at": "2024-05-02T00:00:00Z"
           }
         ]
-      },
-      "skip": {}
+      }
     },
     {
       "name": "result dates in Unix seconds are ISO 8601 UTC",
@@ -3966,8 +3934,7 @@
             "acquired_at": "2024-05-02T00:00:00Z"
           }
         ]
-      },
-      "skip": {}
+      }
     },
     {
       "name": "out-of-range result dates are unset",
@@ -3993,8 +3960,7 @@
             "acquired_at": null
           }
         ]
-      },
-      "skip": {}
+      }
     },
     {
       "name": "zero and numeric-string result dates",
@@ -4020,8 +3986,7 @@
             "acquired_at": "1714564800"
           }
         ]
-      },
-      "skip": {}
+      }
     },
     {
       "name": "warnings are parsed",
@@ -4044,8 +4009,7 @@
         "mode": null,
         "request_id": null,
         "results": []
-      },
-      "skip": {}
+      }
     },
     {
       "name": "malformed warnings",
@@ -4073,8 +4037,7 @@
         "mode": null,
         "request_id": null,
         "results": []
-      },
-      "skip": {}
+      }
     },
     {
       "name": "warnings as an object",
@@ -4091,8 +4054,7 @@
         "mode": null,
         "request_id": null,
         "results": []
-      },
-      "skip": {}
+      }
     },
     {
       "name": "warnings null",
@@ -4109,8 +4071,7 @@
         "mode": null,
         "request_id": null,
         "results": []
-      },
-      "skip": {}
+      }
     },
     {
       "name": "usage with the cost and balance in US dollars",
@@ -4143,8 +4104,7 @@
         "mode": null,
         "request_id": null,
         "results": []
-      },
-      "skip": {}
+      }
     },
     {
       "name": "usage money from an older server without amount_decimal",
@@ -4177,9 +4137,6 @@
         "mode": null,
         "request_id": null,
         "results": []
-      },
-      "skip": {
-        "python": "usage is the dict the API sent, so amount_decimal is not filled in"
       }
     },
     {
@@ -4205,8 +4162,65 @@
         "mode": null,
         "request_id": null,
         "results": []
-      },
-      "skip": {}
+      }
+    },
+    {
+      "name": "a usage money field that is not an object is null, the rest is kept",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"sku\":\"search.pro\",\"amount\":1,\"credits\":1,\"paid\":true,\"credits_remaining\":5,\"cost\":\"0.004\",\"balance\":[0.004]}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "sku": "search.pro",
+          "amount": 1,
+          "credits": 1,
+          "paid": true,
+          "credits_remaining": 5,
+          "cost": null,
+          "balance": null
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "a malformed usage money field reads as in billing, the rest is kept",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"sku\":\"search.pro\",\"amount\":1,\"credits\":1,\"paid\":true,\"cost\":{\"amount\":\"0.004\",\"currency\":\"usd\"},\"balance\":{\"amount\":47.992}}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "sku": "search.pro",
+          "amount": 1,
+          "credits": 1,
+          "paid": true,
+          "credits_remaining": null,
+          "cost": {
+            "amount": 0,
+            "amount_decimal": "0",
+            "currency": "usd"
+          },
+          "balance": {
+            "amount": 47.992,
+            "amount_decimal": "47.992",
+            "currency": ""
+          }
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
     },
     {
       "name": "a usage amount in float form is the whole number",
@@ -4231,8 +4245,7 @@
         "mode": null,
         "request_id": null,
         "results": []
-      },
-      "skip": {}
+      }
     },
     {
       "name": "usage that is not an object is null",
@@ -4249,8 +4262,7 @@
         "mode": null,
         "request_id": null,
         "results": []
-      },
-      "skip": {}
+      }
     }
   ],
   "billing": [

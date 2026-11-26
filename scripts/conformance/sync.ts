@@ -169,7 +169,6 @@ function responses(): Obj[] {
       headers: headers(item),
       body: bodyText(item, `responses ${name}`),
       expect: typeof given.error === "string" ? given : { error: null, warnings: [], usage: null, ...given },
-      skip: (item.skip as Obj | undefined) ?? {},
     };
   });
 }
