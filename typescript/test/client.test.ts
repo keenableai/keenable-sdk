@@ -381,6 +381,18 @@ describe("fetch", () => {
     expect(page?.usage?.balance).toEqual({ amount: 47.992, amountDecimal: "47.992", currency: "usd" });
   });
 
+  it("reads credits_remaining as creditsRemaining and keeps the deprecated alias", async () => {
+    const billed = {
+      ...PAGE_BODY,
+      usage: { sku: "fetch", amount: 1, credits: 1, paid: true, credits_remaining: 41 },
+    };
+    const { client } = mockClient(() => json({ results: [billed] }));
+    const [page] = (await client.fetch("https://example.com")).results;
+
+    expect(page?.usage?.creditsRemaining).toBe(41);
+    expect(page?.usage?.credits_remaining).toBe(41);
+  });
+
   it("normalizes a fetched page's usage field by field", async () => {
     const billed = {
       ...PAGE_BODY,

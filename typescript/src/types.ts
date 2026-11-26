@@ -32,6 +32,11 @@ export interface Usage {
   amount: number;
   credits: number;
   paid: boolean;
+  /** Credits left on the account after the call, when the API sends them. */
+  creditsRemaining?: number;
+  /**
+   * @deprecated Use `creditsRemaining`. Holds the same value; removed in a future major version.
+   */
   credits_remaining?: number;
   /** What the call cost, in US dollars. */
   cost?: Money;

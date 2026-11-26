@@ -339,7 +339,7 @@ describe("success bodies", () => {
             amount: r.usage.amount,
             credits: r.usage.credits,
             paid: r.usage.paid,
-            credits_remaining: r.usage.credits_remaining ?? null,
+            credits_remaining: r.usage.creditsRemaining ?? null,
             cost: r.usage.cost ? money(r.usage.cost) : null,
             balance: r.usage.balance ? money(r.usage.balance) : null,
           }

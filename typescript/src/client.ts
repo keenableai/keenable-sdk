@@ -591,7 +591,8 @@ function toUsage(value: unknown): Usage | undefined {
     amount: count(value.amount) ?? 0,
     credits: num(value.credits) ?? 0,
     paid: value.paid === true,
-    ...(typeof remaining === "number" && Number.isFinite(remaining) && { credits_remaining: remaining }),
+    ...(typeof remaining === "number" &&
+      Number.isFinite(remaining) && { creditsRemaining: remaining, credits_remaining: remaining }),
     cost: optionalMoney(value.cost),
     balance: optionalMoney(value.balance),
   };
