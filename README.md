@@ -8,6 +8,12 @@ markdown.
 **Keyless by default.** Every call works with no account and no key. An optional
 `KEENABLE_API_KEY` only lifts the hourly rate limit.
 
+**Try it in the browser, nothing to install:**
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/keenableai/keenable-sdk/blob/main/examples/notebooks/quickstart.ipynb)
+(Python notebook) ·
+[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/keenableai/keenable-sdk/tree/main/examples/stackblitz?file=index.ts)
+(TypeScript)
+
 | Language | Package | Source |
 |---|---|---|
 | Python 3.9+ | [`keenable`](https://pypi.org/project/keenable/) | [`python/`](./python) |

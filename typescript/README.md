@@ -13,6 +13,10 @@ npm install keenable
 
 Node 18 or newer (the SDK uses the built-in `fetch`). No runtime dependencies.
 
+[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/keenableai/keenable-sdk/tree/main/examples/stackblitz?file=index.ts)
+Try it in the browser first: the [StackBlitz project](https://github.com/keenableai/keenable-sdk/tree/main/examples/stackblitz)
+runs a keyless search and prints `toContext()`, with nothing to install.
+
 ## Search
 
 ```ts
