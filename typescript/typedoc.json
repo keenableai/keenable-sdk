@@ -11,7 +11,7 @@
   "excludeExternals": true,
   "githubPages": true,
   "disableGit": true,
-  "sourceLinkTemplate": "https://github.com/keenableai/keenable-sdk/blob/main/typescript/{path}#L{line}",
+  "sourceLinkTemplate": "https://github.com/keenableai/keenable-sdk/blob/main/typescript/src/{path}#L{line}",
   "navigationLinks": {
     "Docs": "https://docs.keenable.ai/sdks",
     "GitHub": "https://github.com/keenableai/keenable-sdk"

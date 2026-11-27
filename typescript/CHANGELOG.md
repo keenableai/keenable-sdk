@@ -5,7 +5,7 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
-- **Added:** a generated API reference at https://keenableai.github.io/keenable-sdk/typescript/ (TypeDoc, rebuilt on every push to `main`; `npm run docs` builds it locally), linked from the README. `SearchResponse.query`, `results`, `mode`, `raw` and `length`, and `KeenableAPIError.statusCode` and `body`, now have doc comments.
+- **Added:** a generated API reference at https://keenableai.github.io/keenable-sdk/typescript/ (TypeDoc, rebuilt and published on pushes to `main` only, not on release tags; `npm run docs` builds it locally), linked from the README. `SearchResponse.query`, `results`, `mode`, `raw` and `length`, and `KeenableAPIError.statusCode` and `body`, now have doc comments.
 - **Added:** `SearchResponse.usage` and an exported `Usage` type: what the search cost and, with a key, `cost` and `balance` in US dollars. Undefined on keyless calls.
 - **Changed:** the `keenable_search` tool's `moderation` description: supported for a URL query when `exclude_domains` is set.
 - **Added:** `Page.usage.cost` and `Page.usage.balance` (`Money`, US dollars): what the page cost and the organization's balance after it. Each carries `amountDecimal`, the exact decimal string, as in `billing()`: add costs with it rather than with `amount`.

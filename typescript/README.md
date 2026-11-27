@@ -457,7 +457,7 @@ key, since it may already have been sent to the redirect's target.
 
 The [API reference](https://keenableai.github.io/keenable-sdk/typescript/) is
 generated from the TSDoc comments with [TypeDoc](https://typedoc.org) and
-published on every push to `main`. To build it locally (from `typescript/`):
+published on pushes to `main` only. To build it locally (from `typescript/`):
 
 ```bash
 npm run docs

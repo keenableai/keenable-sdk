@@ -450,7 +450,7 @@ than to the bare SDK.
 
 The [API reference](https://keenableai.github.io/keenable-sdk/python/) is
 generated from the docstrings with [pdoc](https://pdoc.dev) and published on
-every push to `main`. To build it locally (from `python/`):
+pushes to `main` only. To build it locally (from `python/`):
 
 ```bash
 uv run --group dev pdoc keenable --docformat google --no-show-source -o api-docs

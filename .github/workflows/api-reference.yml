@@ -12,15 +12,14 @@ name: API reference
 # One-time setup by a repo admin: Settings -> Pages -> Build and deployment ->
 # Source "GitHub Actions". Until then the deploy job fails; the build still runs.
 #
-# Release tags: cut-sdk-release.yml creates them with GITHUB_TOKEN, which
-# starts no workflow, so the tag trigger below only fires for a tag a person
-# pushes. A release is still published, because the merge of its release PR
-# into main runs this workflow on that same commit.
+# Only pushes to main deploy, never release tags: the github-pages environment
+# lets only the default branch deploy, and a tag on an older commit would
+# replace the reference with older output. A release is still published,
+# because the merge of its release PR into main runs this workflow.
 
 on:
   push:
     branches: [main]
-    tags: ["python-v*", "ts-v*"]
   pull_request:
     paths:
       - python/keenable/**
