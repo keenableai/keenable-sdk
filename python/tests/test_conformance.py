@@ -32,6 +32,7 @@ from keenable import (
     KeenableInvalidRequestError,
     KeenableRateLimitError,
     KeenableTimeoutError,
+    Usage,
     WebhookVerificationError,
     arun_tool_call,
     run_tool_call,
@@ -242,6 +243,7 @@ async def test_errors(kind: str, case: dict[str, Any], waits: list[float]) -> No
         "value": error.value,
         "reason": error.reason,
         "limit": dataclasses.asdict(error.limit) if error.limit else None,
+        "usage": _usage(error.usage),
     }
     assert got == {key: want[key] for key in got}
     message = str(error)
@@ -295,19 +297,40 @@ async def test_responses(kind: str, case: dict[str, Any], waits: list[float]) ->
     assert got == {key: want[key] for key in got}
 
 
-def _usage(usage: dict[str, Any] | None) -> dict[str, Any] | None:
-    """The usage dict as the cases spell it; Python keeps the dict as sent."""
+def _usage(usage: Usage | None) -> dict[str, Any] | None:
+    """The usage as the cases spell it. Python keeps the old fields as the
+    dict the API sent (deprecated), so they read with the cases' defaults."""
     if usage is None:
         return None
+    raw = usage.raw
     return {
-        "sku": usage.get("sku"),
-        "amount": usage.get("amount"),
-        "credits": usage.get("credits"),
-        "paid": usage.get("paid"),
-        "credits_remaining": usage.get("credits_remaining"),
-        "cost": usage.get("cost"),
-        "balance": usage.get("balance"),
+        "items": [dataclasses.asdict(item) for item in usage.items],
+        "total": dataclasses.asdict(usage.total),
+        "balance": dataclasses.asdict(usage.balance) if usage.balance else None,
+        "sku": raw.get("sku", ""),
+        "amount": raw.get("amount", 0),
+        "credits": raw.get("credits", 0),
+        "paid": raw.get("paid", False),
+        "credits_remaining": raw.get("credits_remaining"),
     }
+
+
+@pytest.mark.parametrize("kind", CLIENTS)
+@pytest.mark.parametrize("case", cases("fetch_usage"))
+async def test_fetch_usage(kind: str, case: dict[str, Any], waits: list[float]) -> None:
+    outcome = await run(
+        kind,
+        [reply(case)],
+        waits,
+        method="fetch",
+        arg=case["urls"],
+        options={"max_retries": 0},
+    )
+    assert outcome.error is None
+    want = case["expect"]
+    result = outcome.result
+    assert _usage(result.usage) == want["usage"]
+    assert [_usage(page.usage) for page in result.results] == want["pages"]
 
 
 @pytest.mark.parametrize("kind", CLIENTS)
@@ -446,6 +469,7 @@ def test_the_fixture_has_every_section() -> None:
         "errors",
         "responses",
         "billing",
+        "fetch_usage",
         "options",
         "search_body",
         "tool_call",

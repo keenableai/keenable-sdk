@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .models import Usage
 
 
 class KeenableError(Exception):
@@ -68,6 +72,8 @@ class KeenableAPIError(KeenableError):
       sent, but a size cap reports the list's size (``"2500 entries"`` or
       ``"more than 1000 distinct hosts"``) or the first 64 characters of an
       over-long entry followed by ``"..."``.
+    - ``usage``: a :class:`~keenable.Usage`, what a partly billed call was
+      charged before it failed.
 
     ``str(err)`` ends with ``(code: <code>)`` and ``(request_id: <id>)`` when
     the API sent them.
@@ -90,6 +96,7 @@ class KeenableAPIError(KeenableError):
         limit: RateLimitInfo | None = None,
         value: str | None = None,
         reason: str | None = None,
+        usage: Usage | None = None,
     ):
         super().__init__(message)
         self.status_code = status_code
@@ -105,6 +112,7 @@ class KeenableAPIError(KeenableError):
         self.limit = limit
         self.value = value
         self.reason = reason
+        self.usage = usage
 
 
 class KeenableAuthError(KeenableAPIError):

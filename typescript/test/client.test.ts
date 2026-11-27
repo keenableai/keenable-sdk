@@ -378,8 +378,9 @@ describe("fetch", () => {
     const { client } = mockClient(() => json({ results: [billed] }));
     const [page] = (await client.fetch("https://example.com")).results;
 
-    expect(page?.usage?.cost).toEqual({ amount: 0.004, amountDecimal: "0.004", currency: "usd" });
-    expect(page?.usage?.balance).toEqual({ amount: 47.992, amountDecimal: "47.992", currency: "usd" });
+    expect(page?.usage?.items).toEqual([{ sku: "fetch", quantity: 1, price: { amount: "0.004", currency: "usd" } }]);
+    expect(page?.usage?.total).toEqual({ amount: "0.004", currency: "usd" });
+    expect(page?.usage?.balance).toEqual({ amount: "47.992", currency: "usd" });
   });
 
   it("normalizes a fetched page's usage field by field", async () => {
@@ -397,11 +398,28 @@ describe("fetch", () => {
     const [page] = (await client.fetch("https://example.com")).results;
 
     expect(page?.usage).toEqual({
+      items: [],
+      total: { amount: "0", currency: "usd" },
       sku: "",
       amount: 0,
       credits: 0,
       paid: false,
     });
+  });
+
+  it("reads the call's standard usage and keeps money exact", async () => {
+    const usage = {
+      items: [{ sku: "fetch.live", quantity: 2, price: { amount: "0.1", currency: "usd" } }],
+      total: { amount: "0.2", currency: "usd" },
+      balance: { amount: "12345678901234567.000000001", currency: "usd" },
+    };
+    const { client } = mockClient(() => json({ results: [PAGE_BODY, PAGE_BODY], usage }));
+    const res = await client.fetch(["https://example.com", "https://example.org"]);
+
+    expect(res.usage?.items).toEqual(usage.items);
+    expect(res.usage?.total.amount).toBe("0.2");
+    expect(res.usage?.balance?.amount).toBe("12345678901234567.000000001");
+    expect(res.results[0]?.usage).toBeUndefined();
   });
 
   it("renders a citable block like search results do", async () => {

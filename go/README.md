@@ -214,21 +214,53 @@ if billing.Account != nil { // nil without an API key
 Without one, `Prices` are the public list prices and `Account` is nil. With
 one, `Prices` are your organization's (with `ListUnitPrice` and `Source`,
 `"list"` or `"contract"`), and `Account` holds the available balance and
-`BillingURL`, the console page for adding funds. Amounts are numbers in US
-dollars (`Money.Amount`, a `float64` such as `0.004`, up to nine decimal
-places, negative for an account in debt). `Money.AmountDecimal` is the same
-amount as an exact decimal string (`"0.004"`); add amounts with it, not with
-the float, when they must match a bill:
+`BillingURL`, the console page for adding funds. Amounts are `Money`: `Amount`
+is an exact decimal string in US dollars (`"0.004"`, up to nine decimal places,
+negative for an account in debt) and `Currency` is `"usd"`.
+
+## Usage
+
+Every paid call reports what it was billed: `SearchResponse.Usage`,
+`FetchResponse.Usage` (one for the whole call) and, when a failed call was
+partly billed, `APIError.Usage`. Each is nil when the API sent none, as on
+keyless calls.
 
 ```go
-total := new(big.Rat)
-for _, p := range billing.Prices {
-	if r, ok := new(big.Rat).SetString(p.UnitPrice.AmountDecimal); ok {
-		total.Add(total, r)
+resp, err := client.Search(ctx, "rust async runtimes", nil)
+if err != nil {
+	log.Fatal(err)
+}
+if u := resp.Usage; u != nil {
+	for _, item := range u.Items { // one per SKU and unit price
+		fmt.Println(item.SKU, item.Quantity, item.Price.Amount)
+	}
+	fmt.Println("total:", u.Total.Amount)
+	if u.Balance != nil { // nil when unknown
+		fmt.Println("balance:", u.Balance.Amount)
 	}
 }
-fmt.Println(total.FloatString(9))
 ```
+
+Amounts are strings, not `float64`, so they add up exactly: a float cannot hold
+`0.1` or `0.004`, and a sum of thousands of calls drifts away from the invoice.
+Add them with `Money.Rat` (a `*big.Rat`) to check a bill against usage:
+
+```go
+spent := new(big.Rat)
+for _, u := range usages {
+	spent.Add(spent, u.Total.Rat())
+}
+fmt.Println(spent.FloatString(9))
+```
+
+The SDK reads every usage shape the API has sent into this one, so the same
+code works against servers before and after the change. From an older server,
+usage has one item whose price is the cost divided by the amount (rounded to
+nine decimal places when it does not divide evenly), the total is the cost
+(`"0"` when the call was paid from the free allowance and no cost was sent),
+and a fetch's usage is built from its pages' usage. Its old fields (`SKU`,
+`Amount`, `Credits`, `Paid`, `CreditsRemaining`) and `Page.Usage` stay readable
+for now and are deprecated.
 
 `opts` is a `*RequestOptions` and may be nil.
 

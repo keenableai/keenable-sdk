@@ -101,6 +101,29 @@ key your balance), a `to_context()` /
 definitions for tool calling. See the per-language READMEs for the full
 reference.
 
+## Usage and money
+
+Every paid call reports what it was billed in `usage`, in one shape in every
+SDK: `items` (one `{sku, quantity, price}` per SKU and unit price), `total`,
+and `balance` (your organization's balance after the call, absent when
+unknown). A fetch reports one `usage` for the whole call; a failed call that
+was partly billed carries it on the error.
+
+```python
+results = keenable.search("solid-state battery breakthroughs")
+if results.usage:
+    for item in results.usage.items:
+        print(item.sku, item.quantity, item.price.amount)  # search.pro 1 0.004
+    print("total", results.usage.total.amount)
+```
+
+Amounts (`Money.amount`) are exact decimal strings in US dollars, such as
+`"0.004"`, never floats: a float cannot hold `0.004` exactly, and the error
+grows as you add up thousands of calls to check a bill. Add them with a
+decimal type: Python `money.decimal()`, Go `money.Rat()`, TypeScript and Rust
+a decimal library or integer nano-dollars. The SDKs read every usage shape the
+API has sent into this one, so the same code works with older servers too.
+
 ## Monitors
 
 A search monitor is a standing search: it watches the web for a topic and

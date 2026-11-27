@@ -46,7 +46,7 @@ pub use error::{
 pub use models::{
     AnswerError, Billing, BillingAccount, BillingBalance, BillingPrice, ContextOptions, FetchError,
     FetchResponse, Money, Page, PageImage, PageLink, SearchResponse, SearchResult, SearchWarning,
-    Usage, DEFAULT_CONTEXT_MAX_CHARS, DEFAULT_CONTEXT_MAX_SNIPPET_CHARS,
+    Usage, UsageItem, DEFAULT_CONTEXT_MAX_CHARS, DEFAULT_CONTEXT_MAX_SNIPPET_CHARS,
 };
 pub use monitors::{
     BulkFilter, BulkResult, DeliveryList, List, Monitor, MonitorBulkParams, MonitorCreateParams,

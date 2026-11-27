@@ -50,6 +50,7 @@ export type {
   SearchWarning,
   ToContextOptions,
   Usage,
+  UsageItem,
 } from "./types.js";
 export { Monitors } from "./monitors.js";
 export type {

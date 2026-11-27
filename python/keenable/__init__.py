@@ -39,6 +39,8 @@ from .models import (
     SearchResponse,
     SearchResult,
     SearchWarning,
+    Usage,
+    UsageItem,
 )
 from .monitors import (
     NOT_GIVEN,
@@ -125,6 +127,8 @@ __all__ = [
     "MonitorWebhook",
     "Monitors",
     "Money",
+    "Usage",
+    "UsageItem",
     "NOT_GIVEN",
     "Page",
     "RateLimitInfo",

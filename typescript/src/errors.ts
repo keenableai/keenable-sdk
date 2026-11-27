@@ -1,3 +1,5 @@
+import type { Usage } from "./types.js";
+
 /** Errors thrown by the Keenable SDK. */
 
 /** Base class for every error thrown by this SDK. */
@@ -85,6 +87,8 @@ export interface KeenableAPIErrorDetails {
   value?: string;
   /** Why the API rejected `value`. */
   reason?: string;
+  /** What a partly billed call was billed, when the error body says. */
+  usage?: Usage;
 }
 
 /**
@@ -105,6 +109,7 @@ export class KeenableAPIError extends KeenableError implements KeenableAPIErrorD
   readonly limit?: RateLimitInfo;
   readonly value?: string;
   readonly reason?: string;
+  readonly usage?: Usage;
 
   constructor(
     message: string,
@@ -126,6 +131,7 @@ export class KeenableAPIError extends KeenableError implements KeenableAPIErrorD
     this.limit = details.limit;
     this.value = details.value;
     this.reason = details.reason;
+    this.usage = details.usage;
   }
 }
 

@@ -26,17 +26,44 @@ export interface SearchResult {
   raw: Record<string, unknown>;
 }
 
-/** What a call cost and, with a key, the balance left after it. */
-export interface Usage {
+/** One SKU and unit price a call was billed for. */
+export interface UsageItem {
+  /** The usage SKU, such as "search.pro" or "fetch.time_machine". */
   sku: string;
-  amount: number;
-  credits: number;
-  paid: boolean;
-  credits_remaining?: number;
-  /** What the call cost, in US dollars. */
-  cost?: Money;
-  /** The organization's balance after the call, in US dollars. */
+  /** How many units of this SKU the call used. */
+  quantity: number;
+  /** The price of one unit. `quantity` times `price` is this item's share of `total`. */
+  price: Money;
+}
+
+/**
+ * What a call was billed, in one shape for every paid call: one item per SKU
+ * and unit price, the total, and the organization's balance after the call.
+ * Amounts are exact decimal strings in US dollars: add them with a decimal
+ * library or as BigInt nano-dollars to check a bill.
+ *
+ * Read from all three shapes the API has sent. From an older server's
+ * `{sku, amount, cost, ...}` the one item's price is `cost / amount` and
+ * `total` is `cost`; with no `cost` (a call within the free allowance) both
+ * are `"0"` in usd.
+ */
+export interface Usage {
+  /** One entry per SKU and unit price, in the order first billed. */
+  items: UsageItem[];
+  /** The cost of the whole call. */
+  total: Money;
+  /** The organization's balance after the call. Undefined when the API did not say. */
   balance?: Money;
+  /** @deprecated Only older servers send it; read `items[].sku`. `""` when not sent. */
+  sku: string;
+  /** @deprecated Only older servers send it; read `items[].quantity`. 0 when not sent. */
+  amount: number;
+  /** @deprecated Only older servers send it; read `total`. 0 when not sent. */
+  credits: number;
+  /** @deprecated Only older servers send it. False when not sent. */
+  paid: boolean;
+  /** @deprecated Only older servers send it; read `balance`. */
+  credits_remaining?: number;
 }
 
 /** Something in a search request to change, such as a deprecated parameter. The request was still served. */
@@ -209,22 +236,16 @@ export interface KeenableOptions {
   fetch?: typeof globalThis.fetch;
 }
 
-/** An amount of money, as the API sent it. */
+/** An amount of money. */
 export interface Money {
   /**
-   * Amount in the currency's major unit (US dollars), such as 0.004, with up
-   * to nine decimal places. Negative for an account in debt. 0 when the API
-   * sent no finite number. For display: add amounts with `amountDecimal`.
+   * Amount in US dollars as an exact decimal string, such as "0.004": up to
+   * nine decimal places, no trailing zeros, no exponent, "-" when negative
+   * (an account in debt), "0" for zero. A string so that sums are exact:
+   * add amounts with a decimal library or as BigInt nano-dollars, never as
+   * floats. An older server's number is written this way.
    */
-  amount: number;
-  /**
-   * The same amount as an exact decimal string (the API's `amount_decimal`),
-   * such as "0.004": up to nine decimal places, no trailing zeros, no
-   * exponent, "-" when negative, "0" for zero. Add amounts exactly with a
-   * decimal library (or as BigInt nano-dollars), never by summing `amount`.
-   * From an older server that sends none, `amount` written this way.
-   */
-  amountDecimal: string;
+  amount: string;
   /** Lowercase ISO 4217 code, such as "usd". */
   currency: string;
 }

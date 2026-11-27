@@ -185,12 +185,43 @@ read-only and free, with or without a key. Without one, `prices` are the public
 list prices and `account` is `None`. With one, `prices` are your
 organization's (with `list_unit_price` and `source`, `"list"` or
 `"contract"`), and `account` holds the available balance and `billing_url`,
-the console page for adding funds. Amounts are numbers in US dollars
-(`Money::amount`, an `f64` such as `0.004`, up to nine decimal places,
-negative for an account in debt). `Money::amount_decimal` is the same amount
-as an exact decimal string (`"0.004"`); add amounts with it (with a decimal
-crate such as `rust_decimal`, or as integer nano-dollars), not with the
-float, when they must match a bill.
+the console page for adding funds. Amounts are `Money { amount, currency }`
+with `amount` an exact decimal string in US dollars (`"0.004"`: up to nine
+decimal places, no exponent, `-` for an organization in debt).
+
+## Usage and money
+
+A paid call says what it was billed in `usage`: `SearchResponse::usage`,
+`FetchResponse::usage` (one for the whole fetch call) and `ApiError::usage`
+(a call that failed after it was partly billed).
+
+```rust
+if let Some(usage) = &response.usage {
+    for item in &usage.items {
+        println!("{} x{} at ${}", item.sku, item.quantity, item.price.amount);
+    }
+    println!("total ${}", usage.total.amount);
+    if let Some(balance) = &usage.balance {
+        println!("balance ${}", balance.amount);
+    }
+}
+```
+
+`items` has one `UsageItem { sku, quantity, price }` per SKU and unit price,
+`total` is the cost of the call, and `balance` the organization's balance
+after it (`None` when the API did not send it). Amounts are strings, not
+`f64`, so they add up exactly: a price per request is a fraction of a cent,
+and summing floats drifts away from the bill. Add them with a decimal crate or
+as integer nano-dollars when they must match an invoice.
+
+The SDK reads every server version into this shape. An older server's usage
+(`sku`, `amount`, `cost`, money as numbers) becomes one item whose price is
+the cost divided by the amount (exact, rounded to nine decimals) and a total
+equal to the cost, or 0 when it sent no cost (the free allowance). An older
+fetch reports usage per page; `FetchResponse::usage` is then built from the
+pages. The old fields (`Usage::sku`, `amount`, `credits`, `paid`,
+`credits_remaining`, and `Page::usage`) stay readable for one release and are
+deprecated.
 
 ## Tool calling
 

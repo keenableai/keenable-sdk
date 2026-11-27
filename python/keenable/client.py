@@ -37,7 +37,7 @@ from .errors import (
     KeenableTimeoutError,
     RateLimitInfo,
 )
-from .models import Billing, FetchResponse, SearchResponse
+from .models import Billing, FetchResponse, SearchResponse, _usage
 from .monitors import AsyncMonitors, Monitors, _Call
 
 __all__ = ["Keenable", "AsyncKeenable", "DEFAULT_MAX_RETRIES"]
@@ -584,6 +584,7 @@ def _error_fields(
         "limit": _limit_info(body.get("limit")),
         "value": _str_field(body, "value") if invalid_filter else None,
         "reason": _str_field(body, "reason") if invalid_filter else None,
+        "usage": _usage(body.get("usage")),
     }
 
 

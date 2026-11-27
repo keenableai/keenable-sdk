@@ -371,6 +371,9 @@ func (c *Client) FetchWithOptions(ctx context.Context, urls []string, opts *Fetc
 		}
 		resp.Results = append(resp.Results, *pageFromJSON(obj, asked))
 	}
+	if resp.Usage = usageFromJSON(data["usage"]); resp.Usage == nil {
+		resp.Usage = mergePageUsage(resp.Results)
+	}
 	return resp, nil
 }
 
@@ -1180,6 +1183,7 @@ func parseErrorBody(m map[string]any, header http.Header) *APIError {
 		Fix:       stringField(m, "fix"),
 		RequestID: stringField(m, "request_id"),
 		Param:     stringField(m, "param"),
+		Usage:     usageFromJSON(m["usage"]),
 	}
 	if api.RequestID == "" {
 		api.RequestID = headerValue(header, "X-Request-Id")

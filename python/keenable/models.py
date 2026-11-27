@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import math
 import re
+import warnings
 from collections.abc import Iterator
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 from urllib.parse import urljoin, urlsplit
 
@@ -75,31 +77,64 @@ def _count_or_none(value: Any) -> int | None:
     return int(value)
 
 
-def _amount(value: Any) -> float:
-    """A finite JSON number as a float, or 0 for anything else (never parsed
-    from a string)."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return 0.0
-    try:
-        amount = float(value)
-    except OverflowError:
-        return 0.0
-    return amount if math.isfinite(amount) else 0.0
-
-
 _DECIMAL = re.compile(r"-?[0-9]+(?:\.[0-9]{1,9})?")
 
+_NANOS = 10**9
 
-def _amount_decimal(value: Any, amount: float) -> str:
-    """The API's exact decimal string when it is one, else ``amount`` as one.
 
-    An older server sends no ``amount_decimal``: then it is ``amount`` with at
-    most nine decimal places, trailing zeros trimmed, and ``"0"`` for zero.
-    """
+def _decimal_text(value: Any) -> str | None:
+    """A plain decimal string as sent (``^-?[0-9]+(\\.[0-9]{1,9})?$``), else None."""
     if isinstance(value, str) and _DECIMAL.fullmatch(value):
         return value
-    text = f"{amount:.9f}".rstrip("0").rstrip(".")
+    return None
+
+
+def _money_amount(data: dict[str, Any]) -> str:
+    """A Money's amount as an exact decimal string, never through a float.
+
+    The body's ``amount`` when it is a plain decimal string (the API since
+    backend #947), else its ``amount_decimal`` when it is one (an older
+    server), else a finite number ``amount`` written with at most nine decimal
+    places (an older server without ``amount_decimal``), else ``"0"``.
+    """
+    amount = data.get("amount")
+    text = _decimal_text(amount) or _decimal_text(data.get("amount_decimal"))
+    if text is not None:
+        return text
+    if isinstance(amount, bool) or not isinstance(amount, (int, float)):
+        return "0"
+    try:
+        number = float(amount)
+    except OverflowError:
+        return "0"
+    if not math.isfinite(number):
+        return "0"
+    text = f"{number:.9f}".rstrip("0").rstrip(".")
     return "0" if text == "-0" else text
+
+
+def _to_nanos(amount: str) -> int:
+    """A plain decimal string as an integer number of nano-dollars."""
+    negative = amount.startswith("-")
+    whole, _, fraction = amount.lstrip("-").partition(".")
+    nanos = int(whole) * _NANOS + int(fraction.ljust(9, "0") or "0")
+    return -nanos if negative else nanos
+
+
+def _from_nanos(nanos: int) -> str:
+    """Integer nano-dollars as a decimal string: no trailing zeros, ``"0"`` for zero."""
+    sign = "-" if nanos < 0 else ""
+    whole, fraction = divmod(abs(nanos), _NANOS)
+    text = f"{whole}.{fraction:09d}".rstrip("0").rstrip(".")
+    return "0" if text == "0" else sign + text
+
+
+def _divide_nanos(nanos: int, quantity: int) -> int:
+    """``nanos / quantity`` rounded to a whole nano, halves away from zero."""
+    quotient, remainder = divmod(abs(nanos), quantity)
+    if remainder * 2 >= quantity:
+        quotient += 1
+    return -quotient if nanos < 0 else quotient
 
 
 def _str_or_empty(value: Any) -> str:
@@ -455,14 +490,9 @@ class SearchResponse:
     warnings: list[SearchWarning] = field(default_factory=list)
     """What the request should change, such as a deprecated parameter it
     used. Empty when the API sent none."""
-    usage: dict[str, Any] | None = None
-    """What the search cost: the dict the API sent (``sku``, ``credits``, ...)
-    with, when a key is set, ``cost`` and ``balance`` in US dollars, each read
-    as a :class:`Money` and given as its dict ``{"amount": 0.004,
-    "amount_decimal": "0.004", "currency": "usd"}``. Add costs with
-    ``Decimal(usage["cost"]["amount_decimal"])``, not the float ``amount``.
-    A ``cost`` or ``balance`` that is not an object is left out. None on
-    keyless calls."""
+    usage: Usage | None = None
+    """What the search was billed and, with a key, the balance left after
+    it. None when the API sent none, as on keyless calls."""
 
     def __iter__(self) -> Iterator[SearchResult]:
         return iter(self.results)
@@ -622,21 +652,6 @@ def _dict_or_none(value: Any) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
-def _usage(value: Any) -> dict[str, Any] | None:
-    """The usage dict as sent, with ``cost`` and ``balance`` read as Money
-    dicts, so money from an older server gains ``amount_decimal``; a
-    money field that is not an object is left out."""
-    usage = _dict_or_none(value)
-    if usage is None:
-        return None
-    usage = dict(usage)
-    for key in ("cost", "balance"):
-        money = usage.pop(key, None)
-        if isinstance(money, dict):
-            usage[key] = asdict(Money._from_json(money))
-    return usage
-
-
 @dataclass
 class Page:
     """One result of :meth:`Keenable.fetch`: a page as markdown, or ``error``."""
@@ -684,8 +699,10 @@ class Page:
     """``{"code", "message"}`` when the answer for ``schema`` failed."""
 
     stale: bool | None = None
-    usage: dict[str, Any] | None = None
-    """What this page cost, read like :attr:`SearchResponse.usage`."""
+    usage: Usage | None = None
+    """Deprecated: what this page cost. Only a server older than the standard
+    usage object bills each page; read :attr:`FetchResponse.usage`, which
+    covers the whole call either way."""
     error: FetchError | None = None
     """Set when this URL failed; the other fields are then empty."""
 
@@ -742,50 +759,209 @@ class FetchResponse:
     request_id: str | None = None
     """The API's id for this request. Quote it when reporting a problem."""
 
+    usage: Usage | None = None
+    """What the whole call was billed and, with a key, the balance after it.
+    From an older server, which bills each page on its own, it is built from
+    the pages' usage: items merged by SKU and price, the exact sum as the
+    total, and the last page's balance. None when nothing was billed."""
+
     @classmethod
     def _from_json(
         cls, data: dict[str, Any], urls: list[str], request_id: str | None
     ) -> FetchResponse:
         entries = data.get("results")
+        results = [
+            Page._from_json(entry, urls[i] if i < len(urls) else "")
+            for i, entry in enumerate(entries if isinstance(entries, list) else [])
+            if isinstance(entry, dict)
+        ]
+        usage = _usage(data.get("usage"))
+        if usage is None:
+            pages = [page.usage for page in results if page.usage is not None]
+            usage = Usage._from_pages(pages) if pages else None
         return cls(
-            results=[
-                Page._from_json(entry, urls[i] if i < len(urls) else "")
-                for i, entry in enumerate(entries if isinstance(entries, list) else [])
-                if isinstance(entry, dict)
-            ],
+            results=results,
             request_id=_str_or_none(data.get("request_id")) or request_id,
+            usage=usage,
         )
 
 
 @dataclass
 class Money:
-    """An amount of money, as the API sent it."""
+    """An amount of money."""
 
-    amount: float
-    """Amount in the currency's major unit (US dollars), such as ``0.004``,
-    with up to nine decimal places. Negative for an account in debt. 0 when
-    the API sent no finite number. For display: add amounts with
-    ``amount_decimal``."""
-
-    amount_decimal: str
-    """The same amount as an exact decimal string, such as ``"0.004"``: up to
-    nine decimal places, no trailing zeros, no exponent, ``"-"`` when
-    negative, ``"0"`` for zero. Add amounts exactly with
-    ``decimal.Decimal(money.amount_decimal)``, never by summing ``amount``.
-    From an older server that sends none, ``amount`` written this way."""
+    amount: str
+    """The amount in US dollars as an exact decimal string, such as
+    ``"0.004"``: up to nine decimal places, no trailing zeros, no exponent,
+    ``"-"`` when negative (an organization in debt), ``"0"`` for zero. It is a
+    string so that amounts add up exactly, for example when checking a bill
+    against usage: add them with :meth:`decimal`, never as floats. From an
+    older server that sends a number, that number written this way."""
 
     currency: str
     """Lowercase ISO 4217 code, such as ``"usd"``."""
 
+    def decimal(self) -> Decimal:
+        """The amount as a :class:`decimal.Decimal`, for exact arithmetic."""
+        return Decimal(self.amount)
+
     @classmethod
     def _from_json(cls, value: Any) -> Money:
         data = _dict_or_none(value) or {}
-        amount = _amount(data.get("amount"))
         return cls(
-            amount=amount,
-            amount_decimal=_amount_decimal(data.get("amount_decimal"), amount),
+            amount=_money_amount(data),
             currency=_str_or_empty(data.get("currency")),
         )
+
+
+def _optional_money(value: Any) -> Money | None:
+    return Money._from_json(value) if isinstance(value, dict) else None
+
+
+_USAGE_KEYS = ("sku", "amount", "credits", "paid", "credits_remaining")
+
+
+@dataclass
+class UsageItem:
+    """One SKU and unit price of a :class:`Usage`."""
+
+    sku: str
+    """What was billed, such as ``"search.pro"`` or ``"fetch.live"``."""
+
+    quantity: int
+    """How many units the call used."""
+
+    price: Money
+    """The price of one unit. ``quantity`` times ``price`` is this item's share
+    of :attr:`Usage.total`."""
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> UsageItem:
+        return cls(
+            sku=_str_or_empty(data.get("sku")),
+            quantity=_count_or_none(data.get("quantity")) or 0,
+            price=Money._from_json(data.get("price")),
+        )
+
+
+@dataclass
+class Usage:
+    """What a call was billed: one item per SKU and unit price, the total, and
+    the organization's balance after the call.
+
+    Amounts are exact decimal strings in US dollars (see :class:`Money`).
+    Every server shape is read into this one model: the standard usage object,
+    and the older ``{sku, amount, credits, paid, cost, balance}`` one, whose
+    ``cost`` becomes :attr:`total` and one item priced ``cost / amount``.
+
+    Deprecated: reading the old fields as a dict (``usage["sku"]``,
+    ``usage.get("credits")``) still works for one release and warns. It reads
+    the usage object as the API sent it, so the standard object has none of
+    them.
+    """
+
+    items: list[UsageItem] = field(default_factory=list)
+    """One entry per SKU and unit price."""
+
+    total: Money = field(default_factory=lambda: Money("0", "usd"))
+    """The cost of the whole call."""
+
+    balance: Money | None = None
+    """An estimate of the organization's balance after the call. None when
+    the API did not say (as on keyless calls)."""
+
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+    """The usage object as the API sent it; empty for a fetch's usage built
+    from its pages."""
+
+    @classmethod
+    def _from_json(cls, data: dict[str, Any]) -> Usage:
+        entries = data.get("items")
+        if isinstance(entries, list):
+            return cls(
+                items=[UsageItem._from_json(e) for e in entries if isinstance(e, dict)],
+                total=Money._from_json(data.get("total")),
+                balance=_optional_money(data.get("balance")),
+                raw=data,
+            )
+        # The shape servers sent before the standard object.
+        cost = _optional_money(data.get("cost"))
+        quantity = _count_or_none(data.get("amount")) or 0
+        items: list[UsageItem] = []
+        if _str_or_none(data.get("sku")) is not None or cost is not None:
+            price = Money("0", cost.currency if cost else "usd")
+            if cost is not None and quantity > 0:
+                price.amount = _from_nanos(
+                    _divide_nanos(_to_nanos(cost.amount), quantity)
+                )
+            items.append(
+                UsageItem(
+                    sku=_str_or_empty(data.get("sku")), quantity=quantity, price=price
+                )
+            )
+        return cls(
+            items=items,
+            total=cost or Money("0", "usd"),
+            balance=_optional_money(data.get("balance")),
+            raw=data,
+        )
+
+    @classmethod
+    def _from_pages(cls, usages: list[Usage]) -> Usage:
+        """One call's usage from its pages' (an older server bills each page)."""
+        merged: dict[tuple[str, str, str], UsageItem] = {}
+        nanos = 0
+        balance: Money | None = None
+        for usage in usages:
+            for item in usage.items:
+                key = (item.sku, item.price.amount, item.price.currency)
+                if key in merged:
+                    merged[key].quantity += item.quantity
+                else:
+                    merged[key] = UsageItem(
+                        item.sku,
+                        item.quantity,
+                        Money(item.price.amount, item.price.currency),
+                    )
+            nanos += _to_nanos(usage.total.amount)
+            if usage.balance is not None:
+                balance = usage.balance
+        return cls(
+            items=list(merged.values()),
+            total=Money(_from_nanos(nanos), usages[0].total.currency),
+            balance=balance,
+        )
+
+    def _warn(self, key: object) -> None:
+        warnings.warn(
+            f"usage[{key!r}] is deprecated: read usage.items, usage.total and "
+            "usage.balance instead",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+
+    def __getitem__(self, key: str) -> Any:
+        self._warn(key)
+        return self.raw[key]
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Deprecated: the old dict-style read of the usage object as sent."""
+        self._warn(key)
+        return self.raw.get(key, default)
+
+    def __contains__(self, key: object) -> bool:
+        self._warn(key)
+        return key in self.raw
+
+    def keys(self) -> Any:
+        """Deprecated: the keys of the usage object as sent."""
+        self._warn("keys")
+        return self.raw.keys()
+
+
+def _usage(value: Any) -> Usage | None:
+    """A usage object read into :class:`Usage`, None unless an object."""
+    return Usage._from_json(value) if isinstance(value, dict) else None
 
 
 @dataclass

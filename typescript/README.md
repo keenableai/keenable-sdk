@@ -188,12 +188,38 @@ if (billing.account) {
 Without one, `prices` are the public list prices and `account` is `null`. With
 one, `prices` are your organization's (with `listUnitPrice` and `source`,
 `"list"` or `"contract"`), and `account` holds the available balance and
-`billingUrl`, the console page for adding funds. Amounts are numbers in US
-dollars (`Money.amount`, such as `0.004`, up to nine decimal places, negative
-for an account in debt). `Money.amountDecimal` (the API's `amount_decimal`) is
-the same amount as an exact decimal string (`"0.004"`); add amounts with it,
-not with the float, when they must match a bill: with a decimal library, or as
-BigInt nano-dollars:
+`billingUrl`, the console page for adding funds. Amounts are `Money`
+(`{ amount, currency }`), with `amount` an exact decimal string in US dollars
+(see below).
+
+## Usage and money
+
+Every paid call reports what it was billed in `usage`: `search()` in
+`SearchResponse.usage`, `fetch()` once for the whole call in
+`FetchResponse.usage`, and an API error of a partly billed call in
+`KeenableAPIError.usage`. It is undefined on keyless calls.
+
+```ts
+const res = await keenable.search("rust async runtimes");
+if (res.usage) {
+  for (const item of res.usage.items) {
+    console.log(item.sku, item.quantity, item.price.amount); // "search.pro" 1 "0.004"
+  }
+  console.log("total:", res.usage.total.amount);        // "0.004"
+  console.log("balance:", res.usage.balance?.amount);   // "399.996", undefined when unknown
+}
+```
+
+- `items`: one `{ sku, quantity, price }` per SKU and unit price; `price` is
+  the price of one unit.
+- `total`: the cost of the whole call.
+- `balance`: your organization's balance after the call (free allowance plus
+  prepaid credits), an estimate; undefined when the API did not say.
+
+Amounts are strings, such as `"0.004"` (up to nine decimal places, no
+exponent, `"-"` when negative), so that sums are exact: adding 0.1 and 0.2 as
+floats gives 0.30000000000000004, which will not match a bill. Add amounts
+with a decimal library, or as BigInt nano-dollars:
 
 ```ts
 const nanos = (d: string) => {
@@ -201,8 +227,16 @@ const nanos = (d: string) => {
   const n = BigInt(whole! + fraction.padEnd(9, "0"));
   return d.startsWith("-") ? -n : n;
 };
-const total = billing.prices.reduce((sum, p) => sum + nanos(p.unitPrice.amountDecimal), 0n);
+const spent = responses.reduce((sum, r) => sum + nanos(r.usage?.total.amount ?? "0"), 0n);
 ```
+
+The SDK reads this shape from today's servers too. A server before the
+standard usage object sends `{ sku, amount, credits, paid, cost, balance }`
+(each fetched page with its own); the SDK turns it into one item priced at
+`cost / amount`, with `total` = `cost` (`"0"` when the server sent no cost, as
+within the free allowance), and builds a fetch's `usage` from its pages. The
+old fields `sku`, `amount`, `credits`, `paid` and `credits_remaining`, and
+`Page.usage`, stay readable for one release and are deprecated.
 
 ## Tool calling
 

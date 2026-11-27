@@ -54,8 +54,9 @@ pub struct SearchResponse {
     /// What the request should change, such as a deprecated parameter it
     /// used; the request was still served. Empty when the API sent none.
     pub warnings: Vec<SearchWarning>,
-    /// What the search cost and, with a key, the balance left after it.
-    /// `None` when the API sent none, as on keyless calls.
+    /// What the search was billed: [`Usage::items`], [`Usage::total`] and,
+    /// with a key, [`Usage::balance`]. `None` when the API sent none, as on
+    /// keyless calls.
     pub usage: Option<Usage>,
     /// The unmodified JSON body.
     #[serde(skip)]
@@ -83,6 +84,11 @@ pub struct FetchResponse {
     pub results: Vec<Page>,
     /// The API's id for this request. Quote it when reporting a problem.
     pub request_id: Option<String>,
+    /// What the whole call was billed. An older server bills each page on
+    /// its own; then this is built from the pages' usage (items merged by
+    /// SKU and price, totals added exactly, the last balance). `None` when
+    /// the API sent no usage, as on keyless calls.
+    pub usage: Option<Usage>,
     /// The unmodified JSON body.
     #[serde(skip)]
     pub raw: Map<String, Value>,
@@ -140,25 +146,63 @@ pub struct AnswerError {
     pub message: String,
 }
 
-/// What reading one page cost.
+/// What a call was billed: one item per SKU and unit price, the total, and
+/// the organization's balance after the call.
+///
+/// Amounts are [`Money`] with `amount` an exact decimal string, so a bill can
+/// be checked against usage without float error. An older server's usage
+/// (`sku`, `amount`, `cost`) is read into the same shape: one item whose price
+/// is the cost divided by the amount, and the cost as the total (0 when it
+/// sent no cost).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(from = "Value")]
 #[non_exhaustive]
 pub struct Usage {
-    /// The billed item.
-    pub sku: String,
-    /// How many were billed.
-    pub amount: u64,
-    /// The credits spent.
-    pub credits: f64,
-    /// `true` when paid credits were spent.
-    pub paid: bool,
-    /// The credits left after this page.
-    pub credits_remaining: Option<f64>,
-    /// What this page cost, in US dollars. `None` when the API did not send it.
-    pub cost: Option<Money>,
-    /// The organization's balance after this page, in US dollars. `None` when
-    /// the API did not send it.
+    /// One entry per SKU and unit price, in the order first billed.
+    pub items: Vec<UsageItem>,
+    /// The cost of the whole call.
+    pub total: Money,
+    /// An estimate of the organization's balance after this call, in US
+    /// dollars. `None` when the API did not send it.
     pub balance: Option<Money>,
+    /// The billed item, from an older server; `""` otherwise.
+    #[deprecated(
+        note = "read `items[..].sku`; servers with the standard usage object do not send it"
+    )]
+    pub sku: String,
+    /// How many were billed, from an older server; 0 otherwise.
+    #[deprecated(
+        note = "read `items[..].quantity`; servers with the standard usage object do not send it"
+    )]
+    pub amount: u64,
+    /// The credits spent, from an older server; 0 otherwise.
+    #[deprecated(note = "read `total`; servers with the standard usage object do not send it")]
+    pub credits: f64,
+    /// `true` when paid credits were spent, from an older server.
+    #[deprecated(note = "servers with the standard usage object do not send it")]
+    pub paid: bool,
+    /// The credits left, from an older server.
+    #[deprecated(note = "read `balance`; servers with the standard usage object do not send it")]
+    pub credits_remaining: Option<f64>,
+}
+
+/// One SKU and unit price of a [`Usage`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct UsageItem {
+    /// The usage SKU, such as `search.pro` or `fetch.live`.
+    pub sku: String,
+    /// How many units of this SKU the call used.
+    pub quantity: u64,
+    /// The price of one unit; `quantity` times `price` is this item's share
+    /// of the total.
+    pub price: Money,
+}
+
+impl From<Value> for Usage {
+    fn from(v: Value) -> Self {
+        usage_from_json(Some(&v)).unwrap_or_else(|| empty_usage(Vec::new(), zero_usd(), None))
+    }
 }
 
 /// One result of [`Client::fetch`](crate::Client::fetch): a page as markdown,
@@ -200,7 +244,8 @@ pub struct Page {
     pub answer_error: Option<AnswerError>,
     /// `true` when an older stored copy was returned because a fresh read failed.
     pub stale: Option<bool>,
-    /// What reading this page cost.
+    /// What reading this page cost. Only an older server sends usage per
+    /// page; read [`FetchResponse::usage`], the call's usage, instead.
     pub usage: Option<Usage>,
     /// Set when this URL failed; the other fields are then empty.
     pub error: Option<FetchError>,
@@ -530,11 +575,52 @@ pub(crate) fn search_response_from_json(
     }
 }
 
-/// Reads a usage object field by field, so one malformed field (such as a
-/// `cost` whose amount is a string) does not lose the others.
+/// Reads a usage object field by field, so one malformed field does not lose
+/// the others. The standard object has an `items` list; anything else is an
+/// older server's usage, normalised to the same shape.
+#[allow(deprecated)]
 pub(crate) fn usage_from_json(v: Option<&Value>) -> Option<Usage> {
     let u = v?.as_object()?;
+    let balance = optional_money(u.get("balance"));
+    let (items, total) = match u.get("items") {
+        Some(Value::Array(entries)) => (
+            entries
+                .iter()
+                .filter_map(Value::as_object)
+                .map(|i| UsageItem {
+                    sku: as_string(i.get("sku")),
+                    quantity: safe_count(i.get("quantity")).unwrap_or(0),
+                    price: money(i.get("price")),
+                })
+                .collect(),
+            money(u.get("total")),
+        ),
+        _ => {
+            let cost = optional_money(u.get("cost"));
+            let quantity = safe_count(u.get("amount")).unwrap_or(0);
+            let has_sku = non_blank(u.get("sku")).is_some();
+            let mut items = Vec::new();
+            if has_sku || cost.is_some() {
+                let price = match &cost {
+                    Some(c) => Money {
+                        amount: unit_price(&c.amount, quantity),
+                        currency: c.currency.clone(),
+                    },
+                    None => zero_usd(),
+                };
+                items.push(UsageItem {
+                    sku: as_string(u.get("sku")),
+                    quantity,
+                    price,
+                });
+            }
+            (items, cost.unwrap_or_else(zero_usd))
+        }
+    };
     Some(Usage {
+        items,
+        total,
+        balance,
         sku: as_string(u.get("sku")),
         amount: safe_count(u.get("amount")).unwrap_or(0),
         credits: as_amount(u.get("credits")),
@@ -543,9 +629,118 @@ pub(crate) fn usage_from_json(v: Option<&Value>) -> Option<Usage> {
             .get("credits_remaining")
             .and_then(Value::as_f64)
             .filter(|f| f.is_finite()),
-        cost: optional_money(u.get("cost")),
-        balance: optional_money(u.get("balance")),
     })
+}
+
+/// A usage with the old fields empty.
+#[allow(deprecated)]
+fn empty_usage(items: Vec<UsageItem>, total: Money, balance: Option<Money>) -> Usage {
+    Usage {
+        items,
+        total,
+        balance,
+        sku: String::new(),
+        amount: 0,
+        credits: 0.0,
+        paid: false,
+        credits_remaining: None,
+    }
+}
+
+fn zero_usd() -> Money {
+    Money {
+        amount: "0".into(),
+        currency: "usd".into(),
+    }
+}
+
+/// The call's usage: the body's when it is an object, else built from the
+/// pages' (an older server bills each page on its own).
+pub(crate) fn fetch_usage(data: &Map<String, Value>, pages: &[Page]) -> Option<Usage> {
+    if let Some(u) = usage_from_json(data.get("usage")) {
+        return Some(u);
+    }
+    let mut seen = pages.iter().filter_map(|p| p.usage.as_ref()).peekable();
+    let currency = seen.peek()?.total.currency.clone();
+    let mut items: Vec<UsageItem> = Vec::new();
+    let mut total: i128 = 0;
+    let mut balance = None;
+    for u in seen {
+        for item in &u.items {
+            match items.iter_mut().find(|i| {
+                i.sku == item.sku
+                    && i.price.amount == item.price.amount
+                    && i.price.currency == item.price.currency
+            }) {
+                Some(i) => i.quantity = i.quantity.saturating_add(item.quantity),
+                None => items.push(item.clone()),
+            }
+        }
+        total = total.saturating_add(nanos(&u.total.amount).unwrap_or(0));
+        if u.balance.is_some() {
+            balance = u.balance.clone();
+        }
+    }
+    Some(empty_usage(
+        items,
+        Money {
+            amount: from_nanos(total),
+            currency,
+        },
+        balance,
+    ))
+}
+
+/// A plain decimal string as integer nano-dollars, or `None` when it is not
+/// one or does not fit an `i128`.
+fn nanos(s: &str) -> Option<i128> {
+    if !is_decimal(s) {
+        return None;
+    }
+    let (negative, unsigned) = match s.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, s),
+    };
+    let (whole, fraction) = unsigned.split_once('.').unwrap_or((unsigned, ""));
+    let mut n: i128 = 0;
+    for b in whole
+        .bytes()
+        .chain(fraction.bytes())
+        .chain(std::iter::repeat(b'0').take(9 - fraction.len()))
+    {
+        n = n.checked_mul(10)?.checked_add(i128::from(b - b'0'))?;
+    }
+    Some(if negative { -n } else { n })
+}
+
+/// Nano-dollars as a plain decimal string: no trailing zeros, `"0"` for zero.
+fn from_nanos(n: i128) -> String {
+    let sign = if n < 0 { "-" } else { "" };
+    let abs = n.unsigned_abs();
+    let whole = abs / 1_000_000_000;
+    let fraction = abs % 1_000_000_000;
+    if fraction == 0 {
+        return format!("{sign}{whole}");
+    }
+    let digits = format!("{fraction:09}");
+    format!("{sign}{whole}.{}", digits.trim_end_matches('0'))
+}
+
+/// `cost / quantity` to the nano-dollar, halves away from zero; `"0"` for a
+/// quantity of 0 or a cost that does not fit.
+fn unit_price(cost: &str, quantity: u64) -> String {
+    match (nanos(cost), i128::from(quantity)) {
+        (_, 0) | (None, _) => "0".into(),
+        (Some(c), q) => {
+            let (quot, rem) = (c / q, c % q);
+            let away = if rem.unsigned_abs() * 2 >= q.unsigned_abs() {
+                c.signum()
+            } else {
+                0
+            };
+            from_nanos(quot + away)
+        }
+    }
 }
 
 pub(crate) fn page_from_json(data: Map<String, Value>, fallback_url: &str) -> Page {
@@ -670,8 +865,15 @@ mod tests {
         assert_eq!(r.to_context_with(&opts), "[1] A (https://a.com/)\none two…");
     }
 
+    fn usd(amount: &str) -> Money {
+        Money {
+            amount: amount.into(),
+            currency: "usd".into(),
+        }
+    }
+
     #[test]
-    fn reads_the_cost_and_balance_in_usage() {
+    fn reads_an_older_page_usage_into_items_and_total() {
         let data = json!({
             "url": "https://example.com", "title": "Example Domain", "content": "# Example Domain",
             "usage": {
@@ -683,30 +885,52 @@ mod tests {
         let page = page_from_json(data.as_object().unwrap().clone(), "https://example.com");
         let usage = page.usage.expect("usage");
         assert_eq!(
-            usage.cost,
-            Some(Money {
-                amount: 0.004,
-                amount_decimal: "0.004".into(),
-                currency: "usd".into()
-            })
+            usage.items,
+            vec![UsageItem {
+                sku: "fetch".into(),
+                quantity: 1,
+                price: usd("0.004")
+            }]
         );
-        assert_eq!(
-            usage.balance,
-            Some(Money {
-                amount: 47.992,
-                amount_decimal: "47.992".into(),
-                currency: "usd".into()
-            })
-        );
+        assert_eq!(usage.total, usd("0.004"));
+        assert_eq!(usage.balance, Some(usd("47.992")));
 
         let older = json!({"url": "https://example.com", "usage": {"sku": "fetch", "amount": 1, "credits": 1.0, "paid": false}});
         let usage = page_from_json(older.as_object().unwrap().clone(), "https://example.com")
             .usage
             .expect("usage");
-        assert_eq!((usage.cost, usage.balance), (None, None));
+        assert_eq!((usage.total, usage.balance), (usd("0"), None));
     }
 
     #[test]
+    fn reads_the_standard_usage_object() {
+        let usage: Usage = serde_json::from_value(json!({
+            "items": [{"sku": "search.pro", "quantity": 1, "price": {"amount": "0.004", "currency": "usd"}}],
+            "total": {"amount": "0.004", "currency": "usd"},
+            "balance": {"amount": "399.996", "currency": "usd"}
+        }))
+        .unwrap();
+        assert_eq!(usage.items[0].price, usd("0.004"));
+        assert_eq!(usage.total, usd("0.004"));
+        assert_eq!(usage.balance, Some(usd("399.996")));
+    }
+
+    #[test]
+    fn divides_and_adds_money_exactly() {
+        assert_eq!(unit_price("0.01", 3), "0.003333333");
+        assert_eq!(unit_price("-0.000000005", 2), "-0.000000003");
+        assert_eq!(unit_price("0.012", 3), "0.004");
+        assert_eq!(unit_price("0.002", 0), "0");
+        assert_eq!(
+            from_nanos(nanos("0.1").unwrap() + nanos("0.2").unwrap()),
+            "0.3"
+        );
+        assert_eq!(nanos("1e3"), None);
+        assert_eq!(nanos(&"9".repeat(40)), None);
+    }
+
+    #[test]
+    #[allow(deprecated)]
     fn reads_a_whole_usage_amount_in_float_form() {
         let amount = |v: Value| {
             usage_from_json(Some(&json!({ "amount": v })))
@@ -759,25 +983,21 @@ mod tests {
 
 // ---- Billing ----------------------------------------------------------------
 
-/// An amount of money, as the API sent it.
+/// An amount of money.
 ///
-/// Deserializing reads it as the client does: a missing or malformed
-/// `amount_decimal` (an older server) is `amount` written as a decimal.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// `amount` is an exact decimal string, never a float, so amounts add up
+/// exactly (for example to check a bill against usage): add them with a
+/// decimal type or as `i128` nano-dollars. Deserializing reads it as the
+/// client does, from any server version.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(from = "Value")]
 #[non_exhaustive]
 pub struct Money {
-    /// The amount in the currency's major unit (US dollars), such as
-    /// `0.004`, with up to nine decimal places. Negative for an account in
-    /// debt. `0.0` when the API sent no finite number. For display: add
-    /// amounts with `amount_decimal`.
-    pub amount: f64,
-    /// The same amount as an exact decimal string, such as `"0.004"`: up to
-    /// nine decimal places, no trailing zeros, no exponent, `-` when negative,
-    /// `"0"` for zero. Add amounts exactly with a decimal type (or as `i128`
-    /// nano-dollars), never by summing `amount`. From an older server that
-    /// sends none, `amount` written this way.
-    pub amount_decimal: String,
+    /// The amount in US dollars as an exact decimal string, such as
+    /// `"0.004"`: up to nine decimal places, no trailing zeros, no exponent,
+    /// `-` when negative (an organization in debt), `"0"` for zero. From an
+    /// older server that sent a number, that number written this way.
+    pub amount: String,
     /// The lowercase ISO 4217 code, such as `"usd"`.
     pub currency: String,
 }
@@ -854,7 +1074,7 @@ fn as_amount(v: Option<&Value>) -> f64 {
         .unwrap_or(0.0)
 }
 
-/// `^-?[0-9]+(\.[0-9]{1,9})?$`: what the API sends as `amount_decimal`.
+/// `^-?[0-9]+(\.[0-9]{1,9})?$`: what the API sends as a Money amount.
 fn is_decimal(s: &str) -> bool {
     let unsigned = s.strip_prefix('-').unwrap_or(s);
     let (whole, fraction) = match unsigned.split_once('.') {
@@ -870,13 +1090,25 @@ fn is_decimal(s: &str) -> bool {
         }
 }
 
-/// The API's exact decimal string when it is one, else `amount` as one: at
-/// most nine decimal places, trailing zeros trimmed, `"0"` for zero (an older
-/// server sends no `amount_decimal`).
-fn amount_decimal(v: Option<&Value>, amount: f64) -> String {
-    if let Some(s) = v.and_then(Value::as_str).filter(|s| is_decimal(s)) {
-        return s.to_string();
+/// A Money's exact amount: the body's `amount` when it is a plain decimal
+/// string, else its `amount_decimal` when it is one (an older server), else
+/// a finite number written with at most nine decimal places, else `"0"`.
+fn exact_amount(m: Option<&Map<String, Value>>) -> String {
+    let plain = |key: &str| {
+        field(m, key)
+            .and_then(Value::as_str)
+            .filter(|s| is_decimal(s))
+            .map(str::to_string)
+    };
+    if let Some(s) = plain("amount").or_else(|| plain("amount_decimal")) {
+        return s;
     }
+    let Some(amount) = field(m, "amount")
+        .and_then(Value::as_f64)
+        .filter(|f| f.is_finite())
+    else {
+        return "0".into();
+    };
     let fixed = format!("{amount:.9}");
     let text = fixed.trim_end_matches('0').trim_end_matches('.');
     if text == "-0" { "0" } else { text }.to_string()
@@ -885,10 +1117,8 @@ fn amount_decimal(v: Option<&Value>, amount: f64) -> String {
 /// A Money; anything but an object reads as `{}`.
 fn money(v: Option<&Value>) -> Money {
     let m = v.and_then(Value::as_object);
-    let amount = as_amount(field(m, "amount"));
     Money {
-        amount,
-        amount_decimal: amount_decimal(field(m, "amount_decimal"), amount),
+        amount: exact_amount(m),
         currency: as_string(field(m, "currency")),
     }
 }

@@ -80,6 +80,7 @@ type conformance struct {
 				Max      *int    `json:"max"`
 				ResetsAt *string `json:"resets_at"`
 			} `json:"limit"`
+			Usage           any      `json:"usage"`
 			MessageContains []string `json:"message_contains"`
 			MessageExcludes []string `json:"message_excludes"`
 			Absent          []string `json:"absent"`
@@ -107,6 +108,17 @@ type conformance struct {
 			Billing   any     `json:"billing"`
 		} `json:"expect"`
 	} `json:"billing"`
+	FetchUsage []struct {
+		Name    string            `json:"name"`
+		URLs    []string          `json:"urls"`
+		Status  int               `json:"status"`
+		Headers map[string]string `json:"headers"`
+		Body    string            `json:"body"`
+		Expect  struct {
+			Usage any   `json:"usage"`
+			Pages []any `json:"pages"`
+		} `json:"expect"`
+	} `json:"fetch_usage"`
 	Options []struct {
 		Name   string            `json:"name"`
 		Option string            `json:"option"`
@@ -415,6 +427,9 @@ func TestConformanceErrors(t *testing.T) {
 					t.Errorf("message %q has %q", msg, s)
 				}
 			}
+			if got := usageJSON(api.Usage); !reflect.DeepEqual(got, want.Usage) {
+				t.Errorf("usage: got %#v, want %#v", got, want.Usage)
+			}
 			assertAbsent(t, err, want.Absent)
 		})
 	}
@@ -506,19 +521,47 @@ func usageJSON(u *keenable.Usage) any {
 	if u == nil {
 		return nil
 	}
-	money := func(m *keenable.Money) any {
-		if m == nil {
-			return nil
-		}
-		return map[string]any{"amount": m.Amount, "amount_decimal": m.AmountDecimal, "currency": m.Currency}
+	money := func(m keenable.Money) any {
+		return map[string]any{"amount": m.Amount, "currency": m.Currency}
 	}
-	var remaining any
+	items := []any{}
+	for _, item := range u.Items {
+		items = append(items, map[string]any{"sku": item.SKU, "quantity": float64(item.Quantity), "price": money(item.Price)})
+	}
+	var balance, remaining any
+	if u.Balance != nil {
+		balance = money(*u.Balance)
+	}
 	if u.CreditsRemaining != nil {
 		remaining = *u.CreditsRemaining
 	}
 	return map[string]any{
+		"items": items, "total": money(u.Total), "balance": balance,
 		"sku": u.SKU, "amount": float64(u.Amount), "credits": u.Credits, "paid": u.Paid,
-		"credits_remaining": remaining, "cost": money(u.Cost), "balance": money(u.Balance),
+		"credits_remaining": remaining,
+	}
+}
+
+func TestConformanceFetchUsage(t *testing.T) {
+	for _, tc := range loadConformance(t).FetchUsage {
+		t.Run(tc.Name, func(t *testing.T) {
+			c, _ := counted(t, nil, raw(tc.Status, tc.Body, headerList(tc.Headers)...))
+			resp, err := c.Fetch(context.Background(), tc.URLs)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := usageJSON(resp.Usage); !reflect.DeepEqual(got, tc.Expect.Usage) {
+				t.Fatalf("usage: got %#v, want %#v", got, tc.Expect.Usage)
+			}
+			if len(resp.Results) != len(tc.Expect.Pages) {
+				t.Fatalf("got %d pages, want %d", len(resp.Results), len(tc.Expect.Pages))
+			}
+			for i, want := range tc.Expect.Pages {
+				if got := usageJSON(resp.Results[i].Usage); !reflect.DeepEqual(got, want) {
+					t.Fatalf("page %d usage: got %#v, want %#v", i, got, want)
+				}
+			}
+		})
 	}
 }
 
