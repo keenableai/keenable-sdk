@@ -3,6 +3,9 @@
 ## Unreleased
 
 - **Changed (breaking for Rust 1.80 to 1.84):** the minimum supported Rust version is now 1.85 (`rust-version` in `Cargo.toml`). The lockfile takes `quinn-proto` 0.11.19 for its security fixes, and its dependency `chacha20` 0.10 needs edition 2024 support, which Rust 1.85 added. On an older compiler, `cargo` reports the required version; run `rustup update stable`.
+- **Added:** `ApiError::docs_url`: the error's entry in the error reference, `https://docs.keenable.ai/errors#<code>` with `_` written as `-` (e.g. `#rate-limit-per-second`). It is the body's `docs_url` when that is such a link, else built from `code`; `None` when there is no code. Any other URL in the body's `docs_url` is not passed on. It is not added to the text.
+- **Added:** `InvalidRequestError::code()` (always `invalid_request`) and `InvalidRequestError::param()`, the argument at fault as the API spells it (`query`, `url`, `base_url`, `timeout`, `headers`, a filter's name, `monitor_id`, ...), the same value as in the other SDKs; `None` when no single argument is.
+- **Changed:** the missing-API-key messages and the key links now point to https://app.keenable.ai/console/api-keys, the page the API's own messages name, in place of https://keenable.ai/console.
 - **Added:** `SearchResponse::usage` (`Option<Usage>`): what the search cost and, with a key, `cost` and `balance` in US dollars. `None` on keyless calls.
 - **Fixed:** a malformed `cost` or `balance` no longer drops the whole `Usage` of a page; each field is read on its own.
 - **Fixed:** `Usage::amount` accepts a whole number sent in float form, such as `1.0`, as the other SDKs do; anything else is still 0.

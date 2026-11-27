@@ -660,11 +660,13 @@ type Send = (
 ) => Promise<{ data: Json; requestId?: string }>;
 
 function segment(name: string, value: unknown): string {
+  // The argument as the API spells it: monitorId is monitor_id.
+  const wire = name.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
   if (typeof value !== "string" || value.trim() === "") {
-    throw new KeenableInvalidRequestError(`${name} must be a non-empty string`);
+    throw new KeenableInvalidRequestError(`${name} must be a non-empty string`, { param: wire });
   }
   if (value === "." || value === "..") {
-    throw new KeenableInvalidRequestError(`${name} must not be ${JSON.stringify(value)}: it would change the request's path`);
+    throw new KeenableInvalidRequestError(`${name} must not be ${JSON.stringify(value)}: it would change the request's path`, { param: wire });
   }
   return encodeURIComponent(value);
 }
@@ -689,11 +691,11 @@ function requestOptions(options: RequestOptions): RequestOptions {
 function searchBody(search: Partial<MonitorSearchParams>, required: boolean): Json {
   if (!isObject(search)) {
     throw new KeenableInvalidRequestError(
-      'search must be an object such as { query: "new open-weights LLM releases" }',
+      'search must be an object such as { query: "new open-weights LLM releases" }', { param: "search" },
     );
   }
   if ((required || search.query !== undefined) && (typeof search.query !== "string" || search.query.trim() === "")) {
-    throw new KeenableInvalidRequestError("search needs a non-empty query string");
+    throw new KeenableInvalidRequestError("search needs a non-empty query string", { param: "search" });
   }
   const body: Json = {};
   if (search.query !== undefined) body.query = search.query;
@@ -706,10 +708,10 @@ function searchBody(search: Partial<MonitorSearchParams>, required: boolean): Js
 
 function pageBody(page: Partial<MonitorPageTargetParams>, required: boolean): Json {
   if (!isObject(page)) {
-    throw new KeenableInvalidRequestError('page must be an object such as { url: "https://example.com/pricing" }');
+    throw new KeenableInvalidRequestError('page must be an object such as { url: "https://example.com/pricing" }', { param: "page" });
   }
   if ((required || page.url !== undefined) && (typeof page.url !== "string" || page.url.trim() === "")) {
-    throw new KeenableInvalidRequestError("page needs a non-empty url string");
+    throw new KeenableInvalidRequestError("page needs a non-empty url string", { param: "page" });
   }
   const body: Json = {};
   if (page.url !== undefined) body.url = page.url;
@@ -766,17 +768,17 @@ export class Monitors {
     }
     const type: unknown = (params as { type?: unknown }).type;
     if (type !== undefined && type !== "search" && type !== "page") {
-      throw new KeenableInvalidRequestError(`type must be "search" or "page", got ${JSON.stringify(type)}`);
+      throw new KeenableInvalidRequestError(`type must be "search" or "page", got ${JSON.stringify(type)}`, { param: "type" });
     }
     const body: Json = {};
     const sent = params as { search?: unknown; page?: unknown };
     if (type === "page") {
-      if (sent.search !== undefined) throw new KeenableInvalidRequestError("a page monitor takes page, not search");
+      if (sent.search !== undefined) throw new KeenableInvalidRequestError("a page monitor takes page, not search", { param: "search" });
       body.type = "page";
       body.page = pageBody(sent.page as MonitorPageTargetParams, true);
     } else {
       if (sent.page !== undefined) {
-        throw new KeenableInvalidRequestError('page is only for type: "page"; a search monitor takes search');
+        throw new KeenableInvalidRequestError('page is only for type: "page"; a search monitor takes search', { param: "page" });
       }
       if (type !== undefined) body.type = type;
       body.search = searchBody(sent.search as MonitorSearchParams, true);
@@ -975,7 +977,7 @@ export class Monitors {
    */
   async bulk(action: BulkAction, params: MonitorBulkParams = {}): Promise<BulkResult> {
     if (!BULK_ACTIONS.has(action)) {
-      throw new KeenableInvalidRequestError(`action must be pause, resume or delete, got ${JSON.stringify(action)}`);
+      throw new KeenableInvalidRequestError(`action must be pause, resume or delete, got ${JSON.stringify(action)}`, { param: "action" });
     }
     const f = params.filter;
     const hasFilter =

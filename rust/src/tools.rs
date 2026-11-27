@@ -247,7 +247,8 @@ fn tool_filters(args: &Map<String, Value>) -> Result<Map<String, Value>> {
             return Err(Error::invalid(format!(
                 "{name} must be {}. Pass a JSON string, or leave it out.",
                 choices.join(" or ")
-            )));
+            ))
+            .with_param(name));
         }
         match (kind, v) {
             (_, Value::Null) => {}
@@ -266,7 +267,8 @@ fn tool_filters(args: &Map<String, Value>) -> Result<Map<String, Value>> {
             ("boolean", _) => {
                 return Err(Error::invalid(format!(
                     "{name} must be true or false. Pass a JSON boolean."
-                )))
+                ))
+                .with_param(name))
             }
             (_, Value::String(s)) if !s.is_empty() => {
                 payload.insert(name.into(), Value::String(s.clone()));
@@ -282,11 +284,14 @@ fn tool_fetch_urls(args: &Map<String, Value>) -> Result<Vec<&str>> {
     const BAD: &str = "keenable_fetch needs 'urls': a list of 1 to 20 URLs.";
     let raw = args.get("urls");
     match raw {
-        Some(Value::String(_)) => Ok(vec![require_string(raw, BAD)?]),
-        Some(Value::Array(list)) if !list.is_empty() => {
-            list.iter().map(|v| require_string(Some(v), BAD)).collect()
-        }
-        _ => Err(Error::invalid(BAD)),
+        Some(Value::String(_)) => Ok(vec![
+            require_string(raw, BAD).map_err(|e| e.with_param("urls"))?
+        ]),
+        Some(Value::Array(list)) if !list.is_empty() => list
+            .iter()
+            .map(|v| require_string(Some(v), BAD).map_err(|e| e.with_param("urls")))
+            .collect(),
+        _ => Err(Error::invalid(BAD).with_param("urls")),
     }
 }
 
@@ -301,15 +306,16 @@ fn tool_fetch_options(args: &Map<String, Value>) -> Result<FetchOptions> {
         }
         v if unset(v) => {}
         _ => {
-            return Err(Error::invalid(
-                "max_chars must be a positive integer. Pass a JSON number.",
-            ))
+            return Err(
+                Error::invalid("max_chars must be a positive integer. Pass a JSON number.")
+                    .with_param("max_chars"),
+            )
         }
     }
     match args.get("prompt") {
         Some(Value::String(s)) if !s.is_empty() => opts.prompt = Some(s.clone()),
         v if unset(v) => {}
-        _ => return Err(Error::invalid("prompt must be a string.")),
+        _ => return Err(Error::invalid("prompt must be a string.").with_param("prompt")),
     }
     match args.get("max_age_hours") {
         Some(Value::Number(n)) => opts.max_age_hours = n.as_f64(),
@@ -317,7 +323,8 @@ fn tool_fetch_options(args: &Map<String, Value>) -> Result<FetchOptions> {
         _ => {
             return Err(Error::invalid(
                 "max_age_hours must be a number of hours. Pass a JSON number.",
-            ))
+            )
+            .with_param("max_age_hours"))
         }
     }
     Ok(opts)
@@ -330,6 +337,7 @@ fn page_error(e: FetchError) -> Error {
     err.error = Some(e.error);
     err.fix = e.fix;
     err.retryable = e.retryable;
+    err.docs_url = crate::error::docs_url_for(None, err.code.as_deref());
     Error::Api(Box::new(err))
 }
 

@@ -622,10 +622,11 @@ func (m *MonitorsService) call(ctx context.Context, call monitorCall, out any) (
 		return nil, "", &AuthError{APIError: &APIError{
 			StatusCode: 401,
 			APICode:    "missing_api_key",
+			DocsURL:    docsURLFor("", "missing_api_key"),
 			Type:       TypeAuthenticationError,
 			Retryable:  &retryable,
 			code:       CodeAuth,
-			msg:        "Keenable authentication failed (401): Monitors need an API key. Set Options.APIKey or KEENABLE_API_KEY; create one at https://keenable.ai/console.",
+			msg:        "Keenable authentication failed (401): Monitors need an API key. Set Options.APIKey or KEENABLE_API_KEY; create one at https://app.keenable.ai/console/api-keys.",
 		}}
 	}
 	u, err := url.Parse(c.baseURL)
@@ -656,10 +657,10 @@ func (m *MonitorsService) call(ctx context.Context, call monitorCall, out any) (
 
 func segment(name, value string) (string, error) {
 	if strings.TrimSpace(value) == "" {
-		return "", &InvalidRequestError{msg: name + " must be a non-empty string"}
+		return "", &InvalidRequestError{msg: name + " must be a non-empty string", Param: strings.ReplaceAll(name, " ", "_")}
 	}
 	if value == "." || value == ".." {
-		return "", &InvalidRequestError{msg: fmt.Sprintf("%s must not be %q: it would change the request's path", name, value)}
+		return "", &InvalidRequestError{msg: fmt.Sprintf("%s must not be %q: it would change the request's path", name, value), Param: strings.ReplaceAll(name, " ", "_")}
 	}
 	return url.PathEscape(value), nil
 }
@@ -726,32 +727,32 @@ func monitorPath(id string, rest ...string) (string, error) {
 // is set in this response only.
 func (m *MonitorsService) Create(ctx context.Context, params *MonitorCreateParams) (*Monitor, error) {
 	if params == nil {
-		return nil, &InvalidRequestError{msg: "Create needs Search.Query, the topic in plain words"}
+		return nil, &InvalidRequestError{msg: "Create needs Search.Query, the topic in plain words", Param: "search"}
 	}
 	body := map[string]any{}
 	switch params.Type {
 	case "page":
 		if params.Page == nil || strings.TrimSpace(params.Page.URL) == "" {
-			return nil, &InvalidRequestError{msg: "a page monitor needs Page.URL, the page to watch"}
+			return nil, &InvalidRequestError{msg: "a page monitor needs Page.URL, the page to watch", Param: "page"}
 		}
 		if len(params.Search.body()) > 0 {
-			return nil, &InvalidRequestError{msg: "a page monitor takes Page, not Search"}
+			return nil, &InvalidRequestError{msg: "a page monitor takes Page, not Search", Param: "search"}
 		}
 		body["type"] = "page"
 		body["page"] = params.Page
 	case "", "search":
 		if params.Page != nil {
-			return nil, &InvalidRequestError{msg: `Page is only for Type "page"; a search monitor takes Search`}
+			return nil, &InvalidRequestError{msg: `Page is only for Type "page"; a search monitor takes Search`, Param: "page"}
 		}
 		if strings.TrimSpace(params.Search.Query) == "" {
-			return nil, &InvalidRequestError{msg: "Create needs Search.Query, the topic in plain words"}
+			return nil, &InvalidRequestError{msg: "Create needs Search.Query, the topic in plain words", Param: "search"}
 		}
 		if params.Type != "" {
 			body["type"] = params.Type
 		}
 		body["search"] = params.Search.body()
 	default:
-		return nil, &InvalidRequestError{msg: fmt.Sprintf("Type must be \"search\" or \"page\", got %q", params.Type)}
+		return nil, &InvalidRequestError{msg: fmt.Sprintf("Type must be \"search\" or \"page\", got %q", params.Type), Param: "type"}
 	}
 	if params.Name != "" {
 		body["name"] = params.Name
@@ -1051,7 +1052,7 @@ func (m *MonitorsService) Stats(ctx context.Context, opts *RequestOptions) (*Mon
 // false. Not retried on a 5xx.
 func (m *MonitorsService) Bulk(ctx context.Context, action string, params *MonitorBulkParams) (*BulkResult, error) {
 	if action != "pause" && action != "resume" && action != "delete" {
-		return nil, &InvalidRequestError{msg: fmt.Sprintf("action must be pause, resume or delete, got %q", action)}
+		return nil, &InvalidRequestError{msg: fmt.Sprintf("action must be pause, resume or delete, got %q", action), Param: "action"}
 	}
 	if params == nil {
 		params = &MonitorBulkParams{}

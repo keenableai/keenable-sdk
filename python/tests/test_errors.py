@@ -24,6 +24,7 @@ from keenable import (
     KeenableAuthError,
     KeenableCreditsError,
     KeenableInsufficientCreditsError,
+    KeenableInvalidRequestError,
     KeenableRateLimitError,
     RateLimitInfo,
 )
@@ -39,7 +40,7 @@ KINDS: dict[str, type[KeenableAPIError]] = {
     "api": KeenableAPIError,
 }
 # Body fields the SDK reads past: no attribute holds them.
-UNEXPOSED = ("docs_url", "billing_url", "auto_top_up_url", "pay_per_request", "raw")
+UNEXPOSED = ("billing_url", "auto_top_up_url", "pay_per_request", "raw")
 
 
 def _client(response: httpx.Response, api_key: str | None = "k") -> Keenable:
@@ -71,6 +72,7 @@ def test_backend_error_bodies_parse_into_typed_errors(case: dict[str, Any]) -> N
     assert err.retry_after_seconds == want["retry_after_seconds"]
     assert err.request_id == want["request_id"]
     assert err.param == want["param"]
+    assert err.docs_url == want["docs_url"]
     assert want["message_contains"] in str(err)
     assert str(err).endswith(
         f" (code: {want['code']}) (request_id: {want['request_id']})"
@@ -284,7 +286,31 @@ def test_the_message_ends_with_the_request_id_and_no_docs_link() -> None:
         "Keenable API error (500): Internal server error (request_id: req-h)"
     )
     assert err.body == "Internal server error"
-    assert not hasattr(err, "docs_url")
+    # Not a link into the error reference, and no code to build one from.
+    assert err.docs_url is None
+
+
+def test_docs_url_is_built_from_the_code() -> None:
+    err = _raise(httpx.Response(429, json={"code": "rate_limit_per_second"}))
+
+    assert err.docs_url == "https://docs.keenable.ai/errors#rate-limit-per-second"
+    assert "docs.keenable.ai" not in str(err)
+
+
+def test_a_local_error_has_the_invalid_request_code_and_the_param() -> None:
+    with pytest.raises(KeenableInvalidRequestError) as excinfo:
+        Keenable("k").search("  ")
+
+    assert excinfo.value.code == "invalid_request"
+    assert excinfo.value.param == "query"
+
+
+def test_a_local_error_without_one_argument_at_fault_has_no_param() -> None:
+    with pytest.raises(KeenableInvalidRequestError) as excinfo:
+        Keenable("k").monitors.bulk("pause")
+
+    assert excinfo.value.code == "invalid_request"
+    assert excinfo.value.param is None
 
 
 def test_the_message_names_the_api_code_before_the_request_id() -> None:

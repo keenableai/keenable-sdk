@@ -155,6 +155,8 @@ async def test_fetch_url(kind: str, case: dict[str, Any], waits: list[float]) ->
         assert json.loads(outcome.requests[0].content)["urls"] == [case["url"]]
     else:
         assert isinstance(outcome.error, KeenableInvalidRequestError)
+        assert outcome.error.code == "invalid_request"
+        assert outcome.error.param == case["param"]
         assert outcome.requests == []
 
 
@@ -166,8 +168,10 @@ def test_base_url(
     if case["valid"]:
         cls(base_url=case["base_url"])
     else:
-        with pytest.raises(KeenableInvalidRequestError):
+        with pytest.raises(KeenableInvalidRequestError) as raised:
             cls(base_url=case["base_url"])
+        assert raised.value.code == "invalid_request"
+        assert raised.value.param == case["param"]
 
 
 # --- Retry-After and retries -------------------------------------------------
@@ -242,6 +246,7 @@ async def test_errors(kind: str, case: dict[str, Any], waits: list[float]) -> No
         "value": error.value,
         "reason": error.reason,
         "limit": dataclasses.asdict(error.limit) if error.limit else None,
+        "docs_url": error.docs_url,
     }
     assert got == {key: want[key] for key in got}
     message = str(error)
@@ -376,6 +381,8 @@ async def test_options(kind: str, case: dict[str, Any], waits: list[float]) -> N
         assert len(outcome.requests) == 1
     else:
         assert isinstance(outcome.error, KeenableInvalidRequestError)
+        assert outcome.error.code == "invalid_request"
+        assert outcome.error.param == case["param"]
         assert outcome.requests == []
 
 

@@ -5,6 +5,9 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- **Added:** `KeenableAPIError.docsUrl`: the error's entry in the error reference, `https://docs.keenable.ai/errors#<code>` with `_` written as `-` (e.g. `#rate-limit-per-second`). It is the body's `docs_url` when that is such a link, else built from `code`; `undefined` when there is no code. Any other URL in the body's `docs_url` is not passed on. It is not added to the message. `KeenableAPIErrorDetails` gains `docsUrl`.
+- **Added:** `KeenableInvalidRequestError.code` is `"invalid_request"`, as in the Go and Rust SDKs, and `KeenableInvalidRequestError.param` names the argument at fault as the API spells it (`"query"`, `"url"`, `"base_url"`, `"max_retries"`, `"timeout"`, `"headers"`, a filter's wire name, `"monitor_id"`, ...), or is `undefined` when no single argument is. The constructor takes `{ param }` as a second argument.
+- **Changed:** the missing-API-key messages and the key links now point to https://app.keenable.ai/console/api-keys, the page the API's own messages name, in place of https://keenable.ai/console.
 - **Added:** `SearchResponse.usage` and an exported `Usage` type: what the search cost and, with a key, `cost` and `balance` in US dollars. Undefined on keyless calls.
 - **Changed:** the `keenable_search` tool's `moderation` description: supported for a URL query when `exclude_domains` is set.
 - **Added:** `Page.usage.cost` and `Page.usage.balance` (`Money`, US dollars): what the page cost and the organization's balance after it. Each carries `amountDecimal`, the exact decimal string, as in `billing()`: add costs with it rather than with `amount`.

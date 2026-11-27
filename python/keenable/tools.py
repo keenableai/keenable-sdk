@@ -165,7 +165,7 @@ def _fetch_urls(args: dict[str, Any]) -> list[str]:
         or not all(isinstance(u, str) and u.strip() for u in urls)
     ):
         raise KeenableInvalidRequestError(
-            "keenable_fetch needs 'urls': a list of 1 to 20 URLs"
+            "keenable_fetch needs 'urls': a list of 1 to 20 URLs", param="urls"
         )
     return urls
 

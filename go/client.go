@@ -104,7 +104,7 @@ type Options struct {
 //
 // Keyless by default: with no API key it uses the public endpoints, which are
 // rate limited per hour. Pass an API key, or set KEENABLE_API_KEY, to lift
-// that limit. Create a key at https://keenable.ai/console.
+// that limit. Create a key at https://app.keenable.ai/console/api-keys.
 //
 // Reuse one Client for the process. Call [Client.Close] when you are done if
 // this SDK created the underlying [http.Client].
@@ -221,12 +221,12 @@ func New(opts *Options) (*Client, error) {
 	maxRetries := DefaultMaxRetries
 	if opts.MaxRetries != nil {
 		if *opts.MaxRetries < 0 {
-			return nil, &InvalidRequestError{msg: fmt.Sprintf("MaxRetries must be zero or more, got %d", *opts.MaxRetries)}
+			return nil, &InvalidRequestError{msg: fmt.Sprintf("MaxRetries must be zero or more, got %d", *opts.MaxRetries), Param: "max_retries"}
 		}
 		maxRetries = *opts.MaxRetries
 	}
 	if opts.Timeout < 0 {
-		return nil, &InvalidRequestError{msg: fmt.Sprintf("Timeout must be zero or more, got %s", opts.Timeout)}
+		return nil, &InvalidRequestError{msg: fmt.Sprintf("Timeout must be zero or more, got %s", opts.Timeout), Param: "timeout"}
 	}
 	if err := checkHeaders(opts.Headers); err != nil {
 		return nil, err
@@ -289,7 +289,7 @@ func (c *Client) Search(ctx context.Context, query string, opts *SearchOptions) 
 		return nil, err
 	}
 	if strings.TrimSpace(query) == "" {
-		return nil, &InvalidRequestError{msg: "search() needs a non-empty query. Pass the question as the query argument."}
+		return nil, &InvalidRequestError{msg: "search() needs a non-empty query. Pass the question as the query argument.", Param: "query"}
 	}
 	mode := "pro"
 	if opts != nil && opts.Mode != "" {
@@ -489,13 +489,13 @@ func (c *Client) send(ctx context.Context, method, rawURL string, body []byte, o
 	if opts != nil {
 		if opts.Timeout != nil {
 			if *opts.Timeout <= 0 {
-				return nil, "", &InvalidRequestError{msg: fmt.Sprintf("RequestOptions.Timeout must be more than zero, got %s. Leave it nil to keep the client's.", *opts.Timeout)}
+				return nil, "", &InvalidRequestError{msg: fmt.Sprintf("RequestOptions.Timeout must be more than zero, got %s. Leave it nil to keep the client's.", *opts.Timeout), Param: "timeout"}
 			}
 			timeout = *opts.Timeout
 		}
 		if opts.MaxRetries != nil {
 			if *opts.MaxRetries < 0 {
-				return nil, "", &InvalidRequestError{msg: fmt.Sprintf("MaxRetries must be zero or more, got %d", *opts.MaxRetries)}
+				return nil, "", &InvalidRequestError{msg: fmt.Sprintf("MaxRetries must be zero or more, got %d", *opts.MaxRetries), Param: "max_retries"}
 			}
 			retries = *opts.MaxRetries
 		}
@@ -652,10 +652,10 @@ func isTimeout(err error) bool {
 func checkHeaders(h map[string]string) error {
 	for name, value := range h {
 		if name == "" || strings.IndexFunc(name, func(r rune) bool { return !isTokenRune(r) }) >= 0 {
-			return &InvalidRequestError{msg: fmt.Sprintf("header name %q is not a valid HTTP header name. Use letters, digits and -.", name)}
+			return &InvalidRequestError{msg: fmt.Sprintf("header name %q is not a valid HTTP header name. Use letters, digits and -.", name), Param: "headers"}
 		}
 		if strings.ContainsAny(value, "\r\n\x00") {
-			return &InvalidRequestError{msg: fmt.Sprintf("header %q has a CR, LF or NUL in its value. Remove it.", name)}
+			return &InvalidRequestError{msg: fmt.Sprintf("header %q has a CR, LF or NUL in its value. Remove it.", name), Param: "headers"}
 		}
 	}
 	return nil
@@ -737,7 +737,7 @@ func resolveBaseURL(explicit *string) (string, error) {
 	}
 	raw = strings.TrimRight(strings.TrimSpace(raw), "/")
 	if raw == "" {
-		return "", &InvalidRequestError{msg: `baseURL must be an https:// URL with a host, got ""`}
+		return "", &InvalidRequestError{msg: `baseURL must be an https:// URL with a host, got ""`, Param: "base_url"}
 	}
 	// The API key is sent to this host. A backslash makes URL parsers disagree
 	// on which host that is (http://evil.example\@localhost is evil.example to
@@ -749,22 +749,22 @@ func resolveBaseURL(explicit *string) (string, error) {
 		}
 		if strings.ContainsAny(authority, `\@`) {
 			return "", &InvalidRequestError{msg: "baseURL must not contain a backslash, user name or password before its path. " +
-				"Pass an https:// URL with only a host, an optional port and an optional path."}
+				"Pass an https:// URL with only a host, an optional port and an optional path.", Param: "base_url"}
 		}
 	}
 	u, err := url.Parse(raw)
 	if err != nil || u.Hostname() == "" {
-		return "", &InvalidRequestError{msg: fmt.Sprintf("baseURL must be an https:// URL with a host, got %q", raw)}
+		return "", &InvalidRequestError{msg: fmt.Sprintf("baseURL must be an https:// URL with a host, got %q", raw), Param: "base_url"}
 	}
 	if u.User != nil {
 		return "", &InvalidRequestError{msg: "baseURL must not contain a user name or password. " +
-			"Pass an https:// URL with only a host, an optional port and an optional path."}
+			"Pass an https:// URL with only a host, an optional port and an optional path.", Param: "base_url"}
 	}
 	if u.RawQuery != "" || u.Fragment != "" {
 		return "", &InvalidRequestError{msg: fmt.Sprintf(
 			"baseURL must be an https:// URL with a host and no query or fragment, got %q",
 			raw,
-		)}
+		), Param: "base_url"}
 	}
 	scheme := strings.ToLower(u.Scheme)
 	// Only the three plain spellings, with at most one trailing dot.
@@ -775,7 +775,7 @@ func resolveBaseURL(explicit *string) (string, error) {
 	return "", &InvalidRequestError{msg: fmt.Sprintf(
 		"baseURL must use https (http is only allowed for localhost, 127.0.0.1, and ::1), got %q",
 		raw,
-	)}
+	), Param: "base_url"}
 }
 
 func isLocalHost(host string) bool {
@@ -797,7 +797,7 @@ var blockedHosts = map[string]struct{}{
 // an internal hostname out of an outbound request. The rules are the same in
 // every SDK: scripts/conformance/README.md.
 func rejectPrivateFetchTarget(raw string) error {
-	notHTTP := &InvalidRequestError{msg: fmt.Sprintf("fetch() needs an http(s) URL, got %q. Use an https URL on the public internet.", raw)}
+	notHTTP := &InvalidRequestError{msg: fmt.Sprintf("fetch() needs an http(s) URL, got %q. Use an https URL on the public internet.", raw), Param: "url"}
 	// Parsers disagree on what control characters and surrounding spaces
 	// mean (WHATWG deletes a tab, Go refuses it), so none is accepted.
 	if strings.ContainsFunc(raw, func(r rune) bool { return r < 0x20 || r == 0x7f }) || strings.Trim(raw, " ") != raw {
@@ -819,7 +819,7 @@ func rejectPrivateFetchTarget(raw string) error {
 	// A WHATWG parser reads a backslash as a slash and Go does not, so they
 	// would disagree on the host.
 	if strings.Contains(authority, `\`) {
-		return &InvalidRequestError{msg: fmt.Sprintf("fetch() URL has a backslash in its host: %q. Pass an https URL with a public host.", raw)}
+		return &InvalidRequestError{msg: fmt.Sprintf("fetch() URL has a backslash in its host: %q. Pass an https URL with a public host.", raw), Param: "url"}
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -827,14 +827,14 @@ func rejectPrivateFetchTarget(raw string) error {
 	}
 	folded := foldHost(u.Hostname())
 	if hasEmptyLabel(folded) {
-		return &InvalidRequestError{msg: fmt.Sprintf("fetch() URL has an empty label in its host (two dots in a row, or a leading dot): %q. Pass an https URL with a public host.", raw)}
+		return &InvalidRequestError{msg: fmt.Sprintf("fetch() URL has an empty label in its host (two dots in a row, or a leading dot): %q. Pass an https URL with a public host.", raw), Param: "url"}
 	}
 	host := fetchHost(u.Hostname())
 	if host == "" {
-		return &InvalidRequestError{msg: fmt.Sprintf("fetch() URL has no host: %q. Pass an https URL with a public host.", raw)}
+		return &InvalidRequestError{msg: fmt.Sprintf("fetch() URL has no host: %q. Pass an https URL with a public host.", raw), Param: "url"}
 	}
 	if _, blocked := blockedHosts[host]; blocked || strings.HasSuffix(host, ".localhost") {
-		return &InvalidRequestError{msg: fmt.Sprintf("refusing to fetch internal host %q. Pass a public http(s) URL.", host)}
+		return &InvalidRequestError{msg: fmt.Sprintf("refusing to fetch internal host %q. Pass a public http(s) URL.", host), Param: "url"}
 	}
 	addr, err := netip.ParseAddr(host)
 	if err != nil {
@@ -844,7 +844,7 @@ func rejectPrivateFetchTarget(raw string) error {
 		}
 	}
 	if isNonPublic(addr) {
-		return &InvalidRequestError{msg: fmt.Sprintf("refusing to fetch private address %q. Pass a public http(s) URL.", host)}
+		return &InvalidRequestError{msg: fmt.Sprintf("refusing to fetch private address %q. Pass a public http(s) URL.", host), Param: "url"}
 	}
 	return nil
 }
@@ -1107,7 +1107,7 @@ func toAPIError(status int, raw []byte, header http.Header, keyless bool) error 
 		// Not the caller's own limit, so a key would not lift it.
 		msg += ". Wait for the rate limit window to reset, then retry."
 	case status == 429 && keyless:
-		msg += ". Set KEENABLE_API_KEY to lift the keyless hourly cap. Create a key at https://keenable.ai/console."
+		msg += ". Set KEENABLE_API_KEY to lift the keyless hourly cap. Create a key at https://app.keenable.ai/console/api-keys."
 	case status == 429:
 		msg += ". Wait for the rate limit window to reset, then retry."
 	case status >= 400 && status < 500 && status != 408 && (api.Retryable == nil || !*api.Retryable):
@@ -1181,6 +1181,7 @@ func parseErrorBody(m map[string]any, header http.Header) *APIError {
 		RequestID: stringField(m, "request_id"),
 		Param:     stringField(m, "param"),
 	}
+	api.DocsURL = docsURLFor(stringField(m, "docs_url"), api.APICode)
 	if api.RequestID == "" {
 		api.RequestID = headerValue(header, "X-Request-Id")
 	}

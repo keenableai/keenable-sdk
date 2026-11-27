@@ -15,6 +15,7 @@ import {
   KeenableAuthError,
   KeenableCreditsError,
   KeenableInsufficientCreditsError,
+  KeenableInvalidRequestError,
   KeenableRateLimitError,
 } from "../src/index.js";
 
@@ -34,6 +35,7 @@ interface Case {
     param: string | null;
     fix: string | null;
     limit: { scope: string; window: string; max: number; resets_at: string } | null;
+    docs_url: string | null;
     message_contains: string;
     absent: string[];
   };
@@ -55,7 +57,7 @@ const KINDS = {
 const orUndefined = <T>(value: T | null): T | undefined => (value === null ? undefined : value);
 
 /** Fields the SDK reads from an error body but never exposes. */
-const UNEXPOSED = ["docsUrl", "billingUrl", "autoTopUpUrl", "payPerRequest", "raw"];
+const UNEXPOSED = ["billingUrl", "autoTopUpUrl", "payPerRequest", "raw"];
 
 async function errorFor(response: () => Response, call: "search" | "fetch" = "search") {
   const client = new Keenable({
@@ -90,6 +92,7 @@ describe("backend error bodies", () => {
     expect(error.retryAfterSeconds).toBe(orUndefined(want.retry_after_seconds));
     expect(error.requestId).toBe(orUndefined(want.request_id));
     expect(error.param).toBe(orUndefined(want.param));
+    expect(error.docsUrl).toBe(orUndefined(want.docs_url));
     for (const name of UNEXPOSED) expect(name in error, name).toBe(false);
     expect(error.message).toContain(want.message_contains);
     expect(error.message.endsWith(` (code: ${want.code}) (request_id: ${want.request_id})`)).toBe(
@@ -262,8 +265,40 @@ describe("retry hints", () => {
     expect(error.message).toBe(
       "Keenable API error (500): Internal server error (request_id: req-h)",
     );
-    expect("docsUrl" in error).toBe(false);
+    // Not a link into the error reference, and no code to build one from.
+    expect(error.docsUrl).toBeUndefined();
     expect(error.body).toBe("Internal server error");
+  });
+
+  it("builds the docs link from the code and keeps it out of the message", async () => {
+    const error = await errorFor(reply(429, { code: "rate_limit_per_second" }, {}));
+
+    expect(error.docsUrl).toBe("https://docs.keenable.ai/errors#rate-limit-per-second");
+    expect(error.message).not.toContain("docs.keenable.ai");
+  });
+
+  it("gives a local error the invalid_request code and the argument at fault", async () => {
+    const client = new Keenable({ apiKey: "k", fetch: globalThis.fetch });
+    const error = await client.search("  ").catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(KeenableInvalidRequestError);
+    expect((error as KeenableInvalidRequestError).code).toBe("invalid_request");
+    expect((error as KeenableInvalidRequestError).param).toBe("query");
+  });
+
+  it("leaves param unset when no single argument is at fault", async () => {
+    const client = new Keenable({ apiKey: "k", fetch: globalThis.fetch });
+    const error = await client.monitors.bulk("pause").catch((e: unknown) => e);
+
+    expect((error as KeenableInvalidRequestError).code).toBe("invalid_request");
+    expect((error as KeenableInvalidRequestError).param).toBeUndefined();
+  });
+
+  it("names a monitor id argument as the API spells it", async () => {
+    const client = new Keenable({ apiKey: "k", fetch: globalThis.fetch });
+    const error = await client.monitors.get("").catch((e: unknown) => e);
+
+    expect((error as KeenableInvalidRequestError).param).toBe("monitor_id");
   });
 
   it("names the API code before the request id", async () => {

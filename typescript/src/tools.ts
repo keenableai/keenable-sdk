@@ -131,7 +131,7 @@ function toolValue(filter: Filter, value: unknown): unknown {
   }
   if (filter.enum && value !== null && value !== undefined && typeof value !== "string") {
     const choices = filter.enum.map((v) => `"${v}"`).join(" or ");
-    throw new KeenableInvalidRequestError(`${filter.wire} must be ${choices}. Pass a JSON string, or leave it out.`);
+    throw new KeenableInvalidRequestError(`${filter.wire} must be ${choices}. Pass a JSON string, or leave it out.`, { param: filter.wire });
   }
   if (filter.jsonType !== "array") return nonEmpty(value);
   return value === "" || value === null ? undefined : value;
@@ -162,7 +162,7 @@ function fetchUrls(args: Record<string, unknown>): string[] {
     urls.length === 0 ||
     !urls.every((url) => nonEmpty(url) !== undefined)
   ) {
-    throw new KeenableInvalidRequestError("keenable_fetch needs 'urls': a list of 1 to 20 URLs");
+    throw new KeenableInvalidRequestError("keenable_fetch needs 'urls': a list of 1 to 20 URLs", { param: "urls" });
   }
   return urls as string[];
 }

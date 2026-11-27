@@ -70,6 +70,7 @@ function fetchUrls(): Obj[] {
       name: `${allowed ? "allowed" : "refused"}: ${why}: ${JSON.stringify(url)}`,
       url,
       allowed,
+      param: allowed ? null : "url",
     }));
   return [...pairs(true), ...pairs(false)];
 }
@@ -81,6 +82,7 @@ function baseUrls(): Obj[] {
       name: `${valid ? "valid" : "invalid"}: ${why}: ${JSON.stringify(base_url)}`,
       base_url,
       valid,
+      param: valid ? null : "base_url",
     }));
   return [...pairs(true), ...pairs(false)];
 }
@@ -127,8 +129,27 @@ const ERROR_FIELDS = [
   "value",
   "reason",
   "limit",
+  "docs_url",
 ] as const;
 const ERROR_LISTS = ["message_contains", "message_excludes", "absent"] as const;
+
+const DOCS_URL = /^https:\/\/docs\.keenable\.ai\/errors#[a-z0-9-]+$/;
+const CODE = /^[a-z0-9_]+$/;
+
+/**
+ * The error reference link an SDK exposes, for a case that does not state it:
+ * the body's docs_url when it is a link into https://docs.keenable.ai/errors,
+ * else one built from the code (`_` written as `-`), else null.
+ */
+function docsUrl(json: Json | undefined, code: Json | undefined): Json {
+  const body: Obj = json !== null && typeof json === "object" && !Array.isArray(json) ? json : {};
+  const sent = body.docs_url;
+  if (typeof sent === "string" && DOCS_URL.test(sent)) return sent;
+  if (typeof code === "string" && CODE.test(code)) {
+    return `https://docs.keenable.ai/errors#${code.split("_").join("-")}`;
+  }
+  return null;
+}
 
 function errors(): Obj[] {
   return (load("errors.json").cases as Obj[]).map((item) => {
@@ -145,6 +166,7 @@ function errors(): Obj[] {
     }
     const expect: Obj = { kind: given.kind };
     for (const key of ERROR_FIELDS) expect[key] = given[key] ?? null;
+    if (!("docs_url" in given)) expect.docs_url = docsUrl(item.json, given.code);
     for (const key of ERROR_LISTS) expect[key] = (given[key] as Json[] | undefined) ?? [];
     return {
       name,
@@ -209,6 +231,8 @@ function options(): Obj[] {
       scope: item.scope,
       value: item.value ?? null,
       valid: item.valid as boolean,
+      // An invalid value is reported against the option's name.
+      param: item.valid === true ? null : (item.option as string),
       skip: (item.skip as Obj | undefined) ?? {},
     };
   });

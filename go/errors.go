@@ -1,6 +1,10 @@
 package keenable
 
-import "time"
+import (
+	"regexp"
+	"strings"
+	"time"
+)
 
 // Stable codes an agent can switch on. They are also the last parentheses
 // of Error().
@@ -38,9 +42,14 @@ type Error interface {
 }
 
 // InvalidRequestError means the arguments were rejected locally.
-// No request was sent.
+// No request was sent. Code() is always CodeInvalidRequest, the code the other
+// Keenable SDKs give this error too.
 type InvalidRequestError struct {
-	msg string
+	// Param names the argument at fault, spelled as the API spells it
+	// ("query", "url", "max_retries", "base_url", ...), the same in every
+	// Keenable SDK. Empty when no single argument is at fault.
+	Param string
+	msg   string
 }
 
 func (e *InvalidRequestError) Error() string {
@@ -85,8 +94,8 @@ func (e *ConnectionError) keenableError() {}
 // older responses. Error() ends with "(code: <APICode>) (request_id:
 // <RequestID>)" when the API sent them, then the SDK's own "(<Code()>)".
 //
-// The API's docs link, a 402's billing and top-up links and a pay-per-request
-// (x402) offer are not exposed, in a field or in the message.
+// A 402's billing and top-up links and a pay-per-request (x402) offer are not
+// exposed, in a field or in the message.
 type APIError struct {
 	StatusCode int
 	Body       string
@@ -123,8 +132,13 @@ type APIError struct {
 	Reason string
 	// RateLimit is the limit a 429 hit (the body's "limit").
 	RateLimit *RateLimitInfo
-	msg       string
-	code      string
+	// DocsURL is the error's entry in the error reference,
+	// https://docs.keenable.ai/errors#<code> with "_" written as "-". It is
+	// the body's docs_url when that is such a link, else built from APICode;
+	// empty when there is no code. It is not in Error().
+	DocsURL string
+	msg     string
+	code    string
 	// retryAfterSet tells a sent zero wait apart from none.
 	retryAfterSet bool
 }
@@ -248,3 +262,21 @@ func (e *WebhookVerificationError) Code() string   { return CodeWebhookVerificat
 func (e *WebhookVerificationError) keenableError() {}
 
 var _ Error = (*WebhookVerificationError)(nil)
+
+var (
+	docsURLPattern = regexp.MustCompile(`^https://docs\.keenable\.ai/errors#[a-z0-9-]+$`)
+	docsCode       = regexp.MustCompile(`^[a-z0-9_]+$`)
+)
+
+// docsURLFor is the error reference link: the body's when it is one, else
+// built from the code. Only a link into https://docs.keenable.ai/errors is
+// passed on, so the error never carries another URL from the response.
+func docsURLFor(sent, code string) string {
+	if docsURLPattern.MatchString(sent) {
+		return sent
+	}
+	if docsCode.MatchString(code) {
+		return "https://docs.keenable.ai/errors#" + strings.ReplaceAll(code, "_", "-")
+	}
+	return ""
+}

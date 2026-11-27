@@ -33,8 +33,8 @@ interface Reply {
 }
 
 interface Fixture {
-  fetch_url: { name: string; url: string; allowed: boolean }[];
-  base_url: { name: string; base_url: string; valid: boolean }[];
+  fetch_url: { name: string; url: string; allowed: boolean; param: string | null }[];
+  base_url: { name: string; base_url: string; valid: boolean; param: string | null }[];
   retry_after: { now: string; cases: { name: string; value: string; seconds: number | null }[] };
   retry: (Reply & {
     name: string;
@@ -61,6 +61,7 @@ interface Fixture {
     scope: "client" | "call";
     value: Json;
     valid: boolean;
+    param: string | null;
     skip: Record<string, string>;
   }[];
   search_body: {
@@ -113,7 +114,7 @@ const SEARCH_OK: Reply = {
 };
 const PAGE_OK: Reply = { status: 200, headers: {}, body: JSON.stringify({ results: [] }) };
 /** Fields the SDK reads from an error body but never exposes. */
-const UNEXPOSED = ["docsUrl", "billingUrl", "autoTopUpUrl", "payPerRequest", "raw"];
+const UNEXPOSED = ["billingUrl", "autoTopUpUrl", "payPerRequest", "raw"];
 
 /** A Response for a scripted reply; statuses that carry no body get none. */
 function response(reply: Reply): Response {
@@ -187,6 +188,7 @@ function errorFields(error: KeenableAPIError): Record<string, Json> {
     value: error.value ?? null,
     reason: error.reason ?? null,
     limit,
+    docs_url: error.docsUrl ?? null,
   };
 }
 
@@ -197,17 +199,33 @@ describe("fetch targets", () => {
       expect(outcome.error).toBeUndefined();
       expect(outcome.requests).toHaveLength(1);
     } else {
-      expect(outcome.error).toBeInstanceOf(KeenableInvalidRequestError);
+      expectInvalid(outcome.error, c.param);
       expect(outcome.requests).toHaveLength(0);
     }
   });
 });
 
+/** The invalid-request error, with its code and the argument at fault. */
+function expectInvalid(error: unknown, param: string | null): void {
+  expect(error).toBeInstanceOf(KeenableInvalidRequestError);
+  expect((error as KeenableInvalidRequestError).code).toBe("invalid_request");
+  expect((error as KeenableInvalidRequestError).param ?? null).toBe(param);
+}
+
 describe("base URLs", () => {
   it.each(FIXTURE.base_url.map((c) => [c.name, c] as const))("%s", (_name, c) => {
     const build = () => new Keenable({ baseUrl: c.base_url, fetch: globalThis.fetch });
-    if (c.valid) expect(build).not.toThrow();
-    else expect(build).toThrow(KeenableInvalidRequestError);
+    if (c.valid) {
+      expect(build).not.toThrow();
+      return;
+    }
+    let error: unknown;
+    try {
+      build();
+    } catch (caught) {
+      error = caught;
+    }
+    expectInvalid(error, c.param);
   });
 });
 
@@ -422,7 +440,7 @@ describe("arguments", () => {
       expect(outcome.error).toBeUndefined();
       expect(outcome.requests).toHaveLength(1);
     } else {
-      expect(outcome.error).toBeInstanceOf(KeenableInvalidRequestError);
+      expectInvalid(outcome.error, c.param);
       expect(outcome.requests).toHaveLength(0);
     }
   });
