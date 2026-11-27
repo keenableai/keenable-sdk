@@ -384,7 +384,7 @@ except KeenableAPIError as err:
 | `request_id` | Quote it when reporting a problem |
 | `param` | The parameter a 400 is about |
 | `value`, `reason` | What a 400 `invalid_filter` rejected (usually the entry; for a size cap the count or a truncated entry), and why |
-| `limit` | On a 429: `RateLimitInfo(scope, window, max, resets_at)` |
+| `limit` | On a 429: `RateLimitInfo(scope, window, max, resets_at, endpoint)`; `endpoint` is which endpoint limit was hit (`search` or `fetch`) when the organization has separate limits; `None` for the shared limit |
 
 When the API sends `fix`, the error message ends with it, then with
 `(code: <code>)` and `(request_id: <id>)`, as in the Go and TypeScript SDKs.

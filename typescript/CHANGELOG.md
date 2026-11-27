@@ -14,6 +14,7 @@ All notable changes to the `keenable` npm package. Versions follow
 - **Added:** `moderation` option on `search()`: `"moderate"` or `"strict"` filters unsafe results; unset, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 when the query is a URL.
 - **Added:** `SearchResponse.warnings`, a list of `SearchWarning` (`code`, `path`, `message`) naming what a request should change, such as a deprecated parameter. Empty when the API sends none.
 - **Changed:** the `maxAgeHours` option on `fetch()` documents `-1`: read only Keenable's stored copy, of any age, never the live page; a page with no stored copy comes back with `error` set (404). It works with `prompt`, `schema`, `links` and `images`. The API accepts `-1` or `0` to `720` and answers any other negative value with a 400. The `keenable_fetch` tool's `max_age_hours` now allows `-1` (`minimum: -1`) and its description says so. The SDK sends the value as given, as before.
+- **Added:** `RateLimitInfo.endpoint`: on a 429 `rate_limit_per_second`, which endpoint limit was hit (`"search"` or `"fetch"`) when the organization has separate search and fetch limits; `undefined` for the shared limit.
 
 ## 0.3.0
 

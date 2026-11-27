@@ -940,7 +940,7 @@
     "type": "rate_limit_error",
     "status": 429,
     "title": "Rate limit exceeded",
-    "summary": "The organization's requests-per-second limit, shared by all its keys, was exceeded.",
+    "summary": "The organization's requests-per-second limit, shared by all its keys, was exceeded. When the organization has separate search and fetch limits, limit.endpoint names the one that was hit; it is absent for the shared limit.",
     "fix": "Wait for Retry-After, then retry, and keep under your organization's per-second limit. For a higher limit, upgrade at https://app.keenable.ai/console/billing?tab=limits.",
     "retryable": true,
     "docs_anchor": "rate-limit-per-second",

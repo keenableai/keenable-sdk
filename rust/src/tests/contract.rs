@@ -78,6 +78,7 @@ async fn backend_error_bodies_parse_into_typed_errors() {
             window: s(&l["window"]),
             max: l["max"].as_u64(),
             resets_at: s(&l["resets_at"]),
+            endpoint: l.get("endpoint").and_then(s),
         });
         if api.limit != want_limit {
             problems.push(format!("limit {:?}, want {want_limit:?}", api.limit));

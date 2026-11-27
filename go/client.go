@@ -1202,6 +1202,7 @@ func parseErrorBody(m map[string]any, header http.Header) *APIError {
 			Scope:    stringField(l, "scope"),
 			Window:   stringField(l, "window"),
 			ResetsAt: stringField(l, "resets_at"),
+			Endpoint: stringField(l, "endpoint"),
 		}
 		// An integer a double holds exactly, as in Python and TypeScript.
 		if n, ok := l["max"].(float64); ok && n == math.Trunc(n) && n >= 0 && n <= maxSafeInteger {

@@ -139,6 +139,9 @@ type RateLimitInfo struct {
 	Max int
 	// ResetsAt is an ISO 8601 time when the window opens again.
 	ResetsAt string
+	// Endpoint is which endpoint limit was hit ("search" or "fetch") when the
+	// organization has separate limits; empty for the shared limit.
+	Endpoint string
 }
 
 func (e *APIError) Error() string {

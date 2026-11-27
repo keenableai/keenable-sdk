@@ -116,6 +116,9 @@ with a caller's own `httpx` client, `http.Client` or `fetch` too.
 - String fields count only when they are strings with more than whitespace;
   `retryable` only when boolean; delays only when finite numbers at least 0
   (capped at a year); `limit.max` only when an integer from 0 to 2^53 - 1.
+  `limit.endpoint` (`search` or `fetch`, sent only when the organization has
+  separate search and fetch limits) is such a string field, like
+  `limit.scope` and `limit.window`.
 - The SDKs do not expose `docs_url`, the billing, checkout and top-up URLs of a
   402 (`billing_url`, `auto_top_up_url`, `details.checkoutUrl`), the
   `pay_per_request` text, or an x402 offer (`accepts`, `payTo`, networks,

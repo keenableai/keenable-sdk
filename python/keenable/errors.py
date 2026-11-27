@@ -27,14 +27,17 @@ class RateLimitInfo:
     ``scope`` is who the limit counts (``"organization"``, ``"ip"``,
     ``"payer"`` or ``"agent"``), ``window`` its length (``"second"`` or
     ``"hour"``), ``max`` the requests allowed per window and ``resets_at`` an
-    ISO 8601 time when the window opens again. A field the API left out is
-    ``None``.
+    ISO 8601 time when the window opens again. ``endpoint`` is which endpoint
+    limit was hit (``"search"`` or ``"fetch"``) when the organization has
+    separate limits; ``None`` for the shared limit. A field the API left out
+    is ``None``.
     """
 
     scope: str | None = None
     window: str | None = None
     max: int | None = None
     resets_at: str | None = None
+    endpoint: str | None = None
 
 
 class KeenableAPIError(KeenableError):

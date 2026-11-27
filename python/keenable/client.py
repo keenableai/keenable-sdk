@@ -528,6 +528,7 @@ def _limit_info(value: Any) -> RateLimitInfo | None:
         window=_str_field(value, "window"),
         max=_limit_max(value.get("max")),
         resets_at=_str_field(value, "resets_at"),
+        endpoint=_str_field(value, "endpoint"),
     )
 
 

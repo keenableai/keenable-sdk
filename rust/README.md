@@ -370,7 +370,8 @@ Every call returns `keenable::Error`:
 `err.api_error()` gives the `ApiError` behind any of the HTTP variants:
 `status_code`, `code` (the API's machine-readable reason), `error_type`,
 `fix` (what to do next), `retryable`, `retry_after`, `request_id`, and for a
-429, `limit`. `err.sdk_code()` is a stable string, and the same token ends the
+429, `limit` (a `RateLimitInfo`: `scope`, `window`, `max`, `resets_at` and
+`endpoint`, which endpoint limit was hit (`search` or `fetch`) when the organization has separate limits; `None` for the shared limit). `err.sdk_code()` is a stable string, and the same token ends the
 error's text.
 
 ```rust
