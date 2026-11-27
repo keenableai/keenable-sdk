@@ -211,7 +211,8 @@ export interface KeenableOptions {
    * Where debug lines go: one per attempt, with the method, path, status,
    * elapsed time, attempt number, retry decision and wait, and request id.
    * Never the API key, other headers or bodies. Passing a logger turns the
-   * lines on; without one, `KEENABLE_LOG=debug` sends them to `console.debug`.
+   * lines on; without one, `KEENABLE_LOG=debug` writes them to stderr with
+   * `console.error`.
    * `console` itself, or a logger such as pino, fits.
    */
   logger?: KeenableLogger;

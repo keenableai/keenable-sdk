@@ -291,5 +291,5 @@ The line never holds the API key, a header, the query string or a body.
 Python and Rust log the part after `keenable: ` as the message (Python's
 `KEENABLE_LOG` handler prints it as `keenable: <message>`, Rust's `eprintln!`
 the same); Go logs the fields as `log/slog` attributes with the message
-`keenable`. `KEENABLE_LOG=debug` writes to stderr, except TypeScript, which
-uses `console.debug`.
+`keenable`. `KEENABLE_LOG=debug` writes to stderr in every SDK (TypeScript
+with `console.error`), so stdout stays free for a program's own output.

@@ -449,13 +449,17 @@ whether the SDK retries and how long it waits first, and the request id. The
 lines never hold the API key, any other header, the query string or a request
 or response body.
 
-`KEENABLE_LOG=debug` writes the lines with `console.debug`, which Node prints
-to stdout. To send them to stderr or to your own logger, pass `logger`: any
-object with a `debug(message)` method, such as a pino logger. Passing one
-turns the lines on whatever `KEENABLE_LOG` says.
+`KEENABLE_LOG=debug` writes the lines to stderr with `console.error`, so a
+program whose stdout carries data, such as a stdio MCP server or a CLI piped
+to `jq`, keeps it clean. To send them to your own logger instead, pass
+`logger`: any object with a `debug(message)` method, such as a pino logger.
+Passing one turns the lines on whatever `KEENABLE_LOG` says.
 
 ```ts
-const keenable = new Keenable({ logger: { debug: (line) => console.error(line) } });
+import pino from "pino";
+
+const log = pino({ level: "debug" });
+const keenable = new Keenable({ logger: { debug: (line) => log.debug(line) } });
 ```
 
 ## Configuration
@@ -464,7 +468,7 @@ const keenable = new Keenable({ logger: { debug: (line) => console.error(line) }
 |---|---|---|
 | `KEENABLE_API_KEY` | unset | Lifts the hourly rate limit. Create one at [keenable.ai/console](https://keenable.ai/console) |
 | `KEENABLE_API_URL` | `https://api.keenable.ai` | Override the API base URL |
-| `KEENABLE_LOG` | unset | `debug` sends one line per attempt to `console.debug` (see Debugging) |
+| `KEENABLE_LOG` | unset | `debug` writes one line per attempt to stderr (see Debugging) |
 
 Both can also be passed to the constructor as `apiKey` and `baseUrl`, alongside
 `timeoutMs`, `maxRetries`, `defaultHeaders`, a custom `fetch` (e.g. for a

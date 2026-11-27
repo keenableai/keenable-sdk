@@ -35,13 +35,14 @@ export function debugEnabled(value: string | undefined): boolean {
 }
 
 /**
- * The logger a client uses: the one passed, else `console` when
+ * The logger a client uses: the one passed, else `console.error` (stderr, as
+ * in the other SDKs, so stdout stays free for a program's own output) when
  * `KEENABLE_LOG=debug`, else none.
  */
 export function resolveLogger(logger: KeenableLogger | undefined): KeenableLogger | undefined {
   if (logger !== undefined) return logger;
   if (!debugEnabled(readEnv("KEENABLE_LOG"))) return undefined;
-  return { debug: (message: string) => console.debug(message) };
+  return { debug: (message: string) => console.error(message) };
 }
 
 function loggableId(id: string | null): string | null {

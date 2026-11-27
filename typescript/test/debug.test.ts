@@ -96,31 +96,37 @@ describe("debug logging", () => {
     expect(lines).toEqual([expect.stringMatching(/ attempt=1 error=canceled elapsed_ms=\d+ retry=false$/)]);
   });
 
-  it("KEENABLE_LOG=debug sends the lines to console.debug", async () => {
+  it("KEENABLE_LOG=debug writes the lines to stderr with console.error, never stdout", async () => {
     vi.stubEnv("KEENABLE_LOG", "debug");
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const debug = vi.spyOn(console, "debug").mockImplementation(() => undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     await scripted([ok]).search(SECRET_QUERY);
-    expect(debug).toHaveBeenCalledTimes(1);
-    const line = String(debug.mock.calls[0]?.[0]);
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(debug).not.toHaveBeenCalled();
+    expect(log).not.toHaveBeenCalled();
+    const line = String(error.mock.calls[0]?.[0]);
     expect(line).toMatch(/^keenable: method=POST path=\/v1\/search attempt=1 status=200 /);
     expect(line).not.toContain(SECRET);
   });
 
   it("logs nothing without KEENABLE_LOG or a logger", async () => {
     vi.stubEnv("KEENABLE_LOG", "");
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const debug = vi.spyOn(console, "debug").mockImplementation(() => undefined);
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     await scripted([busy, ok]).search("q");
+    expect(error).not.toHaveBeenCalled();
     expect(debug).not.toHaveBeenCalled();
     expect(log).not.toHaveBeenCalled();
   });
 
   it("a logger passed wins over KEENABLE_LOG", async () => {
     vi.stubEnv("KEENABLE_LOG", "debug");
-    const debug = vi.spyOn(console, "debug").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { lines, logger } = capture();
     await scripted([ok], { logger }).search("q");
     expect(lines).toHaveLength(1);
-    expect(debug).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
   });
 });
