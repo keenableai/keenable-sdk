@@ -1,5 +1,5 @@
 // Keyless Keenable search from TypeScript: no account, no API key.
-// On StackBlitz this runs by itself; edit the query and it runs again.
+// On StackBlitz this runs by itself; edit the query, then run `npm start` in the terminal.
 // Locally: npm install && npm start
 
 import { Keenable, KeenableAPIError } from "keenable";
