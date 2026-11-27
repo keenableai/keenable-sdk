@@ -432,16 +432,43 @@ request should change, such as a deprecated parameter it used; it is empty
 otherwise. Redirects are never followed, so the API key
 cannot leak to another host.
 
+## Debugging
+
+Set `KEENABLE_LOG=debug` to see what the SDK sends:
+
+```
+$ KEENABLE_LOG=debug node agent.js
+keenable: method=POST path=/v1/search attempt=1 status=503 elapsed_ms=41 retry=true wait_ms=437 request_id=req_1
+keenable: method=POST path=/v1/search attempt=2 status=200 elapsed_ms=212 retry=false request_id=req_2
+```
+
+One line per attempt: the method, the URL's path, the attempt number, the
+HTTP status (or `error=timeout`, `redirect`, `canceled` when your `signal`
+aborted, or `connection` when there was none), the elapsed milliseconds,
+whether the SDK retries and how long it waits first, and the request id. The
+lines never hold the API key, any other header, the query string or a request
+or response body.
+
+`KEENABLE_LOG=debug` writes the lines with `console.debug`, which Node prints
+to stdout. To send them to stderr or to your own logger, pass `logger`: any
+object with a `debug(message)` method, such as a pino logger. Passing one
+turns the lines on whatever `KEENABLE_LOG` says.
+
+```ts
+const keenable = new Keenable({ logger: { debug: (line) => console.error(line) } });
+```
+
 ## Configuration
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `KEENABLE_API_KEY` | unset | Lifts the hourly rate limit. Create one at [keenable.ai/console](https://keenable.ai/console) |
 | `KEENABLE_API_URL` | `https://api.keenable.ai` | Override the API base URL |
+| `KEENABLE_LOG` | unset | `debug` sends one line per attempt to `console.debug` (see Debugging) |
 
 Both can also be passed to the constructor as `apiKey` and `baseUrl`, alongside
 `timeoutMs`, `maxRetries`, `defaultHeaders`, a custom `fetch` (e.g. for a
-proxy), and `clientSource`. Building an integration on
+proxy), `logger`, and `clientSource`. Building an integration on
 top of this SDK? Set `clientSource: "Your Integration"` so your traffic is
 attributed to you rather than to the bare SDK.
 

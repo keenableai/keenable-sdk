@@ -2,11 +2,12 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::{Map, Value};
 
+use crate::debug_log::AttemptLog;
 use crate::error::{ApiError, ConnectionError, Error, RateLimitError, RateLimitInfo, Result};
 use crate::guard::{reject_private_fetch_target, resolve_base_url};
 use crate::models::{
@@ -209,6 +210,8 @@ struct Inner {
     max_retries: u32,
     headers: HashMap<String, String>,
     http: reqwest::Client,
+    /// Whether `KEENABLE_LOG=debug` asked for debug lines on stderr.
+    debug_stderr: bool,
 }
 
 /// How an API key shows in `Debug` output: never the key itself, so a
@@ -299,6 +302,7 @@ impl Client {
                 max_retries: opts.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
                 headers: opts.headers,
                 http,
+                debug_stderr: crate::debug_log::stderr_from_env(),
             }),
         })
     }
@@ -587,20 +591,62 @@ impl Client {
             .collect();
         call_headers.extend(opts.headers.clone());
         let headers = self.headers(body.is_some(), &call_headers)?;
+        // The URL's path for the debug lines, when anything takes them.
+        let stderr = self.inner.debug_stderr;
+        let log_path = crate::debug_log::wanted(stderr).then(|| {
+            url::Url::parse(&url)
+                .map(|u| u.path().to_string())
+                .unwrap_or_default()
+        });
         let mut retry = 0;
         loop {
+            let started = Instant::now();
+            let logged = AttemptLog {
+                method: method.as_str(),
+                path: log_path.as_deref().unwrap_or_default(),
+                attempt: retry + 1,
+                ..AttemptLog::default()
+            };
             let err = match self
                 .attempt(method.clone(), &url, body.clone(), headers.clone(), timeout)
                 .await
             {
-                Ok(done) => return Ok(done),
+                Ok((obj, id, status)) => {
+                    if log_path.is_some() {
+                        let request_id = obj
+                            .get("request_id")
+                            .and_then(Value::as_str)
+                            .filter(|s| !s.trim().is_empty())
+                            .or(id.as_deref());
+                        let done = AttemptLog {
+                            status: Some(status),
+                            request_id,
+                            ..logged
+                        };
+                        crate::debug_log::emit(stderr, done, started);
+                    }
+                    return Ok((obj, id));
+                }
                 Err(err) => err,
             };
             let rate_limited = matches!(err, Error::RateLimit(_));
-            if retry >= retries || !(safe || rate_limited) {
-                return Err(err);
+            let wait = if retry >= retries || !(safe || rate_limited) {
+                None
+            } else {
+                retry_delay(&err, retry, rand::random::<f64>())
+            };
+            if log_path.is_some() {
+                let (status, error, request_id) = crate::debug_log::failure(&err);
+                let failed = AttemptLog {
+                    status,
+                    error,
+                    wait_ms: wait.map(|w| w.as_millis()),
+                    request_id,
+                    ..logged
+                };
+                crate::debug_log::emit(stderr, failed, started);
             }
-            let Some(wait) = retry_delay(&err, retry, rand::random::<f64>()) else {
+            let Some(wait) = wait else {
                 return Err(err);
             };
             pause(wait).await;
@@ -609,7 +655,7 @@ impl Client {
     }
 
     /// Sends one request with its own deadline, covering the body too, and
-    /// decodes the reply.
+    /// decodes the reply: the body, the `X-Request-Id` header and the status.
     async fn attempt(
         &self,
         method: reqwest::Method,
@@ -617,7 +663,7 @@ impl Client {
         body: Option<Vec<u8>>,
         headers: HeaderMap,
         timeout: Duration,
-    ) -> Result<(Map<String, Value>, Option<String>)> {
+    ) -> Result<(Map<String, Value>, Option<String>, u16)> {
         let mut req = self.inner.http.request(method, url).headers(headers);
         if let Some(body) = body {
             req = req.body(body);
@@ -667,7 +713,7 @@ impl Client {
             format!("{:?}", String::from_utf8_lossy(cut))
         };
         match json::parse(&raw) {
-            Some(Value::Object(obj)) => Ok((obj, id)),
+            Some(Value::Object(obj)) => Ok((obj, id, status)),
             Some(_) => Err(Error::Api(Box::new(ApiError::plain(
                 status,
                 format!(

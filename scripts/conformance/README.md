@@ -260,3 +260,36 @@ delivery as a Standard Webhook:
 - A matching signature over a body that is not a JSON object fails too.
 - A failure is the SDK's webhook verification error; a pass returns the parsed
   event, whose `type` the case names.
+
+## Debug logging (`debug_log`)
+
+Debug logging is off unless the environment variable `KEENABLE_LOG` is
+`debug` (trimmed, any letter case) or the caller passes a logger where the
+language has one (TypeScript `logger`, Go `Options.Logger`; Python and Rust
+log to the `keenable` logger or log target, which the application can turn
+on itself). Every other value of `KEENABLE_LOG` is off.
+
+Each attempt logs one line, after the attempt's outcome and the retry
+decision are known, with these fields in this order:
+
+    keenable: method=POST path=/v1/search attempt=1 status=503 elapsed_ms=40 retry=true wait_ms=437 request_id=req_2
+
+- `method`, and `path`: the URL's path as sent, never the host or the query
+  string.
+- `attempt`: 1 for the first.
+- `status`: the HTTP status, when there is one that counts (a 2xx whose body
+  is not a JSON object too). Otherwise `error`: `timeout`, `redirect`,
+  `canceled` (the caller's signal or context ended the call) or `connection`.
+- `elapsed_ms`: the attempt's whole milliseconds, truncated.
+- `retry`: `true` or `false`, and `wait_ms` (whole milliseconds, truncated)
+  only when `true`.
+- `request_id`: the error's request id for a failed attempt, the result's for
+  a successful one. Left out when there is none, or when it is longer than 128
+  characters or holds a character outside printable ASCII (0x21 to 0x7E).
+
+The line never holds the API key, a header, the query string or a body.
+Python and Rust log the part after `keenable: ` as the message (Python's
+`KEENABLE_LOG` handler prints it as `keenable: <message>`, Rust's `eprintln!`
+the same); Go logs the fields as `log/slog` attributes with the message
+`keenable`. `KEENABLE_LOG=debug` writes to stderr, except TypeScript, which
+uses `console.debug`.

@@ -13,7 +13,7 @@ A new option, method, model field or error type goes into all four languages in 
 
 ## Shared conformance cases keep the SDKs alike
 
-`scripts/conformance/cases/*.json` pin down behaviour that must be the same in every SDK: which fetch() URLs are refused, base URL checks, Retry-After parsing, the retry decision, error fields and classes, success-body parsing and argument validation. `scripts/conformance/README.md` states the rules. `node scripts/conformance/sync.ts` writes them to `go/testdata/conformance.json`, `python/tests/fixtures/conformance.json`, `typescript/test/fixtures/conformance.json` and `rust/tests/fixtures/conformance.json`, and each SDK's conformance test runs every case. To change one of these behaviours, change the case first, regenerate, and make all four SDKs pass. CI runs `--check` on both sync scripts.
+`scripts/conformance/cases/*.json` pin down behaviour that must be the same in every SDK: which fetch() URLs are refused, base URL checks, Retry-After parsing, the retry decision, error fields and classes, success-body parsing, argument validation and the debug log line. `scripts/conformance/README.md` states the rules. `node scripts/conformance/sync.ts` writes them to `go/testdata/conformance.json`, `python/tests/fixtures/conformance.json`, `typescript/test/fixtures/conformance.json` and `rust/tests/fixtures/conformance.json`, and each SDK's conformance test runs every case. To change one of these behaviours, change the case first, regenerate, and make all four SDKs pass. CI runs `--check` on both sync scripts.
 
 ## The error contract comes from the backend's catalog
 

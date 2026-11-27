@@ -42,6 +42,7 @@ export type {
   BillingAccount,
   BillingPrice,
   Money,
+  KeenableLogger,
   KeenableOptions,
   FetchOptions,
   RequestOptions,

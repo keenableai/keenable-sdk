@@ -22,6 +22,7 @@ import {
 } from "../src/index.js";
 import type { Billing, KeenableOptions, Money, SearchOptions, SearchResponse } from "../src/index.js";
 import { backoffMs, retryAfterHeader } from "../src/client.js";
+import { attemptLine, debugEnabled } from "../src/debug.js";
 import { SEARCH_FILTERS } from "../src/filters.js";
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
@@ -93,6 +94,24 @@ interface Fixture {
     valid: boolean;
     type: string | null;
   }[];
+  debug_log: {
+    env: { name: string; value: string; enabled: boolean }[];
+    lines: {
+      name: string;
+      attempt: {
+        method: string;
+        path: string;
+        attempt: number;
+        status: number | null;
+        error: string | null;
+        elapsed_ms: number;
+        retry: boolean;
+        wait_ms: number | null;
+        request_id: string | null;
+      };
+      line: string;
+    }[];
+  };
 }
 
 const FIXTURE: Fixture = JSON.parse(
@@ -570,5 +589,28 @@ describe("webhook", () => {
     } else {
       await expect(verify).rejects.toBeInstanceOf(WebhookVerificationError);
     }
+  });
+});
+
+describe("debug log", () => {
+  it.each(FIXTURE.debug_log.env.map((c) => [c.name, c] as const))("KEENABLE_LOG %s", (_name, c) => {
+    expect(debugEnabled(c.value)).toBe(c.enabled);
+  });
+
+  it.each(FIXTURE.debug_log.lines.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    const a = c.attempt;
+    expect(
+      attemptLine({
+        method: a.method,
+        path: a.path,
+        attempt: a.attempt,
+        status: a.status,
+        error: a.error,
+        elapsedMs: a.elapsed_ms,
+        retry: a.retry,
+        waitMs: a.wait_ms,
+        requestId: a.request_id,
+      }),
+    ).toBe(c.line);
   });
 });

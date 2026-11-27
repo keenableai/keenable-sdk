@@ -525,12 +525,39 @@ carry the API's request id; quote it when reporting a problem.
 `SearchResponse.Warnings` lists what the request should change, such as a
 deprecated parameter it used; it is nil otherwise.
 
+## Debugging
+
+Set `KEENABLE_LOG=debug` to see what the SDK sends:
+
+```
+$ KEENABLE_LOG=debug go run .
+time=... level=DEBUG msg=keenable method=POST path=/v1/search attempt=1 status=503 elapsed_ms=41 retry=true wait_ms=437 request_id=req_1
+time=... level=DEBUG msg=keenable method=POST path=/v1/search attempt=2 status=200 elapsed_ms=212 retry=false request_id=req_2
+```
+
+One record per attempt: the method, the URL's path, the attempt number, the
+HTTP status (or `error=timeout`, `redirect`, `canceled` or `connection` when
+there was none), the elapsed milliseconds, whether the SDK retries and how
+long it waits first, and the request id. The records never hold the API key,
+any other header, the query string or a request or response body.
+
+The records are `log/slog` records at debug level with the message
+`keenable`. `KEENABLE_LOG=debug` sends them to stderr through a
+`slog.TextHandler`. To send them to your own handler, set `Options.Logger`;
+the records then go there whatever `KEENABLE_LOG` says, if its level lets
+debug through:
+
+```go
+client, err := keenable.New(&keenable.Options{Logger: slog.Default()})
+```
+
 ## Configuration
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `KEENABLE_API_KEY` | unset | Lifts the hourly rate limit. Create one at [keenable.ai/console](https://keenable.ai/console) |
 | `KEENABLE_API_URL` | `https://api.keenable.ai` | Override the API base URL |
+| `KEENABLE_LOG` | unset | `debug` writes one record per attempt to stderr (see Debugging) |
 
 `New(nil)` reads both. `APIKey` and `BaseURL` are pointers so "unset" and
 "explicitly empty" differ: nil reads the environment, a pointer to `""` forces

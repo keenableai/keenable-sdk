@@ -38,12 +38,13 @@ async fn main() -> Result<(), keenable::Error> {
 
 ## Configuration
 
-`Client::new()` reads two environment variables:
+`Client::new()` reads these environment variables:
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `KEENABLE_API_KEY` | unset | Your API key. Unset means keyless. |
 | `KEENABLE_API_URL` | `https://api.keenable.ai` | The API base URL. |
+| `KEENABLE_LOG` | unset | `debug` prints one line per attempt to stderr. See Debugging. |
 
 `Client::with_options` takes the same settings in code:
 
@@ -227,6 +228,28 @@ one, else exponential backoff from 0.5 s up to 8 s with jitter. A Retry-After
 longer than 60 s (such as the keyless hourly cap) is not waited out: the error
 is returned at once. A redirect is never followed or retried, so the API key
 goes only to the configured host.
+
+## Debugging
+
+Set `KEENABLE_LOG=debug` to see what the SDK sends:
+
+```
+$ KEENABLE_LOG=debug cargo run
+keenable: method=POST path=/v1/search attempt=1 status=503 elapsed_ms=41 retry=true wait_ms=437 request_id=req_1
+keenable: method=POST path=/v1/search attempt=2 status=200 elapsed_ms=212 retry=false request_id=req_2
+```
+
+One line per attempt: the method, the URL's path, the attempt number, the
+HTTP status (or `error=timeout`, `redirect` or `connection` when there was
+none), the elapsed milliseconds, whether the SDK retries and how long it
+waits first, and the request id. The lines never hold the API key, any other
+header, the query string or a request or response body.
+
+Each line also goes to the [`log`](https://docs.rs/log) facade at debug
+level with the target `keenable`, so an application with a logger sees it
+without the variable, for example with `env_logger` and
+`RUST_LOG=keenable=debug`. `KEENABLE_LOG=debug` prints to stderr on its own,
+for when no logger is installed.
 
 ## Monitors
 

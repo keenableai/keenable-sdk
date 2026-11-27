@@ -499,3 +499,83 @@ async fn billing_retries_and_sends_the_call_headers() {
     assert_eq!(seen[1].header("X-Trace"), Some("t"));
     assert_eq!(seen[1].header("X-API-Key"), Some("k"));
 }
+
+const SECRET: &str = "sk-secret-key-must-not-appear";
+const SECRET_HEADER: &str = "header-secret-must-not-appear";
+const SECRET_QUERY: &str = "query-text-must-not-appear";
+
+/// A client with a key and a secret default header, recording its waits and
+/// debug lines on this thread.
+fn logged(server: &Server, retries: u32) -> Client {
+    crate::test_hooks::start_recording();
+    crate::test_hooks::start_recording_logs();
+    Client::with_options(Options {
+        api_key: Some(SECRET.into()),
+        base_url: Some(server.base_url.clone()),
+        max_retries: Some(retries),
+        headers: [("X-Proxy-Token".to_string(), SECRET_HEADER.to_string())].into(),
+        ..Default::default()
+    })
+    .unwrap()
+}
+
+fn assert_lines(lines: &[String], patterns: &[&str]) {
+    assert_eq!(lines.len(), patterns.len(), "{lines:?}");
+    for (line, pattern) in lines.iter().zip(patterns) {
+        let re = regex::Regex::new(pattern).unwrap();
+        assert!(re.is_match(line), "{line} does not match {pattern}");
+        for secret in [SECRET, SECRET_HEADER, SECRET_QUERY] {
+            assert!(!line.contains(secret), "{line} holds a secret");
+        }
+    }
+}
+
+#[tokio::test]
+async fn debug_lines_one_per_attempt_without_the_key() {
+    let server = start(Script::Replies(vec![
+        Reply::new(503, r#"{"message":"busy"}"#).header("X-Request-Id", "req-1"),
+        Reply::new(200, r#"{"query":"q","results":[]}"#).header("X-Request-Id", "req-2"),
+    ]))
+    .await;
+    logged(&server, 1).search(SECRET_QUERY).await.unwrap();
+    let waits = crate::test_hooks::take_waits();
+    let lines = crate::test_hooks::take_logs();
+    assert_eq!(waits.len(), 1);
+    let wait = waits[0].as_millis();
+    let first = format!(
+        r"^method=POST path=/v1/search attempt=1 status=503 elapsed_ms=\d+ retry=true wait_ms={wait} request_id=req-1$"
+    );
+    assert_lines(
+        &lines,
+        &[
+            &first,
+            r"^method=POST path=/v1/search attempt=2 status=200 elapsed_ms=\d+ retry=false request_id=req-2$",
+        ],
+    );
+    assert_eq!(server.requests()[0].header("X-API-Key"), Some(SECRET));
+}
+
+#[tokio::test]
+async fn debug_lines_for_a_failure_and_a_redirect() {
+    let server = start(Script::Replies(vec![
+        Reply::new(503, "{}").header("X-Request-Id", "req-1")
+    ]))
+    .await;
+    logged(&server, 0).search("q").await.unwrap_err();
+    assert_lines(
+        &crate::test_hooks::take_logs(),
+        &[
+            r"^method=POST path=/v1/search attempt=1 status=503 elapsed_ms=\d+ retry=false request_id=req-1$",
+        ],
+    );
+
+    let server = start(Script::Replies(vec![
+        Reply::new(302, "").header("Location", "https://elsewhere.example/")
+    ]))
+    .await;
+    logged(&server, 2).billing().await.unwrap_err();
+    assert_lines(
+        &crate::test_hooks::take_logs(),
+        &[r"^method=GET path=/v1/billing attempt=1 error=redirect elapsed_ms=\d+ retry=false$"],
+    );
+}

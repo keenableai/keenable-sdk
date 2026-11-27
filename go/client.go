@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"math/rand/v2"
 	"net"
@@ -98,6 +99,12 @@ type Options struct {
 	// not close it. Redirects are still never followed, whatever its
 	// CheckRedirect says, so X-API-Key goes only to the configured host.
 	HTTPClient *http.Client
+	// Logger receives one debug record per attempt: the method, the URL's
+	// path, the attempt number, the status (or what failed), the elapsed
+	// time, the retry decision and wait, and the request id. Never the API
+	// key, other headers or bodies. Nil logs nothing, unless KEENABLE_LOG is
+	// "debug": then the records go to stderr through a [slog.TextHandler].
+	Logger *slog.Logger
 }
 
 // Client calls the Keenable web search API.
@@ -125,6 +132,8 @@ type Client struct {
 	maxRetries    int
 	// defaultHeaders is a copy of Options.Headers.
 	defaultHeaders map[string]string
+	// logger takes the debug records; nil logs nothing.
+	logger *slog.Logger
 	// Monitors is Keenable Monitors: standing searches that report new results
 	// as they appear. It needs an API key.
 	Monitors *MonitorsService
@@ -241,6 +250,7 @@ func New(opts *Options) (*Client, error) {
 		clientSource:   source,
 		maxRetries:     maxRetries,
 		defaultHeaders: headers,
+		logger:         resolveLogger(opts.Logger),
 	}
 	c.Monitors = &MonitorsService{client: c}
 	if opts.HTTPClient != nil {
@@ -524,21 +534,23 @@ func (c *Client) send(ctx context.Context, method, rawURL string, body []byte, o
 	timeout = min(timeout, maxTimeout)
 	header := c.headers(body != nil, extra)
 	for retry := 0; ; retry++ {
-		data, id, err := c.attempt(ctx, method, rawURL, body, header, timeout)
+		started := time.Now()
+		data, id, status, err := c.attempt(ctx, method, rawURL, body, header, timeout)
 		if err == nil {
+			requestID := id
+			if s, ok := data["request_id"].(string); ok && strings.TrimSpace(s) != "" {
+				requestID = s
+			}
+			c.logAttempt(ctx, rawURL, attemptLog{method: method, attempt: retry + 1, status: status, requestID: requestID}, started)
 			return data, id, nil
 		}
-		if retry >= retries || (!safe && !isRateLimited(err)) {
-			return nil, "", err
-		}
-		wait, ok := retryDelay(err, retry, rand.Float64())
-		if !ok {
-			return nil, "", err
-		}
-		// A wait the caller's deadline cannot outlast would only end in
-		// ctx.Err(); return the error that caused it instead, with its
-		// RetryAfter, Fix and RequestID.
-		if deadline, has := ctx.Deadline(); has && time.Until(deadline) <= wait {
+		wait, retrying := retryWait(ctx, err, retry, retries, safe)
+		failedStatus, failure, requestID := failureOf(err)
+		c.logAttempt(ctx, rawURL, attemptLog{
+			method: method, attempt: retry + 1, status: failedStatus, failure: failure,
+			retry: retrying, waitMS: wait.Milliseconds(), requestID: requestID,
+		}, started)
+		if !retrying {
 			return nil, "", err
 		}
 		if serr := sleep(ctx, wait); serr != nil {
@@ -547,8 +559,28 @@ func (c *Client) send(ctx context.Context, method, rawURL string, body []byte, o
 	}
 }
 
-// attempt sends one request with its own deadline and decodes the reply.
-func (c *Client) attempt(ctx context.Context, method, rawURL string, body []byte, header http.Header, timeout time.Duration) (map[string]any, string, error) {
+// retryWait is how long to wait before retrying after err, and whether to
+// retry at all. When safe is false only a 429 is retried.
+func retryWait(ctx context.Context, err error, retry, retries int, safe bool) (time.Duration, bool) {
+	if retry >= retries || (!safe && !isRateLimited(err)) {
+		return 0, false
+	}
+	wait, ok := retryDelay(err, retry, rand.Float64())
+	if !ok {
+		return 0, false
+	}
+	// A wait the caller's deadline cannot outlast would only end in
+	// ctx.Err(); return the error that caused it instead, with its
+	// RetryAfter, Fix and RequestID.
+	if deadline, has := ctx.Deadline(); has && time.Until(deadline) <= wait {
+		return 0, false
+	}
+	return wait, true
+}
+
+// attempt sends one request with its own deadline and decodes the reply. It
+// returns the body, the X-Request-Id header and the status.
+func (c *Client) attempt(ctx context.Context, method, rawURL string, body []byte, header http.Header, timeout time.Duration) (map[string]any, string, int, error) {
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body)
@@ -561,18 +593,18 @@ func (c *Client) attempt(ctx context.Context, method, rawURL string, body []byte
 	}
 	req, err := http.NewRequestWithContext(reqCtx, method, rawURL, reader)
 	if err != nil {
-		return nil, "", &InvalidRequestError{msg: "could not build the request: " + err.Error() + ". Check Options.BaseURL or KEENABLE_API_URL."}
+		return nil, "", 0, &InvalidRequestError{msg: "could not build the request: " + err.Error() + ". Check Options.BaseURL or KEENABLE_API_URL."}
 	}
 	req.Header = header.Clone()
 
 	resp, err := c.requestClient().Do(req)
 	if err != nil {
-		return nil, "", c.transportError(ctx, reqCtx, err, timeout)
+		return nil, "", 0, c.transportError(ctx, reqCtx, err, timeout)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, "", c.transportError(ctx, reqCtx, err, timeout)
+		return nil, "", 0, c.transportError(ctx, reqCtx, err, timeout)
 	}
 	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
 		// No redirect is followed (refuseRedirect). Report it as Python and
@@ -581,16 +613,16 @@ func (c *Client) attempt(ctx context.Context, method, rawURL string, body []byte
 		if loc := headerValue(resp.Header, "Location"); loc != "" {
 			where = " to " + loc
 		}
-		return nil, "", &ConnectionError{redirect: true, msg: fmt.Sprintf(
+		return nil, "", 0, &ConnectionError{redirect: true, msg: fmt.Sprintf(
 			"the Keenable API redirected%s. The redirect was not followed, so the API key was not sent. Check KEENABLE_API_URL.",
 			where,
 		)}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, "", toAPIError(resp.StatusCode, raw, resp.Header, c.Keyless())
+		return nil, "", 0, toAPIError(resp.StatusCode, raw, resp.Header, c.Keyless())
 	}
 	data, err := decodeObject(resp.StatusCode, raw, resp.Header)
-	return data, headerValue(resp.Header, "X-Request-Id"), err
+	return data, headerValue(resp.Header, "X-Request-Id"), resp.StatusCode, err
 }
 
 // requestClient applies the redirect guard. A caller-supplied client is cloned

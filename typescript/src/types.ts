@@ -207,6 +207,19 @@ export interface KeenableOptions {
    * throws a `KeenableRedirectError` telling you to rotate the key.
    */
   fetch?: typeof globalThis.fetch;
+  /**
+   * Where debug lines go: one per attempt, with the method, path, status,
+   * elapsed time, attempt number, retry decision and wait, and request id.
+   * Never the API key, other headers or bodies. Passing a logger turns the
+   * lines on; without one, `KEENABLE_LOG=debug` sends them to `console.debug`.
+   * `console` itself, or a logger such as pino, fits.
+   */
+  logger?: KeenableLogger;
+}
+
+/** Receives the SDK's debug lines. See `KeenableOptions.logger`. */
+export interface KeenableLogger {
+  debug(message: string): void;
 }
 
 /** An amount of money, as the API sent it. */

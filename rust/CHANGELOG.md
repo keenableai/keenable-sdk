@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Added:** debug logging. Every attempt logs one line through the `log` facade (debug level, target `keenable`): method, path, attempt number, status (or `error=timeout`, `redirect` or `connection`), `elapsed_ms`, the retry decision and `wait_ms`, and `request_id`. Never the API key, other headers, the query string or a body. `KEENABLE_LOG=debug` also prints the lines to stderr. The new `log` dependency was already in the tree through `reqwest`.
 - **Changed (breaking for Rust 1.80 to 1.84):** the minimum supported Rust version is now 1.85 (`rust-version` in `Cargo.toml`). The lockfile takes `quinn-proto` 0.11.19 for its security fixes, and its dependency `chacha20` 0.10 needs edition 2024 support, which Rust 1.85 added. On an older compiler, `cargo` reports the required version; run `rustup update stable`.
 - **Added:** `SearchResponse::usage` (`Option<Usage>`): what the search cost and, with a key, `cost` and `balance` in US dollars. `None` on keyless calls.
 - **Fixed:** a malformed `cost` or `balance` no longer drops the whole `Usage` of a page; each field is read on its own.

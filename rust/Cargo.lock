@@ -623,6 +623,7 @@ version = "0.3.0"
 dependencies = [
  "base64",
  "hmac",
+ "log",
  "rand 0.8.8",
  "regex",
  "reqwest",

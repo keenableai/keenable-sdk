@@ -8,6 +8,7 @@ import {
   KeenableTimeoutError,
 } from "./errors.js";
 import type { KeenableAPIErrorDetails, KeenableErrorType, RateLimitInfo } from "./errors.js";
+import { attemptLine, resolveLogger } from "./debug.js";
 import { SEARCH_FILTERS } from "./filters.js";
 import { Monitors } from "./monitors.js";
 import type { MonitorCall } from "./monitors.js";
@@ -29,6 +30,7 @@ import type {
   BillingAccount,
   BillingPrice,
   Money,
+  KeenableLogger,
   KeenableOptions,
   FetchOptions,
   RequestOptions,
@@ -699,6 +701,16 @@ export function retryDelayMs(error: unknown, retry: number): number | undefined 
   return undefined;
 }
 
+/** A failed attempt's status (or what failed instead) and request id, for the debug line. */
+function failure(error: unknown): [number | null, string | null, string | undefined] {
+  if (error instanceof KeenableAPIError) return [error.statusCode, null, error.requestId];
+  if (error instanceof KeenableTimeoutError) return [null, "timeout", undefined];
+  if (error instanceof KeenableRedirectError) return [null, "redirect", undefined];
+  if (error instanceof KeenableConnectionError) return [null, "connection", undefined];
+  // The caller's signal aborted the call; its reason is what was thrown.
+  return [null, "canceled", undefined];
+}
+
 /** A 429: the API refused the request before acting on it. */
 function isRateLimited(error: unknown): boolean {
   return error instanceof KeenableAPIError && error.statusCode === 429;
@@ -769,6 +781,7 @@ export class Keenable {
   private readonly maxRetries: number;
   private readonly defaultHeaders: Record<string, string>;
   private readonly fetchImpl: typeof globalThis.fetch;
+  private readonly logger?: KeenableLogger;
   /** Keenable Monitors: standing searches that report new results. Needs an API key. */
   readonly monitors: Monitors;
 
@@ -786,6 +799,7 @@ export class Keenable {
       );
     }
     this.fetchImpl = fetchImpl;
+    this.logger = resolveLogger(options.logger);
     this.monitors = new Monitors((call, options) => this.monitorsRequest(call, options));
   }
 
@@ -1007,17 +1021,56 @@ export class Keenable {
     );
 
     for (let retry = 0; ; retry += 1) {
+      const started = Date.now();
       try {
-        return await this.attempt(url, { ...init, headers }, timeoutMs, options.signal);
+        const { status, ...result } = await this.attempt(
+          url,
+          { ...init, headers },
+          timeoutMs,
+          options.signal,
+        );
+        this.log(init.method, url, retry, started, status, null, undefined, result.requestId);
+        return result;
       } catch (error) {
         const delay =
           retry < maxRetries && (safe || isRateLimited(error))
             ? retryDelayMs(error, retry)
             : undefined;
+        if (this.logger) {
+          const [status, failed, requestId] = failure(error);
+          this.log(init.method, url, retry, started, status, failed, delay, requestId);
+        }
         if (delay === undefined) throw error;
         await sleep(delay, options.signal);
       }
     }
+  }
+
+  /** Logs one attempt when a logger is set. Never a header or a body. */
+  private log(
+    method: string,
+    url: string,
+    retry: number,
+    started: number,
+    status: number | null,
+    error: string | null,
+    delay: number | undefined,
+    requestId: string | undefined,
+  ): void {
+    if (!this.logger) return;
+    this.logger.debug(
+      attemptLine({
+        method,
+        path: new URL(url).pathname,
+        attempt: retry + 1,
+        status,
+        error,
+        elapsedMs: Date.now() - started,
+        retry: delay !== undefined,
+        waitMs: delay ?? null,
+        requestId: requestId ?? null,
+      }),
+    );
   }
 
   /** One attempt: send, read the body under the deadline, decode. */
@@ -1026,7 +1079,7 @@ export class Keenable {
     init: RequestInit,
     timeoutMs: number,
     callerSignal: AbortSignal | undefined,
-  ): Promise<{ data: Record<string, unknown>; requestId?: string }> {
+  ): Promise<{ data: Record<string, unknown>; requestId?: string; status: number }> {
     // An already-aborted call sends nothing, whatever the fetch implementation
     // does with the signal; Go's canceled ctx sends nothing either.
     if (callerSignal?.aborted) throw callerSignal.reason;
@@ -1102,7 +1155,7 @@ export class Keenable {
         { requestId },
       );
     }
-    return { data, requestId: nonEmpty(data.request_id) ?? requestId };
+    return { data, requestId: nonEmpty(data.request_id) ?? requestId, status: response.status };
   }
 }
 

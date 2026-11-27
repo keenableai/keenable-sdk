@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Added:** debug logging through `log/slog`. `Options.Logger` (`*slog.Logger`) gets one debug record per attempt, message `keenable`, with `method`, `path`, `attempt`, `status` (or `error`: `timeout`, `redirect`, `canceled` or `connection`), `elapsed_ms`, `retry`, `wait_ms` and `request_id`. Never the API key, other headers, the query string or a body. With no `Logger`, `KEENABLE_LOG=debug` sends the records to stderr through a `slog.TextHandler`.
 - **Added:** `SearchResponse.Usage` (`*Usage`): what the search cost and, with a key, `Cost` and `Balance` in US dollars. Nil on keyless calls.
 - **Changed:** `Usage` is read field by field, so a malformed `cost` or `balance` no longer loses the other fields.
 - **Changed:** the `keenable_search` tool's `moderation` description: supported for a URL query when `exclude_domains` is set.
