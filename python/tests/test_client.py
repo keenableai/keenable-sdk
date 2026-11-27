@@ -156,6 +156,14 @@ def test_tool_schema_offers_objective() -> None:
     search = next(t for t in TOOLS if t["function"]["name"] == "keenable_search")
     properties = search["function"]["parameters"]["properties"]
     assert properties["objective"]["type"] == "string"
+    # Canonical agent-facing description, shared with the MCP tool and docs.
+    assert properties["objective"]["description"] == (
+        "Optional. Use for multi-step or ambiguous searches; omit for simple "
+        "lookups. In one to three plain sentences, say what the search is for, "
+        "what the query leaves out (who, where, when, which sources count) and "
+        "what earlier searches found. Don't restate the question or include "
+        "personal or confidential details. At most 1,000 characters."
+    )
 
 
 @pytest.mark.parametrize(
@@ -393,6 +401,38 @@ def test_fetch_parses_a_page_and_a_failed_url() -> None:
     assert missing.url == "https://e.com/x"
     assert missing.error is not None
     assert (missing.error.status, missing.error.code) == (404, "page_not_found")
+
+
+def test_fetch_keeps_the_cost_and_balance_in_usage() -> None:
+    billed = {
+        **PAGE_BODY,
+        "usage": {
+            "sku": "fetch",
+            "amount": 1,
+            "credits": 1,
+            "paid": True,
+            "cost": {"amount": 0.004, "amount_decimal": "0.004", "currency": "usd"},
+            "balance": {
+                "amount": 47.992,
+                "amount_decimal": "47.992",
+                "currency": "usd",
+            },
+        },
+    }
+    keenable, _ = _client(_ok({"results": [billed]}))
+    page = keenable.fetch("https://example.com").results[0]
+
+    assert page.usage is not None
+    assert page.usage["cost"] == {
+        "amount": 0.004,
+        "amount_decimal": "0.004",
+        "currency": "usd",
+    }
+    assert page.usage["balance"] == {
+        "amount": 47.992,
+        "amount_decimal": "47.992",
+        "currency": "usd",
+    }
 
 
 def test_page_to_context_is_citable_like_search_results() -> None:
@@ -679,3 +719,31 @@ async def test_async_search_matches_the_sync_payloads() -> None:
     assert mixed["exclude_domains"] == ["export.arxiv.org"]
     assert lone["exclude_domains"] == ["x"]
     assert blank["exclude_domains"] == [""]
+
+
+def test_fetch_tool_definition_allows_minus_one_max_age_hours() -> None:
+    from keenable.tools import FETCH_TOOL
+
+    prop = FETCH_TOOL["function"]["parameters"]["properties"]["max_age_hours"]
+    assert prop["minimum"] == -1
+    assert "-1 reads only the stored copy" in prop["description"]
+
+
+def test_billing_retries_and_sends_the_call_headers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("keenable.client.time.sleep", lambda _: None)
+    replies = iter(
+        [
+            httpx.Response(503, json={"error": "busy"}),
+            httpx.Response(
+                200, json={"object": "billing", "prices": [], "account": None}
+            ),
+        ]
+    )
+    client, seen = _client(lambda _: next(replies), api_key="sk-test")
+    billing = client.billing(max_retries=1, extra_headers={"X-Trace": "t"})
+    assert billing.prices == [] and billing.account is None
+    assert [r.url.path for r in seen] == ["/v1/billing", "/v1/billing"]
+    assert seen[-1].headers["X-Trace"] == "t"
+    assert seen[-1].headers["X-API-Key"] == "sk-test"

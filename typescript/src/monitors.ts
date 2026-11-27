@@ -19,6 +19,7 @@
  */
 
 import { KeenableInvalidRequestError } from "./errors.js";
+import { num, objects } from "./internal.js";
 import type { RequestOptions } from "./types.js";
 
 export type MonitorStatus = "active" | "paused" | "disabled" | "completed";
@@ -434,20 +435,12 @@ function reqStr(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
-function num(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
 function int(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) ? value : null;
 }
 
 function strs(value: unknown): string[] | null {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : null;
-}
-
-function objects(value: unknown): Json[] {
-  return Array.isArray(value) ? value.filter(isObject) : [];
 }
 
 function strMap(value: unknown): Record<string, string> | null {

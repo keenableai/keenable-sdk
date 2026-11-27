@@ -206,6 +206,12 @@ fn the_tool_definitions_match_the_other_sdks() {
         .as_str()
         .unwrap()
         .contains("no moderation"));
+    let max_age = &tools[1]["function"]["parameters"]["properties"]["max_age_hours"];
+    assert_eq!(max_age["minimum"], json!(-1));
+    assert!(max_age["description"]
+        .as_str()
+        .unwrap()
+        .contains("-1 reads only the stored copy"));
 }
 
 #[tokio::test]
@@ -470,4 +476,26 @@ async fn parsed_null_arguments_are_rejected_like_the_text_null() {
         assert!(e.to_string().contains("must be a JSON object"), "{e}");
     }
     assert_eq!(server.count(), 0);
+}
+
+#[tokio::test]
+async fn billing_retries_and_sends_the_call_headers() {
+    let server = start(Script::Replies(vec![
+        Reply::new(503, "{}"),
+        Reply::new(200, r#"{"object":"billing","prices":[],"account":null}"#),
+    ]))
+    .await;
+    let opts = RequestOptions {
+        max_retries: Some(1),
+        headers: [("X-Trace".to_string(), "t".to_string())].into(),
+        ..Default::default()
+    };
+    let billing = keyed(&server).billing_with(&opts).await.unwrap();
+    assert!(billing.prices.is_empty());
+    assert!(billing.account.is_none());
+    assert_eq!(crate::test_hooks::take_waits().len(), 1);
+    let seen = server.requests();
+    assert!(seen.iter().all(|r| r.path == "/v1/billing"));
+    assert_eq!(seen[1].header("X-Trace"), Some("t"));
+    assert_eq!(seen[1].header("X-API-Key"), Some("k"));
 }

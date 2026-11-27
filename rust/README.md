@@ -101,7 +101,7 @@ for result in &results {
 | `snippet_max_length` | Cap the page text returned per result, 180 to 10000 characters |
 | `max_results` | How many results to return, 1 to 50. The API default is 10 |
 | `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price |
+| `objective` | What the search is for, in two or three sentences (up to 1,000 characters); the ranker scores results for it together with the query (retrieval reads only the query), same price |
 | `disable_cards` | `true` returns ordinary web pages in place of Keenable's cards |
 | `moderation` | Filter unsafe results: `"moderate"` or `"strict"`. `None` is no moderation. Works in `"pro"` and `"realtime"` modes, and not when the query is a URL (the API answers 400) |
 | `request` | This call's timeout, retry budget and headers (`RequestOptions`) |
@@ -158,13 +158,39 @@ for page in &response.results {
 failed has `error` set instead of returning `Err`. `FetchOptions` has
 `max_chars`, `prompt` (each page's `content` is then only an LLM's answer to
 it), `schema` (each page's answer is in `page.structured`), `links`,
-`images` and `max_age_hours` (`Some(0.0)` reads every page live), sent only
-when set; the API checks their values.
+`images` and `max_age_hours` (`Some(0.0)` reads every page live, `Some(-1.0)`
+only the stored copy, never the live page), sent only when set; the API
+checks their values.
 
 Internal hosts and private addresses are refused before a request is sent:
 `localhost` and names under `.localhost`, `metadata.google.internal`, and IP
 addresses in private, loopback, link-local, carrier-grade NAT, documentation,
 benchmarking, multicast and reserved ranges, however the address is spelled.
+
+## Billing
+
+```rust
+let billing = client.billing().await?;
+for price in &billing.prices {
+    println!("{} {} {}", price.sku, price.unit_price.amount, price.unit_price.currency);
+}
+if let Some(account) = &billing.account {
+    // None without an API key
+    println!("available: {}", account.balance.available.amount);
+}
+```
+
+`billing()` (or `billing_with(&RequestOptions)`) reads `GET /v1/billing`:
+read-only and free, with or without a key. Without one, `prices` are the public
+list prices and `account` is `None`. With one, `prices` are your
+organization's (with `list_unit_price` and `source`, `"list"` or
+`"contract"`), and `account` holds the available balance and `billing_url`,
+the console page for adding funds. Amounts are numbers in US dollars
+(`Money::amount`, an `f64` such as `0.004`, up to nine decimal places,
+negative for an account in debt). `Money::amount_decimal` is the same amount
+as an exact decimal string (`"0.004"`); add amounts with it (with a decimal
+crate such as `rust_decimal`, or as integer nano-dollars), not with the
+float, when they must match a bill.
 
 ## Tool calling
 
@@ -188,8 +214,8 @@ model may set `site`, `exclude_domains`, `published_after`, `objective`,
 
 On fetch the model sets `urls` (1 to 20) and may set `max_chars` (per page),
 `prompt` (applied to every page) and `max_age_hours` (0 reads every page
-live), as on the hosted MCP tool. A call without `urls` is an invalid
-request. Each page comes back as its own numbered block. A URL
+live, -1 only the stored copy), as on the hosted MCP tool. A call without
+`urls` is an invalid request. Each page comes back as its own numbered block. A URL
 that failed while others were read becomes a `[n] <url> - failed: <reason>`
 block; `run_tool_call` returns its error only when no URL could be read.
 

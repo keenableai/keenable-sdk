@@ -48,7 +48,7 @@ results = keenable.search(
 | `snippet_max_length` | Cap the page text returned per result |
 | `max_results` | How many results to return, 1 to 50 (default 10) |
 | `query_time` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price. Not sent when empty |
+| `objective` | What the search is for, in two or three sentences (up to 1,000 characters); the ranker scores results for it together with the query (retrieval reads only the query), same price. Not sent when empty |
 | `mode` | Search mode: `"pro"` (default) does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops |
 | `disable_cards` | `True` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). Default `False`, which is not sent; any other value raises `KeenableInvalidRequestError`. In the next release after 0.1.3 |
 | `moderation` | Filter unsafe results: `"moderate"` or `"strict"`. `None`, the default, is no moderation and is not sent. Works in `"pro"` and `"realtime"` modes, and not when the query is a URL (the API answers 400) |
@@ -152,7 +152,33 @@ when set (the API checks their values):
 | `schema` | A JSON Schema; each page's answer is in `page.structured` |
 | `links` | The most links per page to return, in `page.links` |
 | `images` | The most images per page to return, in `page.images` |
-| `max_age_hours` | Use a stored copy only if younger than this; `0` reads every page live |
+| `max_age_hours` | Use a stored copy only if younger than this many hours; `0` reads every page live; `-1` reads only the stored copy, never the live page (no stored copy: a 404 error entry) |
+
+## Billing
+
+```python
+billing = keenable.billing()
+for price in billing.prices:
+    print(price.sku, price.unit_price.amount, price.unit_price.currency)
+if billing.account:  # None without an API key
+    print("available:", billing.account.balance.available.amount)
+```
+
+`billing()` reads `GET /v1/billing`: read-only and free, with or without a key.
+Without one, `prices` are the public list prices and `account` is `None`. With
+one, `prices` are your organization's (with `list_unit_price` and `source`,
+`"list"` or `"contract"`), and `account` holds the available balance and
+`billing_url`, the console page for adding funds. Amounts are numbers in US
+dollars (`Money.amount`, a `float` such as `0.004`, up to nine decimal places,
+negative for an account in debt). `Money.amount_decimal` is the same amount as
+an exact decimal string (`"0.004"`); add amounts with it, not with the float,
+when they must match a bill:
+
+```python
+from decimal import Decimal
+
+total = sum(Decimal(p.unit_price.amount_decimal) for p in billing.prices)
+```
 
 ## Tool calling
 
@@ -189,8 +215,8 @@ The model may set `site`, `exclude_domains`, `published_after`, `objective`,
 
 On fetch the model sets `urls` (1 to 20) and may set `max_chars` (per page),
 `prompt` (applied to every page) and `max_age_hours` (0 reads every page
-live), as on the hosted MCP tool. A call without `urls` is an invalid
-request. Each page comes back as its own numbered block. A URL
+live, -1 only the stored copy), as on the hosted MCP tool. A call without
+`urls` is an invalid request. Each page comes back as its own numbered block. A URL
 that failed while others were read becomes a `[n] <url> - failed: <reason>`
 block; `run_tool_call` raises its error only when no URL could be read.
 

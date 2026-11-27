@@ -5,8 +5,15 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- **Added:** `SearchResponse.usage` and an exported `Usage` type: what the search cost and, with a key, `cost` and `balance` in US dollars. Undefined on keyless calls.
+- **Changed:** the `keenable_search` tool's `moderation` description: supported for a URL query when `exclude_domains` is set.
+- **Added:** `Page.usage.cost` and `Page.usage.balance` (`Money`, US dollars): what the page cost and the organization's balance after it. Each carries `amountDecimal`, the exact decimal string, as in `billing()`: add costs with it rather than with `amount`.
+- **Changed:** `Page.usage` is read field by field like `SearchResponse.usage`: a wrong-typed field falls back (`amount` and `credits` to 0, `sku` to `""`) instead of passing through as sent.
+- **Added:** `billing(options?)` reads `GET /v1/billing` (read-only, free) as a `Billing`: `prices` (`BillingPrice` with `sku`, `unit`, `unitPrice`, and with a key `listUnitPrice` and `source`) and `account` (`BillingAccount`, null without a key: `balance.available`, `billingUrl`, `asOf`). Amounts are `Money` (`{ amount, amountDecimal, currency }`) with `amount` a `number` in US dollars (up to nine decimal places, negative for an account in debt; 0 when the API sends no finite number, such as an older server's string) and `amountDecimal` the same amount as an exact decimal string (`"0.004"`: up to nine decimal places, no trailing zeros, no exponent, `"0"` for zero) to add amounts with a decimal library (or as BigInt nano-dollars) without float error; `amount` is for display. From an older server that sends no `amount_decimal`, `amountDecimal` is `amount` written that way.. The key is optional and the path is `/v1/billing` either way (no `/public` variant). Takes the usual `RequestOptions`. New exported types `Billing`, `BillingPrice`, `BillingAccount` and `Money`.
+- **Changed:** the `keenable_search` tool's `objective` description is shorter (about 330 characters): use it for multi-step or ambiguous searches, say what the query leaves out and what earlier searches found, and stay within 1,000 characters.
 - **Added:** `moderation` option on `search()`: `"moderate"` or `"strict"` filters unsafe results; unset, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 when the query is a URL.
 - **Added:** `SearchResponse.warnings`, a list of `SearchWarning` (`code`, `path`, `message`) naming what a request should change, such as a deprecated parameter. Empty when the API sends none.
+- **Changed:** the `maxAgeHours` option on `fetch()` documents `-1`: read only Keenable's stored copy, of any age, never the live page; a page with no stored copy comes back with `error` set (404). It works with `prompt`, `schema`, `links` and `images`. The API accepts `-1` or `0` to `720` and answers any other negative value with a 400. The `keenable_fetch` tool's `max_age_hours` now allows `-1` (`minimum: -1`) and its description says so. The SDK sends the value as given, as before.
 - **Added:** `RateLimitInfo.endpoint`: on a 429 `rate_limit_per_second`, which endpoint limit was hit (`"search"` or `"fetch"`) when the organization has separate search and fetch limits; `undefined` for the shared limit.
 
 ## 0.3.0
@@ -25,6 +32,7 @@ All notable changes to the `keenable` npm package. Versions follow
 - **Changed (may break code):** `Monitor.search` is now `MonitorSearch | null`: it is null for a page monitor. Code that reads `monitor.search.query` stops compiling under `strictNullChecks`, and fails at run time on a page monitor; check `monitor.type` or use `monitor.search?.query`.
 - **Changed:** the schedule docs give the API's limits: interval `10m` to `90d`, cron runs at least 10 minutes apart. The SDK does not check schedules itself.
 - **Changed:** the error contract fixtures follow the backend's current catalog, which adds `run_in_progress` (409: the monitor is already running).
+- **Changed:** the `objective` docs say what the API now does: the ranker scores results for it together with the query (retrieval reads only the query), at the same price. The option and its behaviour in the SDK are unchanged.
 
 ## 0.2.0
 

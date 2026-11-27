@@ -37,7 +37,7 @@ from .errors import (
     KeenableTimeoutError,
     RateLimitInfo,
 )
-from .models import FetchResponse, SearchResponse
+from .models import Billing, FetchResponse, SearchResponse
 from .monitors import AsyncMonitors, Monitors, _Call
 
 __all__ = ["Keenable", "AsyncKeenable", "DEFAULT_MAX_RETRIES"]
@@ -56,6 +56,10 @@ _MAX_RETRY_AFTER_WAIT = 60.0
 # `/public` suffix, so a new endpoint is one name rather than two constants.
 _SEARCH = "search"
 _FETCH = "fetch"
+# Billing is the one endpoint with a single path for both: the key is optional.
+_BILLING = "billing"
+# The endpoints with a /public variant; _url adds the suffix to no other.
+_PUBLIC_VARIANT = frozenset({_SEARCH, _FETCH})
 
 _BLOCKED_HOSTS = frozenset({"localhost", "metadata.google.internal"})
 _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -1231,8 +1235,9 @@ class _BaseClient:
         return headers
 
     def _url(self, endpoint: str) -> str:
-        """The endpoint URL, keyless or keyed depending on the configured key."""
-        suffix = "/public" if self.keyless else ""
+        """The endpoint URL: its ``/public`` variant when keyless and it has one."""
+        keyless = self.keyless and endpoint in _PUBLIC_VARIANT
+        suffix = "/public" if keyless else ""
         return f"{self._base_url}/v1/{endpoint}{suffix}"
 
     def _monitors_url(self, path: str) -> str:
@@ -1476,8 +1481,9 @@ class Keenable(_BaseClient):
                 sentences: the facts a useful page must contain, the task
                 context the query leaves out, the sources to prefer or
                 exclude, and what is already known. Up to 1,000 characters.
-                The API validates and logs it; it does not change results or
-                price yet.
+                The ranker scores results for it together with the query;
+                retrieval reads only the query, so keep the key words there.
+                It does not change the price.
             disable_cards: ``True`` returns ordinary web pages in place of
                 Keenable's cards, results Keenable writes for queries such as
                 prices, exchange rates or company facts (their URLs expire
@@ -1553,8 +1559,12 @@ class Keenable(_BaseClient):
             schema: A JSON Schema; each page's answer is in ``Page.structured``.
             links: The most links per page to return.
             images: The most images per page to return.
-            max_age_hours: Use a stored copy only if younger than this; 0
-                reads every page live.
+            max_age_hours: Use a stored copy only if younger than this many
+                hours (0 to 720); 0 reads every page live. -1 reads only the
+                stored copy, of any age, never the live page: a page with no
+                stored copy comes back with ``error`` set (404). Other negative
+                values are refused with a 400. Unset uses a stored copy of any
+                age, or reads live when there is none.
             timeout: Deadline for each attempt of this call, as in
                 :meth:`search`.
             max_retries: Retry budget for this call, as in :meth:`search`.
@@ -1571,6 +1581,32 @@ class Keenable(_BaseClient):
             extra_headers=extra_headers,
         )
         return FetchResponse._from_json(body, payload["urls"], request_id)
+
+    def billing(
+        self,
+        *,
+        timeout: float | httpx.Timeout | None = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> Billing:
+        """Prices, and with an API key the balance, from ``GET /v1/billing``.
+
+        Read-only and free. Without a key, ``prices`` are the public list
+        prices and ``account`` is None. Amounts are numbers in US dollars.
+
+        Args:
+            timeout: Deadline for each attempt of this call, as in
+                :meth:`search`.
+            max_retries: Retry budget for this call, as in :meth:`search`.
+            extra_headers: Headers for this call, over ``default_headers``.
+        """
+        body, request_id = self._request(
+            _BILLING,
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+        )
+        return Billing._from_json(body, request_id)
 
 
 class AsyncKeenable(_BaseClient):
@@ -1766,3 +1802,19 @@ class AsyncKeenable(_BaseClient):
             extra_headers=extra_headers,
         )
         return FetchResponse._from_json(body, payload["urls"], request_id)
+
+    async def billing(
+        self,
+        *,
+        timeout: float | httpx.Timeout | None = None,
+        max_retries: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> Billing:
+        """Prices and, with a key, the account. See :meth:`Keenable.billing`."""
+        body, request_id = await self._request(
+            _BILLING,
+            timeout=timeout,
+            max_retries=max_retries,
+            extra_headers=extra_headers,
+        )
+        return Billing._from_json(body, request_id)

@@ -53,7 +53,7 @@ const results = await keenable.search("post-training quantization results", {
 | `snippetMaxLength` | Cap the page text returned per result |
 | `maxResults` | How many results to return, 1 to 50 (default 10) |
 | `queryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price. Not sent when empty |
+| `objective` | What the search is for, in two or three sentences (up to 1,000 characters); the ranker scores results for it together with the query (retrieval reads only the query), same price. Not sent when empty |
 | `mode` | Search mode: `"pro"` (default) does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops |
 | `disableCards` | `true` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). Default `false`, which is not sent; a non-boolean throws `KeenableInvalidRequestError`. In the next release after 0.1.4 |
 | `moderation` | Filter unsafe results: `"moderate"` or `"strict"`. Unset, the default, is no moderation and is not sent. Works in `"pro"` and `"realtime"` modes, and not when the query is a URL (the API answers 400) |
@@ -169,7 +169,40 @@ per-request ones, are sent only when set (the API checks their values):
 | `schema` | A JSON Schema; each page's answer is in `page.structured` |
 | `links` | The most links per page to return, in `page.links` |
 | `images` | The most images per page to return, in `page.images` |
-| `maxAgeHours` | Use a stored copy only if younger than this; `0` reads every page live |
+| `maxAgeHours` | Use a stored copy only if younger than this many hours; `0` reads every page live; `-1` reads only the stored copy, never the live page (no stored copy: a 404 error entry) |
+
+## Billing
+
+```ts
+const billing = await keenable.billing();
+for (const price of billing.prices) {
+  console.log(price.sku, price.unitPrice.amount, price.unitPrice.currency);
+}
+if (billing.account) {
+  // null without an API key
+  console.log("available:", billing.account.balance.available.amount);
+}
+```
+
+`billing()` reads `GET /v1/billing`: read-only and free, with or without a key.
+Without one, `prices` are the public list prices and `account` is `null`. With
+one, `prices` are your organization's (with `listUnitPrice` and `source`,
+`"list"` or `"contract"`), and `account` holds the available balance and
+`billingUrl`, the console page for adding funds. Amounts are numbers in US
+dollars (`Money.amount`, such as `0.004`, up to nine decimal places, negative
+for an account in debt). `Money.amountDecimal` (the API's `amount_decimal`) is
+the same amount as an exact decimal string (`"0.004"`); add amounts with it,
+not with the float, when they must match a bill: with a decimal library, or as
+BigInt nano-dollars:
+
+```ts
+const nanos = (d: string) => {
+  const [whole, fraction = ""] = d.replace("-", "").split(".");
+  const n = BigInt(whole! + fraction.padEnd(9, "0"));
+  return d.startsWith("-") ? -n : n;
+};
+const total = billing.prices.reduce((sum, p) => sum + nanos(p.unitPrice.amountDecimal), 0n);
+```
 
 ## Tool calling
 
@@ -202,8 +235,8 @@ The model may set `site`, `exclude_domains`, `published_after`, `objective`,
 
 On fetch the model sets `urls` (1 to 20) and may set `max_chars` (per page),
 `prompt` (applied to every page) and `max_age_hours` (0 reads every page
-live), as on the hosted MCP tool. A call without `urls` is an invalid
-request. Each page comes back as its own numbered block. A URL
+live, -1 only the stored copy), as on the hosted MCP tool. A call without
+`urls` is an invalid request. Each page comes back as its own numbered block. A URL
 that failed while others were read becomes a `[n] <url> - failed: <reason>`
 block; `runToolCall` throws its error only when no URL could be read.
 

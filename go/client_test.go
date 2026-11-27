@@ -55,6 +55,9 @@ type captured struct {
 
 var captureMu sync.Mutex
 
+// Canonical agent-facing objective description, shared with the Keenable MCP tool and the docs tool definitions.
+const canonicalObjectiveDescription = "Optional. Use for multi-step or ambiguous searches; omit for simple lookups. In one to three plain sentences, say what the search is for, what the query leaves out (who, where, when, which sources count) and what earlier searches found. Don't restate the question or include personal or confidential details. At most 1,000 characters."
+
 func capture(next http.Handler) (*[]captured, http.Handler) {
 	seen := &[]captured{}
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -367,7 +370,7 @@ func TestToolSchemaOffersObjectiveAsAString(t *testing.T) {
 	if prop["type"] != "string" {
 		t.Fatalf("objective should be a string: %#v", prop)
 	}
-	if desc, _ := prop["description"].(string); !strings.Contains(desc, "self-contained") {
+	if desc, _ := prop["description"].(string); desc != canonicalObjectiveDescription {
 		t.Fatalf("objective description: %#v", prop)
 	}
 }
@@ -698,6 +701,36 @@ func TestFetchParsesAPageAndAFailedURL(t *testing.T) {
 	}
 }
 
+func TestFetchParsesTheCostAndBalanceInUsage(t *testing.T) {
+	billed := map[string]any{
+		"url": "https://example.com", "title": "Example Domain", "content": "# Example Domain",
+		"usage": map[string]any{
+			"sku": "fetch", "amount": 1, "credits": 1, "paid": true, "credits_remaining": 11998,
+			"cost":    map[string]any{"amount": 0.004, "amount_decimal": "0.004", "currency": "usd"},
+			"balance": map[string]any{"amount": 47.992, "amount_decimal": "47.992", "currency": "usd"},
+		},
+	}
+	c, _ := startKeyless(t, jsonHandler(http.StatusOK, map[string]any{"results": []any{billed, pageBody}}), nil)
+	resp, err := c.Fetch(context.Background(), []string{"https://example.com", "https://example.org"})
+	if err != nil || len(resp.Results) != 2 {
+		t.Fatalf("resp=%+v err=%v", resp, err)
+	}
+	usage := resp.Results[0].Usage
+	if usage == nil || usage.Cost == nil || usage.Balance == nil {
+		t.Fatalf("usage=%#v", usage)
+	}
+	want := [2]keenable.Money{
+		{Amount: 0.004, AmountDecimal: "0.004", Currency: "usd"},
+		{Amount: 47.992, AmountDecimal: "47.992", Currency: "usd"},
+	}
+	if *usage.Cost != want[0] || *usage.Balance != want[1] {
+		t.Fatalf("cost=%#v balance=%#v", usage.Cost, usage.Balance)
+	}
+	if resp.Results[1].Usage != nil {
+		t.Fatalf("a page without usage got %#v", resp.Results[1].Usage)
+	}
+}
+
 func TestFetchAllowsPublicAddress(t *testing.T) {
 	c, seen := startKeyless(t, jsonHandler(http.StatusOK, fetchBody), nil)
 	if _, err := c.Fetch(context.Background(), []string{"https://8.8.8.8/path"}); err != nil {
@@ -931,6 +964,17 @@ func TestFetchToolReadsSeveralURLs(t *testing.T) {
 	}
 	if !strings.HasPrefix(out, "[1] Example Domain (https://example.com/)") || !strings.HasSuffix(out, "\n\n[2] https://e.com/x - failed: Not found") {
 		t.Fatal(out)
+	}
+}
+
+func TestFetchToolDefinitionAllowsMinusOneMaxAgeHours(t *testing.T) {
+	props := keenable.FetchTool.Function.Parameters["properties"].(map[string]any)
+	prop := props["max_age_hours"].(map[string]any)
+	if prop["minimum"] != -1 {
+		t.Fatal(prop)
+	}
+	if !strings.Contains(prop["description"].(string), "-1 reads only the stored copy") {
+		t.Fatal(prop["description"])
 	}
 }
 

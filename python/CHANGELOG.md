@@ -5,8 +5,14 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
+- **Added:** `SearchResponse.usage`, the dict the API sent: what the search cost and, with a key, `cost` and `balance` in US dollars (read as below). None on keyless calls.
+- **Changed:** the `keenable_search` tool's `moderation` description: supported for a URL query when `exclude_domains` is set.
+- **Added:** `Page.usage` documents `cost` and `balance` (`{"amount": <US dollars>, "amount_decimal": "<the same amount, exact>", "currency": "usd"}`): what the page cost and the organization's balance after it. `usage` stays the dict the API sent, except that `cost` and `balance` are read like `Money` and given as its dict, so `amount_decimal` is filled in from `amount` for an older server, and a `cost` or `balance` that is not an object is left out. Add costs with `Decimal(usage["cost"]["amount_decimal"])` rather than with the float `amount`.
+- **Added:** `billing()` on `Keenable` and `AsyncKeenable` reads `GET /v1/billing` (read-only, free) as a `Billing`: `prices` (`BillingPrice` with `sku`, `unit`, `unit_price`, and with a key `list_unit_price` and `source`) and `account` (`BillingAccount`, None without a key: `balance.available`, `billing_url`, `as_of`). Amounts are `Money(amount, amount_decimal, currency)` with `amount` a `float` in US dollars (up to nine decimal places, negative for an account in debt; 0 when the API sends no finite number, such as an older server's string) and `amount_decimal` the same amount as an exact decimal string (`"0.004"`: up to nine decimal places, no trailing zeros, no exponent, `"0"` for zero) to add amounts with `decimal.Decimal` without float error; `amount` is for display. From an older server that sends no `amount_decimal`, `amount_decimal` is `amount` written that way.. The key is optional and the path is `/v1/billing` either way (no `/public` variant). Takes `timeout`, `max_retries` and `extra_headers` like the other calls.
+- **Changed:** the `keenable_search` tool's `objective` description is shorter (about 330 characters): use it for multi-step or ambiguous searches, say what the query leaves out and what earlier searches found, and stay within 1,000 characters.
 - **Added:** `moderation` on `search()` (sync and async): `"moderate"` or `"strict"` filters unsafe results; `None`, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 when the query is a URL.
 - **Added:** `SearchResponse.warnings`, a list of `SearchWarning` (`code`, `path`, `message`) naming what a request should change, such as a deprecated parameter. Empty when the API sends none.
+- **Changed:** `max_age_hours` on `fetch()` (sync and async) documents `-1`: read only Keenable's stored copy, of any age, never the live page; a page with no stored copy comes back with `error` set (404). It works with `prompt`, `schema`, `links` and `images`. The API accepts `-1` or `0` to `720` and answers any other negative value with a 400. The `keenable_fetch` tool's `max_age_hours` now allows `-1` (`minimum: -1`) and its description says so. The SDK sends the value as given, as before.
 - **Added:** `RateLimitInfo.endpoint`: on a 429 `rate_limit_per_second`, which endpoint limit was hit (`"search"` or `"fetch"`) when the organization has separate search and fetch limits; `None` for the shared limit.
 
 ## 0.3.0
@@ -24,6 +30,7 @@ All notable changes to the `keenable` Python package. Versions follow
 - **Changed (may break code):** `Monitor.search` is now `MonitorSearch | None`: it is None for a page monitor. Code that reads `monitor.search.query` unchecked fails on a page monitor; check `monitor.type` or `monitor.search is not None` first.
 - **Changed:** the schedule docstrings give the API's limits: interval `10m` to `90d`, cron runs at least 10 minutes apart. The SDK does not check schedules itself.
 - **Changed:** the error contract fixtures follow the backend's current catalog, which adds `run_in_progress` (409: the monitor is already running).
+- **Changed:** the `objective` docs say what the API now does: the ranker scores results for it together with the query (retrieval reads only the query), at the same price. The parameter and its behaviour in the SDK are unchanged.
 
 ## 0.2.0
 

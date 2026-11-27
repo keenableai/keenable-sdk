@@ -2,8 +2,15 @@
 
 ## Unreleased
 
+- **Added:** `SearchResponse.Usage` (`*Usage`): what the search cost and, with a key, `Cost` and `Balance` in US dollars. Nil on keyless calls.
+- **Changed:** `Usage` is read field by field, so a malformed `cost` or `balance` no longer loses the other fields.
+- **Changed:** the `keenable_search` tool's `moderation` description: supported for a URL query when `exclude_domains` is set.
+- **Added:** `Usage.Cost` and `Usage.Balance` (`*Money`, US dollars) on a fetched page: what the page cost and the organization's balance after it. Nil when the API does not send them. Each carries `AmountDecimal`, the exact decimal string, as in `Billing`: add costs with it rather than with `Amount`.
+- **Added:** `client.Billing(ctx, opts)` reads `GET /v1/billing` (read-only, free) as a `*Billing`: `Prices` (`[]BillingPrice` with `SKU`, `Unit`, `UnitPrice`, and with a key `ListUnitPrice` and `Source`) and `Account` (`*BillingAccount`, nil without a key: `Balance.Available`, `BillingURL`, `AsOf`). Amounts are `Money{Amount, AmountDecimal, Currency}` with `Amount` a `float64` in US dollars (up to nine decimal places, negative for an account in debt; 0 when the API sends no finite number, such as an older server's string) and `AmountDecimal` the same amount as an exact decimal string (`"0.004"`: up to nine decimal places, no trailing zeros, no exponent, `"0"` for zero) to add amounts with `big.Rat` without float error; `Amount` is for display. From an older server that sends no `amount_decimal`, `AmountDecimal` is `Amount` written that way.. The key is optional and the path is `/v1/billing` either way (no `/public` variant). `opts` (`*RequestOptions`) may be nil.
+- **Changed:** the `keenable_search` tool's `objective` description is shorter (about 330 characters): use it for multi-step or ambiguous searches, say what the query leaves out and what earlier searches found, and stay within 1,000 characters.
 - **Added:** `SearchOptions.Moderation`: `"moderate"` or `"strict"` filters unsafe results; empty, the default, is no moderation and is not sent. The `keenable_search` tool offers it as an enum. The API supports it in `"pro"` and `"realtime"` modes and answers 400 when the query is a URL.
 - **Added:** `SearchResponse.Warnings`, a slice of `SearchWarning` (`Code`, `Path`, `Message`) naming what a request should change, such as a deprecated parameter. Nil when the API sends none.
+- **Changed:** `FetchOptions.MaxAgeHours` documents `-1`: read only Keenable's stored copy, of any age, never the live page; a page with no stored copy comes back with `Error` set (404). It works with `Prompt`, `Schema`, `Links` and `Images`. The API accepts `-1` or `0` to `720` and answers any other negative value with a 400. The `keenable_fetch` tool's `max_age_hours` now allows `-1` (`minimum: -1`) and its description says so. The SDK sends the value as given, as before.
 - **Added:** `RateLimitInfo.Endpoint`: on a 429 `rate_limit_per_second`, which endpoint limit was hit (`"search"` or `"fetch"`) when the organization has separate search and fetch limits; empty for the shared limit.
 
 ## 0.3.0
@@ -21,6 +28,7 @@
 - **Changed (breaking):** `Monitor.Search` is now `*MonitorSearch`, nil for a page monitor; `MonitorRun.Changes` changes from `any` to a typed pointer. Code that passes `m.Search` as a `MonitorSearch` no longer compiles, and `m.Search.Query` panics on a page monitor; check `m.Type` or `m.Search != nil` first.
 - **Changed:** the schedule docs give the API's limits: interval `10m` to `90d`, cron runs at least 10 minutes apart. The SDK does not check schedules itself.
 - **Changed:** the error contract fixtures follow the backend's current catalog, which adds `run_in_progress` (409: the monitor is already running).
+- **Changed:** the `Objective` docs say what the API now does: the ranker scores results for it together with the query (retrieval reads only the query), at the same price. The option and its behaviour in the SDK are unchanged.
 
 ## 0.2.0
 

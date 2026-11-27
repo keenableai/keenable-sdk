@@ -74,7 +74,7 @@ results, err := client.Search(context.Background(), "post-training quantization 
 | `SnippetMaxLength` | Cap the page text returned per result. Nil means unset; a pointer to zero is sent |
 | `MaxResults` | How many results to return, 1 to 50. Zero means the API default of 10 |
 | `QueryTime` | Search the index as it stood at that moment (`YYYY-MM-DD`, ISO 8601, or `"7d"`); not a recency filter |
-| `Objective` | What the search is for, in two or three sentences (up to 1,000 characters); logged by the API, no effect on results or price. Not sent when empty |
+| `Objective` | What the search is for, in two or three sentences (up to 1,000 characters); the ranker scores results for it together with the query (retrieval reads only the query), same price. Not sent when empty |
 | `Mode` | Search mode: `"pro"` does deeper retrieval; `"realtime"` gives the fastest response, for latency-sensitive agent loops. Empty means `"pro"` |
 | `DisableCards` | `true` returns ordinary web pages in place of Keenable's cards (results Keenable writes for prices, exchange rates or company facts, whose URLs expire after one day). False, the default, is not sent. In the next release after `v0.1.1` |
 | `Moderation` | Filter unsafe results: `"moderate"` or `"strict"`. Empty, the default, is no moderation and is not sent. Works in `"pro"` and `"realtime"` modes, and not when the query is a URL (the API answers 400) |
@@ -187,13 +187,50 @@ fields are sent only when set (the API checks their values):
 | `Schema` | A JSON Schema; each page's answer is in `page.Structured` |
 | `Links` | The most links per page to return, in `page.Links` |
 | `Images` | The most images per page to return, in `page.Images` |
-| `MaxAgeHours` | Use a stored copy only if younger than this; `0` reads every page live |
+| `MaxAgeHours` | Use a stored copy only if younger than this many hours; `0` reads every page live; `-1` reads only the stored copy, never the live page (no stored copy: a 404 error entry) |
 
 Internal hosts and private addresses are refused before a request is sent:
 `localhost` and names under `.localhost`, `metadata.google.internal`, and IP
 addresses in private, loopback, link-local, carrier-grade NAT, documentation,
 benchmarking, multicast and reserved ranges, however the address is spelled.
 The rules are the same in every SDK (`scripts/conformance/README.md`).
+
+## Billing
+
+```go
+billing, err := client.Billing(ctx, nil)
+if err != nil {
+	log.Fatal(err)
+}
+for _, p := range billing.Prices {
+	fmt.Println(p.SKU, p.UnitPrice.Amount, p.UnitPrice.Currency)
+}
+if billing.Account != nil { // nil without an API key
+	fmt.Println("available:", billing.Account.Balance.Available.Amount)
+}
+```
+
+`Billing` reads `GET /v1/billing`: read-only and free, with or without a key.
+Without one, `Prices` are the public list prices and `Account` is nil. With
+one, `Prices` are your organization's (with `ListUnitPrice` and `Source`,
+`"list"` or `"contract"`), and `Account` holds the available balance and
+`BillingURL`, the console page for adding funds. Amounts are numbers in US
+dollars (`Money.Amount`, a `float64` such as `0.004`, up to nine decimal
+places, negative for an account in debt). `Money.AmountDecimal` is the same
+amount as an exact decimal string (`"0.004"`); add amounts with it, not with
+the float, when they must match a bill:
+
+```go
+total := new(big.Rat)
+for _, p := range billing.Prices {
+	if r, ok := new(big.Rat).SetString(p.UnitPrice.AmountDecimal); ok {
+		total.Add(total, r)
+	}
+}
+fmt.Println(total.FloatString(9))
+```
+
+`opts` is a `*RequestOptions` and may be nil.
 
 ## Tool calling
 
@@ -227,8 +264,8 @@ The model may set `site`, `exclude_domains`, `published_after`, `objective`,
 
 On fetch the model sets `urls` (1 to 20) and may set `max_chars` (per page),
 `prompt` (applied to every page) and `max_age_hours` (0 reads every page
-live), as on the hosted MCP tool. A call without `urls` is an invalid
-request. Each page comes back as its own numbered block. A URL
+live, -1 only the stored copy), as on the hosted MCP tool. A call without
+`urls` is an invalid request. Each page comes back as its own numbered block. A URL
 that failed while others were read becomes a `[n] <url> - failed: <reason>`
 block; `RunToolCall` returns its error only when no URL could be read.
 

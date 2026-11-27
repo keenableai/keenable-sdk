@@ -63,7 +63,7 @@ const TOOL_FILTERS: [(&str, &str, &str, &[&str]); 6] = [
     (
         "objective",
         "string",
-        "Optional. Two or three natural sentences, with no field labels and no line breaks, that cover: the exact facts, entities, numbers, dates or names a useful page must contain; task context the query does not state (who, where, when, eligibility, date window); which kinds of sources count or must be excluded; what is already established from earlier steps; and what is still unknown. Every sentence must be self-contained: name the entities, places, dates and figures explicitly, and never refer to 'the task', 'the clue', 'the question', 'above' or earlier results. Do not paste the conversation, and do not include personal, confidential or sensitive information. At most 1,000 characters.",
+        "Optional. Use for multi-step or ambiguous searches; omit for simple lookups. In one to three plain sentences, say what the search is for, what the query leaves out (who, where, when, which sources count) and what earlier searches found. Don't restate the question or include personal or confidential details. At most 1,000 characters.",
         &[],
     ),
     (
@@ -75,7 +75,7 @@ const TOOL_FILTERS: [(&str, &str, &str, &[&str]); 6] = [
     (
         "moderation",
         "string",
-        "Filter unsafe results: 'moderate' or 'strict'. Leave it out for no moderation. Not supported when the query is a URL.",
+        "Filter unsafe results: 'moderate' or 'strict'. Leave it out for no moderation. Not supported for a URL query unless exclude_domains is set.",
         &["moderate", "strict"],
     ),
 ];
@@ -149,10 +149,12 @@ pub fn fetch_tool() -> ToolDefinition {
                     },
                     "max_age_hours": {
                         "type": "number",
-                        "minimum": 0,
+                        "minimum": -1,
                         "maximum": 720,
                         "description": "How old Keenable's stored copy may be, in hours; an older \
-                            copy is read again from the source. 0 reads every page live.",
+                            copy is read again from the source. 0 reads every page live. -1 reads \
+                            only the stored copy, never the live page; other negative values are \
+                            refused.",
                     },
                 },
                 "required": ["urls"],

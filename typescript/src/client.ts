@@ -19,16 +19,23 @@ import {
   count,
   nonEmpty,
   normalizeHost,
+  num,
+  objects,
   readEnv,
   timestamp,
 } from "./internal.js";
 import type {
+  Billing,
+  BillingAccount,
+  BillingPrice,
+  Money,
   KeenableOptions,
   FetchOptions,
   RequestOptions,
   SearchOptions,
   SearchResult,
   SearchWarning,
+  Usage,
   ToContextOptions,
 } from "./types.js";
 
@@ -56,7 +63,15 @@ const MAX_RETRY_AFTER_WAIT_SECONDS = 60;
 
 // Endpoints are named once; the keyless variant of each is the same path with a
 // `/public` suffix, so a new endpoint is one name rather than two constants.
-type Endpoint = "search" | "fetch";
+// Billing is the one endpoint with a single path for both: the key is optional.
+// Every endpoint states here whether it has a /public variant, so url() cannot
+// build a keyless path that does not exist.
+type Endpoint = "search" | "fetch" | "billing";
+const HAS_PUBLIC_VARIANT: Readonly<Record<Endpoint, boolean>> = {
+  search: true,
+  fetch: true,
+  billing: false,
+};
 
 /** Hosts that must never be fetched, whatever the backend would do. */
 const BLOCKED_HOSTS = new Set(["localhost", "metadata.google.internal"]);
@@ -333,6 +348,8 @@ export class SearchResponse {
   readonly requestId?: string;
   /** What the request should change, such as a deprecated parameter it used. Empty when the API sent none. */
   readonly warnings: SearchWarning[];
+  /** What the search cost and, with a key, the balance left after it. Undefined on keyless calls. */
+  readonly usage?: Usage;
   readonly raw: Record<string, unknown>;
 
   constructor(init: {
@@ -341,6 +358,7 @@ export class SearchResponse {
     results: SearchResult[];
     requestId?: string;
     warnings?: SearchWarning[];
+    usage?: Usage;
     raw: Record<string, unknown>;
   }) {
     this.query = init.query;
@@ -348,6 +366,7 @@ export class SearchResponse {
     this.results = init.results;
     this.requestId = init.requestId;
     this.warnings = init.warnings ?? [];
+    this.usage = init.usage;
     this.raw = init.raw;
   }
 
@@ -487,7 +506,8 @@ export class Page {
   /** Why the answer for `schema` could not be made. */
   readonly answerError?: { code: string; message: string };
   readonly stale?: boolean;
-  readonly usage?: { sku: string; amount: number; credits: number; paid: boolean; credits_remaining?: number };
+  /** What this page cost and, with a key, the balance after it, as the API sent it. */
+  readonly usage?: Usage;
   /** Set when this URL failed; the other fields are then empty. */
   readonly error?: FetchError;
   readonly raw!: Record<string, unknown>;
@@ -556,10 +576,72 @@ function toPage(data: Record<string, unknown>, url: string): Page {
     structured: record(data.structured),
     answerError: record(data.answer_error),
     stale: bool(data.stale),
-    usage: record(data.usage),
+    usage: toUsage(data.usage),
     error: record(data.error),
     raw: data,
   });
+}
+
+/** Reads a usage object field by field, so one malformed field does not lose the others. */
+function toUsage(value: unknown): Usage | undefined {
+  if (!isRecord(value)) return undefined;
+  const remaining = value.credits_remaining;
+  return {
+    sku: text(value.sku),
+    amount: count(value.amount) ?? 0,
+    credits: num(value.credits) ?? 0,
+    paid: value.paid === true,
+    ...(typeof remaining === "number" && Number.isFinite(remaining) && { credits_remaining: remaining }),
+    cost: optionalMoney(value.cost),
+    balance: optionalMoney(value.balance),
+  };
+}
+
+/** A Money when the value is an object, else undefined. */
+function optionalMoney(value: unknown): Money | undefined {
+  return isRecord(value) ? toMoney(value) : undefined;
+}
+
+function toMoney(value: unknown): Money {
+  const data = isRecord(value) ? value : {};
+  const sent = num(data.amount) ?? 0;
+  return {
+    amount: sent,
+    amountDecimal: amountDecimal(data.amount_decimal, sent),
+    currency: text(data.currency),
+  };
+}
+
+const DECIMAL = /^-?[0-9]+(\.[0-9]{1,9})?$/;
+
+/**
+ * The API's exact decimal string when it is one, else `amount` as one: at most
+ * nine decimal places, trailing zeros trimmed, "0" for zero (an older server
+ * sends no `amount_decimal`).
+ */
+function amountDecimal(value: unknown, dollars: number): string {
+  if (typeof value === "string" && DECIMAL.test(value)) return value;
+  const fixed = dollars.toFixed(9).replace(/0+$/, "").replace(/\.$/, "");
+  return fixed === "-0" ? "0" : fixed;
+}
+
+function toBillingPrice(data: Record<string, unknown>): BillingPrice {
+  return {
+    sku: text(data.sku),
+    unit: text(data.unit),
+    unitPrice: toMoney(data.unit_price),
+    listUnitPrice: optionalMoney(data.list_unit_price),
+    source: nonEmpty(data.source),
+  };
+}
+
+function toBillingAccount(data: Record<string, unknown>): BillingAccount {
+  const balance = isRecord(data.balance) ? data.balance : {};
+  return {
+    balance: { available: toMoney(balance.available) },
+    billingUrl: text(data.billing_url),
+    asOf: text(data.as_of),
+  };
 }
 
 /** Wait `ms`, or reject with the signal's reason as soon as it aborts. */
@@ -771,9 +853,13 @@ export class Keenable {
     return headers;
   }
 
-  /** The endpoint URL, keyless or keyed depending on the configured key. */
+  /**
+   * The endpoint URL: its /public variant when keyless and it has one, else
+   * the keyed path.
+   */
   private url(endpoint: Endpoint): string {
-    return `${this.baseUrl}/v1/${endpoint}${this.keyless ? "/public" : ""}`;
+    const suffix = this.keyless && HAS_PUBLIC_VARIANT[endpoint] ? "/public" : "";
+    return `${this.baseUrl}/v1/${endpoint}${suffix}`;
   }
 
   /**
@@ -831,6 +917,7 @@ export class Keenable {
       warnings: Array.isArray(data.warnings)
         ? data.warnings.filter(isRecord).map(toSearchWarning)
         : [],
+      usage: toUsage(data.usage),
       raw: data,
     });
   }
@@ -869,6 +956,23 @@ export class Keenable {
       results: entries.flatMap((entry, i) =>
         isRecord(entry) ? [toPage(entry, String(targets[i] ?? ""))] : [],
       ),
+      requestId,
+      raw: data,
+    };
+  }
+
+  /**
+   * Prices, and with an API key the balance, from `GET /v1/billing`.
+   *
+   * Read-only and free. Without a key, `prices` are the public list prices and
+   * `account` is null. Amounts are numbers in US dollars.
+   */
+  async billing(options: RequestOptions = {}): Promise<Billing> {
+    // The same path with and without a key: billing has no /public variant.
+    const { data, requestId } = await this.request("billing", { method: "GET" }, options);
+    return {
+      prices: objects(data.prices).map(toBillingPrice),
+      account: isRecord(data.account) ? toBillingAccount(data.account) : null,
       requestId,
       raw: data,
     };

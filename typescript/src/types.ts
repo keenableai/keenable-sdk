@@ -26,6 +26,19 @@ export interface SearchResult {
   raw: Record<string, unknown>;
 }
 
+/** What a call cost and, with a key, the balance left after it. */
+export interface Usage {
+  sku: string;
+  amount: number;
+  credits: number;
+  paid: boolean;
+  credits_remaining?: number;
+  /** What the call cost, in US dollars. */
+  cost?: Money;
+  /** The organization's balance after the call, in US dollars. */
+  balance?: Money;
+}
+
 /** Something in a search request to change, such as a deprecated parameter. The request was still served. */
 export interface SearchWarning {
   /** What kind of warning, such as `"deprecated_parameter"`. */
@@ -90,8 +103,9 @@ export interface SearchOptions extends RequestOptions {
    * What the search is for, in two or three natural sentences: the facts a
    * useful page must contain, the task context the query leaves out, the
    * sources to prefer or exclude, and what is already known. Up to 1,000
-   * characters. The API validates and logs it; it does not change results or
-   * price yet.
+   * characters. The ranker scores results for it together with the query;
+   * retrieval reads only the query, so keep the key words there. It does not
+   * change the price.
    */
   objective?: string;
   /**
@@ -123,7 +137,13 @@ export interface FetchOptions extends RequestOptions {
   links?: number;
   /** The most images per page to return. */
   images?: number;
-  /** Use a stored copy only if younger than this; 0 reads every page live. */
+  /**
+   * Use a stored copy only if younger than this many hours (0 to 720); 0 reads
+   * every page live. -1 reads only the stored copy, of any age, never the live
+   * page: a page with no stored copy comes back with `error` set (404). Other
+   * negative values are refused with a 400. Unset uses a stored copy of any
+   * age, or reads live when there is none.
+   */
   maxAgeHours?: number;
 }
 
@@ -187,4 +207,67 @@ export interface KeenableOptions {
    * throws a `KeenableRedirectError` telling you to rotate the key.
    */
   fetch?: typeof globalThis.fetch;
+}
+
+/** An amount of money, as the API sent it. */
+export interface Money {
+  /**
+   * Amount in the currency's major unit (US dollars), such as 0.004, with up
+   * to nine decimal places. Negative for an account in debt. 0 when the API
+   * sent no finite number. For display: add amounts with `amountDecimal`.
+   */
+  amount: number;
+  /**
+   * The same amount as an exact decimal string (the API's `amount_decimal`),
+   * such as "0.004": up to nine decimal places, no trailing zeros, no
+   * exponent, "-" when negative, "0" for zero. Add amounts exactly with a
+   * decimal library (or as BigInt nano-dollars), never by summing `amount`.
+   * From an older server that sends none, `amount` written this way.
+   */
+  amountDecimal: string;
+  /** Lowercase ISO 4217 code, such as "usd". */
+  currency: string;
+}
+
+/** The price of one SKU, from `billing()`. */
+export interface BillingPrice {
+  /** What is billed, such as "search.pro" or "fetch.live". */
+  sku: string;
+  /** What one unit is: "search", "result" or "page". */
+  unit: string;
+  /** The price of one unit. */
+  unitPrice: Money;
+  /** The public list price of one unit. Only with an API key. */
+  listUnitPrice?: Money;
+  /**
+   * "list" when `unitPrice` is the list price, "contract" when the
+   * organization has its own. Only with an API key.
+   */
+  source?: string;
+}
+
+/** The organization's balance, from `billing()`. */
+export interface BillingAccount {
+  balance: {
+    /** The unused free allowance for this month plus the purchased balance. */
+    available: Money;
+  };
+  /** Console page where a person can add funds. */
+  billingUrl: string;
+  /** When this was read (ISO 8601). */
+  asOf: string;
+}
+
+/** What `billing()` returns: prices, and the account with an API key. */
+export interface Billing {
+  /**
+   * Without an API key, the public list prices. With one, your
+   * organization's prices; a SKU without a price on your plan is left out.
+   */
+  prices: BillingPrice[];
+  /** Balance. Null without an API key. */
+  account: BillingAccount | null;
+  /** The API's id for this request. Quote it when reporting a problem. */
+  requestId?: string;
+  raw: Record<string, unknown>;
 }
