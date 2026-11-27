@@ -497,7 +497,7 @@ func TestKeylessUsesPublicEndpoint(t *testing.T) {
 	if req.Header.Get("Content-Type") != "application/json" {
 		t.Fatal(req.Header.Get("Content-Type"))
 	}
-	if got := req.Header.Get("User-Agent"); got != "keenable-go/"+keenable.Version {
+	if got := req.Header.Get("User-Agent"); got != keenable.UserAgent {
 		t.Fatal(got)
 	}
 }

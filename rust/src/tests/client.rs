@@ -26,7 +26,7 @@ async fn a_keyed_search_sends_the_key_and_the_sdk_headers() {
     assert_eq!(seen.header("Accept"), Some("application/json"));
     assert_eq!(
         seen.header("User-Agent"),
-        Some(format!("keenable-rust/{}", crate::VERSION).as_str())
+        Some(crate::user_agent::USER_AGENT.as_str())
     );
     assert_eq!(resp.request_id.as_deref(), Some("r1"));
     assert_eq!(resp.raw["extra"], json!(1));

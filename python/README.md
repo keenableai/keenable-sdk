@@ -443,6 +443,16 @@ e.g. for a proxy) and `client_source`. Building an integration on top of this SD
 `client_source="Your Integration"` so your traffic is attributed to you rather
 than to the bare SDK.
 
+Each request sends `User-Agent: keenable-python/<version> python/<Python
+version> <os>/<arch>`, for example `keenable-python/0.4.0 python/3.12.4
+linux/x86_64`, so Keenable can see which SDK versions and platforms are in use.
+Nothing else is sent in it: no host name, user name, path, key or locale. A
+`User-Agent` in `default_headers` or `extra_headers` replaces it.
+
+## Feedback
+
+Something hard or missing? [Tell us](https://github.com/keenableai/keenable-sdk/issues/new?template=feedback.yml) or ask on [Discord](https://discord.gg/be3QybVZ2P).
+
 ## License
 
 MIT

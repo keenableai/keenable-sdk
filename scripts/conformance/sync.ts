@@ -300,6 +300,35 @@ function webhooks(): Obj[] {
   });
 }
 
+const UA_SDKS = ["python", "typescript", "go", "rust"];
+
+function userAgent(): Obj {
+  const source = load("user-agent.json");
+  const sdk = source.sdk as Obj;
+  for (const lang of UA_SDKS) {
+    const entry = sdk[lang] as Obj | undefined;
+    if (!entry || typeof entry.product !== "string" || typeof entry.parts !== "number") {
+      fail(`user_agent: sdk.${lang} needs a product and parts`);
+    }
+  }
+  const format = (source.format as Obj[]).map((item) => {
+    const name = item.name as string;
+    const parts = item.parts as Json[];
+    const pair = (p: Json) => Array.isArray(p) && p.length === 2 && p.every((s) => typeof s === "string");
+    if (!parts.every(pair)) fail(`user_agent ${name}: each part is [name, version]`);
+    return { name, parts, sent: item.sent as string };
+  });
+  const override = (source.override as Obj[]).map((item) => ({
+    name: item.name as string,
+    client: (item.client as Obj | undefined) ?? {},
+    call: (item.call as Obj | undefined) ?? {},
+    sent: item.sent as string,
+  }));
+  uniqueNames("user_agent.format", format);
+  uniqueNames("user_agent.override", override);
+  return { sdk, format, override };
+}
+
 /** The fixture's exact text for the case files on disk. */
 export function buildConformance(): string {
   const fixture = {
@@ -317,6 +346,7 @@ export function buildConformance(): string {
     tool_call: toolCalls(),
     deadline: deadline(),
     webhook: webhooks(),
+    user_agent: userAgent(),
   };
   for (const [section, cases] of Object.entries(fixture)) {
     if (Array.isArray(cases)) uniqueNames(section, cases as { name: string }[]);

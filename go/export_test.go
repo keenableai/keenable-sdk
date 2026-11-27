@@ -36,6 +36,9 @@ func TakeWaits() []time.Duration {
 var (
 	Backoff    = backoff
 	RetryDelay = retryDelay
+	// FormatUserAgent and UserAgent are the User-Agent rule and its value.
+	FormatUserAgent = formatUserAgent
+	UserAgent       = userAgent
 )
 
 var RetryAfterAt = retryAfterAt

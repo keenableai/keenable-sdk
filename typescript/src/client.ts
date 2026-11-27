@@ -38,11 +38,7 @@ import type {
   Usage,
   ToContextOptions,
 } from "./types.js";
-
-// Replaced at build time with the version from package.json, so a release
-// cannot ship a User-Agent that disagrees with the published package.
-declare const __VERSION__: string;
-const VERSION = typeof __VERSION__ === "string" ? __VERSION__ : "0.0.0-dev";
+import { userAgent } from "./user-agent.js";
 
 export const DEFAULT_BASE_URL = "https://api.keenable.ai";
 export const DEFAULT_CONTEXT_MAX_CHARS = 12_000;
@@ -832,7 +828,7 @@ export class Keenable {
   ): Record<string, string> {
     const headers: Record<string, string> = {
       Accept: "application/json",
-      "User-Agent": `keenable-typescript/${VERSION}`,
+      "User-Agent": userAgent(),
       // The public tier rejects requests without this header.
       "X-Keenable-Title": this.clientSource,
     };

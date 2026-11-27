@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Changed:** the `User-Agent` header adds the Go version and the platform: `keenable-go/<Version> go/<Go version> <GOOS>/<GOARCH>`, for example `keenable-go/0.4.0 go/1.23.4 linux/amd64`. Nothing else is sent in it. A `User-Agent` in `Options.Headers` or `RequestOptions.Headers` still replaces it.
 - **Added:** `SearchResponse.Usage` (`*Usage`): what the search cost and, with a key, `Cost` and `Balance` in US dollars. Nil on keyless calls.
 - **Changed:** `Usage` is read field by field, so a malformed `cost` or `balance` no longer loses the other fields.
 - **Changed:** the `keenable_search` tool's `moderation` description: supported for a URL query when `exclude_domains` is set.

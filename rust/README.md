@@ -70,6 +70,12 @@ let client = keenable::Client::with_options(keenable::Options {
 
 `Client` is cheap to clone and shares its connection pool: build one and reuse it.
 
+Each request sends `User-Agent: keenable-rust/<version> <os>/<arch>`, for
+example `keenable-rust/0.4.0 linux/x86_64` (from `std::env::consts`), so
+Keenable can see which SDK versions and platforms are in use. Nothing else is
+sent in it: no compiler version, host name, user name, path, key or locale. A
+`User-Agent` in `headers` (client or call) replaces it.
+
 ## Search
 
 Results carry the page text in `snippet`.
@@ -380,6 +386,10 @@ match client.search("q").await {
     Err(e) => eprintln!("{e}"),
 }
 ```
+
+## Feedback
+
+Something hard or missing? [Tell us](https://github.com/keenableai/keenable-sdk/issues/new?template=feedback.yml) or ask on [Discord](https://discord.gg/be3QybVZ2P).
 
 ## License
 

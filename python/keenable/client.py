@@ -25,7 +25,7 @@ import httpcore
 import httpx
 
 from ._filters import SEARCH_FILTERS
-from ._version import __version__
+from ._user_agent import USER_AGENT
 from .errors import (
     KeenableAPIError,
     KeenableAuthError,
@@ -1215,7 +1215,7 @@ class _BaseClient:
         headers = httpx.Headers(
             {
                 "Accept": "application/json",
-                "User-Agent": f"keenable-python/{__version__}",
+                "User-Agent": USER_AGENT,
                 # The public tier rejects requests without this header.
                 "X-Keenable-Title": self._client_source,
             }

@@ -676,7 +676,7 @@ func isTokenRune(r rune) bool {
 func (c *Client) headers(jsonBody bool, extra map[string]string) http.Header {
 	h := make(http.Header)
 	h.Set("Accept", "application/json")
-	h.Set("User-Agent", "keenable-go/"+Version)
+	h.Set("User-Agent", userAgent)
 	// The public tier rejects requests without this header.
 	h.Set("X-Keenable-Title", c.clientSource)
 	for _, src := range []map[string]string{c.defaultHeaders, extra} {

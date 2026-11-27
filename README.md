@@ -148,6 +148,10 @@ See each SDK's README for the full list, and [`examples/monitors`](./examples/mo
 - [`docs/partners/cerebras/keenable.mdx`](./docs/partners/cerebras/keenable.mdx) -
   integration page written for the Cerebras Inference docs.
 
+## Feedback
+
+Something hard or missing in any SDK? [Tell us](https://github.com/keenableai/keenable-sdk/issues/new?template=feedback.yml) or ask on [Discord](https://discord.gg/be3QybVZ2P).
+
 ## License
 
 MIT

@@ -551,6 +551,16 @@ zero adds no extra deadline and that client's `Timeout` is left unchanged.
 `X-Keenable-Title`; empty means "Keenable SDK". Set it when you wrap this SDK
 and want your own traffic attribution.
 
+Each request sends `User-Agent: keenable-go/<Version> go/<Go version>
+<GOOS>/<GOARCH>`, for example `keenable-go/0.4.0 go/1.23.4 linux/amd64`, so
+Keenable can see which SDK versions and platforms are in use. Nothing else is
+sent in it: no host name, user name, path, key or locale. A `User-Agent` in
+`Options.Headers` or `RequestOptions.Headers` replaces it.
+
+## Feedback
+
+Something hard or missing? [Tell us](https://github.com/keenableai/keenable-sdk/issues/new?template=feedback.yml) or ask on [Discord](https://discord.gg/be3QybVZ2P).
+
 ## License
 
 MIT

@@ -690,3 +690,99 @@ fn webhook() {
     }
     report("webhook", failures);
 }
+
+#[test]
+fn user_agent_format() {
+    let fixture = fixture();
+    let mut failures = Vec::new();
+    for case in cases(&fixture["user_agent"], "format") {
+        let parts: Vec<(&str, &str)> = case["parts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| (p[0].as_str().unwrap(), p[1].as_str().unwrap()))
+            .collect();
+        let got = crate::user_agent::format_user_agent(&parts);
+        if got != case["sent"].as_str().unwrap() {
+            failures.push(format!("{}: {got:?}", name(case)));
+        }
+    }
+    report("user_agent.format", failures);
+}
+
+fn user_agent_part_ok(part: &str) -> bool {
+    let token = |s: &str| {
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '+' | '-'))
+    };
+    match part.split_once('/') {
+        Some((name, version)) => token(name) && token(version),
+        None => token(part),
+    }
+}
+
+#[tokio::test]
+async fn user_agent_default() {
+    let fixture = fixture();
+    let want = &fixture["user_agent"]["sdk"]["rust"];
+    let server = start(Script::Replies(vec![ok_search()])).await;
+    keyed(&server).search("q").await.unwrap();
+    let seen = server.requests();
+    let sent = seen[0].header("User-Agent").unwrap();
+    let parts: Vec<&str> = sent.split(' ').collect();
+    assert_eq!(
+        parts[0],
+        format!("{}/{}", want["product"].as_str().unwrap(), crate::VERSION)
+    );
+    assert_eq!(parts.len() as u64, want["parts"].as_u64().unwrap());
+    // Rust sends no runtime part: the second part is the platform.
+    assert!(want["runtime"].is_null());
+    assert!(parts.iter().all(|p| user_agent_part_ok(p)), "{sent}");
+}
+
+#[tokio::test]
+async fn user_agent_override() {
+    let fixture = fixture();
+    let mut failures = Vec::new();
+    let map = |v: &Value| -> HashMap<String, String> {
+        v.as_object()
+            .unwrap()
+            .iter()
+            .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_string()))
+            .collect()
+    };
+    for case in cases(&fixture["user_agent"], "override") {
+        let server = start(Script::Replies(vec![ok_search()])).await;
+        let client = Client::with_options(Options {
+            api_key: Some("k".into()),
+            base_url: Some(server.base_url.clone()),
+            headers: map(&case["client"]),
+            ..Default::default()
+        })
+        .unwrap();
+        let opts = SearchOptions {
+            request: RequestOptions {
+                headers: map(&case["call"]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let got = client.search_with("q", &opts).await;
+        let seen = server.requests();
+        let agents: Vec<&str> = seen
+            .first()
+            .map(|s| {
+                s.headers
+                    .iter()
+                    .filter(|(k, _)| k.eq_ignore_ascii_case("user-agent"))
+                    .map(|(_, v)| v.as_str())
+                    .collect()
+            })
+            .unwrap_or_default();
+        if got.is_err() || agents != [case["sent"].as_str().unwrap()] {
+            failures.push(format!("{}: {got:?} sent {agents:?}", name(case)));
+        }
+    }
+    report("user_agent.override", failures);
+}
