@@ -64,13 +64,22 @@ export interface RequestOptions {
   headers?: Record<string, string>;
 }
 
+/** The per-call session id, accepted by `search()` and `fetch()`. */
+export interface SessionOptions {
+  /**
+   * The agent run this call belongs to, sent as the `X-Keenable-Session-Id`
+   * header over the client's `sessionId`. Unset or `""` keeps the client's.
+   */
+  sessionId?: string;
+}
+
 /**
  * Optional filters for `search()`.
  *
  * The filter names here pair with the wire names in `filters.ts`; add a filter
  * in both places and every consumer picks it up.
  */
-export interface SearchOptions extends RequestOptions {
+export interface SearchOptions extends RequestOptions, SessionOptions {
   /**
    * Search mode. `"pro"` (the default) does deeper retrieval. `"realtime"`
    * gives the fastest response, for latency-sensitive agent loops.
@@ -126,7 +135,7 @@ export interface SearchOptions extends RequestOptions {
 }
 
 /** Optional arguments for `fetch()`. The API checks their values. */
-export interface FetchOptions extends RequestOptions {
+export interface FetchOptions extends RequestOptions, SessionOptions {
   /** The most characters of content per page. */
   maxChars?: number;
   /** Up to 2,000 characters; each page's `content` is then only an LLM's answer to it. */
@@ -198,6 +207,13 @@ export interface KeenableOptions {
   maxRetries?: number;
   /** Headers sent with every request, e.g. for a proxy or gateway. */
   defaultHeaders?: Record<string, string>;
+  /**
+   * Id of the agent run this client works for, sent as the
+   * `X-Keenable-Session-Id` header on every request so the API can group the
+   * run's calls. Use one value per run, such as a UUID. Printable ASCII; the
+   * API keeps the first 128 characters.
+   */
+  sessionId?: string;
   /**
    * Custom fetch implementation (for tests or a proxy).
    *

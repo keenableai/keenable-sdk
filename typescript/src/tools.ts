@@ -199,6 +199,15 @@ function pagesContext(pages: Page[], maxChars: unknown): string {
     .join("\n\n");
 }
 
+/** Options for `runToolCall()`. */
+export interface RunToolCallOptions {
+  /**
+   * The agent run this call belongs to, sent as the call's `sessionId` over
+   * the client's. Unset keeps the client's.
+   */
+  sessionId?: string;
+}
+
 /**
  * Execute one tool call and return the string to send back as the result.
  *
@@ -211,23 +220,28 @@ export async function runToolCall(
   client: Keenable,
   name: string,
   args: string | Record<string, unknown>,
+  options: RunToolCallOptions = {},
 ): Promise<string> {
+  const { sessionId } = options;
   const parsed = parseArguments(args);
 
   if (name === "keenable_search") {
     const query = requireString(parsed.query, "keenable_search needs a 'query'");
-    const response = await client.search(query, toolFilterOptions(parsed));
+    const response = await client.search(query, { ...toolFilterOptions(parsed), sessionId });
     return response.toContext();
   }
 
   if (name === "keenable_fetch") {
-    const options: Record<string, unknown> = {};
+    const fetchOptions: Record<string, unknown> = {};
     for (const [wire, option] of FETCH_TOOL_OPTIONS) {
       const value = parsed[wire];
-      if (value !== undefined && value !== null && value !== "") options[option] = value;
+      if (value !== undefined && value !== null && value !== "") fetchOptions[option] = value;
     }
-    const response = await client.fetch(fetchUrls(parsed), options as FetchOptions);
-    return pagesContext(response.results, options.maxChars);
+    const response = await client.fetch(fetchUrls(parsed), {
+      ...(fetchOptions as FetchOptions),
+      sessionId,
+    });
+    return pagesContext(response.results, fetchOptions.maxChars);
   }
 
   throw new KeenableInvalidRequestError(`unknown Keenable tool: ${JSON.stringify(name)}`);

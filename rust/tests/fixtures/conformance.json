@@ -6025,6 +6025,322 @@
       "invalid": false
     }
   ],
+  "session_id": [
+    {
+      "name": "unset sends no header",
+      "client": null,
+      "call": null,
+      "client_headers": {},
+      "call_headers": {},
+      "sent": null,
+      "invalid": false,
+      "skip": {}
+    },
+    {
+      "name": "the client's is sent",
+      "client": "run-1",
+      "call": null,
+      "client_headers": {},
+      "call_headers": {},
+      "sent": "run-1",
+      "invalid": false,
+      "skip": {}
+    },
+    {
+      "name": "a call's alone is sent",
+      "client": null,
+      "call": "run-2",
+      "client_headers": {},
+      "call_headers": {},
+      "sent": "run-2",
+      "invalid": false,
+      "skip": {}
+    },
+    {
+      "name": "a call's replaces the client's",
+      "client": "run-1",
+      "call": "run-2",
+      "client_headers": {},
+      "call_headers": {},
+      "sent": "run-2",
+      "invalid": false,
+      "skip": {}
+    },
+    {
+      "name": "an empty client value is unset",
+      "client": "",
+      "call": null,
+      "client_headers": {},
+      "call_headers": {},
+      "sent": null,
+      "invalid": false,
+      "skip": {}
+    },
+    {
+      "name": "an empty call value keeps the client's",
+      "client": "run-1",
+      "call": "",
+      "client_headers": {},
+      "call_headers": {},
+      "sent": "run-1",
+      "invalid": false,
+      "skip": {}
+    },
+    {
+      "name": "a blank value is unset",
+      "client": "   ",
+      "call": null,
+      "client_headers": {},
+      "call_headers": {},
+      "sent": null,
+      "invalid": false,
+      "skip": {}
+    },
+    {
+      "name": "a blank call value keeps the client's",
+      "client": "run-1",
+      "call": "  ",
+      "client_headers": {},
+      "call_headers": {},
+      "sent": "run-1",
+      "invalid": false,
+      "skip": {}
+    },
+    {
+      "name": "surrounding spaces are trimmed",
+      "client": "  run-1  ",
+      "call": null,
+      "client_headers": {},
+      "call_headers": {},
+      "sent": "run-1",
+      "invalid": false,
+      "skip": {}
+    },
+    {
+      "name": "inner spaces are kept",
+      "client": "agent run 1",
+      "call": null,
+      "client_headers": {},
+      "call_headers": {},
+      "sent": "agent run 1",
+      "invalid": false,
+      "skip": {}
+    },
+    {
+      "name": "punctuation is sent as given",
+      "client": "agent:run/42#a=b;c,\"d\"",
+      "call": null,
+      "client_headers": {},
+      "call_headers": {},
+      "sent": "agent:run/42#a=b;c,\"d\"",
+      "invalid": false,
+      "skip": {}
+    },
+    {
+      "name": "a UUID",
+      "client": "3f2b9c1e-8d4a-4c6b-9e2f-1a7d5b3c8e90",
+      "call": null,
+      "client_headers": {},
+      "call_headers": {},
+      "sent": "3f2b9c1e-8d4a-4c6b-9e2f-1a7d5b3c8e90",
+      "invalid": false,
+      "skip": {}
+    },
+    {
+      "name": "a long value is sent whole (the API keeps the first 128 characters)",
+      "client": "ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss",
+      "call": null,
+      "client_headers": {},
+      "call_headers": {},
+      "sent": "ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss",
+      "invalid": false,
+      "skip": {}
+    },
+    {
+      "name": "the client option replaces a default header",
+      "client": "run-1",
+      "call": null,
+      "client_headers": {
+        "X-Keenable-Session-Id": "h"
+      },
+      "call_headers": {},
+      "sent": "run-1",
+      "invalid": false,
+      "skip": {}
+    },
+    {
+      "name": "a default header alone is sent",
+      "client": null,
+      "call": null,
+      "client_headers": {
+        "x-keenable-session-id": "h"
+      },
+      "call_headers": {},
+      "sent": "h",
+      "invalid": false,
+      "skip": {}
+    },
+    {
+      "name": "a call header replaces the client option",
+      "client": "run-1",
+      "call": null,
+      "client_headers": {},
+      "call_headers": {
+        "X-Keenable-Session-Id": "h"
+      },
+      "sent": "h",
+      "invalid": false,
+      "skip": {}
+    },
+    {
+      "name": "the call option replaces a call header",
+      "client": null,
+      "call": "run-2",
+      "client_headers": {},
+      "call_headers": {
+        "X-Keenable-Session-Id": "h"
+      },
+      "sent": "run-2",
+      "invalid": false,
+      "skip": {}
+    },
+    {
+      "name": "client: CRLF",
+      "client": "a\r\nX-Evil: 1",
+      "call": null,
+      "client_headers": {},
+      "call_headers": {},
+      "sent": null,
+      "invalid": true,
+      "skip": {}
+    },
+    {
+      "name": "client: LF",
+      "client": "a\nb",
+      "call": null,
+      "client_headers": {},
+      "call_headers": {},
+      "sent": null,
+      "invalid": true,
+      "skip": {}
+    },
+    {
+      "name": "client: NUL",
+      "client": "a\u0000b",
+      "call": null,
+      "client_headers": {},
+      "call_headers": {},
+      "sent": null,
+      "invalid": true,
+      "skip": {}
+    },
+    {
+      "name": "client: a tab",
+      "client": "a\tb",
+      "call": null,
+      "client_headers": {},
+      "call_headers": {},
+      "sent": null,
+      "invalid": true,
+      "skip": {}
+    },
+    {
+      "name": "client: another control character",
+      "client": "a\u0001b",
+      "call": null,
+      "client_headers": {},
+      "call_headers": {},
+      "sent": null,
+      "invalid": true,
+      "skip": {}
+    },
+    {
+      "name": "client: DEL",
+      "client": "ab",
+      "call": null,
+      "client_headers": {},
+      "call_headers": {},
+      "sent": null,
+      "invalid": true,
+      "skip": {}
+    },
+    {
+      "name": "client: a non-ASCII letter",
+      "client": "café",
+      "call": null,
+      "client_headers": {},
+      "call_headers": {},
+      "sent": null,
+      "invalid": true,
+      "skip": {}
+    },
+    {
+      "name": "client: an emoji",
+      "client": "run-🚀",
+      "call": null,
+      "client_headers": {},
+      "call_headers": {},
+      "sent": null,
+      "invalid": true,
+      "skip": {}
+    },
+    {
+      "name": "client: a number",
+      "client": 5,
+      "call": null,
+      "client_headers": {},
+      "call_headers": {},
+      "sent": null,
+      "invalid": true,
+      "skip": {
+        "go": "a string",
+        "rust": "an Option<String>"
+      }
+    },
+    {
+      "name": "call: CRLF",
+      "client": null,
+      "call": "a\r\nX-Evil: 1",
+      "client_headers": {},
+      "call_headers": {},
+      "sent": null,
+      "invalid": true,
+      "skip": {}
+    },
+    {
+      "name": "call: a tab",
+      "client": null,
+      "call": "a\tb",
+      "client_headers": {},
+      "call_headers": {},
+      "sent": null,
+      "invalid": true,
+      "skip": {}
+    },
+    {
+      "name": "call: a non-ASCII letter",
+      "client": "run-1",
+      "call": "café",
+      "client_headers": {},
+      "call_headers": {},
+      "sent": null,
+      "invalid": true,
+      "skip": {}
+    },
+    {
+      "name": "call: a number",
+      "client": null,
+      "call": 5,
+      "client_headers": {},
+      "call_headers": {},
+      "sent": null,
+      "invalid": true,
+      "skip": {
+        "go": "a string",
+        "rust": "an Option<String>"
+      }
+    }
+  ],
   "deadline": {
     "slack": 0.3,
     "cases": [

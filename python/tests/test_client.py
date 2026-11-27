@@ -67,6 +67,7 @@ def _client(
     handler: Handler,
     api_key: str | None = None,
     client_source: str = "Keenable SDK",
+    session_id: str | None = None,
 ) -> tuple[Keenable, Seen]:
     """A Keenable client wired to a mock transport, plus the request log."""
     seen: Seen = []
@@ -74,6 +75,7 @@ def _client(
     client = Keenable(
         api_key,
         client_source=client_source,
+        session_id=session_id,
         client=httpx.Client(transport=transport),
         max_retries=0,
     )
@@ -516,6 +518,31 @@ def test_run_tool_call_dispatches_search_and_fetch() -> None:
         run_tool_call(keenable, "keenable_search", "not json")
     with pytest.raises(KeenableInvalidRequestError):
         run_tool_call(keenable, "nope", "{}")
+
+
+def test_a_tool_call_sends_the_session_id() -> None:
+    keenable, seen = _client(_routed, session_id="run-1")
+    run_tool_call(keenable, "keenable_search", {"query": "q"})
+    run_tool_call(
+        keenable,
+        "keenable_fetch",
+        {"urls": ["https://example.com"]},
+        session_id="run-2",
+    )
+    run_tool_call(keenable, "keenable_search", {"query": "q", "session_id": "model"})
+    sent = [r.headers.get("X-Keenable-Session-Id") for r in seen]
+    # The model cannot set it: the tool schemas do not offer it.
+    assert sent == ["run-1", "run-2", "run-1"]
+    assert "session_id" not in json.loads(seen[2].content)
+
+
+async def test_async_a_tool_call_sends_the_session_id() -> None:
+    keenable, seen = _aclient(_routed)
+    async with keenable:
+        await arun_tool_call(
+            keenable, "keenable_search", {"query": "q"}, session_id="run-3"
+        )
+    assert seen[0].headers.get("X-Keenable-Session-Id") == "run-3"
 
 
 def test_fetch_tool_reads_several_urls_and_keeps_a_failed_one_as_a_block() -> None:

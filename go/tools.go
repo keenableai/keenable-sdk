@@ -105,6 +105,23 @@ func newSearchTool() ToolDefinition {
 // page the way it cites a search result. A URL that failed while others were
 // read becomes an error block; if none was read, its error is returned.
 func RunToolCall(ctx context.Context, client *Client, name string, arguments any) (string, error) {
+	return RunToolCallWithOptions(ctx, client, name, arguments, nil)
+}
+
+// ToolCallOptions are the optional settings of [RunToolCallWithOptions].
+type ToolCallOptions struct {
+	// SessionID is the agent run this call belongs to, sent as the call's
+	// SessionID over Options.SessionID. Empty keeps the client's.
+	SessionID string
+}
+
+// RunToolCallWithOptions is [RunToolCall] with the settings in
+// [ToolCallOptions]. opts may be nil.
+func RunToolCallWithOptions(ctx context.Context, client *Client, name string, arguments any, opts *ToolCallOptions) (string, error) {
+	var sessionID string
+	if opts != nil {
+		sessionID = opts.SessionID
+	}
 	if client == nil {
 		return "", &InvalidRequestError{msg: "RunToolCall needs a client. Call keenable.New and pass that client."}
 	}
@@ -122,6 +139,7 @@ func RunToolCall(ctx context.Context, client *Client, name string, arguments any
 		if err != nil {
 			return "", err
 		}
+		opts.SessionID = sessionID
 		resp, err := client.Search(ctx, query, opts)
 		if err != nil {
 			return "", err
@@ -136,6 +154,7 @@ func RunToolCall(ctx context.Context, client *Client, name string, arguments any
 		if err != nil {
 			return "", err
 		}
+		opts.SessionID = sessionID
 		resp, err := client.FetchWithOptions(ctx, urls, opts)
 		if err != nil {
 			return "", err

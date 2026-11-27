@@ -240,6 +240,22 @@ Arguments JSON
 cannot encode (`NaN`, `Infinity`) are the invalid-request error and send
 nothing.
 
+## Session IDs (`session_id`)
+
+`session_id` (`sessionId`, `SessionID`) on the client, and on a `search` or
+`fetch` call, is sent as the `X-Keenable-Session-Id` header, which the API
+uses to group the calls of one agent run. A call's replaces the client's.
+
+- The value is trimmed of surrounding spaces. `""` or a blank value is unset:
+  no header, or for a call, the client's.
+- It must be printable ASCII (U+0020 to U+007E). Any other character, a tab
+  or non-ASCII letter included, is the invalid-request error and sends
+  nothing: HTTP stacks disagree on sending them. A value that is not a string
+  is the same error.
+- Its length is not checked; the API keeps the first 128 characters.
+- Last wins, in this order: the client's default headers, the client's
+  `session_id`, the call's headers, the call's `session_id`.
+
 ## Webhook verification (`webhook`)
 
 `verify_webhook` (`verifyWebhook`, `VerifyWebhook`) checks a Keenable Monitors

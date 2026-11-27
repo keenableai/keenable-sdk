@@ -240,6 +240,8 @@ def run_tool_call(
     client: Keenable,
     name: str,
     arguments: str | dict[str, Any],
+    *,
+    session_id: str | None = None,
 ) -> str:
     """Execute one tool call and return the string to send back as the result.
 
@@ -249,6 +251,8 @@ def run_tool_call(
             ``keenable_fetch``).
         arguments: The model's arguments, as the raw JSON string from the API
             or an already-decoded dict.
+        session_id: The agent run this call belongs to, sent as the call's
+            ``session_id`` over the client's. ``None`` keeps the client's.
 
     Returns:
         Text ready to be attached to a ``role="tool"`` message, rendered as the
@@ -257,14 +261,18 @@ def run_tool_call(
         is raised.
     """
     call = _plan(name, arguments)
-    return call.render(getattr(client, call.method)(*call.args, **call.kwargs))
+    method = getattr(client, call.method)
+    return call.render(method(*call.args, **call.kwargs, session_id=session_id))
 
 
 async def arun_tool_call(
     client: AsyncKeenable,
     name: str,
     arguments: str | dict[str, Any],
+    *,
+    session_id: str | None = None,
 ) -> str:
     """Async counterpart of :func:`run_tool_call`."""
     call = _plan(name, arguments)
-    return call.render(await getattr(client, call.method)(*call.args, **call.kwargs))
+    method = getattr(client, call.method)
+    return call.render(await method(*call.args, **call.kwargs, session_id=session_id))

@@ -1178,6 +1178,30 @@ def _check_headers(headers: Mapping[str, str], where: str) -> dict[str, str]:
     return dict(headers)
 
 
+# The API groups the calls of one agent run by this header.
+_SESSION_HEADER = "X-Keenable-Session-Id"
+_PRINTABLE_ASCII = re.compile(r"[\x20-\x7e]*")
+
+
+def _check_session_id(value: Any, where: str) -> str | None:
+    """A session id to send, trimmed; None when unset, empty or blank.
+
+    Only printable ASCII is sent: HTTP stacks disagree on other characters.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise KeenableInvalidRequestError(
+            f"{where} must be a string, got {type(value).__name__}"
+        )
+    if not _PRINTABLE_ASCII.fullmatch(value):
+        raise KeenableInvalidRequestError(
+            f"{where} must be printable ASCII, with no control characters, tabs "
+            f"or non-ASCII letters, got {value!r}"
+        )
+    return value.strip() or None
+
+
 class _BaseClient:
     """Shared configuration for the sync and async clients."""
 
@@ -1189,6 +1213,7 @@ class _BaseClient:
         timeout: float | httpx.Timeout | None = DEFAULT_TIMEOUT,
         max_retries: int = DEFAULT_MAX_RETRIES,
         default_headers: Mapping[str, str] | None = None,
+        session_id: str | None = None,
         client_source: str = "Keenable SDK",
     ) -> None:
         key = api_key if api_key is not None else environ.get("KEENABLE_API_KEY")
@@ -1198,6 +1223,7 @@ class _BaseClient:
         self._timeout: Any = _check_client_timeout(timeout)
         self._max_retries = _check_max_retries(max_retries)
         self._default_headers = _check_headers(default_headers or {}, "default_headers")
+        self._session_id = _check_session_id(session_id, "session_id")
 
     @property
     def keyless(self) -> bool:
@@ -1205,9 +1231,14 @@ class _BaseClient:
         return self._api_key is None
 
     def _headers(
-        self, extra: Mapping[str, str] | None = None, *, json: bool = False
+        self,
+        extra: Mapping[str, str] | None = None,
+        *,
+        json: bool = False,
+        session_id: str | None = None,
     ) -> httpx.Headers:
-        """The SDK's headers, then ``default_headers``, then the call's.
+        """The SDK's headers, then ``default_headers``, the client's
+        ``session_id``, the call's headers and the call's ``session_id``.
 
         The API key is always the configured one, so a stray header cannot
         send a different key or turn a keyless call keyed.
@@ -1220,9 +1251,12 @@ class _BaseClient:
                 "X-Keenable-Title": self._client_source,
             }
         )
+        call_session = _check_session_id(session_id, "session_id")
         for source in (
             self._default_headers,
+            {_SESSION_HEADER: self._session_id} if self._session_id else {},
             _check_headers(extra or {}, "extra_headers"),
+            {_SESSION_HEADER: call_session} if call_session else {},
         ):
             for name, value in source.items():
                 if name.lower() != "x-api-key":
@@ -1305,6 +1339,10 @@ class Keenable(_BaseClient):
             ``Retry-After`` over 60 s (such as the keyless hourly cap) is not
             waited out: the error is raised at once.
         default_headers: Headers sent with every request.
+        session_id: Id of the agent run this client works for, sent as the
+            ``X-Keenable-Session-Id`` header on every request so the API can
+            group the run's calls. Use one value per run, such as a UUID.
+            Printable ASCII; the API keeps the first 128 characters.
         client_source: Name this client reports as its traffic source. Leave it
             alone unless you are building an integration on top of this SDK and
             want your own attribution.
@@ -1321,6 +1359,7 @@ class Keenable(_BaseClient):
         timeout: float | httpx.Timeout | None | _Unset = _UNSET,
         max_retries: int = DEFAULT_MAX_RETRIES,
         default_headers: Mapping[str, str] | None = None,
+        session_id: str | None = None,
         client_source: str = "Keenable SDK",
         client: httpx.Client | None = None,
     ) -> None:
@@ -1330,6 +1369,7 @@ class Keenable(_BaseClient):
             timeout=DEFAULT_TIMEOUT if isinstance(timeout, _Unset) else timeout,
             max_retries=max_retries,
             default_headers=default_headers,
+            session_id=session_id,
             client_source=client_source,
         )
         # A client you pass keeps its own timeout unless you set one here.
@@ -1390,6 +1430,7 @@ class Keenable(_BaseClient):
         method: str | None = None,
         url: str | None = None,
         safe: bool = True,
+        session_id: str | None = None,
     ) -> tuple[dict[str, Any], str | None]:
         """Send a request, retrying what can be retried, and decode the body.
 
@@ -1397,7 +1438,9 @@ class Keenable(_BaseClient):
         timeout, retries, error translation and decoding.
         """
         call_timeout, retries = self._call_settings(timeout, max_retries)
-        headers = self._headers(extra_headers, json=json is not None)
+        headers = self._headers(
+            extra_headers, json=json is not None, session_id=session_id
+        )
         retry = 0
         while True:
             try:
@@ -1449,6 +1492,7 @@ class Keenable(_BaseClient):
         timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
+        session_id: str | None = None,
     ) -> SearchResponse:
         """Search the web and return ranked results with page text.
 
@@ -1498,6 +1542,8 @@ class Keenable(_BaseClient):
                 attempt of this call. ``None`` keeps the client's timeout.
             max_retries: Retry budget for this call; ``0`` turns retries off.
             extra_headers: Headers for this call, over ``default_headers``.
+            session_id: The agent run this call belongs to, over the
+                client's ``session_id``. ``None`` or ``""`` keeps the client's.
 
         Returns:
             A :class:`SearchResponse`; iterate it for results or call
@@ -1525,6 +1571,7 @@ class Keenable(_BaseClient):
             timeout=timeout,
             max_retries=max_retries,
             extra_headers=extra_headers,
+            session_id=session_id,
         )
         return SearchResponse._from_json(body, query, request_id)
 
@@ -1541,6 +1588,7 @@ class Keenable(_BaseClient):
         timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
+        session_id: str | None = None,
     ) -> FetchResponse:
         """Read pages as markdown with ``POST /v1/fetch``.
 
@@ -1568,6 +1616,8 @@ class Keenable(_BaseClient):
                 :meth:`search`.
             max_retries: Retry budget for this call, as in :meth:`search`.
             extra_headers: Headers for this call, over ``default_headers``.
+            session_id: The agent run this call belongs to, as in
+                :meth:`search`.
         """
         payload = _fetch_payload(
             urls, max_chars, prompt, schema, links, images, max_age_hours
@@ -1578,6 +1628,7 @@ class Keenable(_BaseClient):
             timeout=timeout,
             max_retries=max_retries,
             extra_headers=extra_headers,
+            session_id=session_id,
         )
         return FetchResponse._from_json(body, payload["urls"], request_id)
 
@@ -1631,6 +1682,7 @@ class AsyncKeenable(_BaseClient):
         timeout: float | httpx.Timeout | None | _Unset = _UNSET,
         max_retries: int = DEFAULT_MAX_RETRIES,
         default_headers: Mapping[str, str] | None = None,
+        session_id: str | None = None,
         client_source: str = "Keenable SDK",
         client: httpx.AsyncClient | None = None,
     ) -> None:
@@ -1640,6 +1692,7 @@ class AsyncKeenable(_BaseClient):
             timeout=DEFAULT_TIMEOUT if isinstance(timeout, _Unset) else timeout,
             max_retries=max_retries,
             default_headers=default_headers,
+            session_id=session_id,
             client_source=client_source,
         )
         self._use_client_timeout = client is not None and isinstance(timeout, _Unset)
@@ -1695,10 +1748,13 @@ class AsyncKeenable(_BaseClient):
         method: str | None = None,
         url: str | None = None,
         safe: bool = True,
+        session_id: str | None = None,
     ) -> tuple[dict[str, Any], str | None]:
         """Async counterpart of :meth:`Keenable._request`."""
         call_timeout, retries = self._call_settings(timeout, max_retries)
-        headers = self._headers(extra_headers, json=json is not None)
+        headers = self._headers(
+            extra_headers, json=json is not None, session_id=session_id
+        )
         retry = 0
         while True:
             try:
@@ -1748,6 +1804,7 @@ class AsyncKeenable(_BaseClient):
         timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
+        session_id: str | None = None,
     ) -> SearchResponse:
         """Search the web. See :meth:`Keenable.search` for the arguments."""
         payload = _search_payload(
@@ -1772,6 +1829,7 @@ class AsyncKeenable(_BaseClient):
             timeout=timeout,
             max_retries=max_retries,
             extra_headers=extra_headers,
+            session_id=session_id,
         )
         return SearchResponse._from_json(body, query, request_id)
 
@@ -1788,6 +1846,7 @@ class AsyncKeenable(_BaseClient):
         timeout: float | httpx.Timeout | None = None,
         max_retries: int | None = None,
         extra_headers: Mapping[str, str] | None = None,
+        session_id: str | None = None,
     ) -> FetchResponse:
         """Read pages as markdown. See :meth:`Keenable.fetch` for the arguments."""
         payload = _fetch_payload(
@@ -1799,6 +1858,7 @@ class AsyncKeenable(_BaseClient):
             timeout=timeout,
             max_retries=max_retries,
             extra_headers=extra_headers,
+            session_id=session_id,
         )
         return FetchResponse._from_json(body, payload["urls"], request_id)
 

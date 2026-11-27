@@ -432,6 +432,20 @@ request should change, such as a deprecated parameter it used; it is empty
 otherwise. Redirects are never followed, so the API key
 cannot leak to another host.
 
+## Group an agent run's calls
+
+Pass `sessionId` and the client sends it as the `X-Keenable-Session-Id` header
+on every request, so the API groups the calls of one agent run. `search()`,
+`fetch()` and `runToolCall()` take a `sessionId` for one call.
+
+```ts
+const keenable = new Keenable({ sessionId: "run-7f3a" });
+await keenable.search("wafer scale engine");
+await keenable.fetch(["https://example.com"], { sessionId: "run-8b21" }); // this call only
+```
+
+Use one value per run, such as a UUID. A call's `sessionId` replaces the client's for that call; unset or `""` keeps the client's. The value is trimmed and must be printable ASCII: anything else is a `KeenableInvalidRequestError`, before anything is sent. The API keeps the first 128 characters. The hosted MCP tools take the same id as their `session_id` argument.
+
 ## Configuration
 
 | Variable | Default | Purpose |
@@ -440,7 +454,7 @@ cannot leak to another host.
 | `KEENABLE_API_URL` | `https://api.keenable.ai` | Override the API base URL |
 
 Both can also be passed to the constructor as `apiKey` and `baseUrl`, alongside
-`timeoutMs`, `maxRetries`, `defaultHeaders`, a custom `fetch` (e.g. for a
+`timeoutMs`, `maxRetries`, `defaultHeaders`, `sessionId`, a custom `fetch` (e.g. for a
 proxy), and `clientSource`. Building an integration on
 top of this SDK? Set `clientSource: "Your Integration"` so your traffic is
 attributed to you rather than to the bare SDK.

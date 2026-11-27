@@ -238,7 +238,29 @@ function toolCalls(): Obj[] {
   });
 }
 
-const DEADLINE_PHASES = new Set(["headers", "body", "terminator", "none"]);
+const SESSION_ID_KEYS = new Set(["name", "client", "call", "client_headers", "call_headers", "sent", "invalid", "skip"]);
+
+function sessionIds(): Obj[] {
+  return (load("session-id.json").cases as Obj[]).map((item) => {
+    const name = item.name as string;
+    for (const key of Object.keys(item)) {
+      if (!SESSION_ID_KEYS.has(key)) fail(`session_id ${name}: unknown key ${key}`);
+    }
+    if (("sent" in item) === (item.invalid === true)) fail(`session_id ${name}: give exactly one of "sent" and "invalid"`);
+    return {
+      name,
+      client: item.client ?? null,
+      call: item.call ?? null,
+      client_headers: (item.client_headers as Obj | undefined) ?? {},
+      call_headers: (item.call_headers as Obj | undefined) ?? {},
+      sent: (item.sent as Json | undefined) ?? null,
+      invalid: item.invalid === true,
+      skip: (item.skip as Obj | undefined) ?? {},
+    };
+  });
+}
+
+const DEADLINE_PHASES =new Set(["headers", "body", "terminator", "none"]);
 
 function deadline(): Obj {
   const source = load("deadline.json");
@@ -315,6 +337,7 @@ export function buildConformance(): string {
     options: options(),
     search_body: searchBodies(),
     tool_call: toolCalls(),
+    session_id: sessionIds(),
     deadline: deadline(),
     webhook: webhooks(),
   };

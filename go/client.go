@@ -93,6 +93,11 @@ type Options struct {
 	// Headers are sent with every request, e.g. for a proxy or gateway.
 	// X-API-Key is ignored here: it always comes from APIKey.
 	Headers map[string]string
+	// SessionID is the id of the agent run this client works for, sent as
+	// the X-Keenable-Session-Id header on every request so the API can group
+	// the run's calls. Use one value per run, such as a UUID. Empty means
+	// none. Printable ASCII; the API keeps the first 128 characters.
+	SessionID string
 	// HTTPClient replaces the owned client (proxies, custom transports).
 	// Its Timeout and CheckRedirect are left alone, and [Client.Close] does
 	// not close it. Redirects are still never followed, whatever its
@@ -125,6 +130,8 @@ type Client struct {
 	maxRetries    int
 	// defaultHeaders is a copy of Options.Headers.
 	defaultHeaders map[string]string
+	// sessionID is Options.SessionID, trimmed; empty means none.
+	sessionID string
 	// Monitors is Keenable Monitors: standing searches that report new results
 	// as they appear. It needs an API key.
 	Monitors *MonitorsService
@@ -148,6 +155,9 @@ type RequestOptions struct {
 	// ignored. A name that is not an HTTP token, or a value with CR, LF or
 	// NUL, is an [InvalidRequestError].
 	Headers map[string]string
+	// sessionID is the SessionID of the SearchOptions or FetchOptions this
+	// came from.
+	sessionID string
 }
 
 // FetchOptions are the optional arguments to [Client.FetchWithOptions].
@@ -155,6 +165,10 @@ type RequestOptions struct {
 type FetchOptions struct {
 	// RequestOptions holds this call's timeout, retry budget and headers.
 	RequestOptions
+	// SessionID is the agent run this call belongs to, sent as the
+	// X-Keenable-Session-Id header over Options.SessionID. Empty keeps the
+	// client's.
+	SessionID string
 	// MaxChars is the most characters of content per page. Zero means unset.
 	MaxChars int
 	// Prompt, when set, makes each page's content only an LLM's answer to it.
@@ -231,6 +245,10 @@ func New(opts *Options) (*Client, error) {
 	if err := checkHeaders(opts.Headers); err != nil {
 		return nil, err
 	}
+	sessionID, err := checkSessionID("Options.SessionID", opts.SessionID)
+	if err != nil {
+		return nil, err
+	}
 	headers := make(map[string]string, len(opts.Headers))
 	for k, v := range opts.Headers {
 		headers[k] = v
@@ -241,6 +259,7 @@ func New(opts *Options) (*Client, error) {
 		clientSource:   source,
 		maxRetries:     maxRetries,
 		defaultHeaders: headers,
+		sessionID:      sessionID,
 	}
 	c.Monitors = &MonitorsService{client: c}
 	if opts.HTTPClient != nil {
@@ -306,7 +325,9 @@ func (c *Client) Search(ctx context.Context, query string, opts *SearchOptions) 
 	}
 	var req *RequestOptions
 	if opts != nil {
-		req = &opts.RequestOptions
+		r := opts.RequestOptions
+		r.sessionID = opts.SessionID
+		req = &r
 	}
 	data, id, err := c.do(ctx, http.MethodPost, "search", body, nil, req)
 	if err != nil {
@@ -352,7 +373,9 @@ func (c *Client) FetchWithOptions(ctx context.Context, urls []string, opts *Fetc
 	}
 	var req *RequestOptions
 	if opts != nil {
-		req = &opts.RequestOptions
+		r := opts.RequestOptions
+		r.sessionID = opts.SessionID
+		req = &r
 	}
 	data, id, err := c.do(ctx, http.MethodPost, "fetch", body, nil, req)
 	if err != nil {
@@ -486,7 +509,12 @@ func (c *Client) send(ctx context.Context, method, rawURL string, body []byte, o
 	timeout := c.sdkTimeout
 	retries := c.maxRetries
 	var extra map[string]string
+	var sessionID string
 	if opts != nil {
+		var err error
+		if sessionID, err = checkSessionID("SessionID", opts.sessionID); err != nil {
+			return nil, "", err
+		}
 		if opts.Timeout != nil {
 			if *opts.Timeout <= 0 {
 				return nil, "", &InvalidRequestError{msg: fmt.Sprintf("RequestOptions.Timeout must be more than zero, got %s. Leave it nil to keep the client's.", *opts.Timeout)}
@@ -522,7 +550,7 @@ func (c *Client) send(ctx context.Context, method, rawURL string, body []byte, o
 	// The longest wait a JavaScript timer can hold, so every SDK treats a
 	// huge timeout the same way.
 	timeout = min(timeout, maxTimeout)
-	header := c.headers(body != nil, extra)
+	header := c.headers(body != nil, extra, sessionID)
 	for retry := 0; ; retry++ {
 		data, id, err := c.attempt(ctx, method, rawURL, body, header, timeout)
 		if err == nil {
@@ -661,6 +689,21 @@ func checkHeaders(h map[string]string) error {
 	return nil
 }
 
+// sessionHeader is the header the API groups the calls of one agent run by.
+const sessionHeader = "X-Keenable-Session-Id"
+
+// checkSessionID returns a session id to send, trimmed of spaces; empty when
+// unset or blank. Only printable ASCII is sent: HTTP stacks disagree on other
+// characters.
+func checkSessionID(name, id string) (string, error) {
+	for _, r := range id {
+		if r < 0x20 || r > 0x7e {
+			return "", &InvalidRequestError{msg: fmt.Sprintf("%s must be printable ASCII, with no control characters, tabs or non-ASCII letters, got %q.", name, id)}
+		}
+	}
+	return strings.Trim(id, " "), nil
+}
+
 // isTokenRune reports whether r may appear in an HTTP token (RFC 9110).
 func isTokenRune(r rune) bool {
 	switch {
@@ -670,16 +713,23 @@ func isTokenRune(r rune) bool {
 	return strings.ContainsRune("!#$%&'*+-.^_`|~", r)
 }
 
-// headers are the SDK's own, then Options.Headers, then the call's. The API
-// key always comes from the client, so a stray header cannot send a
-// different key or turn a keyless call keyed.
-func (c *Client) headers(jsonBody bool, extra map[string]string) http.Header {
+// headers are the SDK's own, then Options.Headers, the client's SessionID,
+// the call's headers and the call's SessionID. The API key always comes from
+// the client, so a stray header cannot send a different key or turn a keyless
+// call keyed.
+func (c *Client) headers(jsonBody bool, extra map[string]string, sessionID string) http.Header {
 	h := make(http.Header)
 	h.Set("Accept", "application/json")
 	h.Set("User-Agent", "keenable-go/"+Version)
 	// The public tier rejects requests without this header.
 	h.Set("X-Keenable-Title", c.clientSource)
-	for _, src := range []map[string]string{c.defaultHeaders, extra} {
+	session := func(id string) map[string]string {
+		if id == "" {
+			return nil
+		}
+		return map[string]string{sessionHeader: id}
+	}
+	for _, src := range []map[string]string{c.defaultHeaders, session(c.sessionID), extra, session(sessionID)} {
 		for k, v := range src {
 			if !strings.EqualFold(k, "X-API-Key") {
 				h.Set(k, v)

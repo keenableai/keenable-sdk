@@ -18,6 +18,10 @@ import (
 type SearchOptions struct {
 	// RequestOptions holds this call's timeout, retry budget and headers.
 	RequestOptions
+	// SessionID is the agent run this call belongs to, sent as the
+	// X-Keenable-Session-Id header over Options.SessionID. Empty keeps the
+	// client's.
+	SessionID string
 	// Mode is the search mode: "pro" (the default) does deeper retrieval,
 	// and "realtime" gives the fastest response, for latency-sensitive
 	// agent loops. Empty means "pro".

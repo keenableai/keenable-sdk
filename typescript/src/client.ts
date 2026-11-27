@@ -34,6 +34,7 @@ import type {
   RequestOptions,
   SearchOptions,
   SearchResult,
+  SessionOptions,
   SearchWarning,
   Usage,
   ToContextOptions,
@@ -736,6 +737,26 @@ function checkHeaders(name: string, headers: Record<string, string>): Record<str
   return headers;
 }
 
+/** The API groups the calls of one agent run by this header. */
+const SESSION_HEADER = "X-Keenable-Session-Id";
+
+/**
+ * A session id to send, trimmed; undefined when unset, empty or blank. Only
+ * printable ASCII is sent: HTTP stacks disagree on other characters.
+ */
+function checkSessionId(name: string, value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string") {
+    throw new KeenableInvalidRequestError(`${name} must be a string, got a ${typeof value}`);
+  }
+  if (!/^[\x20-\x7e]*$/.test(value)) {
+    throw new KeenableInvalidRequestError(
+      `${name} must be printable ASCII, with no control characters, tabs or non-ASCII letters, got ${JSON.stringify(value)}`,
+    );
+  }
+  return value.trim() || undefined;
+}
+
 /** The longest delay a JavaScript timer can wait; a longer one fires at once. */
 const MAX_TIMER_MS = 2_147_483_647;
 
@@ -768,6 +789,7 @@ export class Keenable {
   private readonly timeoutMs: number;
   private readonly maxRetries: number;
   private readonly defaultHeaders: Record<string, string>;
+  private readonly sessionId?: string;
   private readonly fetchImpl: typeof globalThis.fetch;
   /** Keenable Monitors: standing searches that report new results. Needs an API key. */
   readonly monitors: Monitors;
@@ -779,6 +801,7 @@ export class Keenable {
     this.timeoutMs = positiveTimeout("timeoutMs", options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
     this.maxRetries = nonNegativeInteger("maxRetries", options.maxRetries ?? DEFAULT_MAX_RETRIES);
     this.defaultHeaders = checkHeaders("defaultHeaders", { ...options.defaultHeaders });
+    this.sessionId = checkSessionId("sessionId", options.sessionId);
     const fetchImpl = options.fetch ?? globalThis.fetch;
     if (typeof fetchImpl !== "function") {
       throw new KeenableInvalidRequestError(
@@ -822,13 +845,15 @@ export class Keenable {
   }
 
   /**
-   * The headers for one request: the SDK's own, then `defaultHeaders`, then
-   * the call's `headers`. The API key is always the configured one, so a
-   * stray header cannot send a different key or turn a keyless call keyed.
+   * The headers for one request: the SDK's own, then `defaultHeaders`, the
+   * client's `sessionId`, the call's `headers` and the call's `sessionId`.
+   * The API key is always the configured one, so a stray header cannot send
+   * a different key or turn a keyless call keyed.
    */
   private headers(
     extra: Record<string, string> | undefined,
     json: boolean,
+    sessionId: string | undefined,
   ): Record<string, string> {
     const headers: Record<string, string> = {
       Accept: "application/json",
@@ -843,7 +868,14 @@ export class Keenable {
       }
       headers[name] = value;
     };
-    for (const source of [this.defaultHeaders, extra ?? {}]) {
+    const session = (id: string | undefined): Record<string, string> =>
+      id === undefined ? {} : { [SESSION_HEADER]: id };
+    for (const source of [
+      this.defaultHeaders,
+      session(this.sessionId),
+      extra ?? {},
+      session(sessionId),
+    ]) {
       for (const [name, value] of Object.entries(source)) {
         if (name.toLowerCase() !== "x-api-key") set(name, value);
       }
@@ -1004,6 +1036,7 @@ export class Keenable {
     const headers = this.headers(
       { ...extraHeaders, ...checkHeaders("headers", options.headers ?? {}) },
       init.body !== undefined,
+      checkSessionId("sessionId", (options as SessionOptions).sessionId),
     );
 
     for (let retry = 0; ; retry += 1) {

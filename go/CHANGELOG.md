@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Added:** `Options.SessionID`, sent as the `X-Keenable-Session-Id` header on every request so the API groups the calls of one agent run, and `SearchOptions.SessionID`, `FetchOptions.SessionID` and `RunToolCallWithOptions` (with `ToolCallOptions`) for one call. A call's value replaces the client's; `""` keeps the client's. The value is trimmed of surrounding spaces and must be printable ASCII: a control character, tab or non-ASCII letter is an `InvalidRequestError`, and nothing is sent. The API keeps the first 128 characters. An `X-Keenable-Session-Id` header passed in `Options.Headers` or `RequestOptions.Headers` still works; the option at the same level replaces it.
 - **Added:** `SearchResponse.Usage` (`*Usage`): what the search cost and, with a key, `Cost` and `Balance` in US dollars. Nil on keyless calls.
 - **Changed:** `Usage` is read field by field, so a malformed `cost` or `balance` no longer loses the other fields.
 - **Changed:** the `keenable_search` tool's `moderation` description: supported for a URL query when `exclude_domains` is set.

@@ -128,6 +128,16 @@ type conformance struct {
 		Sent      map[string]any `json:"sent"`
 		Invalid   bool           `json:"invalid"`
 	} `json:"tool_call"`
+	SessionID []struct {
+		Name          string            `json:"name"`
+		Client        json.RawMessage   `json:"client"`
+		Call          json.RawMessage   `json:"call"`
+		ClientHeaders map[string]string `json:"client_headers"`
+		CallHeaders   map[string]string `json:"call_headers"`
+		Sent          *string           `json:"sent"`
+		Invalid       bool              `json:"invalid"`
+		Skip          map[string]string `json:"skip"`
+	} `json:"session_id"`
 	Deadline struct {
 		Slack float64 `json:"slack"`
 		Cases []struct {
@@ -753,6 +763,65 @@ func TestConformanceToolCall(t *testing.T) {
 				t.Fatalf("sent %v, want %v", sent, tc.Sent)
 			}
 		})
+	}
+}
+
+func TestConformanceSessionID(t *testing.T) {
+	text := func(t *testing.T, raw json.RawMessage) string {
+		var s string
+		if string(raw) != "null" {
+			if err := json.Unmarshal(raw, &s); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return s
+	}
+	for _, tc := range loadConformance(t).SessionID {
+		for _, method := range []string{"search", "fetch"} {
+			t.Run(method+"/"+tc.Name, func(t *testing.T) {
+				if why, ok := tc.Skip["go"]; ok {
+					t.Skip(why)
+				}
+				clientOpts := &keenable.Options{Headers: tc.ClientHeaders, SessionID: text(t, tc.Client)}
+				req := keenable.RequestOptions{Headers: tc.CallHeaders}
+				callID := text(t, tc.Call)
+				base := "https://api.keenable.ai"
+				probe := *clientOpts
+				probe.BaseURL = &base
+				if _, err := keenable.New(&probe); err != nil {
+					if !tc.Invalid || !isInvalid(err) {
+						t.Fatalf("New: err=%v", err)
+					}
+					return
+				}
+				key := "k"
+				clientOpts.APIKey = &key
+				c, seen := start(t, okBoth, clientOpts)
+				var err error
+				if method == "search" {
+					_, err = c.Search(context.Background(), "q", &keenable.SearchOptions{RequestOptions: req, SessionID: callID})
+				} else {
+					_, err = c.FetchWithOptions(context.Background(), []string{"https://example.com/"}, &keenable.FetchOptions{RequestOptions: req, SessionID: callID})
+				}
+				if tc.Invalid {
+					if !isInvalid(err) || len(*seen) != 0 {
+						t.Fatalf("err=%v requests=%d", err, len(*seen))
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				got := one(t, seen).Header.Values("X-Keenable-Session-Id")
+				var want []string
+				if tc.Sent != nil {
+					want = []string{*tc.Sent}
+				}
+				if !reflect.DeepEqual(got, want) {
+					t.Fatalf("sent %q, want %q", got, want)
+				}
+			})
+		}
 	}
 }
 

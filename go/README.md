@@ -525,6 +525,23 @@ carry the API's request id; quote it when reporting a problem.
 `SearchResponse.Warnings` lists what the request should change, such as a
 deprecated parameter it used; it is nil otherwise.
 
+## Group an agent run's calls
+
+Set `Options.SessionID` and the client sends it as the `X-Keenable-Session-Id`
+header on every request, so the API groups the calls of one agent run.
+`SearchOptions.SessionID`, `FetchOptions.SessionID` and
+`RunToolCallWithOptions` set it for one call.
+
+```go
+client, err := keenable.New(&keenable.Options{SessionID: "run-7f3a"})
+resp, err := client.Search(ctx, "wafer scale engine", nil)
+pages, err := client.FetchWithOptions(ctx, []string{"https://example.com"}, &keenable.FetchOptions{
+    SessionID: "run-8b21", // this call only
+})
+```
+
+Use one value per run, such as a UUID. A call's `SessionID` replaces the client's for that call; `""` keeps the client's. The value is trimmed and must be printable ASCII: anything else is an `InvalidRequestError`, before anything is sent. The API keeps the first 128 characters. The hosted MCP tools take the same id as their `session_id` argument.
+
 ## Configuration
 
 | Variable | Default | Purpose |

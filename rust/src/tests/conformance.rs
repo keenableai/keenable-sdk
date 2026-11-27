@@ -596,6 +596,81 @@ async fn tool_call() {
 }
 
 #[tokio::test]
+async fn session_id() {
+    let fixture = fixture();
+    let mut failures = Vec::new();
+    let headers =
+        |v: &Value| -> HashMap<String, String> { serde_json::from_value(v.clone()).unwrap() };
+    for case in cases(&fixture, "session_id") {
+        if skipped(case).is_some() {
+            continue;
+        }
+        for method in ["search", "fetch"] {
+            let label = format!("{method}/{}", name(case));
+            let server = start(ok_both()).await;
+            let client = Client::with_options(Options {
+                api_key: Some("k".into()),
+                base_url: Some(server.base_url.clone()),
+                headers: headers(&case["client_headers"]),
+                session_id: opt_string(&case["client"]),
+                ..Default::default()
+            });
+            let request = RequestOptions {
+                headers: headers(&case["call_headers"]),
+                ..Default::default()
+            };
+            let call_id = opt_string(&case["call"]);
+            let got = match client {
+                Err(e) => Err(e),
+                Ok(client) if method == "search" => client
+                    .search_with(
+                        "q",
+                        &SearchOptions {
+                            session_id: call_id,
+                            request,
+                            ..Default::default()
+                        },
+                    )
+                    .await
+                    .map(|_| ()),
+                Ok(client) => client
+                    .fetch_with(
+                        ["https://example.com/"],
+                        &FetchOptions {
+                            session_id: call_id,
+                            request,
+                            ..Default::default()
+                        },
+                    )
+                    .await
+                    .map(|_| ()),
+            };
+            if case["invalid"].as_bool().unwrap() {
+                if !is_invalid(&got) || server.count() != 0 {
+                    failures.push(format!("{label}: {got:?} requests={}", server.count()));
+                }
+                continue;
+            }
+            let seen = server.requests();
+            let sent: Vec<&str> = match seen.as_slice() {
+                [one] => one
+                    .headers
+                    .iter()
+                    .filter(|(k, _)| k.eq_ignore_ascii_case("x-keenable-session-id"))
+                    .map(|(_, v)| v.as_str())
+                    .collect(),
+                _ => Vec::new(),
+            };
+            let want: Vec<&str> = case["sent"].as_str().into_iter().collect();
+            if got.is_err() || seen.len() != 1 || sent != want {
+                failures.push(format!("{label}: {:?} sent {sent:?}", got.err()));
+            }
+        }
+    }
+    report("session_id", failures);
+}
+
+#[tokio::test]
 async fn fetch_options_do_not_bypass_the_url_refusal() {
     let server = start(ok_both()).await;
     let opts = FetchOptions {
