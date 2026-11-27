@@ -11,6 +11,11 @@ extracted, plus a fetch endpoint that returns any URL as clean markdown.
 pip install keenable
 ```
 
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/keenableai/keenable-sdk/blob/main/examples/notebooks/quickstart.ipynb)
+Try it in the browser first: the [quickstart notebook](https://github.com/keenableai/keenable-sdk/blob/main/examples/notebooks/quickstart.ipynb)
+runs search, `to_context()`, fetch, tool calling and error handling keyless in
+Google Colab.
+
 ## Search
 
 ```python
