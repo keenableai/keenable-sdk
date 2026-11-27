@@ -149,7 +149,7 @@ func TestBackendErrorBodiesParseIntoTypedErrors(t *testing.T) {
 			if strings.Contains(err.Error(), "Docs:") {
 				t.Fatal(err)
 			}
-			tail := " (code: " + deref(want.Code) + ") (request_id: " + deref(want.RequestID) + ") (" + api.Code() + ")"
+			tail := " (code: " + deref(want.Code) + ") (request_id: " + deref(want.RequestID) + ") (" + api.SDKCode() + ")"
 			if !strings.HasSuffix(err.Error(), tail) {
 				t.Fatalf("%q does not end with %q", err.Error(), tail)
 			}
@@ -334,6 +334,39 @@ func TestTheMessageNamesTheAPICodeBeforeTheRequestID(t *testing.T) {
 	}
 }
 
+// The API's code is APICode, as code is in the other SDKs. SDKCode is the
+// SDK's category, and the deprecated Code still returns it.
+func TestAPICodeIsTheAPIsCodeAndSDKCodeTheCategory(t *testing.T) {
+	c, _ := start(t, replyWith(400, map[string]any{"message": "Bad query.", "code": "invalid_parameter"}, nil), keyed())
+	_, err := c.Search(context.Background(), "q", nil)
+	var api *keenable.APIError
+	if !errors.As(err, &api) || api.APICode != "invalid_parameter" || api.SDKCode() != keenable.CodeAPI {
+		t.Fatalf("%#v", err)
+	}
+	var sdk keenable.Error
+	if !errors.As(err, &sdk) || sdk.SDKCode() != keenable.CodeAPI {
+		t.Fatalf("%#v", err)
+	}
+}
+
+func TestDeprecatedCodeReturnsSDKCode(t *testing.T) {
+	errs := []keenable.Error{
+		&keenable.InvalidRequestError{},
+		&keenable.ConnectionError{},
+		&keenable.APIError{},
+		&keenable.AuthError{APIError: &keenable.APIError{}},
+		&keenable.RateLimitError{APIError: &keenable.APIError{}},
+		&keenable.InsufficientCreditsError{APIError: &keenable.APIError{}},
+		&keenable.WebhookVerificationError{},
+	}
+	for _, e := range errs {
+		//lint:ignore SA1019 this test pins the deprecated alias.
+		if got := e.Code(); got != e.SDKCode() || got == "" {
+			t.Fatalf("%T: Code() = %q, SDKCode() = %q", e, got, e.SDKCode())
+		}
+	}
+}
+
 func TestNotYourLimitWithoutFixStillDoesNotAskForAKey(t *testing.T) {
 	c, _ := startKeyless(t, replyWith(429, map[string]any{"message": "busy", "code": "search_rate_limited"}, nil), nil)
 	_, err := c.Search(context.Background(), "q", nil)
@@ -362,7 +395,7 @@ func TestInsufficientCreditsKeepsTheOldCodeAndMessage(t *testing.T) {
 	c, _ := startKeyless(t, jsonHandler(http.StatusPaymentRequired, map[string]any{"detail": "no credits"}), nil)
 	_, err := c.Search(context.Background(), "q", nil)
 	var credits *keenable.InsufficientCreditsError
-	if !errors.As(err, &credits) || credits.Code() != keenable.CodeAPI {
+	if !errors.As(err, &credits) || credits.SDKCode() != keenable.CodeAPI {
 		t.Fatal(err)
 	}
 	if !errors.As(err, new(*keenable.CreditsError)) {

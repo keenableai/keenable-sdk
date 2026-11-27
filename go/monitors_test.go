@@ -406,7 +406,7 @@ func TestVerifyWebhookRefusesAStaleDeliveryByTheClock(t *testing.T) {
 	_, err := keenable.VerifyWebhook([]byte(webhookBody), webhookHeaders(),
 		"whsec_a2VlbmFibGUtbW9uaXRvcnMtd2ViaG9vay10ZXN0ISE=", nil)
 	var bad *keenable.WebhookVerificationError
-	if !errors.As(err, &bad) || bad.Code() != keenable.CodeWebhookVerification {
+	if !errors.As(err, &bad) || bad.SDKCode() != keenable.CodeWebhookVerification {
 		t.Fatalf("err %v", err)
 	}
 }

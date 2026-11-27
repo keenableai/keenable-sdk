@@ -410,8 +410,12 @@ which stays the same across retries.
 ## Errors
 
 SDK errors implement `keenable.Error`. `errors.As` into that interface
-catches them. `Code()` is a stable string, and the same token is the last
-parentheses of `Error()`. `errors.As` into a concrete type catches one case.
+catches them. `SDKCode()` is the SDK's stable category, and the same token is
+the last parentheses of `Error()`. It is not the API's error code: that is
+`APIError.APICode` (such as `invalid_parameter`), the value the Python,
+TypeScript and Rust SDKs call `code`. Branch on `APICode` for the exact reason.
+`Code()` is a deprecated alias of `SDKCode()` and will be removed in a later
+release. `errors.As` into a concrete type catches one case.
 `AuthError`, `RateLimitError` and `InsufficientCreditsError` unwrap to
 `APIError`.
 
@@ -423,11 +427,11 @@ if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) 
 }
 var sdk keenable.Error
 if errors.As(err, &sdk) {
-    fmt.Println(sdk.Code()) // invalid_request, connection, api_error, auth, rate_limit
+    fmt.Println(sdk.SDKCode()) // invalid_request, connection, api_error, auth, rate_limit
 }
 ```
 
-| Type | Code | When |
+| Type | `SDKCode()` | When |
 |---|---|---|
 | `RateLimitError` | `rate_limit` | HTTP 429. The message names `X-RateLimit-Reset` when the API sent it. A keyless call is told to set `KEENABLE_API_KEY`. A keyed call is told to wait for the window |
 | `AuthError` | `auth` | HTTP 401/403, the key was rejected |
@@ -442,8 +446,8 @@ The SDK already retries what can be retried (see
 [Retries](#retries)), so an error that reaches you is final for this call.
 Every `APIError` carries what the API says about the failure. Branch on
 `APICode`, not on the message. Each field is its zero value (nil for
-`Retryable` and `RateLimit`) when the API did not send it. `Code()` stays the
-SDK's coarser code above.
+`Retryable` and `RateLimit`) when the API did not send it. `SDKCode()` stays the
+SDK's coarser category above.
 
 ```go
 resp, err := client.Search(ctx, "wafer scale engine", nil)

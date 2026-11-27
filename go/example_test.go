@@ -29,7 +29,7 @@ func ExampleInvalidRequestError() {
 	fmt.Println(err)
 	var sdk keenable.Error
 	if errors.As(err, &sdk) {
-		fmt.Println(sdk.Code())
+		fmt.Println(sdk.SDKCode())
 	}
 	// Output:
 	// baseURL must be an https:// URL with a host, got "" (invalid_request)
