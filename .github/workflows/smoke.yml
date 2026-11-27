@@ -1,0 +1,60 @@
+name: Live smoke
+
+# Every other workflow runs against local test servers. This one calls the
+# production API: one keyless search and one keyless fetch of example.com per
+# SDK, so an API change that breaks an SDK, or a broken release on a registry,
+# fails here instead of in a user's code. No secrets: every call is keyless.
+on:
+  schedule:
+    - cron: "17 4 * * *" # nightly, 04:17 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    # repo: the SDK as it is on main. registry: the latest published release.
+    name: ${{ matrix.sdk }} (${{ matrix.source }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: [python, typescript, go, rust]
+        source: [repo, registry]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # smoke.ts runs directly on Node 22.18+ (type stripping).
+      - if: matrix.sdk == 'typescript'
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - if: matrix.sdk == 'go'
+        uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: false
+      # Python 3 and rustup ship on GitHub's Ubuntu runners.
+      - if: matrix.sdk == 'rust'
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - name: Search and fetch against production
+        run: scripts/smoke/run.sh ${{ matrix.sdk }} ${{ matrix.source }}
+      - name: Report the failure
+        if: failure()
+        env:
+          SDK: ${{ matrix.sdk }}
+          SOURCE: ${{ matrix.source }}
+        run: |
+          echo "::error title=Live smoke failed::The $SDK SDK ($SOURCE) could not search or fetch against the production API. See the step above for the request and the reason."
+          {
+            echo "### Live smoke failed: $SDK ($SOURCE)"
+            echo
+            echo "The $SDK SDK, installed from $SOURCE, failed a keyless search or fetch against the production API."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -456,6 +456,9 @@ async fn options() {
                 }
             }
             "timeout" => {
+                // One attempt only: a 1 ms deadline can fire and the retry
+                // then succeed, which sends two requests where one is checked.
+                req.max_retries = Some(0);
                 let t = value.as_f64().map(Duration::from_secs_f64);
                 if client_scope {
                     client_opts.timeout = t;

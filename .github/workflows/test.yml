@@ -61,6 +61,41 @@ jobs:
           unzip -l dist/*.whl | grep -q 'keenable/py.typed' \
             || { echo "::error::the wheel is missing keenable/py.typed"; exit 1; }
 
+  # The examples are what users copy, so a rename in the SDK must not leave
+  # them broken. Every example is type checked against this checkout's SDK
+  # (model SDKs they also call are left untyped); Go and Rust build theirs in
+  # their own jobs. The live smoke programs (scripts/smoke) are checked here too.
+  examples:
+    name: Examples type check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "**/pyproject.toml"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+      - name: Python examples compile and type check
+        working-directory: python
+        run: |
+          uv run --group dev python -m py_compile ../examples/*/*.py ../scripts/smoke/*.py
+          uv run --group dev mypy --config-file ../examples/mypy.ini ../examples ../scripts/smoke
+      - name: TypeScript and JavaScript examples type check
+        working-directory: typescript
+        run: |
+          npm install --legacy-peer-deps
+          npx tsc -p ../examples
+      - name: Go smoke program builds
+        run: |
+          test -z "$(gofmt -l scripts/smoke)" || { gofmt -l scripts/smoke; exit 1; }
+          scripts/smoke/run.sh go build
+
   python:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
