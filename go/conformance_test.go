@@ -609,6 +609,10 @@ func TestConformanceOptions(t *testing.T) {
 					}
 				}
 				d := time.Duration(math.Round(seconds * float64(time.Second)))
+				// One attempt only: a 1 ms deadline can fire and the retry
+				// then succeed, which sends two requests where one is checked.
+				noRetries := 0
+				req.MaxRetries = &noRetries
 				if tc.Scope == "client" {
 					clientOpts.Timeout = d
 				} else if !isNull {

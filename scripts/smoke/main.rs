@@ -12,7 +12,10 @@ const URL: &str = "https://example.com";
 const EXPECT: &str = "example";
 
 fn fail(message: String) -> ! {
-    eprintln!("smoke FAILED (rust, keenable {}): {message}", keenable::VERSION);
+    eprintln!(
+        "smoke FAILED (rust, keenable {}): {message}",
+        keenable::VERSION
+    );
     exit(1);
 }
 
