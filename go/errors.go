@@ -2,8 +2,9 @@ package keenable
 
 import "time"
 
-// Stable codes an agent can switch on. They are also the last parentheses
-// of Error().
+// The SDK's own error categories, returned by SDKCode(). Each is also the last
+// parentheses of Error(). They are not the API's error codes: those are in
+// APIError.APICode ("invalid_parameter", "rate_limit_per_second", ...).
 const (
 	CodeInvalidRequest = "invalid_request"
 	CodeConnection     = "connection"
@@ -30,10 +31,22 @@ const (
 //
 // errors.As into Error catches the whole set, the way except KeenableError
 // does in the other SDKs. errors.As into a concrete type catches one case.
-// Code is stable. The human sentence is Error().
+// SDKCode is the SDK's stable category (one of the Code* constants), like
+// Rust's Error::sdk_code. To branch on the API's own reason, such as
+// "invalid_parameter", read [APIError.APICode]: that is the value the Python,
+// TypeScript and Rust SDKs call the error's code. The human sentence is
+// Error().
 type Error interface {
 	error
 	keenableError()
+	// SDKCode is the SDK's category: one of the Code* constants.
+	SDKCode() string
+	// Code returns the same value as SDKCode.
+	//
+	// Deprecated: Code is the SDK's category, not the API's error code,
+	// which the other SDKs call code. Use SDKCode for the category, or
+	// APIError.APICode for the API's code. Code will be removed in a later
+	// release.
 	Code() string
 }
 
@@ -49,7 +62,15 @@ func (e *InvalidRequestError) Error() string {
 	}
 	return e.msg + " (" + CodeInvalidRequest + ")"
 }
-func (e *InvalidRequestError) Code() string   { return CodeInvalidRequest }
+
+// SDKCode is CodeInvalidRequest.
+func (e *InvalidRequestError) SDKCode() string { return CodeInvalidRequest }
+
+// Code returns SDKCode().
+//
+// Deprecated: use SDKCode, or APIError.APICode for the API's error code.
+func (e *InvalidRequestError) Code() string { return e.SDKCode() }
+
 func (e *InvalidRequestError) keenableError() {}
 
 // ConnectionError means the API could not be reached, or the client deadline
@@ -71,7 +92,15 @@ func (e *ConnectionError) Error() string {
 	}
 	return e.msg + " (" + CodeConnection + ")"
 }
-func (e *ConnectionError) Code() string   { return CodeConnection }
+
+// SDKCode is CodeConnection.
+func (e *ConnectionError) SDKCode() string { return CodeConnection }
+
+// Code returns SDKCode().
+//
+// Deprecated: use SDKCode, or APIError.APICode for the API's error code.
+func (e *ConnectionError) Code() string { return e.SDKCode() }
+
 func (e *ConnectionError) keenableError() {}
 
 // APIError is a non-2xx response.
@@ -83,7 +112,7 @@ func (e *ConnectionError) keenableError() {}
 // The API's error body adds fields an agent can act on. Each is the zero value
 // (nil for pointers) when the API did not send it, which is the case for
 // older responses. Error() ends with "(code: <APICode>) (request_id:
-// <RequestID>)" when the API sent them, then the SDK's own "(<Code()>)".
+// <RequestID>)" when the API sent them, then the SDK's own "(<SDKCode()>)".
 //
 // The API's docs link, a 402's billing and top-up links and a pay-per-request
 // (x402) offer are not exposed, in a field or in the message.
@@ -94,7 +123,8 @@ type APIError struct {
 	RequestID string
 	// APICode is the API's stable, machine-readable reason, such as
 	// "rate_limit_per_second" or "target_blocked". Branch on it, not on the
-	// message. Code() stays the SDK's own coarser code.
+	// message. It is what the Python, TypeScript and Rust SDKs call the
+	// error's code. SDKCode() is the SDK's own coarser category.
 	APICode string
 	// Type is the error's category, one of the Type* constants. It is
 	// derived from the status and APICode when the API did not send it, so
@@ -154,9 +184,12 @@ func (e *APIError) Error() string {
 	if e.RequestID != "" {
 		msg += " (request_id: " + e.RequestID + ")"
 	}
-	return msg + " (" + e.Code() + ")"
+	return msg + " (" + e.SDKCode() + ")"
 }
-func (e *APIError) Code() string {
+
+// SDKCode is CodeAPI, CodeAuth or CodeRateLimit. The API's own code is
+// APICode.
+func (e *APIError) SDKCode() string {
 	if e == nil {
 		return ""
 	}
@@ -165,6 +198,12 @@ func (e *APIError) Code() string {
 	}
 	return e.code
 }
+
+// Code returns SDKCode().
+//
+// Deprecated: use SDKCode, or APIError.APICode for the API's error code.
+func (e *APIError) Code() string { return e.SDKCode() }
+
 func (e *APIError) keenableError() {}
 
 // AuthError means the API key was rejected (HTTP 401 or 403).
@@ -202,7 +241,7 @@ func (e *RateLimitError) Unwrap() error {
 // InsufficientCreditsError is a 402: the organization has no credits left, or
 // the API asked for a per-request (x402) payment, which this SDK cannot make.
 // Retrying returns the same error until a human with console access adds
-// credits; with x402, call the API with a key instead. Code() stays CodeAPI,
+// credits; with x402, call the API with a key instead. SDKCode() stays CodeAPI,
 // as it was before this type existed.
 type InsufficientCreditsError struct {
 	*APIError
@@ -227,7 +266,7 @@ var (
 	_ Error = (*InsufficientCreditsError)(nil)
 )
 
-// CodeWebhookVerification is the Code() of a [WebhookVerificationError].
+// CodeWebhookVerification is the SDKCode() of a [WebhookVerificationError].
 const CodeWebhookVerification = "webhook_verification"
 
 // WebhookVerificationError means a webhook delivery failed [VerifyWebhook]:
@@ -244,7 +283,15 @@ func (e *WebhookVerificationError) Error() string {
 	}
 	return e.msg + " (" + CodeWebhookVerification + ")"
 }
-func (e *WebhookVerificationError) Code() string   { return CodeWebhookVerification }
+
+// SDKCode is CodeWebhookVerification.
+func (e *WebhookVerificationError) SDKCode() string { return CodeWebhookVerification }
+
+// Code returns SDKCode().
+//
+// Deprecated: use SDKCode, or APIError.APICode for the API's error code.
+func (e *WebhookVerificationError) Code() string { return e.SDKCode() }
+
 func (e *WebhookVerificationError) keenableError() {}
 
 var _ Error = (*WebhookVerificationError)(nil)

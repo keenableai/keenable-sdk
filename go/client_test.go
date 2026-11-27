@@ -1109,14 +1109,14 @@ func TestErrorCarriesCodeAndRequestID(t *testing.T) {
 	if !errors.As(err, &rate) {
 		t.Fatal(err)
 	}
-	if rate.Code() != keenable.CodeRateLimit || rate.RequestID != "req_test" || rate.Reset == "" || rate.Limit != 1000 {
+	if rate.SDKCode() != keenable.CodeRateLimit || rate.RequestID != "req_test" || rate.Reset == "" || rate.Limit != 1000 {
 		t.Fatalf("%s limit=%d reset=%q id=%q", err, rate.Limit, rate.Reset, rate.RequestID)
 	}
 	if !strings.Contains(err.Error(), "req_test") || !strings.Contains(err.Error(), "Retry after 2026-10-28T14:52:48.084Z") || !strings.Contains(err.Error(), "(rate_limit)") {
 		t.Fatal(err)
 	}
 	var sdk keenable.Error
-	if !errors.As(err, &sdk) || sdk.Code() != keenable.CodeRateLimit {
+	if !errors.As(err, &sdk) || sdk.SDKCode() != keenable.CodeRateLimit {
 		t.Fatal(err)
 	}
 }

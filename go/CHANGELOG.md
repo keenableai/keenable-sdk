@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Added:** `SDKCode()` on every error (and on the `keenable.Error` interface): the SDK's category, one of the `Code*` constants (`invalid_request`, `connection`, `api_error`, `auth`, `rate_limit`, `webhook_verification`), as Rust's `Error::sdk_code`. To branch on the API's own reason, such as `invalid_parameter`, read `APIError.APICode`: that is the value the Python, TypeScript and Rust SDKs call the error's `code`.
+- **Deprecated:** `Code()` on every error. It returns the same value as `SDKCode()`, as before, and will be removed in a later release. Code that compared `err.Code()` with an API code such as `"invalid_parameter"` never matched; compare `APIError.APICode` instead. `Error()` is unchanged and still ends with `(<SDKCode()>)`.
 - **Added:** `SearchResponse.Usage` (`*Usage`): what the search cost and, with a key, `Cost` and `Balance` in US dollars. Nil on keyless calls.
 - **Changed:** `Usage` is read field by field, so a malformed `cost` or `balance` no longer loses the other fields.
 - **Changed:** the `keenable_search` tool's `moderation` description: supported for a URL query when `exclude_domains` is set.
