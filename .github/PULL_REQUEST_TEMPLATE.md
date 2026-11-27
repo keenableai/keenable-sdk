@@ -4,7 +4,7 @@
 
 ## Checklist
 
-A new option, method, model field or error type goes into all four SDKs, with tests in each. See [CONTRIBUTING.md](../CONTRIBUTING.md).
+A new option, method, model field or error type goes into all four SDKs, with tests in each. See [CONTRIBUTING.md](https://github.com/keenableai/keenable-sdk/blob/main/CONTRIBUTING.md).
 
 - [ ] Python: code, tests and a `## Unreleased` line in `python/CHANGELOG.md`
 - [ ] TypeScript: code, tests and a `## Unreleased` line in `typescript/CHANGELOG.md`
