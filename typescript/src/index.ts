@@ -43,7 +43,12 @@ export {
   TOOLS,
   runToolCall,
 } from "./tools.js";
-export type { AnthropicToolDefinition, GeminiToolDefinition, ToolDefinition } from "./tools.js";
+export type {
+  AnthropicToolDefinition,
+  GeminiToolDefinition,
+  ToolDefinition,
+  ToolInputSchema,
+} from "./tools.js";
 export type {
   Billing,
   BillingAccount,
