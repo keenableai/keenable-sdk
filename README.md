@@ -148,6 +148,25 @@ See each SDK's README for the full list, and [`examples/monitors`](./examples/mo
 - [`docs/partners/cerebras/keenable.mdx`](./docs/partners/cerebras/keenable.mdx) -
   integration page written for the Cerebras Inference docs.
 
+## Development
+
+The root `Makefile` runs the same checks as CI. It needs `uv`, Node 22.18+,
+Go and, for the Rust targets, a Rust toolchain.
+
+| Command | What it runs |
+|---|---|
+| `make test` | every SDK's tests (`test-python`, `test-typescript`, `test-go`, `test-rust`) |
+| `make lint` | every SDK's linters and type checks, plus `make examples` |
+| `make examples` | type checks `examples/` and `scripts/smoke` against this checkout |
+| `make sync` | the shared conformance and error-contract fixtures are up to date |
+| `make smoke` | one live keyless search and fetch per SDK against production |
+
+Rust builds are heavy: `test-rust` and `lint-rust` compile the crate and all its
+dependencies. Run them on a build machine, or leave them to CI.
+
+[`AGENTS.md`](./AGENTS.md) has the rules for a change: every option lands in
+all four SDKs, with tests, and with the public docs.
+
 ## License
 
 MIT

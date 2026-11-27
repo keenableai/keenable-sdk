@@ -1,0 +1,21 @@
+{
+  // Type checks every TypeScript and JavaScript example, and the live smoke
+  // test, against the SDK source in typescript/. Run from typescript/ after
+  // npm install: npx tsc -p ../examples
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": true,
+    "skipLibCheck": true,
+    "typeRoots": ["../typescript/node_modules/@types"],
+    "types": ["node"],
+    "paths": { "keenable": ["../typescript/src/index.ts"] }
+  },
+  "include": ["**/*.ts", "**/*.mts", "**/*.mjs", "../scripts/smoke/*.ts"],
+  "exclude": ["node_modules"]
+}

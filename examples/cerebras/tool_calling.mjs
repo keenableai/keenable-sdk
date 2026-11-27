@@ -16,6 +16,8 @@ const QUESTION = 'What did Cerebras announce most recently, and when?';
 const keenable = new Keenable({ apiKey: process.env['KEENABLE_API_KEY'] });
 const cerebras = new Cerebras({ apiKey: process.env['CEREBRAS_API_KEY'] });
 
+// The conversation grows with assistant and tool messages as the model works.
+/** @type {Array<Record<string, unknown>>} */
 const messages = [
   {
     role: 'system',
