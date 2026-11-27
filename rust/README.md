@@ -12,7 +12,7 @@ cargo add keenable
 cargo add tokio --features macros,rt-multi-thread
 ```
 
-Rust 1.80 or newer. The client is async and runs on [Tokio](https://tokio.rs).
+Rust 1.85 or newer. The client is async and runs on [Tokio](https://tokio.rs).
 TLS uses rustls by default; turn on the `native-tls` feature (with
 `default-features = false`) to use the platform's TLS library instead.
 

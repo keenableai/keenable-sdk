@@ -13,7 +13,7 @@ markdown.
 | Python 3.9+ | [`keenable`](https://pypi.org/project/keenable/) | [`python/`](./python) |
 | TypeScript / Node 18+ | [`keenable`](https://www.npmjs.com/package/keenable) | [`typescript/`](./typescript) |
 | Go 1.22+ | [`keenable`](https://pkg.go.dev/github.com/keenableai/keenable-sdk/go) | [`go/`](./go) |
-| Rust 1.80+ | [`keenable`](https://crates.io/crates/keenable) | [`rust/`](./rust) |
+| Rust 1.85+ | [`keenable`](https://crates.io/crates/keenable) | [`rust/`](./rust) |
 
 ```bash
 pip install keenable
