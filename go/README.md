@@ -544,11 +544,12 @@ any other header, the query string or a request or response body.
 The records are `log/slog` records at debug level with the message
 `keenable`. `KEENABLE_LOG=debug` sends them to stderr through a
 `slog.TextHandler`. To send them to your own handler, set `Options.Logger`;
-the records then go there whatever `KEENABLE_LOG` says, if its level lets
-debug through:
+the records then go there whatever `KEENABLE_LOG` says, if its handler lets
+debug records through:
 
 ```go
-client, err := keenable.New(&keenable.Options{Logger: slog.Default()})
+logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+client, err := keenable.New(&keenable.Options{Logger: logger})
 ```
 
 ## Configuration
