@@ -341,8 +341,11 @@ function contextBlock(header: string, body: string): string {
 
 /** The result set for one `search()` call. */
 export class SearchResponse {
+  /** The query as the API ran it. */
   readonly query: string;
+  /** The search mode the API used, when it said. */
   readonly mode?: string;
+  /** The ranked results, best first. Iterating the response yields these. */
   readonly results: SearchResult[];
   /** The API's id for this request. Quote it when reporting a problem. */
   readonly requestId?: string;
@@ -350,6 +353,7 @@ export class SearchResponse {
   readonly warnings: SearchWarning[];
   /** What the search cost and, with a key, the balance left after it. Undefined on keyless calls. */
   readonly usage?: Usage;
+  /** The response body as the API sent it, for fields the SDK does not model. */
   readonly raw: Record<string, unknown>;
 
   constructor(init: {
@@ -374,6 +378,7 @@ export class SearchResponse {
     return this.results[Symbol.iterator]();
   }
 
+  /** The number of results. */
   get length(): number {
     return this.results.length;
   }

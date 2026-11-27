@@ -11,6 +11,9 @@ extracted, plus a fetch endpoint that returns any URL as clean markdown.
 npm install keenable
 ```
 
+Every class, method and type is listed in the
+[API reference](https://keenableai.github.io/keenable-sdk/typescript/).
+
 Node 18 or newer (the SDK uses the built-in `fetch`). No runtime dependencies.
 
 ## Search
@@ -449,6 +452,18 @@ A custom `fetch` must honour `redirect: "manual"`, which the SDK passes on
 every request so the API key never follows a redirect. If yours follows one
 anyway, the SDK throws a `KeenableRedirectError` that tells you to rotate the
 key, since it may already have been sent to the redirect's target.
+
+## API reference
+
+The [API reference](https://keenableai.github.io/keenable-sdk/typescript/) is
+generated from the TSDoc comments with [TypeDoc](https://typedoc.org) and
+published on every push to `main`. To build it locally (from `typescript/`):
+
+```bash
+npm run docs
+```
+
+It lands in `api-docs/`.
 
 ## License
 

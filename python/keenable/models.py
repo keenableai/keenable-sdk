@@ -447,9 +447,13 @@ class SearchResponse:
     """The result set for one :meth:`Keenable.search` call."""
 
     query: str
+    """The query as the API ran it."""
     results: list[SearchResult]
+    """The ranked results, best first. Iterating the response yields these."""
     mode: str | None = None
+    """The search mode the API used, when it said."""
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
+    """The response body as the API sent it, for fields the SDK does not model."""
     request_id: str | None = None
     """The API's id for this request. Quote it when reporting a problem."""
     warnings: list[SearchWarning] = field(default_factory=list)

@@ -5,6 +5,7 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
+- **Added:** a generated API reference at https://keenableai.github.io/keenable-sdk/python/ (pdoc, rebuilt on every push to `main`), linked from the README and as the package's `Documentation` URL. `SearchResponse.query`, `results`, `mode` and `raw` now have docstrings.
 - **Added:** `SearchResponse.usage`, the dict the API sent: what the search cost and, with a key, `cost` and `balance` in US dollars (read as below). None on keyless calls.
 - **Changed:** the `keenable_search` tool's `moderation` description: supported for a URL query when `exclude_domains` is set.
 - **Added:** `Page.usage` documents `cost` and `balance` (`{"amount": <US dollars>, "amount_decimal": "<the same amount, exact>", "currency": "usd"}`): what the page cost and the organization's balance after it. `usage` stays the dict the API sent, except that `cost` and `balance` are read like `Money` and given as its dict, so `amount_decimal` is filled in from `amount` for an older server, and a `cost` or `balance` that is not an object is left out. Add costs with `Decimal(usage["cost"]["amount_decimal"])` rather than with the float `amount`.

@@ -24,12 +24,12 @@ dependencies = ["httpx>=0.27", "httpcore>=1.0"]
 
 [project.urls]
 Homepage = "https://keenable.ai"
-Documentation = "https://github.com/keenableai/keenable-sdk#readme"
+Documentation = "https://keenableai.github.io/keenable-sdk/python/"
 Repository = "https://github.com/keenableai/keenable-sdk"
 Issues = "https://github.com/keenableai/keenable-sdk/issues"
 
 [dependency-groups]
-dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "pytest-cov>=7.1", "ruff>=0.9", "mypy>=1.14"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "pytest-cov>=7.1", "ruff>=0.9", "mypy>=1.14", "pdoc>=15.0"]
 
 [build-system]
 requires = ["hatchling"]
