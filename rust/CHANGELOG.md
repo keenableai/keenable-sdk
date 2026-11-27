@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.0
+
 - **Added:** `SearchResponse::usage` (`Option<Usage>`): what the search cost and, with a key, `cost` and `balance` in US dollars. `None` on keyless calls.
 - **Fixed:** a malformed `cost` or `balance` no longer drops the whole `Usage` of a page; each field is read on its own.
 - **Fixed:** `Usage::amount` accepts a whole number sent in float form, such as `1.0`, as the other SDKs do; anything else is still 0.
