@@ -62,6 +62,7 @@ async fn backend_error_bodies_parse_into_typed_errors() {
             || api.error_type != want["type"].as_str().unwrap()
             || api.fix != s(&want["fix"])
             || api.param != s(&want["param"])
+            || api.docs_url != s(&want["docs_url"])
             || api.request_id != s(&want["request_id"])
             || api.retryable != want["retryable"].as_bool()
         {

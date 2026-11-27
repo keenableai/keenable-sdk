@@ -118,14 +118,14 @@ function resolveBaseUrl(baseUrl: string | undefined): string {
     parsed = new URL(raw);
   } catch {
     throw new KeenableInvalidRequestError(
-      `baseUrl must be an absolute https:// URL, got ${JSON.stringify(raw)}`,
+      `baseUrl must be an absolute https:// URL, got ${JSON.stringify(raw)}`, { param: "base_url" },
     );
   }
   // The endpoint path is appended to the base URL, so a query or fragment
   // would swallow it.
   if (raw.includes("?") || raw.includes("#")) {
     throw new KeenableInvalidRequestError(
-      `baseUrl must be an https:// URL with a host and no query or fragment, got ${JSON.stringify(raw)}`,
+      `baseUrl must be an https:// URL with a host and no query or fragment, got ${JSON.stringify(raw)}`, { param: "base_url" },
     );
   }
   // The API key is sent to this host. The parser reads a backslash as a
@@ -135,7 +135,7 @@ function resolveBaseUrl(baseUrl: string | undefined): string {
   if (authority.includes("\\") || authority.includes("@") || parsed.username || parsed.password) {
     throw new KeenableInvalidRequestError(
       "baseUrl must not contain a backslash, user name or password before its path; " +
-        "pass an https:// URL with only a host, an optional port and an optional path",
+        "pass an https:// URL with only a host, an optional port and an optional path", { param: "base_url" },
     );
   }
   // The host as written: the URL parser would read 127.1 as 127.0.0.1, which
@@ -147,7 +147,7 @@ function resolveBaseUrl(baseUrl: string | undefined): string {
     return raw;
   }
   throw new KeenableInvalidRequestError(
-    `baseUrl must use https, got ${JSON.stringify(raw)}`,
+    `baseUrl must use https, got ${JSON.stringify(raw)}`, { param: "base_url" },
   );
 }
 
@@ -161,14 +161,14 @@ function resolveBaseUrl(baseUrl: string | undefined): string {
 function rejectPrivateFetchTarget(url: unknown): void {
   if (typeof url !== "string") {
     throw new KeenableInvalidRequestError(
-      `fetch() needs a URL string, got ${typeof url}`,
+      `fetch() needs a URL string, got ${typeof url}`, { param: "url" },
     );
   }
   // WHATWG parsers delete tabs and newlines and trim spaces, which other
   // parsers do not, so the two would read different hosts.
   if (/[\x00-\x1f\x7f]/.test(url) || url.startsWith(" ") || url.endsWith(" ")) {
     throw new KeenableInvalidRequestError(
-      `fetch() URL has a control character or surrounding space: ${JSON.stringify(url)}`,
+      `fetch() URL has a control character or surrounding space: ${JSON.stringify(url)}`, { param: "url" },
     );
   }
   // Exactly "scheme://": WHATWG reads https:host, https:/host and
@@ -176,14 +176,14 @@ function rejectPrivateFetchTarget(url: unknown): void {
   const scheme = /^(https?):\/\/([^/?#]*)/i.exec(url);
   if (!scheme) {
     throw new KeenableInvalidRequestError(
-      `fetch() needs an http(s) URL, got ${JSON.stringify(url)}`,
+      `fetch() needs an http(s) URL, got ${JSON.stringify(url)}`, { param: "url" },
     );
   }
   // WHATWG reads a backslash as a slash and RFC 3986 parsers do not, so
   // https://127.0.0.1\@example.com has two different hosts.
   if (scheme[2]?.includes("\\")) {
     throw new KeenableInvalidRequestError(
-      `fetch() URL has a backslash in its host: ${JSON.stringify(url)}`,
+      `fetch() URL has a backslash in its host: ${JSON.stringify(url)}`, { param: "url" },
     );
   }
   let parsed: URL;
@@ -191,30 +191,30 @@ function rejectPrivateFetchTarget(url: unknown): void {
     parsed = new URL(url);
   } catch {
     throw new KeenableInvalidRequestError(
-      `fetch() needs an absolute URL, got ${JSON.stringify(url)}`,
+      `fetch() needs an absolute URL, got ${JSON.stringify(url)}`, { param: "url" },
     );
   }
 
   const host = normalizeHost(parsed);
   if (!scheme[2] || !host) {
-    throw new KeenableInvalidRequestError(`fetch() URL has no host: ${JSON.stringify(url)}`);
+    throw new KeenableInvalidRequestError(`fetch() URL has no host: ${JSON.stringify(url)}`, { param: "url" });
   }
   // One trailing dot is the root label. Any other empty label (a..b, .a,
   // a..) is read differently by resolvers and URL parsers, so it is refused.
   const name = parsed.hostname.endsWith(".") ? parsed.hostname.slice(0, -1) : parsed.hostname;
   if (!name.includes(":") && name.split(".").includes("")) {
     throw new KeenableInvalidRequestError(
-      `fetch() URL has an empty label in its host (two dots in a row, or a leading dot): ${JSON.stringify(url)}`,
+      `fetch() URL has an empty label in its host (two dots in a row, or a leading dot): ${JSON.stringify(url)}`, { param: "url" },
     );
   }
   if (BLOCKED_HOSTS.has(host) || host.endsWith(".localhost")) {
     throw new KeenableInvalidRequestError(
-      `refusing to fetch internal host ${JSON.stringify(host)}`,
+      `refusing to fetch internal host ${JSON.stringify(host)}`, { param: "url" },
     );
   }
   if (isPrivateAddress(host)) {
     throw new KeenableInvalidRequestError(
-      `refusing to fetch private address ${JSON.stringify(host)}`,
+      `refusing to fetch private address ${JSON.stringify(host)}`, { param: "url" },
     );
   }
 }
@@ -707,7 +707,7 @@ function isRateLimited(error: unknown): boolean {
 function nonNegativeInteger(name: string, value: number): number {
   if (!Number.isInteger(value) || value < 0) {
     throw new KeenableInvalidRequestError(
-      `${name} must be a non-negative integer, got ${JSON.stringify(value)}`,
+      `${name} must be a non-negative integer, got ${JSON.stringify(value)}`, { param: "max_retries" },
     );
   }
   return value;
@@ -724,12 +724,12 @@ function checkHeaders(name: string, headers: Record<string, string>): Record<str
   for (const [key, value] of Object.entries(headers)) {
     if (!HEADER_NAME.test(key)) {
       throw new KeenableInvalidRequestError(
-        `${name} has an invalid header name ${JSON.stringify(key)}`,
+        `${name} has an invalid header name ${JSON.stringify(key)}`, { param: "headers" },
       );
     }
     if (/[\r\n\0]/.test(String(value))) {
       throw new KeenableInvalidRequestError(
-        `${name} value for ${JSON.stringify(key)} holds CR, LF or NUL`,
+        `${name} value for ${JSON.stringify(key)} holds CR, LF or NUL`, { param: "headers" },
       );
     }
   }
@@ -742,7 +742,7 @@ const MAX_TIMER_MS = 2_147_483_647;
 function positiveTimeout(name: string, value: number): number {
   if (!Number.isFinite(value) || value <= 0) {
     throw new KeenableInvalidRequestError(
-      `${name} must be a positive number of milliseconds, got ${JSON.stringify(value)}`,
+      `${name} must be a positive number of milliseconds, got ${JSON.stringify(value)}`, { param: "timeout" },
     );
   }
   return value;
@@ -753,7 +753,7 @@ function positiveTimeout(name: string, value: number): number {
  *
  * Keyless by default: with no API key it calls the public endpoints, which are
  * rate limited per hour. Pass `apiKey` (or set `KEENABLE_API_KEY`) to lift that
- * limit. Create a key at https://keenable.ai/console.
+ * limit. Create a key at https://app.keenable.ai/console/api-keys.
  *
  * ```ts
  * const keenable = new Keenable();
@@ -796,7 +796,7 @@ export class Keenable {
   ): Promise<{ data: Record<string, unknown>; requestId?: string }> {
     if (this.keyless) {
       throw new KeenableAuthError(
-        "Keenable authentication failed (401): Monitors need an API key. Pass apiKey or set KEENABLE_API_KEY; create one at https://keenable.ai/console. (code: missing_api_key)",
+        "Keenable authentication failed (401): Monitors need an API key. Pass apiKey or set KEENABLE_API_KEY; create one at https://app.keenable.ai/console/api-keys. (code: missing_api_key)",
         401,
         undefined,
         { code: "missing_api_key", type: "authentication_error", retryable: false },
@@ -870,7 +870,7 @@ export class Keenable {
    */
   async search(query: string, options: SearchOptions = {}): Promise<SearchResponse> {
     if (typeof query !== "string" || query.trim() === "") {
-      throw new KeenableInvalidRequestError("search() needs a non-empty query");
+      throw new KeenableInvalidRequestError("search() needs a non-empty query", { param: "query" });
     }
 
     // An empty string is unset, as Go cannot tell the two apart. A list
@@ -886,7 +886,7 @@ export class Keenable {
       if (filter.jsonType === "boolean") {
         if (typeof value !== "boolean") {
           throw new KeenableInvalidRequestError(
-            `${filter.option} must be true or false, got a ${typeof value}`,
+            `${filter.option} must be true or false, got a ${typeof value}`, { param: filter.wire },
           );
         }
         // Sent only as true: false is the API default.
@@ -1069,7 +1069,7 @@ export class Keenable {
       // redirect: "manual"; the reply came from wherever it led, and that
       // fetch may have carried X-API-Key there.
       const sentKey = this.apiKey
-        ? " Your API key may have been sent to that address: rotate it at https://keenable.ai/console."
+        ? " Your API key may have been sent to that address: rotate it at https://app.keenable.ai/console/api-keys."
         : "";
       throw new KeenableRedirectError(
         `the Keenable API redirected to ${response.url || "another URL"}, and the fetch function you passed followed it although the SDK asked it not to (redirect: "manual").${sentKey} The response was discarded. Check KEENABLE_API_URL, and make the fetch option honour redirect: "manual".`,
@@ -1417,5 +1417,6 @@ function errorDetails(
     limit: rateLimitInfo(b.limit),
     value: invalidFilter ? nonEmpty(b.value) : undefined,
     reason: invalidFilter ? nonEmpty(b.reason) : undefined,
+    docsUrl: nonEmpty(b.docs_url),
   };
 }

@@ -33,6 +33,7 @@ type contractCase struct {
 		RetryAfterSeconds *float64 `json:"retry_after_seconds"`
 		RequestID         *string  `json:"request_id"`
 		Param             *string  `json:"param"`
+		DocsURL           *string  `json:"docs_url"`
 		Fix               *string  `json:"fix"`
 		Limit             *struct {
 			Scope    string `json:"scope"`
@@ -119,6 +120,9 @@ func TestBackendErrorBodiesParseIntoTypedErrors(t *testing.T) {
 			if api.Fix != deref(want.Fix) || api.Param != deref(want.Param) {
 				t.Fatalf("fix=%q param=%q", api.Fix, api.Param)
 			}
+			if api.DocsURL != deref(want.DocsURL) {
+				t.Fatalf("docs url %q, want %q", api.DocsURL, deref(want.DocsURL))
+			}
 			if api.RequestID != deref(want.RequestID) {
 				t.Fatalf("request id %q", api.RequestID)
 			}
@@ -202,7 +206,7 @@ func assertAbsent(t *testing.T, err error, absent []string) {
 
 func TestTheRemovedFieldsAreGone(t *testing.T) {
 	typ := reflect.TypeOf(keenable.APIError{})
-	for _, name := range []string{"DocsURL", "BillingURL", "AutoTopUpURL", "PayPerRequest", "Raw"} {
+	for _, name := range []string{"BillingURL", "AutoTopUpURL", "PayPerRequest", "Raw"} {
 		if _, ok := typ.FieldByName(name); ok {
 			t.Fatalf("APIError.%s is back", name)
 		}
@@ -276,8 +280,34 @@ func TestTheMessageEndsWithTheRequestIDAndNoDocsLink(t *testing.T) {
 	if err.Error() != want {
 		t.Fatalf("%q", err.Error())
 	}
-	if api := apiErrorFrom(t, err); api.Body != "Internal server error" || api.Type != keenable.TypeAPIError {
+	// Not a link into the error reference, and no code to build one from.
+	if api := apiErrorFrom(t, err); api.Body != "Internal server error" || api.Type != keenable.TypeAPIError || api.DocsURL != "" {
 		t.Fatalf("%+v", api)
+	}
+}
+
+func TestTheDocsURLIsBuiltFromTheCode(t *testing.T) {
+	c, _ := start(t, replyWith(429, map[string]any{"code": "rate_limit_per_second"}, nil), keyed())
+	_, err := c.Search(context.Background(), "q", nil)
+	api := apiErrorFrom(t, err)
+	if api.DocsURL != "https://docs.keenable.ai/errors#rate-limit-per-second" {
+		t.Fatalf("docs url %q", api.DocsURL)
+	}
+	if strings.Contains(err.Error(), "docs.keenable.ai") {
+		t.Fatalf("docs url in the message: %q", err.Error())
+	}
+}
+
+func TestALocalErrorNamesTheArgumentAtFault(t *testing.T) {
+	c, _ := start(t, replyWith(200, map[string]any{}, nil), keyed())
+	_, err := c.Search(context.Background(), "  ", nil)
+	var bad *keenable.InvalidRequestError
+	if !errors.As(err, &bad) || bad.Code() != "invalid_request" || bad.Param != "query" {
+		t.Fatalf("%#v", err)
+	}
+	_, err = c.Monitors.Get(context.Background(), "", nil)
+	if !errors.As(err, &bad) || bad.Param != "monitor_id" {
+		t.Fatalf("%#v", err)
 	}
 }
 
@@ -407,7 +437,7 @@ func TestTodaysAPILeavesTheNewFieldsEmpty(t *testing.T) {
 		api.RequestID != "" || api.Param != "" || api.RateLimit != nil {
 		t.Fatalf("%+v", api)
 	}
-	want := "Keenable rate limit exceeded (429): hourly cap reached. Set KEENABLE_API_KEY to lift the keyless hourly cap. Create a key at https://keenable.ai/console. (rate_limit)"
+	want := "Keenable rate limit exceeded (429): hourly cap reached. Set KEENABLE_API_KEY to lift the keyless hourly cap. Create a key at https://app.keenable.ai/console/api-keys. (rate_limit)"
 	if err.Error() != want {
 		t.Fatalf("%q", err.Error())
 	}

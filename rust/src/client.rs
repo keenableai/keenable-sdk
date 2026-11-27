@@ -7,7 +7,9 @@ use std::time::Duration;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::{Map, Value};
 
-use crate::error::{ApiError, ConnectionError, Error, RateLimitError, RateLimitInfo, Result};
+use crate::error::{
+    docs_url_for, ApiError, ConnectionError, Error, RateLimitError, RateLimitInfo, Result,
+};
 use crate::guard::{reject_private_fetch_target, resolve_base_url};
 use crate::models::{
     billing_from_json, non_blank, page_from_json, safe_count, search_response_from_json, Billing,
@@ -192,7 +194,7 @@ pub struct FetchOptions {
 ///
 /// Keyless by default: with no API key it uses the public endpoints, which
 /// are rate limited per hour. Pass an API key, or set `KEENABLE_API_KEY`, to
-/// lift that limit. Create a key at <https://keenable.ai/console>.
+/// lift that limit. Create a key at <https://app.keenable.ai/console/api-keys>.
 ///
 /// Cloning is cheap and shares the connection pool, so build one client and
 /// reuse it.
@@ -262,7 +264,7 @@ impl Client {
             Some(t) if t.is_zero() => {
                 return Err(Error::invalid(
                     "Options::timeout must be more than zero. Leave it None for the default of 30 seconds.",
-                ))
+                ).with_param("timeout"))
             }
             Some(t) => t,
         };
@@ -369,7 +371,8 @@ impl Client {
         if query.trim().is_empty() {
             return Err(Error::invalid(
                 "search() needs a non-empty query. Pass the question as the query argument.",
-            ));
+            )
+            .with_param("query"));
         }
         let mode = mode.filter(|m| !m.is_empty()).unwrap_or("pro");
         payload.insert("query".into(), Value::String(query.to_string()));
@@ -514,11 +517,12 @@ impl Client {
         let mut h = HeaderMap::new();
         let mut set = |name: &str, value: &str| -> Result<()> {
             let name = HeaderName::from_bytes(name.as_bytes())
-                .map_err(|_| Error::invalid(format!("header name {name:?} is not a valid HTTP header name. Use letters, digits and -.")))?;
+                .map_err(|_| Error::invalid(format!("header name {name:?} is not a valid HTTP header name. Use letters, digits and -.")).with_param("headers"))?;
             let value = HeaderValue::from_bytes(value.as_bytes()).map_err(|_| {
                 Error::invalid(format!(
                     "header {name:?} has a character HTTP does not allow in its value. Remove it."
                 ))
+                .with_param("headers")
             })?;
             h.insert(name, value);
             Ok(())
@@ -573,7 +577,7 @@ impl Client {
             Some(t) if t.is_zero() => {
                 return Err(Error::invalid(
                     "RequestOptions::timeout must be more than zero. Leave it None to keep the client's.",
-                ))
+                ).with_param("timeout"))
             }
             Some(t) => t,
         }
@@ -729,12 +733,14 @@ fn check_headers(h: &HashMap<String, String>) -> Result<()> {
         if name.is_empty() || !name.chars().all(token) {
             return Err(Error::invalid(format!(
                 "header name {name:?} is not a valid HTTP header name. Use letters, digits and -."
-            )));
+            ))
+            .with_param("headers"));
         }
         if value.contains(['\r', '\n', '\0']) {
             return Err(Error::invalid(format!(
                 "header {name:?} has a CR, LF or NUL in its value. Remove it."
-            )));
+            ))
+            .with_param("headers"));
         }
     }
     Ok(())
@@ -856,6 +862,7 @@ fn build_api_error(
         api.value = field("value");
         api.reason = field("reason");
     }
+    api.docs_url = docs_url_for(field("docs_url").as_deref(), code.as_deref());
     api.code = code;
 
     // A 401/403 about the page being fetched is not an authentication failure.
@@ -884,7 +891,7 @@ fn build_api_error(
     } else if status == 429 && not_your_limit(api.code.as_deref()) {
         msg.push_str(". Wait for the rate limit window to reset, then retry.");
     } else if status == 429 && keyless {
-        msg.push_str(". Set KEENABLE_API_KEY to lift the keyless hourly cap. Create a key at https://keenable.ai/console.");
+        msg.push_str(". Set KEENABLE_API_KEY to lift the keyless hourly cap. Create a key at https://app.keenable.ai/console/api-keys.");
     } else if status == 429 {
         msg.push_str(". Wait for the rate limit window to reset, then retry.");
     } else if (400..500).contains(&status) && status != 408 && api.retryable != Some(true) {

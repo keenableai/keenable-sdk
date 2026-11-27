@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 
@@ -62,6 +63,10 @@ class KeenableAPIError(KeenableError):
       body's ``retry_after_seconds`` or else the ``Retry-After`` header.
     - ``request_id``: quote it when reporting a problem.
     - ``param``: the request parameter a 400 is about.
+    - ``docs_url``: the error's entry in the error reference,
+      ``https://docs.keenable.ai/errors#<code>`` with ``_`` written as ``-``.
+      Taken from the body when it is such a link, else built from ``code``;
+      ``None`` when there is no code.
     - ``limit``: a :class:`RateLimitInfo` on 429s.
     - ``value`` and ``reason``: what a 400 ``invalid_filter`` error rejected
       and why; ``param`` names the parameter. ``value`` is usually the entry as
@@ -90,6 +95,7 @@ class KeenableAPIError(KeenableError):
         limit: RateLimitInfo | None = None,
         value: str | None = None,
         reason: str | None = None,
+        docs_url: str | None = None,
     ):
         super().__init__(message)
         self.status_code = status_code
@@ -105,6 +111,24 @@ class KeenableAPIError(KeenableError):
         self.limit = limit
         self.value = value
         self.reason = reason
+        self.docs_url = _docs_url(docs_url, code)
+
+
+_DOCS_URL = re.compile(r"https://docs\.keenable\.ai/errors#[a-z0-9-]+")
+_CODE = re.compile(r"[a-z0-9_]+")
+
+
+def _docs_url(sent: str | None, code: str | None) -> str | None:
+    """The error reference link: the body's when it is one, else from the code.
+
+    Only a link into https://docs.keenable.ai/errors is passed on, so the error
+    never carries another URL from the response.
+    """
+    if isinstance(sent, str) and _DOCS_URL.fullmatch(sent):
+        return sent
+    if isinstance(code, str) and _CODE.fullmatch(code):
+        return "https://docs.keenable.ai/errors#" + code.replace("_", "-")
+    return None
 
 
 class KeenableAuthError(KeenableAPIError):
@@ -134,7 +158,19 @@ KeenableCreditsError = KeenableInsufficientCreditsError
 
 
 class KeenableInvalidRequestError(KeenableError):
-    """The arguments passed to the SDK are invalid; no request was sent."""
+    """The arguments passed to the SDK are invalid; no request was sent.
+
+    ``code`` is always ``"invalid_request"``, the same in every Keenable SDK.
+    ``param`` names the argument at fault, spelled as the API spells it
+    (``"query"``, ``"url"``, ``"max_retries"``, ``"base_url"``, ...), or is
+    ``None`` when no single argument is.
+    """
+
+    code = "invalid_request"
+
+    def __init__(self, message: str, *, param: str | None = None):
+        super().__init__(message)
+        self.param = param
 
 
 class WebhookVerificationError(KeenableError):

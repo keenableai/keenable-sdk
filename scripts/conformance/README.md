@@ -18,6 +18,17 @@ SDK in `skip`, with the reason.
 
 The rules the cases encode:
 
+## The invalid-request error
+
+An argument the SDK refuses before sending raises the invalid-request error
+(`KeenableInvalidRequestError`, `InvalidRequestError`, `Error::InvalidRequest`).
+Its code is always `invalid_request`. Its `param` names the argument at fault,
+spelled as the API spells its parameters, in every SDK: `url` for a refused
+fetch() URL, `base_url`, `query`, `max_retries`, `timeout`, `headers` (client
+or call), `disable_cards`, and so on. It is null (empty in Go) when no single
+argument is at fault. The `fetch_url`, `base_url` and `options` cases give the
+`param` each refusal must carry.
+
 ## fetch() targets (`fetch_url`)
 
 A refused URL raises the invalid-request error and sends nothing. In order:
@@ -116,7 +127,14 @@ with a caller's own `httpx` client, `http.Client` or `fetch` too.
 - String fields count only when they are strings with more than whitespace;
   `retryable` only when boolean; delays only when finite numbers at least 0
   (capped at a year); `limit.max` only when an integer from 0 to 2^53 - 1.
-- The SDKs do not expose `docs_url`, the billing, checkout and top-up URLs of a
+- `docs_url` (`docsUrl` in TypeScript, `DocsURL` in Go) is the error's entry
+  in the error reference. It is the body's `docs_url` when that matches
+  `https://docs.keenable.ai/errors#[a-z0-9-]+` exactly; otherwise, when the
+  code matches `[a-z0-9_]+`, it is `https://docs.keenable.ai/errors#` followed
+  by the code with each `_` written as `-` (the anchor every code in the
+  backend's error catalog has); otherwise it is null. No other URL from the
+  body is passed on, and `docs_url` is not in the message.
+- The SDKs do not expose the billing, checkout and top-up URLs of a
   402 (`billing_url`, `auto_top_up_url`, `details.checkoutUrl`), the
   `pay_per_request` text, or an x402 offer (`accepts`, `payTo`, networks,
   assets). They are in no field and no message, and errors carry no raw body.

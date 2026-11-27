@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Added:** `APIError.DocsURL`: the error's entry in the error reference, `https://docs.keenable.ai/errors#<code>` with `_` written as `-` (e.g. `#rate-limit-per-second`). It is the body's `docs_url` when that is such a link, else built from `APICode`; empty when there is no code. Any other URL in the body's `docs_url` is not passed on. It is not added to `Error()`.
+- **Added:** `InvalidRequestError.Param` names the argument at fault as the API spells it (`query`, `url`, `base_url`, `max_retries`, `timeout`, `headers`, a filter's wire name, `monitor_id`, ...), the same value as in the other SDKs; empty when no single argument is. `Code()` stays `invalid_request`.
+- **Changed:** the missing-API-key messages and the key links now point to https://app.keenable.ai/console/api-keys, the page the API's own messages name, in place of https://keenable.ai/console.
 - **Added:** `SearchResponse.Usage` (`*Usage`): what the search cost and, with a key, `Cost` and `Balance` in US dollars. Nil on keyless calls.
 - **Changed:** `Usage` is read field by field, so a malformed `cost` or `balance` no longer loses the other fields.
 - **Changed:** the `keenable_search` tool's `moderation` description: supported for a URL query when `exclude_domains` is set.

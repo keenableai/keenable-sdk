@@ -93,7 +93,8 @@ def _resolve_base_url(base_url: str | None) -> str:
         raise KeenableInvalidRequestError(
             "base_url must not contain a backslash, user name or password "
             "before its path; pass an https:// URL with only a host, an "
-            "optional port and an optional path"
+            "optional port and an optional path",
+            param="base_url",
         )
     if host and not parsed.query and not parsed.fragment:
         if parsed.scheme == "https":
@@ -104,7 +105,8 @@ def _resolve_base_url(base_url: str | None) -> str:
             return base
     raise KeenableInvalidRequestError(
         "base_url must be an https:// URL with a host and no query or fragment "
-        f"(http only to localhost, 127.0.0.1 or ::1), got {base!r}"
+        f"(http only to localhost, 127.0.0.1 or ::1), got {base!r}",
+        param="base_url",
     )
 
 
@@ -227,28 +229,33 @@ def _reject_private_fetch_target(url: Any) -> None:
     """
     if not isinstance(url, str):
         raise KeenableInvalidRequestError(
-            f"fetch() needs a URL string, got {type(url).__name__}"
+            f"fetch() needs a URL string, got {type(url).__name__}", param="url"
         )
     if _CONTROL_CHARS.search(url) or url[:1] == " " or url[-1:] == " ":
         raise KeenableInvalidRequestError(
-            f"fetch() URL has a control character or surrounding space: {url!r}"
+            f"fetch() URL has a control character or surrounding space: {url!r}",
+            param="url",
         )
     # Exactly "scheme://": WHATWG parsers read "https:host", "https:/host" and
     # "https:\\host" as https://host/, where this parser sees no host at all.
     scheme = _FETCH_SCHEME.match(url)
     if scheme is None:
-        raise KeenableInvalidRequestError(f"fetch() needs an http(s) URL, got {url!r}")
+        raise KeenableInvalidRequestError(
+            f"fetch() needs an http(s) URL, got {url!r}", param="url"
+        )
     # A backslash in the authority makes WHATWG and RFC 3986 parsers disagree
     # on the host: https://127.0.0.1\@example.com is 127.0.0.1 to one of them.
     authority = re.split(r"[/?#]", url[scheme.end() :], maxsplit=1)[0]
     if "\\" in authority:
         raise KeenableInvalidRequestError(
-            f"fetch() URL has a backslash in its host: {url!r}"
+            f"fetch() URL has a backslash in its host: {url!r}", param="url"
         )
     try:
         hostname = urlsplit(url).hostname or ""
     except ValueError as exc:
-        raise KeenableInvalidRequestError(f"fetch() URL is not valid: {url!r}") from exc
+        raise KeenableInvalidRequestError(
+            f"fetch() URL is not valid: {url!r}", param="url"
+        ) from exc
 
     # Percent-decoded as a URL parser decodes a host; a trailing dot resolves
     # to the same host but does not match it as a string.
@@ -256,15 +263,20 @@ def _reject_private_fetch_target(url: Any) -> None:
     if _has_empty_label(folded):
         raise KeenableInvalidRequestError(
             f"fetch() URL has an empty label in its host (two dots in a row, "
-            f"or a leading dot): {url!r}"
+            f"or a leading dot): {url!r}",
+            param="url",
         )
     host = folded.rstrip(".")
     if ":" in host:
         host = host.split("%", 1)[0]  # an IPv6 zone
     if not host:
-        raise KeenableInvalidRequestError(f"fetch() URL has no host: {url!r}")
+        raise KeenableInvalidRequestError(
+            f"fetch() URL has no host: {url!r}", param="url"
+        )
     if host in _BLOCKED_HOSTS or host.endswith(".localhost"):
-        raise KeenableInvalidRequestError(f"refusing to fetch internal host {host!r}")
+        raise KeenableInvalidRequestError(
+            f"refusing to fetch internal host {host!r}", param="url"
+        )
     ip: ipaddress.IPv4Address | ipaddress.IPv6Address | None
     try:
         ip = ipaddress.ip_address(host)
@@ -273,13 +285,17 @@ def _reject_private_fetch_target(url: Any) -> None:
         if ip is None:
             return  # A hostname; the backend's SSRF guard is the backstop.
     if _is_blocked_ip(ip):
-        raise KeenableInvalidRequestError(f"refusing to fetch private address {host!r}")
+        raise KeenableInvalidRequestError(
+            f"refusing to fetch private address {host!r}", param="url"
+        )
 
 
 def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, Any]:
     """Build the search request body, dropping filters the caller left unset."""
     if not isinstance(query, str) or not query.strip():
-        raise KeenableInvalidRequestError("search() needs a non-empty query string")
+        raise KeenableInvalidRequestError(
+            "search() needs a non-empty query string", param="query"
+        )
 
     payload: dict[str, Any] = {"query": query, "mode": mode or "pro"}
     # An empty string is unset, as in Go, which cannot tell the two apart.
@@ -298,7 +314,8 @@ def _search_payload(query: str, mode: str | None, **filters: Any) -> dict[str, A
             # Sent only as true: false is the API default.
             if not isinstance(payload[f.name], bool):
                 raise KeenableInvalidRequestError(
-                    f"{f.name} must be True or False, got {payload[f.name]!r}"
+                    f"{f.name} must be True or False, got {payload[f.name]!r}",
+                    param=f.name,
                 )
             if payload[f.name] is False:
                 del payload[f.name]
@@ -584,6 +601,7 @@ def _error_fields(
         "limit": _limit_info(body.get("limit")),
         "value": _str_field(body, "value") if invalid_filter else None,
         "reason": _str_field(body, "reason") if invalid_filter else None,
+        "docs_url": _str_field(body, "docs_url"),
     }
 
 
@@ -1115,7 +1133,8 @@ def _rate_limited(error: Exception) -> bool:
 def _check_max_retries(value: int) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise KeenableInvalidRequestError(
-            f"max_retries must be a non-negative integer, got {value!r}"
+            f"max_retries must be a non-negative integer, got {value!r}",
+            param="max_retries",
         )
     return value
 
@@ -1150,7 +1169,8 @@ def _check_timeout(value: float) -> float:
         or value <= 0
     ):
         raise KeenableInvalidRequestError(
-            f"timeout must be a positive number of seconds, got {value!r}"
+            f"timeout must be a positive number of seconds, got {value!r}",
+            param="timeout",
         )
     return min(value, _MAX_TIMEOUT)
 
@@ -1168,12 +1188,13 @@ def _check_headers(headers: Mapping[str, str], where: str) -> dict[str, str]:
     for name, value in headers.items():
         if not isinstance(name, str) or not _HEADER_NAME.fullmatch(name):
             raise KeenableInvalidRequestError(
-                f"{where} has an invalid header name: {name!r}"
+                f"{where} has an invalid header name: {name!r}", param="headers"
             )
         if not isinstance(value, str) or any(c in value for c in "\r\n\x00"):
             raise KeenableInvalidRequestError(
                 f"{where} has an invalid value for {name!r}: a header value is a "
-                "string without CR, LF or NUL"
+                "string without CR, LF or NUL",
+                param="headers",
             )
     return dict(headers)
 
@@ -1245,7 +1266,7 @@ class _BaseClient:
             raise KeenableAuthError(
                 "Keenable authentication failed (401): Monitors need an API key. "
                 "Pass api_key or set KEENABLE_API_KEY; create one at "
-                "https://keenable.ai/console. (code: missing_api_key)",
+                "https://app.keenable.ai/console/api-keys. (code: missing_api_key)",
                 401,
                 code="missing_api_key",
                 type="authentication_error",
@@ -1279,7 +1300,7 @@ class Keenable(_BaseClient):
     Keyless by default: with no API key the client calls the public endpoints,
     which are rate limited per hour. Pass ``api_key`` (or set
     ``KEENABLE_API_KEY``) to lift that limit. Create a key at
-    https://keenable.ai/console.
+    https://app.keenable.ai/console/api-keys.
 
     Example:
         >>> from keenable import Keenable

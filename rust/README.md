@@ -365,12 +365,14 @@ Every call returns `keenable::Error`:
 | `Error::InsufficientCredits` | HTTP 402, out of credits |
 | `Error::Api` | Any other non-2xx response |
 | `Error::Connection` | API could not be reached, or the deadline elapsed (`is_timeout()`) |
-| `Error::InvalidRequest` | Bad arguments, no request sent |
+| `Error::InvalidRequest` | Bad arguments, no request sent. `code()` is `invalid_request` and `param()` names the argument at fault as the API spells it (`query`, `url`, `base_url`, ...), or is `None` |
 
 `err.api_error()` gives the `ApiError` behind any of the HTTP variants:
 `status_code`, `code` (the API's machine-readable reason), `error_type`,
-`fix` (what to do next), `retryable`, `retry_after`, `request_id`, and for a
-429, `limit`. `err.sdk_code()` is a stable string, and the same token ends the
+`fix` (what to do next), `retryable`, `retry_after`, `request_id`,
+`docs_url` (the code's entry in the error reference, such as
+`https://docs.keenable.ai/errors#rate-limit-per-second`; not in the text), and
+for a 429, `limit`. `err.sdk_code()` is a stable string, and the same token ends the
 error's text.
 
 ```rust

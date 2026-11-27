@@ -499,3 +499,59 @@ async fn billing_retries_and_sends_the_call_headers() {
     assert_eq!(seen[1].header("X-Trace"), Some("t"));
     assert_eq!(seen[1].header("X-API-Key"), Some("k"));
 }
+
+#[tokio::test]
+async fn a_local_error_has_the_invalid_request_code_and_the_argument_at_fault() {
+    let server = start(Script::Replies(vec![search_reply()])).await;
+    let client = keyed(&server);
+    let Err(Error::InvalidRequest(e)) = client.search("  ").await else {
+        panic!("not an invalid-request error")
+    };
+    assert_eq!((e.code(), e.param()), ("invalid_request", Some("query")));
+    let Err(Error::InvalidRequest(e)) = client.monitors().get("").await else {
+        panic!("not an invalid-request error")
+    };
+    assert_eq!(e.param(), Some("monitor_id"));
+    assert_eq!(server.count(), 0);
+}
+
+#[tokio::test]
+async fn the_docs_url_is_built_from_the_code_and_kept_out_of_the_text() {
+    let server = start(Script::Replies(vec![Reply::new(
+        429,
+        r#"{"code":"rate_limit_per_second"}"#,
+    )]))
+    .await;
+    let client = Client::with_options(Options {
+        api_key: Some("k".into()),
+        base_url: Some(server.base_url.clone()),
+        max_retries: Some(0),
+        ..Default::default()
+    })
+    .unwrap();
+    let err = client.search("q").await.unwrap_err();
+    let api = err.api_error().unwrap();
+    assert_eq!(
+        api.docs_url.as_deref(),
+        Some("https://docs.keenable.ai/errors#rate-limit-per-second")
+    );
+    assert!(!err.to_string().contains("docs.keenable.ai"), "{err}");
+}
+
+#[tokio::test]
+async fn a_docs_url_outside_the_error_reference_is_not_passed_on() {
+    let server = start(Script::Replies(vec![Reply::new(
+        500,
+        r#"{"error":"Internal server error","docs_url":"https://d/e#x"}"#,
+    )]))
+    .await;
+    let client = Client::with_options(Options {
+        api_key: Some("k".into()),
+        base_url: Some(server.base_url.clone()),
+        max_retries: Some(0),
+        ..Default::default()
+    })
+    .unwrap();
+    let err = client.search("q").await.unwrap_err();
+    assert_eq!(err.api_error().unwrap().docs_url, None);
+}

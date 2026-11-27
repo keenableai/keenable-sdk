@@ -5,6 +5,9 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
+- **Added:** `KeenableAPIError.docs_url`: the error's entry in the error reference, `https://docs.keenable.ai/errors#<code>` with `_` written as `-` (e.g. `#rate-limit-per-second`). It is the body's `docs_url` when that is such a link, else built from `code`; `None` when there is no code. Any other URL in the body's `docs_url` is not passed on. It is not added to the message.
+- **Added:** `KeenableInvalidRequestError.code` is `"invalid_request"`, as in the Go and Rust SDKs, and `KeenableInvalidRequestError.param` names the argument at fault as the API spells it (`"query"`, `"url"`, `"base_url"`, `"max_retries"`, `"timeout"`, `"headers"`, a filter's name, `"monitor_id"`, ...), or is `None` when no single argument is. The constructor takes `param` as a keyword argument.
+- **Changed:** the missing-API-key messages and the key links now point to https://app.keenable.ai/console/api-keys, the page the API's own messages name, in place of https://keenable.ai/console.
 - **Added:** `SearchResponse.usage`, the dict the API sent: what the search cost and, with a key, `cost` and `balance` in US dollars (read as below). None on keyless calls.
 - **Changed:** the `keenable_search` tool's `moderation` description: supported for a URL query when `exclude_domains` is set.
 - **Added:** `Page.usage` documents `cost` and `balance` (`{"amount": <US dollars>, "amount_decimal": "<the same amount, exact>", "currency": "usd"}`): what the page cost and the organization's balance after it. `usage` stays the dict the API sent, except that `cost` and `balance` are read like `Money` and given as its dict, so `amount_decimal` is filled in from `amount` for an older server, and a `cost` or `balance` that is not an object is left out. Add costs with `Decimal(usage["cost"]["amount_decimal"])` rather than with the float `amount`.

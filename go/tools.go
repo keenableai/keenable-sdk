@@ -199,7 +199,7 @@ func requireString(v any, message string) (string, error) {
 // toolFetchURLs reads urls: 1 to 20 non-blank strings.
 func toolFetchURLs(args map[string]any) ([]string, error) {
 	raw := args["urls"]
-	bad := &InvalidRequestError{msg: "keenable_fetch needs 'urls': a list of 1 to 20 URLs."}
+	bad := &InvalidRequestError{msg: "keenable_fetch needs 'urls': a list of 1 to 20 URLs.", Param: "urls"}
 	switch v := raw.(type) {
 	case string:
 		raw = []any{v}
@@ -218,7 +218,7 @@ func toolFetchURLs(args map[string]any) ([]string, error) {
 	for i, v := range list {
 		s, err := requireString(v, bad.msg)
 		if err != nil {
-			return nil, err
+			return nil, bad
 		}
 		urls[i] = s
 	}
@@ -230,21 +230,21 @@ func toolFetchOptions(args map[string]any) (*FetchOptions, error) {
 	opts := &FetchOptions{}
 	if v, ok := toolNumber(args["max_chars"]); ok {
 		if v < 1 || v != float64(int(v)) {
-			return nil, &InvalidRequestError{msg: fmt.Sprintf("max_chars must be a positive integer, got %v.", v)}
+			return nil, &InvalidRequestError{msg: fmt.Sprintf("max_chars must be a positive integer, got %v.", v), Param: "max_chars"}
 		}
 		opts.MaxChars = int(v)
 	} else if !toolUnset(args["max_chars"]) {
-		return nil, &InvalidRequestError{msg: "max_chars must be a positive integer. Pass a JSON number."}
+		return nil, &InvalidRequestError{msg: "max_chars must be a positive integer. Pass a JSON number.", Param: "max_chars"}
 	}
 	if s, ok := args["prompt"].(string); ok {
 		opts.Prompt = s
 	} else if !toolUnset(args["prompt"]) {
-		return nil, &InvalidRequestError{msg: "prompt must be a string."}
+		return nil, &InvalidRequestError{msg: "prompt must be a string.", Param: "prompt"}
 	}
 	if v, ok := toolNumber(args["max_age_hours"]); ok {
 		opts.MaxAgeHours = &v
 	} else if !toolUnset(args["max_age_hours"]) {
-		return nil, &InvalidRequestError{msg: "max_age_hours must be a number of hours. Pass a JSON number."}
+		return nil, &InvalidRequestError{msg: "max_age_hours must be a number of hours. Pass a JSON number.", Param: "max_age_hours"}
 	}
 	return opts, nil
 }
@@ -281,7 +281,7 @@ func pagesContext(pages []Page, maxChars int) (string, error) {
 	}
 	if failed == len(pages) {
 		e := firstErr
-		return "", &APIError{StatusCode: e.Status, APICode: e.Code, Type: e.Type, Title: e.Error, Fix: e.Fix, Retryable: e.Retryable, msg: cmp.Or(e.Message, e.Error)}
+		return "", &APIError{StatusCode: e.Status, APICode: e.Code, Type: e.Type, Title: e.Error, Fix: e.Fix, Retryable: e.Retryable, DocsURL: docsURLFor("", e.Code), msg: cmp.Or(e.Message, e.Error)}
 	}
 	// The API already cut each page to max_chars; leave room for its header.
 	// Without max_chars, the default budget is split across the pages.

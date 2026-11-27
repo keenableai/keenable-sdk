@@ -350,7 +350,7 @@ All errors subclass `KeenableError`:
 | `KeenableAPIError` | Any other non-2xx response; carries `status_code` |
 | `KeenableConnectionError` | The API could not be reached |
 | `KeenableTimeoutError` | A `KeenableConnectionError`: the API did not answer within `timeout` |
-| `KeenableInvalidRequestError` | Bad arguments; no request was sent |
+| `KeenableInvalidRequestError` | Bad arguments; no request was sent. `code` is `"invalid_request"` and `param` names the argument at fault as the API spells it (`"query"`, `"url"`, `"max_retries"`, ...), or is `None` |
 
 ## Handling errors
 
@@ -385,6 +385,7 @@ except KeenableAPIError as err:
 | `param` | The parameter a 400 is about |
 | `value`, `reason` | What a 400 `invalid_filter` rejected (usually the entry; for a size cap the count or a truncated entry), and why |
 | `limit` | On a 429: `RateLimitInfo(scope, window, max, resets_at)` |
+| `docs_url` | The code's entry in the error reference, e.g. `https://docs.keenable.ai/errors#rate-limit-per-second`; not in the message |
 
 When the API sends `fix`, the error message ends with it, then with
 `(code: <code>)` and `(request_id: <id>)`, as in the Go and TypeScript SDKs.
@@ -434,7 +435,7 @@ to another host.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `KEENABLE_API_KEY` | unset | Lifts the hourly rate limit. Create one at [keenable.ai/console](https://keenable.ai/console) |
+| `KEENABLE_API_KEY` | unset | Lifts the hourly rate limit. Create one at [app.keenable.ai/console/api-keys](https://app.keenable.ai/console/api-keys) |
 | `KEENABLE_API_URL` | `https://api.keenable.ai` | Override the API base URL |
 
 Both can also be passed to the constructor as `api_key` and `base_url`, alongside

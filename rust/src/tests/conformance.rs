@@ -80,6 +80,12 @@ fn is_invalid(r: &Result<impl std::fmt::Debug, Error>) -> bool {
     matches!(r, Err(Error::InvalidRequest(_)))
 }
 
+/// The invalid-request error, with its code and the argument a case names.
+fn is_invalid_for(r: &Result<impl std::fmt::Debug, Error>, param: &Value) -> bool {
+    matches!(r, Err(Error::InvalidRequest(e))
+        if e.code() == "invalid_request" && e.param() == param.as_str())
+}
+
 /// Whether `err` is the class a case names.
 fn kind_matches(err: &Error, kind: &str) -> bool {
     match kind {
@@ -110,7 +116,7 @@ async fn fetch_url() {
         let ok = if allowed {
             got.is_ok() && server.count() == 1
         } else {
-            is_invalid(&got) && server.count() == 0
+            is_invalid_for(&got, &case["param"]) && server.count() == 0
         };
         if !ok {
             failures.push(format!(
@@ -135,7 +141,11 @@ fn base_url() {
             ..Default::default()
         });
         let valid = case["valid"].as_bool().unwrap();
-        let ok = if valid { got.is_ok() } else { is_invalid(&got) };
+        let ok = if valid {
+            got.is_ok()
+        } else {
+            is_invalid_for(&got, &case["param"])
+        };
         if !ok {
             failures.push(format!("{}: {:?}", name(case), got.err()));
         }
@@ -227,6 +237,7 @@ pub(super) fn exposed_text(err: &Error) -> Vec<String> {
             &api.param,
             &api.value,
             &api.reason,
+            &api.docs_url,
         ]
         .into_iter()
         .flatten()
@@ -273,6 +284,7 @@ async fn errors() {
                 ("param", &api.param),
                 ("value", &api.value),
                 ("reason", &api.reason),
+                ("docs_url", &api.docs_url),
             ] {
                 if *got != opt_str(&want[field]) {
                     problems.push(format!("{field} = {got:?}, want {}", want[field]));
@@ -484,7 +496,7 @@ async fn options() {
         let client = match Client::with_options(client_opts) {
             Ok(c) => c,
             Err(e) => {
-                if valid || !matches!(e, Error::InvalidRequest(_)) {
+                if valid || !is_invalid_for(&Err::<(), _>(e.clone()), &case["param"]) {
                     failures.push(format!("{}: with_options: {e:?}", name(case)));
                 }
                 continue;
@@ -502,7 +514,7 @@ async fn options() {
             (option == "timeout" && matches!(&got, Err(e) if e.is_timeout()))
                 || (got.is_ok() && server.count() == 1)
         } else {
-            is_invalid(&got) && server.count() == 0
+            is_invalid_for(&got, &case["param"]) && server.count() == 0
         };
         if !ok {
             failures.push(format!(

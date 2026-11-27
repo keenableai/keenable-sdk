@@ -837,12 +837,14 @@ impl Call {
 
 fn segment(name: &str, value: &str) -> Result<String> {
     if value.trim().is_empty() {
-        return Err(Error::invalid(format!("{name} must be a non-empty string")));
+        return Err(Error::invalid(format!("{name} must be a non-empty string"))
+            .with_param(&name.replace(' ', "_")));
     }
     if value == "." || value == ".." {
         return Err(Error::invalid(format!(
             "{name} must not be {value:?}: it would change the request's path"
-        )));
+        ))
+        .with_param(&name.replace(' ', "_")));
     }
     Ok(url::form_urlencoded::byte_serialize(value.as_bytes())
         .collect::<String>()
@@ -908,10 +910,11 @@ impl<'a> Monitors<'a> {
         if self.client.is_keyless() {
             let mut api = ApiError::plain(
                 401,
-                "Keenable authentication failed (401): Monitors need an API key. Set Options::api_key or KEENABLE_API_KEY; create one at https://keenable.ai/console.".into(),
+                "Keenable authentication failed (401): Monitors need an API key. Set Options::api_key or KEENABLE_API_KEY; create one at https://app.keenable.ai/console/api-keys.".into(),
                 None,
             );
             api.code = Some("missing_api_key".into());
+            api.docs_url = crate::error::docs_url_for(None, api.code.as_deref());
             api.error_type = types::AUTHENTICATION_ERROR.into();
             api.retryable = Some(false);
             return Err(Error::Auth(Box::new(api)));
@@ -968,9 +971,11 @@ impl<'a> Monitors<'a> {
                     .filter(|p| !p.url.trim().is_empty())
                     .ok_or_else(|| {
                         Error::invalid("a page monitor needs page.url, the page to watch")
+                            .with_param("page")
                     })?;
                 if params.search != MonitorSearchParams::default() {
-                    return Err(Error::invalid("a page monitor takes page, not search"));
+                    return Err(Error::invalid("a page monitor takes page, not search")
+                        .with_param("search"));
                 }
                 body.insert("type".into(), Value::String("page".into()));
                 body.insert("page".into(), to_value(page));
@@ -979,12 +984,14 @@ impl<'a> Monitors<'a> {
                 if params.page.is_some() {
                     return Err(Error::invalid(
                         "page is only for monitor_type \"page\"; a search monitor takes search",
-                    ));
+                    )
+                    .with_param("page"));
                 }
                 if params.search.query.trim().is_empty() {
                     return Err(Error::invalid(
                         "create needs search.query, the topic in plain words",
-                    ));
+                    )
+                    .with_param("search"));
                 }
                 if let Some(t) = &params.monitor_type {
                     body.insert("type".into(), Value::String(t.clone()));
@@ -994,7 +1001,8 @@ impl<'a> Monitors<'a> {
             Some(other) => {
                 return Err(Error::invalid(format!(
                     "monitor_type must be \"search\" or \"page\", got {other:?}"
-                )));
+                ))
+                .with_param("type"));
             }
         }
         if let Some(name) = &params.name {
@@ -1248,7 +1256,8 @@ impl<'a> Monitors<'a> {
         if !matches!(action, "pause" | "resume" | "delete") {
             return Err(Error::invalid(format!(
                 "action must be pause, resume or delete, got {action:?}"
-            )));
+            ))
+            .with_param("action"));
         }
         let ids = params.ids.as_ref().filter(|ids| !ids.is_empty());
         let filter = params.filter.as_ref().filter(|f| {

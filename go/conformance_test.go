@@ -29,14 +29,16 @@ const conformancePath = "testdata/conformance.json"
 
 type conformance struct {
 	FetchURL []struct {
-		Name    string `json:"name"`
-		URL     string `json:"url"`
-		Allowed bool   `json:"allowed"`
+		Name    string  `json:"name"`
+		URL     string  `json:"url"`
+		Allowed bool    `json:"allowed"`
+		Param   *string `json:"param"`
 	} `json:"fetch_url"`
 	BaseURL []struct {
-		Name    string `json:"name"`
-		BaseURL string `json:"base_url"`
-		Valid   bool   `json:"valid"`
+		Name    string  `json:"name"`
+		BaseURL string  `json:"base_url"`
+		Valid   bool    `json:"valid"`
+		Param   *string `json:"param"`
 	} `json:"base_url"`
 	RetryAfter struct {
 		Now   string `json:"now"`
@@ -74,6 +76,7 @@ type conformance struct {
 			Param             *string  `json:"param"`
 			Value             *string  `json:"value"`
 			Reason            *string  `json:"reason"`
+			DocsURL           *string  `json:"docs_url"`
 			Limit             *struct {
 				Scope    *string `json:"scope"`
 				Window   *string `json:"window"`
@@ -113,6 +116,7 @@ type conformance struct {
 		Scope  string            `json:"scope"`
 		Value  json.RawMessage   `json:"value"`
 		Valid  bool              `json:"valid"`
+		Param  *string           `json:"param"`
 		Skip   map[string]string `json:"skip"`
 	} `json:"options"`
 	SearchBody []struct {
@@ -229,6 +233,19 @@ func isInvalid(err error) bool {
 	return errors.As(err, &bad)
 }
 
+// checkInvalid checks the invalid-request error's code and the argument it
+// names.
+func checkInvalid(t *testing.T, err error, param *string) {
+	t.Helper()
+	var bad *keenable.InvalidRequestError
+	if !errors.As(err, &bad) {
+		t.Fatalf("err=%v, want an InvalidRequestError", err)
+	}
+	if bad.Code() != keenable.CodeInvalidRequest || bad.Param != deref(param) {
+		t.Fatalf("code %q param %q, want %q %q", bad.Code(), bad.Param, keenable.CodeInvalidRequest, deref(param))
+	}
+}
+
 func TestConformanceFetchURL(t *testing.T) {
 	for _, tc := range loadConformance(t).FetchURL {
 		t.Run(tc.Name, func(t *testing.T) {
@@ -243,6 +260,7 @@ func TestConformanceFetchURL(t *testing.T) {
 			if !isInvalid(err) || n.Load() != 0 {
 				t.Fatalf("allowed: err=%v requests=%d", err, n.Load())
 			}
+			checkInvalid(t, err, tc.Param)
 		})
 	}
 }
@@ -255,8 +273,8 @@ func TestConformanceBaseURL(t *testing.T) {
 			if tc.Valid != (err == nil) {
 				t.Fatalf("err=%v", err)
 			}
-			if err != nil && !isInvalid(err) {
-				t.Fatalf("%T: %v", err, err)
+			if err != nil {
+				checkInvalid(t, err, tc.Param)
 			}
 			c.Close()
 		})
@@ -380,6 +398,7 @@ func TestConformanceErrors(t *testing.T) {
 			check("param", api.Param, want.Param)
 			check("value", api.Value, want.Value)
 			check("reason", api.Reason, want.Reason)
+			check("docs_url", api.DocsURL, want.DocsURL)
 			if !reflect.DeepEqual(api.Retryable, want.Retryable) {
 				t.Errorf("retryable %v, want %v", api.Retryable, want.Retryable)
 			}
@@ -645,6 +664,7 @@ func TestConformanceOptions(t *testing.T) {
 					t.Fatalf("New: err=%v", err)
 				}
 				if !tc.Valid {
+					checkInvalid(t, err, tc.Param)
 					return
 				}
 				clientOpts.BaseURL = nil
@@ -666,6 +686,7 @@ func TestConformanceOptions(t *testing.T) {
 			if !isInvalid(err) || n.Load() != 0 {
 				t.Fatalf("err=%v requests=%d", err, n.Load())
 			}
+			checkInvalid(t, err, tc.Param)
 		})
 	}
 }

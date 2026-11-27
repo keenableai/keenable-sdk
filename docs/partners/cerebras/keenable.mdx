@@ -13,7 +13,7 @@ content while keeping agent latency low.
 Before you begin, ensure you have:
 
 - **Cerebras API Key**
-- **Keenable API Key** — create one in the [Keenable Console](https://keenable.ai/console)
+- **Keenable API Key** — create one in the [Keenable Console](https://app.keenable.ai/console/api-keys)
 - **Python or Node.js**
 
 ## Configure Keenable with Cerebras
@@ -262,7 +262,7 @@ while (true) {
 ## Rate limits and errors
 
 Rate limits are attached to your Keenable account and shown in the
-[Console](https://keenable.ai/console), alongside usage. Every error the SDK
+[Console](https://app.keenable.ai/console), alongside usage. Every error the SDK
 raises subclasses `KeenableError`, so a single `except` keeps an agent loop
 alive.
 
@@ -287,6 +287,6 @@ what to do next. Pass `max_retries=0` to handle retries yourself.
 ## Next steps
 
 - Browse the [Keenable SDK reference](https://github.com/keenableai/keenable-sdk) for async clients, filters, and error handling
-- Track usage and rate limits in the [Keenable Console](https://keenable.ai/console)
+- Track usage and rate limits in the [Keenable Console](https://app.keenable.ai/console)
 - See [Tool Calling](/capabilities/tool-use) for the full tool-calling contract on Cerebras
 - See [Designing for Cerebras](/resources/designing-for-cerebras) for agent patterns that take advantage of fast inference

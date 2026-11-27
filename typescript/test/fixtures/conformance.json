@@ -4,789 +4,946 @@
     {
       "name": "allowed: a public host: \"https://example.com/\"",
       "url": "https://example.com/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: http, with a path, query and fragment: \"http://example.com/path?q=1#frag\"",
       "url": "http://example.com/path?q=1#frag",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: the scheme and host are case-insensitive: \"HTTPS://EXAMPLE.COM/\"",
       "url": "HTTPS://EXAMPLE.COM/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: userinfo before a public host: \"https://user:pass@example.com/\"",
       "url": "https://user:pass@example.com/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: a port: \"https://example.com:8443/\"",
       "url": "https://example.com:8443/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: a trailing dot on a public host: \"https://example.com./\"",
       "url": "https://example.com./",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: localhost as a subdomain label: \"https://localhost.example.com/\"",
       "url": "https://localhost.example.com/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: a hostname that resolves to loopback is the API's to refuse: \"https://127.0.0.1.nip.io/\"",
       "url": "https://127.0.0.1.nip.io/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: a hex-looking label in a hostname: \"https://0x7f.example.com/\"",
       "url": "https://0x7f.example.com/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: a hostname that starts like fd00::/8: \"https://fdic.gov/\"",
       "url": "https://fdic.gov/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: a hostname that starts like fc00::/7: \"https://fcbarcelona.com/\"",
       "url": "https://fcbarcelona.com/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: an IDN in punycode: \"https://xn--nxasmq6b.com/\"",
       "url": "https://xn--nxasmq6b.com/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: a public IPv4 address: \"https://8.8.8.8/\"",
       "url": "https://8.8.8.8/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: just below 100.64.0.0/10: \"https://100.63.255.255/\"",
       "url": "https://100.63.255.255/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: just above 100.64.0.0/10: \"https://100.128.0.0/\"",
       "url": "https://100.128.0.0/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: just below 172.16.0.0/12: \"https://172.15.255.255/\"",
       "url": "https://172.15.255.255/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: just above 172.16.0.0/12: \"https://172.32.0.0/\"",
       "url": "https://172.32.0.0/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: between 192.0.0.0/24 and 192.0.2.0/24: \"https://192.0.1.1/\"",
       "url": "https://192.0.1.1/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: just below 198.18.0.0/15: \"https://198.17.255.255/\"",
       "url": "https://198.17.255.255/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: just above 198.18.0.0/15: \"https://198.20.0.0/\"",
       "url": "https://198.20.0.0/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: just below multicast: \"https://223.255.255.255/\"",
       "url": "https://223.255.255.255/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: a public IPv6 address: \"https://[2606:4700:4700::1111]/\"",
       "url": "https://[2606:4700:4700::1111]/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: a public IPv6 address: \"https://[2a00:1450:4001::1]/\"",
       "url": "https://[2a00:1450:4001::1]/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: just above 2001::/23: \"https://[2001:200::1]/\"",
       "url": "https://[2001:200::1]/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: just above 2002::/16: \"https://[2003::1]/\"",
       "url": "https://[2003::1]/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: an IPv4-mapped public address: \"https://[::ffff:8.8.8.8]/\"",
       "url": "https://[::ffff:8.8.8.8]/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "allowed: an IPv4-mapped public address in hex: \"https://[::ffff:808:808]/\"",
       "url": "https://[::ffff:808:808]/",
-      "allowed": true
+      "allowed": true,
+      "param": null
     },
     {
       "name": "refused: empty: \"\"",
       "url": "",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: no scheme: \"example.com\"",
       "url": "example.com",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: scheme-relative: \"//example.com/\"",
       "url": "//example.com/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: not http(s): \"ftp://example.com/\"",
       "url": "ftp://example.com/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: not http(s): \"file:///etc/passwd\"",
       "url": "file:///etc/passwd",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: not http(s): \"javascript:alert(1)\"",
       "url": "javascript:alert(1)",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: no host: \"https://\"",
       "url": "https://",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: an empty authority: a WHATWG parser reads the path as the host: \"https:///nohost\"",
       "url": "https:///nohost",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: no slashes: a WHATWG parser reads it as https://nohost/: \"https:nohost\"",
       "url": "https:nohost",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: one slash: a WHATWG parser reads it as https://nohost/: \"https:/nohost\"",
       "url": "https:/nohost",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: backslashes for slashes: \"https:\\\\\\\\example.com/\"",
       "url": "https:\\\\example.com/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: a backslash in the authority: WHATWG and RFC 3986 parsers disagree on the host: \"https://127.0.0.1\\\\@example.com/\"",
       "url": "https://127.0.0.1\\@example.com/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: a backslash in the authority: \"https://example.com\\\\@127.0.0.1/\"",
       "url": "https://example.com\\@127.0.0.1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: leading space: \" https://example.com/\"",
       "url": " https://example.com/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: trailing space: \"https://example.com/ \"",
       "url": "https://example.com/ ",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: a tab, which WHATWG parsers delete: \"https://exa\\tmple.com/\"",
       "url": "https://exa\tmple.com/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: a newline: \"https://example.com/\\n\"",
       "url": "https://example.com/\n",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: a NUL: \"https://exa\\u0000mple.com/\"",
       "url": "https://exa\u0000mple.com/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: a DEL: \"https://example.com/\"",
       "url": "https://example.com/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: localhost: \"https://localhost/\"",
       "url": "https://localhost/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: localhost, uppercase: \"https://LOCALHOST/\"",
       "url": "https://LOCALHOST/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: localhost with a trailing dot: \"https://localhost./\"",
       "url": "https://localhost./",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: localhost with a port: \"https://localhost:8080/\"",
       "url": "https://localhost:8080/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: a .localhost name (RFC 6761: loopback): \"https://api.localhost/\"",
       "url": "https://api.localhost/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: localhost, percent-encoded: \"https://%6c%6fcalhost/\"",
       "url": "https://%6c%6fcalhost/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: localhost with a soft hyphen, which IDNA mapping deletes: \"https://local­host/\"",
       "url": "https://local­host/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: localhost in fullwidth letters: \"https://ｌｏｃａｌｈｏｓｔ/\"",
       "url": "https://ｌｏｃａｌｈｏｓｔ/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: the GCP metadata host: \"https://metadata.google.internal/\"",
       "url": "https://metadata.google.internal/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: the GCP metadata host, uppercase with a trailing dot: \"https://METADATA.GOOGLE.INTERNAL./\"",
       "url": "https://METADATA.GOOGLE.INTERNAL./",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: userinfo that looks like a host: \"https://example.com@127.0.0.1/\"",
       "url": "https://example.com@127.0.0.1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: loopback: \"https://127.0.0.1/\"",
       "url": "https://127.0.0.1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: loopback: \"https://127.255.255.254/\"",
       "url": "https://127.255.255.254/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: loopback with a trailing dot: \"https://127.0.0.1./\"",
       "url": "https://127.0.0.1./",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: loopback as one decimal number: \"https://2130706433/\"",
       "url": "https://2130706433/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: loopback as one hex number: \"https://0x7f000001/\"",
       "url": "https://0x7f000001/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: loopback in hex, two parts: \"https://0x7f.1/\"",
       "url": "https://0x7f.1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: loopback in octal: \"https://0177.0.0.1/\"",
       "url": "https://0177.0.0.1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: loopback, two parts: \"https://127.1/\"",
       "url": "https://127.1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: loopback, percent-encoded: \"https://127.0.0.%31/\"",
       "url": "https://127.0.0.%31/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: loopback in fullwidth digits: \"https://１２７．０．０．１/\"",
       "url": "https://１２７．０．０．１/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: loopback with ideographic full stops: \"https://127。0。0。1/\"",
       "url": "https://127。0。0。1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: this network: \"https://0.0.0.0/\"",
       "url": "https://0.0.0.0/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: this network, one number: \"https://0/\"",
       "url": "https://0/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: private: \"https://10.0.0.1/\"",
       "url": "https://10.0.0.1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: carrier-grade NAT (100.64.0.0/10): \"https://100.64.0.1/\"",
       "url": "https://100.64.0.1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: carrier-grade NAT: Alibaba Cloud's metadata address: \"https://100.100.100.200/\"",
       "url": "https://100.100.100.200/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: carrier-grade NAT, top: \"https://100.127.255.255/\"",
       "url": "https://100.127.255.255/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: link-local: cloud metadata: \"https://169.254.169.254/\"",
       "url": "https://169.254.169.254/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: private: \"https://172.16.0.1/\"",
       "url": "https://172.16.0.1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: private, top: \"https://172.31.255.255/\"",
       "url": "https://172.31.255.255/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: IETF protocol assignments (192.0.0.0/24): \"https://192.0.0.1/\"",
       "url": "https://192.0.0.1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: IETF protocol assignments (192.0.0.0/24): \"https://192.0.0.170/\"",
       "url": "https://192.0.0.170/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: documentation (TEST-NET-1): \"https://192.0.2.1/\"",
       "url": "https://192.0.2.1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: private: \"https://192.168.1.1/\"",
       "url": "https://192.168.1.1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: benchmarking (198.18.0.0/15): \"https://198.18.0.1/\"",
       "url": "https://198.18.0.1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: benchmarking, top: \"https://198.19.255.255/\"",
       "url": "https://198.19.255.255/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: documentation (TEST-NET-2): \"https://198.51.100.1/\"",
       "url": "https://198.51.100.1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: documentation (TEST-NET-3): \"https://203.0.113.1/\"",
       "url": "https://203.0.113.1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: multicast: \"https://224.0.0.1/\"",
       "url": "https://224.0.0.1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: multicast, top: \"https://239.255.255.255/\"",
       "url": "https://239.255.255.255/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: reserved (240.0.0.0/4): \"https://240.0.0.1/\"",
       "url": "https://240.0.0.1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: broadcast: \"https://255.255.255.255/\"",
       "url": "https://255.255.255.255/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: IPv6 loopback: \"https://[::1]/\"",
       "url": "https://[::1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: IPv6 loopback, uncompressed: \"https://[0:0:0:0:0:0:0:1]/\"",
       "url": "https://[0:0:0:0:0:0:0:1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: IPv6 unspecified: \"https://[::]/\"",
       "url": "https://[::]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: IPv4-mapped loopback: \"https://[::ffff:127.0.0.1]/\"",
       "url": "https://[::ffff:127.0.0.1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: IPv4-mapped loopback in hex: \"https://[::ffff:7f00:1]/\"",
       "url": "https://[::ffff:7f00:1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: IPv4-mapped private: \"https://[::ffff:10.0.0.1]/\"",
       "url": "https://[::ffff:10.0.0.1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: IPv4-mapped link-local: \"https://[::ffff:a9fe:a9fe]/\"",
       "url": "https://[::ffff:a9fe:a9fe]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: IPv4-compatible (deprecated): \"https://[::127.0.0.1]/\"",
       "url": "https://[::127.0.0.1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: NAT64 (64:ff9b::/96): \"https://[64:ff9b::7f00:1]/\"",
       "url": "https://[64:ff9b::7f00:1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: NAT64, even of a public address: \"https://[64:ff9b::808:808]/\"",
       "url": "https://[64:ff9b::808:808]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: local-use NAT64 (64:ff9b:1::/48): \"https://[64:ff9b:1::1]/\"",
       "url": "https://[64:ff9b:1::1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: discard-only (100::/64): \"https://[100::1]/\"",
       "url": "https://[100::1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: outside 2000::/3: \"https://[1::1]/\"",
       "url": "https://[1::1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: outside 2000::/3: \"https://[4000::1]/\"",
       "url": "https://[4000::1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: Teredo, inside 2001::/23: \"https://[2001::1]/\"",
       "url": "https://[2001::1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: IETF protocol assignments (2001::/23), top: \"https://[2001:1ff::1]/\"",
       "url": "https://[2001:1ff::1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: documentation (2001:db8::/32): \"https://[2001:db8::1]/\"",
       "url": "https://[2001:db8::1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: 6to4 (2002::/16): \"https://[2002:7f00:1::1]/\"",
       "url": "https://[2002:7f00:1::1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: documentation (3fff::/20): \"https://[3fff::1]/\"",
       "url": "https://[3fff::1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: 00fc::1, inside ::/8: \"https://[fc::1]/\"",
       "url": "https://[fc::1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: unique local (fc00::/7): \"https://[fc00::1]/\"",
       "url": "https://[fc00::1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: unique local (fc00::/7): \"https://[fd12:3456::1]/\"",
       "url": "https://[fd12:3456::1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: link-local (fe80::/10): \"https://[fe80::1]/\"",
       "url": "https://[fe80::1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: link-local, top: \"https://[febf::1]/\"",
       "url": "https://[febf::1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: link-local with a zone id: \"https://[fe80::1%25eth0]/\"",
       "url": "https://[fe80::1%25eth0]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: site-local (fec0::/10, deprecated): \"https://[fec0::1]/\"",
       "url": "https://[fec0::1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: multicast: \"https://[ff02::1]/\"",
       "url": "https://[ff02::1]/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: loopback in circled digits, which a WHATWG parser folds to 127: \"https://①②⑦.0.0.1/\"",
       "url": "https://①②⑦.0.0.1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: loopback in mathematical bold digits: \"https://𝟏𝟐𝟕.0.0.1/\"",
       "url": "https://𝟏𝟐𝟕.0.0.1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: localhost with a script small l (U+2113): \"https://ℓocalhost/\"",
       "url": "https://ℓocalhost/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: cloud metadata with subscript digits: \"https://169.254.169.₂₅₄/\"",
       "url": "https://169.254.169.₂₅₄/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: an empty label inside a hostname: \"https://a..b/\"",
       "url": "https://a..b/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: an empty label inside a hostname: \"https://example..com/\"",
       "url": "https://example..com/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: a leading dot: \"https://.example.com/\"",
       "url": "https://.example.com/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: two trailing dots: \"https://example.com../\"",
       "url": "https://example.com../",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: localhost with two trailing dots: \"https://localhost../\"",
       "url": "https://localhost../",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: an empty label inside a loopback address: \"https://127.0.0..1/\"",
       "url": "https://127.0.0..1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: an empty label inside a short loopback address: \"https://127..1/\"",
       "url": "https://127..1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: a leading dot before a loopback address: \"https://.127.0.0.1/\"",
       "url": "https://.127.0.0.1/",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: a host that is only a dot: \"https://./\"",
       "url": "https://./",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     },
     {
       "name": "refused: a host that is only dots: \"https://../\"",
       "url": "https://../",
-      "allowed": false
+      "allowed": false,
+      "param": "url"
     }
   ],
   "base_url": [
     {
       "name": "valid: the default: \"https://api.keenable.ai\"",
       "base_url": "https://api.keenable.ai",
-      "valid": true
+      "valid": true,
+      "param": null
     },
     {
       "name": "valid: a trailing slash: \"https://api.keenable.ai/\"",
       "base_url": "https://api.keenable.ai/",
-      "valid": true
+      "valid": true,
+      "param": null
     },
     {
       "name": "valid: a path prefix: \"https://proxy.example.com/keenable\"",
       "base_url": "https://proxy.example.com/keenable",
-      "valid": true
+      "valid": true,
+      "param": null
     },
     {
       "name": "valid: uppercase: \"HTTPS://API.KEENABLE.AI\"",
       "base_url": "HTTPS://API.KEENABLE.AI",
-      "valid": true
+      "valid": true,
+      "param": null
     },
     {
       "name": "valid: surrounding whitespace: \"  https://api.keenable.ai  \"",
       "base_url": "  https://api.keenable.ai  ",
-      "valid": true
+      "valid": true,
+      "param": null
     },
     {
       "name": "valid: http to localhost: \"http://localhost:8080\"",
       "base_url": "http://localhost:8080",
-      "valid": true
+      "valid": true,
+      "param": null
     },
     {
       "name": "valid: http to localhost with a trailing dot: \"http://localhost.:8080\"",
       "base_url": "http://localhost.:8080",
-      "valid": true
+      "valid": true,
+      "param": null
     },
     {
       "name": "valid: http to 127.0.0.1: \"http://127.0.0.1:3000\"",
       "base_url": "http://127.0.0.1:3000",
-      "valid": true
+      "valid": true,
+      "param": null
     },
     {
       "name": "valid: http to ::1: \"http://[::1]:8080\"",
       "base_url": "http://[::1]:8080",
-      "valid": true
+      "valid": true,
+      "param": null
     },
     {
       "name": "invalid: http off localhost: \"http://api.keenable.ai\"",
       "base_url": "http://api.keenable.ai",
-      "valid": false
+      "valid": false,
+      "param": "base_url"
     },
     {
       "name": "invalid: http to a private address: \"http://10.0.0.1\"",
       "base_url": "http://10.0.0.1",
-      "valid": false
+      "valid": false,
+      "param": "base_url"
     },
     {
       "name": "invalid: http to loopback not spelled 127.0.0.1: \"http://127.1\"",
       "base_url": "http://127.1",
-      "valid": false
+      "valid": false,
+      "param": "base_url"
     },
     {
       "name": "invalid: not http(s): \"ftp://api.keenable.ai\"",
       "base_url": "ftp://api.keenable.ai",
-      "valid": false
+      "valid": false,
+      "param": "base_url"
     },
     {
       "name": "invalid: no scheme: \"api.keenable.ai\"",
       "base_url": "api.keenable.ai",
-      "valid": false
+      "valid": false,
+      "param": "base_url"
     },
     {
       "name": "invalid: no host: \"https://\"",
       "base_url": "https://",
-      "valid": false
+      "valid": false,
+      "param": "base_url"
     },
     {
       "name": "invalid: a query, which the endpoint path would be appended to: \"https://api.keenable.ai?x=1\"",
       "base_url": "https://api.keenable.ai?x=1",
-      "valid": false
+      "valid": false,
+      "param": "base_url"
     },
     {
       "name": "invalid: a fragment, which the endpoint path would be appended to: \"https://api.keenable.ai#frag\"",
       "base_url": "https://api.keenable.ai#frag",
-      "valid": false
+      "valid": false,
+      "param": "base_url"
     },
     {
       "name": "invalid: a backslash before the host: a WHATWG parser sends this to evil.example: \"http://evil.example\\\\@localhost\"",
       "base_url": "http://evil.example\\@localhost",
-      "valid": false
+      "valid": false,
+      "param": "base_url"
     },
     {
       "name": "invalid: a backslash before the host, with a port: \"http://evil.example\\\\@localhost:8080\"",
       "base_url": "http://evil.example\\@localhost:8080",
-      "valid": false
+      "valid": false,
+      "param": "base_url"
     },
     {
       "name": "invalid: a backslash after the host: \"http://localhost\\\\@evil.example\"",
       "base_url": "http://localhost\\@evil.example",
-      "valid": false
+      "valid": false,
+      "param": "base_url"
     },
     {
       "name": "invalid: a backslash in an https authority: \"https://api.keenable.ai\\\\@evil.example\"",
       "base_url": "https://api.keenable.ai\\@evil.example",
-      "valid": false
+      "valid": false,
+      "param": "base_url"
     },
     {
       "name": "invalid: a user name: \"http://user@localhost:8080\"",
       "base_url": "http://user@localhost:8080",
-      "valid": false
+      "valid": false,
+      "param": "base_url"
     },
     {
       "name": "invalid: a user name and password: \"http://user:pass@127.0.0.1:3000\"",
       "base_url": "http://user:pass@127.0.0.1:3000",
-      "valid": false
+      "valid": false,
+      "param": "base_url"
     },
     {
       "name": "invalid: a user name and password on https: \"https://user:pass@api.keenable.ai\"",
       "base_url": "https://user:pass@api.keenable.ai",
-      "valid": false
+      "valid": false,
+      "param": "base_url"
     },
     {
       "name": "invalid: an empty user name: \"https://@api.keenable.ai\"",
       "base_url": "https://@api.keenable.ai",
-      "valid": false
+      "valid": false,
+      "param": "base_url"
     },
     {
       "name": "invalid: http to localhost in fullwidth letters: only the three plain spellings count: \"http://ｌｏｃａｌｈｏｓｔ:8080\"",
       "base_url": "http://ｌｏｃａｌｈｏｓｔ:8080",
-      "valid": false
+      "valid": false,
+      "param": "base_url"
     },
     {
       "name": "invalid: http to localhost with two trailing dots: \"http://localhost..:8080\"",
       "base_url": "http://localhost..:8080",
-      "valid": false
+      "valid": false,
+      "param": "base_url"
     }
   ],
   "retry_after": {
@@ -1630,6 +1787,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [
           "Bad thing"
         ],
@@ -1658,6 +1816,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [
           "inner",
@@ -1687,6 +1846,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [
           "the detail"
         ],
@@ -1713,6 +1873,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [
           "true",
@@ -1740,6 +1901,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -1764,6 +1926,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -1788,6 +1951,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -1812,6 +1976,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -1836,6 +2001,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [
           "oops"
@@ -1862,6 +2028,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [
           "null"
@@ -1888,6 +2055,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [
           "4242"
@@ -1914,6 +2082,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [
           "[\"x\"]"
@@ -1940,6 +2109,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -1964,6 +2134,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [
           "1e400"
@@ -1990,6 +2161,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [
           "<html>Bad Gateway</html>"
         ],
@@ -2016,6 +2188,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2040,6 +2213,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2064,6 +2238,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2088,6 +2263,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2112,6 +2288,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2136,6 +2313,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": "https://docs.keenable.ai/errors#c",
         "message_contains": [
           "bom"
         ],
@@ -2162,6 +2340,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": "https://docs.keenable.ai/errors#c",
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2186,6 +2365,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": "https://docs.keenable.ai/errors#target-blocked",
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2210,6 +2390,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [
           "(code:"
@@ -2236,6 +2417,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2260,6 +2442,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2286,6 +2469,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [
           "(request_id: from-body)"
         ],
@@ -2314,6 +2498,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2340,6 +2525,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2366,6 +2552,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2392,6 +2579,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2418,6 +2606,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2442,6 +2631,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2466,6 +2656,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2490,6 +2681,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2516,6 +2708,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2542,6 +2735,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2568,6 +2762,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2597,6 +2792,7 @@
           "max": 1000,
           "resets_at": "2026-11-06T12:30:00.000Z"
         },
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2626,6 +2822,7 @@
           "max": null,
           "resets_at": null
         },
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2655,6 +2852,7 @@
           "max": null,
           "resets_at": null
         },
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2684,6 +2882,7 @@
           "max": null,
           "resets_at": null
         },
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2713,6 +2912,7 @@
           "max": null,
           "resets_at": null
         },
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2742,6 +2942,7 @@
           "max": null,
           "resets_at": null
         },
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2766,6 +2967,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2790,6 +2992,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2814,6 +3017,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [
           "Keenable API error (401)"
         ],
@@ -2842,6 +3046,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": "https://docs.keenable.ai/errors#target-blocked",
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2866,6 +3071,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": "https://docs.keenable.ai/errors#page-not-found",
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2890,6 +3096,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2914,6 +3121,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2938,13 +3146,14 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
       }
     },
     {
-      "name": "docs_url is not exposed",
+      "name": "docs_url from the body, not in the message",
       "status": 400,
       "headers": {},
       "body": "{\"code\":\"invalid_parameter\",\"message\":\"bad max_results\",\"fix\":\"Correct max_results.\",\"param\":\"max_results\",\"docs_url\":\"https://docs.keenable.ai/errors#400-invalid-request\"}",
@@ -2962,16 +3171,149 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": "https://docs.keenable.ai/errors#400-invalid-request",
         "message_contains": [
           "bad max_results",
           "Correct max_results."
         ],
         "message_excludes": [
-          "Docs:"
+          "Docs:",
+          "https://docs.keenable.ai"
         ],
+        "absent": []
+      }
+    },
+    {
+      "name": "docs_url built from the code when the body has none",
+      "status": 429,
+      "headers": {},
+      "body": "{\"code\":\"rate_limit_per_second\",\"message\":\"slow down\"}",
+      "expect": {
+        "kind": "rate_limit",
+        "detail": "slow down",
+        "code": "rate_limit_per_second",
+        "type": "rate_limit_error",
+        "error": null,
+        "fix": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": null,
+        "value": null,
+        "reason": null,
+        "limit": null,
+        "docs_url": "https://docs.keenable.ai/errors#rate-limit-per-second",
+        "message_contains": [],
+        "message_excludes": [
+          "https://docs.keenable.ai"
+        ],
+        "absent": []
+      }
+    },
+    {
+      "name": "a docs_url outside the error reference is replaced by the code's",
+      "status": 400,
+      "headers": {},
+      "body": "{\"code\":\"invalid_parameter\",\"message\":\"m\",\"docs_url\":\"https://evil.example/errors#invalid-parameter\"}",
+      "expect": {
+        "kind": "api",
+        "detail": "m",
+        "code": "invalid_parameter",
+        "type": "invalid_request_error",
+        "error": null,
+        "fix": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": null,
+        "value": null,
+        "reason": null,
+        "limit": null,
+        "docs_url": "https://docs.keenable.ai/errors#invalid-parameter",
+        "message_contains": [],
+        "message_excludes": [],
         "absent": [
-          "https://docs.keenable.ai/errors#400-invalid-request"
+          "https://evil.example/errors#invalid-parameter"
         ]
+      }
+    },
+    {
+      "name": "a docs_url with a path after the anchor is replaced by the code's",
+      "status": 400,
+      "headers": {},
+      "body": "{\"code\":\"invalid_parameter\",\"message\":\"m\",\"docs_url\":\"https://docs.keenable.ai/errors#x/../../pay\"}",
+      "expect": {
+        "kind": "api",
+        "detail": "m",
+        "code": "invalid_parameter",
+        "type": "invalid_request_error",
+        "error": null,
+        "fix": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": null,
+        "value": null,
+        "reason": null,
+        "limit": null,
+        "docs_url": "https://docs.keenable.ai/errors#invalid-parameter",
+        "message_contains": [],
+        "message_excludes": [],
+        "absent": [
+          "https://docs.keenable.ai/errors#x/../../pay"
+        ]
+      }
+    },
+    {
+      "name": "no code and no reference link: no docs_url",
+      "status": 400,
+      "headers": {},
+      "body": "{\"message\":\"m\",\"docs_url\":\"https://docs.keenable.ai/quickstart\"}",
+      "expect": {
+        "kind": "api",
+        "detail": "m",
+        "code": null,
+        "type": "invalid_request_error",
+        "error": null,
+        "fix": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": null,
+        "value": null,
+        "reason": null,
+        "limit": null,
+        "docs_url": null,
+        "message_contains": [],
+        "message_excludes": [],
+        "absent": [
+          "https://docs.keenable.ai/quickstart"
+        ]
+      }
+    },
+    {
+      "name": "a code that is not a plain identifier gives no docs_url",
+      "status": 400,
+      "headers": {},
+      "body": "{\"code\":\"Bad Code\",\"message\":\"m\"}",
+      "expect": {
+        "kind": "api",
+        "detail": "m",
+        "code": "Bad Code",
+        "type": "invalid_request_error",
+        "error": null,
+        "fix": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": null,
+        "value": null,
+        "reason": null,
+        "limit": null,
+        "docs_url": null,
+        "message_contains": [],
+        "message_excludes": [],
+        "absent": []
       }
     },
     {
@@ -2995,6 +3337,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": "https://docs.keenable.ai/errors#402",
         "message_contains": [
           "Keenable: insufficient credits (402)",
           "(code: insufficient_credits)",
@@ -3005,7 +3348,6 @@
           "http"
         ],
         "absent": [
-          "https://docs.keenable.ai/errors#402",
           "https://app.keenable.ai/console/billing",
           "https://docs.keenable.ai/auto-top-up.md",
           "pay-per-request",
@@ -3033,6 +3375,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [
           "Keenable: payment required (402)",
           "does not pay"
@@ -3071,6 +3414,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": "https://docs.keenable.ai/errors#payment-required",
         "message_contains": [
           "Keenable: payment required (402)",
           "(code: payment_required)",
@@ -3107,6 +3451,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [
           "Keenable: insufficient credits (402)"
         ],
@@ -3133,6 +3478,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [
           "[[[["
@@ -3159,6 +3505,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [
           "[[[["
         ],
@@ -3185,6 +3532,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -3209,13 +3557,12 @@
         "value": "spam.com/blog",
         "reason": "paths are not supported; give only the host, such as example.com",
         "limit": null,
+        "docs_url": "https://docs.keenable.ai/errors#invalid-parameter",
         "message_contains": [
           "Correct the \"exclude_domains\" entry \"spam.com/blog\" (paths are not supported; give only the host, such as example.com) and retry."
         ],
         "message_excludes": [],
-        "absent": [
-          "https://docs.keenable.ai/errors#invalid-parameter"
-        ]
+        "absent": []
       }
     },
     {
@@ -3237,6 +3584,7 @@
         "value": null,
         "reason": "at most 1000 hosts",
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -3261,6 +3609,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -3285,6 +3634,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -3309,6 +3659,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "docs_url": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -4848,6 +5199,7 @@
       "scope": "client",
       "value": 0,
       "valid": true,
+      "param": null,
       "skip": {}
     },
     {
@@ -4856,6 +5208,7 @@
       "scope": "client",
       "value": 3,
       "valid": true,
+      "param": null,
       "skip": {}
     },
     {
@@ -4864,6 +5217,7 @@
       "scope": "client",
       "value": 1000000000,
       "valid": true,
+      "param": null,
       "skip": {}
     },
     {
@@ -4872,6 +5226,7 @@
       "scope": "client",
       "value": null,
       "valid": true,
+      "param": null,
       "skip": {}
     },
     {
@@ -4880,6 +5235,7 @@
       "scope": "client",
       "value": -1,
       "valid": false,
+      "param": "max_retries",
       "skip": {
         "rust": "an Option<u32>"
       }
@@ -4890,6 +5246,7 @@
       "scope": "client",
       "value": 1.5,
       "valid": false,
+      "param": "max_retries",
       "skip": {
         "go": "an int",
         "rust": "an Option<u32>"
@@ -4903,6 +5260,7 @@
         "$float": "NaN"
       },
       "valid": false,
+      "param": "max_retries",
       "skip": {
         "go": "an int",
         "rust": "an Option<u32>"
@@ -4914,6 +5272,7 @@
       "scope": "client",
       "value": "2",
       "valid": false,
+      "param": "max_retries",
       "skip": {
         "go": "an int",
         "rust": "an Option<u32>"
@@ -4925,6 +5284,7 @@
       "scope": "client",
       "value": true,
       "valid": false,
+      "param": "max_retries",
       "skip": {
         "go": "an int",
         "rust": "an Option<u32>"
@@ -4936,6 +5296,7 @@
       "scope": "call",
       "value": 0,
       "valid": true,
+      "param": null,
       "skip": {}
     },
     {
@@ -4944,6 +5305,7 @@
       "scope": "call",
       "value": null,
       "valid": true,
+      "param": null,
       "skip": {}
     },
     {
@@ -4952,6 +5314,7 @@
       "scope": "call",
       "value": -1,
       "valid": false,
+      "param": "max_retries",
       "skip": {
         "rust": "an Option<u32>"
       }
@@ -4962,6 +5325,7 @@
       "scope": "call",
       "value": 0.5,
       "valid": false,
+      "param": "max_retries",
       "skip": {
         "go": "an int",
         "rust": "an Option<u32>"
@@ -4975,6 +5339,7 @@
         "$float": "Infinity"
       },
       "valid": false,
+      "param": "max_retries",
       "skip": {
         "go": "an int",
         "rust": "an Option<u32>"
@@ -4986,6 +5351,7 @@
       "scope": "call",
       "value": "1",
       "valid": false,
+      "param": "max_retries",
       "skip": {
         "go": "an int",
         "rust": "an Option<u32>"
@@ -4997,6 +5363,7 @@
       "scope": "client",
       "value": 5,
       "valid": true,
+      "param": null,
       "skip": {}
     },
     {
@@ -5005,6 +5372,7 @@
       "scope": "client",
       "value": 0.5,
       "valid": true,
+      "param": null,
       "skip": {}
     },
     {
@@ -5013,6 +5381,7 @@
       "scope": "client",
       "value": 10000000,
       "valid": true,
+      "param": null,
       "skip": {}
     },
     {
@@ -5021,6 +5390,7 @@
       "scope": "client",
       "value": 0,
       "valid": false,
+      "param": "timeout",
       "skip": {
         "go": "Options.Timeout zero means DefaultTimeout, as released in go/v0.1.1"
       }
@@ -5031,6 +5401,7 @@
       "scope": "client",
       "value": -1,
       "valid": false,
+      "param": "timeout",
       "skip": {
         "rust": "an Option<Duration>"
       }
@@ -5043,6 +5414,7 @@
         "$float": "NaN"
       },
       "valid": false,
+      "param": "timeout",
       "skip": {
         "go": "a time.Duration",
         "rust": "an Option<Duration>"
@@ -5056,6 +5428,7 @@
         "$float": "Infinity"
       },
       "valid": false,
+      "param": "timeout",
       "skip": {
         "go": "a time.Duration",
         "rust": "an Option<Duration>"
@@ -5067,6 +5440,7 @@
       "scope": "client",
       "value": "5",
       "valid": false,
+      "param": "timeout",
       "skip": {
         "go": "a time.Duration",
         "rust": "an Option<Duration>"
@@ -5078,6 +5452,7 @@
       "scope": "client",
       "value": true,
       "valid": false,
+      "param": "timeout",
       "skip": {
         "go": "a time.Duration",
         "rust": "an Option<Duration>"
@@ -5089,6 +5464,7 @@
       "scope": "call",
       "value": 5,
       "valid": true,
+      "param": null,
       "skip": {}
     },
     {
@@ -5097,6 +5473,7 @@
       "scope": "call",
       "value": 0.001,
       "valid": true,
+      "param": null,
       "skip": {}
     },
     {
@@ -5105,6 +5482,7 @@
       "scope": "call",
       "value": 10000000,
       "valid": true,
+      "param": null,
       "skip": {}
     },
     {
@@ -5113,6 +5491,7 @@
       "scope": "call",
       "value": 1e+300,
       "valid": true,
+      "param": null,
       "skip": {
         "go": "a time.Duration",
         "rust": "an Option<Duration>, which holds about 584 billion years at most"
@@ -5124,6 +5503,7 @@
       "scope": "call",
       "value": null,
       "valid": true,
+      "param": null,
       "skip": {}
     },
     {
@@ -5132,6 +5512,7 @@
       "scope": "call",
       "value": 0,
       "valid": false,
+      "param": "timeout",
       "skip": {}
     },
     {
@@ -5140,6 +5521,7 @@
       "scope": "call",
       "value": -1,
       "valid": false,
+      "param": "timeout",
       "skip": {
         "rust": "an Option<Duration>"
       }
@@ -5152,6 +5534,7 @@
         "$float": "NaN"
       },
       "valid": false,
+      "param": "timeout",
       "skip": {
         "go": "a time.Duration",
         "rust": "an Option<Duration>"
@@ -5165,6 +5548,7 @@
         "$float": "-Infinity"
       },
       "valid": false,
+      "param": "timeout",
       "skip": {
         "go": "a time.Duration",
         "rust": "an Option<Duration>"
@@ -5176,6 +5560,7 @@
       "scope": "call",
       "value": "5",
       "valid": false,
+      "param": "timeout",
       "skip": {
         "go": "a time.Duration",
         "rust": "an Option<Duration>"
@@ -5187,6 +5572,7 @@
       "scope": "call",
       "value": true,
       "valid": false,
+      "param": "timeout",
       "skip": {
         "go": "a time.Duration",
         "rust": "an Option<Duration>"
@@ -5200,6 +5586,7 @@
         "X-Trace": "abc"
       },
       "valid": true,
+      "param": null,
       "skip": {}
     },
     {
@@ -5210,6 +5597,7 @@
         "X-Trace": "a\tb"
       },
       "valid": true,
+      "param": null,
       "skip": {}
     },
     {
@@ -5220,6 +5608,7 @@
         "X-Trace": "a\r\nX-Evil: 1"
       },
       "valid": false,
+      "param": "headers",
       "skip": {}
     },
     {
@@ -5230,6 +5619,7 @@
         "X-Trace": "a\nb"
       },
       "valid": false,
+      "param": "headers",
       "skip": {}
     },
     {
@@ -5240,6 +5630,7 @@
         "X-Trace": "a\u0000b"
       },
       "valid": false,
+      "param": "headers",
       "skip": {}
     },
     {
@@ -5250,6 +5641,7 @@
         "X Trace": "v"
       },
       "valid": false,
+      "param": "headers",
       "skip": {}
     },
     {
@@ -5260,6 +5652,7 @@
         "X-Trace:": "v"
       },
       "valid": false,
+      "param": "headers",
       "skip": {}
     },
     {
@@ -5270,6 +5663,7 @@
         "": "v"
       },
       "valid": false,
+      "param": "headers",
       "skip": {}
     },
     {
@@ -5280,6 +5674,7 @@
         "X-API-Key": "other"
       },
       "valid": true,
+      "param": null,
       "skip": {}
     },
     {
@@ -5290,6 +5685,7 @@
         "X-Gateway": "g"
       },
       "valid": true,
+      "param": null,
       "skip": {}
     },
     {
@@ -5300,6 +5696,7 @@
         "X-Gateway": "g\r\nX-Evil: 1"
       },
       "valid": false,
+      "param": "headers",
       "skip": {}
     },
     {
@@ -5310,6 +5707,7 @@
         "X Gateway": "g"
       },
       "valid": false,
+      "param": "headers",
       "skip": {}
     },
     {
@@ -5318,6 +5716,7 @@
       "scope": "call",
       "value": "q",
       "valid": true,
+      "param": null,
       "skip": {}
     },
     {
@@ -5326,6 +5725,7 @@
       "scope": "call",
       "value": "",
       "valid": false,
+      "param": "query",
       "skip": {}
     },
     {
@@ -5334,6 +5734,7 @@
       "scope": "call",
       "value": " \t\n",
       "valid": false,
+      "param": "query",
       "skip": {}
     },
     {
@@ -5342,6 +5743,7 @@
       "scope": "call",
       "value": 5,
       "valid": false,
+      "param": "query",
       "skip": {
         "go": "a string",
         "rust": "a &str"
@@ -5353,6 +5755,7 @@
       "scope": "call",
       "value": null,
       "valid": false,
+      "param": "query",
       "skip": {
         "go": "a string",
         "rust": "a &str"
@@ -5364,6 +5767,7 @@
       "scope": "call",
       "value": 5,
       "valid": false,
+      "param": "url",
       "skip": {
         "go": "a string",
         "rust": "a &str"
@@ -5375,6 +5779,7 @@
       "scope": "call",
       "value": null,
       "valid": false,
+      "param": "url",
       "skip": {
         "go": "a string",
         "rust": "a &str"
@@ -5386,6 +5791,7 @@
       "scope": "call",
       "value": true,
       "valid": true,
+      "param": null,
       "skip": {}
     },
     {
@@ -5394,6 +5800,7 @@
       "scope": "call",
       "value": false,
       "valid": true,
+      "param": null,
       "skip": {}
     },
     {
@@ -5402,6 +5809,7 @@
       "scope": "call",
       "value": null,
       "valid": true,
+      "param": null,
       "skip": {}
     },
     {
@@ -5410,6 +5818,7 @@
       "scope": "call",
       "value": "true",
       "valid": false,
+      "param": "disable_cards",
       "skip": {
         "go": "a bool",
         "rust": "a bool"
@@ -5421,6 +5830,7 @@
       "scope": "call",
       "value": 1,
       "valid": false,
+      "param": "disable_cards",
       "skip": {
         "go": "a bool",
         "rust": "a bool"
@@ -5434,6 +5844,7 @@
         "on": true
       },
       "valid": false,
+      "param": "disable_cards",
       "skip": {
         "go": "a bool",
         "rust": "a bool"

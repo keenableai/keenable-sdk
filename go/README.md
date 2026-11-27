@@ -434,7 +434,7 @@ if errors.As(err, &sdk) {
 | `InsufficientCreditsError` (alias `CreditsError`) | `api_error` | HTTP 402, no credits left, or a pay-per-request (x402) payment this SDK cannot make; retrying will not help. The message starts "Keenable: insufficient credits (402)" or "Keenable: payment required (402)" |
 | `APIError` | `api_error` | Any other non-2xx response; carries `StatusCode`, `Body`, and `RequestID` when the API sent `X-Request-Id` |
 | `ConnectionError` | `connection` | The API could not be reached, or the client deadline elapsed (`Timeout()` reports which) |
-| `InvalidRequestError` | `invalid_request` | Bad arguments; no request was sent |
+| `InvalidRequestError` | `invalid_request` | Bad arguments; no request was sent. `Param` names the argument at fault as the API spells it (`query`, `url`, `max_retries`, ...), or is empty |
 
 ## Handling errors
 
@@ -471,14 +471,15 @@ case errors.As(err, &api):
 | `Param` | The parameter a 400 is about |
 | `Value`, `Reason` | What a 400 `invalid_filter` rejected (usually the entry; for a size cap the count or a truncated entry), and why |
 | `RateLimit` | On a 429: `Scope`, `Window`, `Max`, `ResetsAt` |
+| `DocsURL` | The code's entry in the error reference, e.g. `https://docs.keenable.ai/errors#rate-limit-per-second`; not in `Error()` |
 | `Body` | The API's error message (its `message`, `error` or `detail` string), or the text of a body that is not JSON |
 
 When the API sends `Fix`, the error message ends with it in place of the
 SDK's generic advice (for every status, as in the Python and TypeScript SDKs),
 so a non-retryable error never tells an agent to retry. It then ends with
 `(code: <APICode>)` and `(request_id: <RequestID>)` before the SDK code, as in
-the Python and TypeScript SDKs. The API's docs link, a 402's billing and
-top-up links and a pay-per-request (x402) offer are not exposed. A 402's
+the Python and TypeScript SDKs. A 402's billing and top-up links and a
+pay-per-request (x402) offer are not exposed. A 402's
 message is the SDK's own: "Keenable: payment required (402)" when the API asks
 for a per-request payment, which this SDK cannot make (use an API key), else
 "Keenable: insufficient credits (402)". A 403 with type `target_error` (e.g. code
@@ -529,7 +530,7 @@ deprecated parameter it used; it is nil otherwise.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `KEENABLE_API_KEY` | unset | Lifts the hourly rate limit. Create one at [keenable.ai/console](https://keenable.ai/console) |
+| `KEENABLE_API_KEY` | unset | Lifts the hourly rate limit. Create one at [app.keenable.ai/console/api-keys](https://app.keenable.ai/console/api-keys) |
 | `KEENABLE_API_URL` | `https://api.keenable.ai` | Override the API base URL |
 
 `New(nil)` reads both. `APIKey` and `BaseURL` are pointers so "unset" and

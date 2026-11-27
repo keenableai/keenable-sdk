@@ -68,21 +68,24 @@ pub(crate) fn resolve_base_url(explicit: Option<&str>) -> Result<String> {
         .unwrap_or_else(|| crate::DEFAULT_BASE_URL.to_string());
     let raw = raw.trim().trim_end_matches('/').to_string();
     if raw.is_empty() {
-        return Err(Error::invalid(
-            r#"base_url must be an https:// URL with a host, got """#,
-        ));
+        return Err(
+            Error::invalid(r#"base_url must be an https:// URL with a host, got """#)
+                .with_param("base_url"),
+        );
     }
     // The endpoint path is appended to the base URL, so a query or fragment
     // would swallow it.
     if raw.contains('?') || raw.contains('#') {
         return Err(Error::invalid(format!(
             "base_url must be an https:// URL with a host and no query or fragment, got {raw:?}"
-        )));
+        ))
+        .with_param("base_url"));
     }
     let parsed = Url::parse(&raw).map_err(|_| {
         Error::invalid(format!(
             "base_url must be an https:// URL with a host, got {raw:?}"
         ))
+        .with_param("base_url")
     })?;
     // The API key is sent to this host. A backslash makes URL parsers disagree
     // on which host that is (http://evil.example\@localhost is evil.example to
@@ -96,12 +99,14 @@ pub(crate) fn resolve_base_url(explicit: Option<&str>) -> Result<String> {
         return Err(Error::invalid(
             "base_url must not contain a backslash, user name or password before its path. \
              Pass an https:// URL with only a host, an optional port and an optional path.",
-        ));
+        )
+        .with_param("base_url"));
     }
     if parsed.host().is_none() || authority.is_empty() {
         return Err(Error::invalid(format!(
             "base_url must be an https:// URL with a host, got {raw:?}"
-        )));
+        ))
+        .with_param("base_url"));
     }
     // The host as written must be one of the three plain spellings (a WHATWG
     // parser reads 127.1 as 127.0.0.1), and the parsed host must agree.
@@ -112,7 +117,7 @@ pub(crate) fn resolve_base_url(explicit: Option<&str>) -> Result<String> {
         "http" if local => Ok(raw),
         _ => Err(Error::invalid(format!(
             "base_url must use https (http is only allowed for localhost, 127.0.0.1, and ::1), got {raw:?}"
-        ))),
+        )).with_param("base_url")),
     }
 }
 
@@ -124,6 +129,7 @@ pub(crate) fn reject_private_fetch_target(raw: &str) -> Result<()> {
         Error::invalid(format!(
             "fetch() needs an http(s) URL, got {raw:?}. Use an https URL on the public internet."
         ))
+        .with_param("url")
     };
     // Parsers disagree on what control characters and surrounding spaces
     // mean (WHATWG deletes a tab, others refuse it), so none is accepted.
@@ -145,12 +151,13 @@ pub(crate) fn reject_private_fetch_target(raw: &str) -> Result<()> {
     if authority.contains('\\') {
         return Err(Error::invalid(format!(
             "fetch() URL has a backslash in its host: {raw:?}. Pass an https URL with a public host."
-        )));
+        )).with_param("url"));
     }
     let no_host = || {
         Error::invalid(format!(
             "fetch() URL has no host: {raw:?}. Pass an https URL with a public host."
         ))
+        .with_param("url")
     };
     if authority.is_empty() {
         return Err(no_host());
@@ -169,12 +176,13 @@ pub(crate) fn reject_private_fetch_target(raw: &str) -> Result<()> {
                 return Err(Error::invalid(format!(
                     "fetch() URL has an empty label in its host (two dots in a row, or a leading dot): {raw:?}. \
                      Pass an https URL with a public host."
-                )));
+                )).with_param("url"));
             }
             if BLOCKED_HOSTS.contains(&host.as_str()) || host.ends_with(".localhost") {
                 return Err(Error::invalid(format!(
                     "refusing to fetch internal host {host:?}. Pass a public http(s) URL."
-                )));
+                ))
+                .with_param("url"));
             }
             Ok(())
         }
@@ -189,6 +197,7 @@ fn private(host: &str) -> Error {
     Error::invalid(format!(
         "refusing to fetch private address {host:?}. Pass a public http(s) URL."
     ))
+    .with_param("url")
 }
 
 /// The IPv4 ranges fetch() refuses: this network, private, carrier-grade NAT

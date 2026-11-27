@@ -836,10 +836,13 @@ class _Call:
 
 def _segment(name: str, value: Any) -> str:
     if not isinstance(value, str) or not value.strip():
-        raise KeenableInvalidRequestError(f"{name} must be a non-empty string")
+        raise KeenableInvalidRequestError(
+            f"{name} must be a non-empty string", param=name
+        )
     if value in (".", ".."):
         raise KeenableInvalidRequestError(
-            f"{name} must not be {value!r}: it would change the request's path"
+            f"{name} must not be {value!r}: it would change the request's path",
+            param=name,
         )
     return quote(value, safe="")
 
@@ -870,7 +873,8 @@ def _check_search(search: Any, required: bool) -> dict[str, Any]:
     if not isinstance(search, Mapping):
         raise KeenableInvalidRequestError(
             "search must be a mapping such as "
-            "{'query': 'new open-weights LLM releases'}"
+            "{'query': 'new open-weights LLM releases'}",
+            param="search",
         )
     body = {
         k: (list(v) if k.endswith("_domains") and v is not None else v)
@@ -880,19 +884,24 @@ def _check_search(search: Any, required: bool) -> dict[str, Any]:
     if (required or "query" in body) and (
         not isinstance(query, str) or not query.strip()
     ):
-        raise KeenableInvalidRequestError("search needs a non-empty query string")
+        raise KeenableInvalidRequestError(
+            "search needs a non-empty query string", param="search"
+        )
     return body
 
 
 def _check_page(page: Any, required: bool) -> dict[str, Any]:
     if not isinstance(page, Mapping):
         raise KeenableInvalidRequestError(
-            "page must be a mapping such as {'url': 'https://example.com/pricing'}"
+            "page must be a mapping such as {'url': 'https://example.com/pricing'}",
+            param="page",
         )
     body = dict(page)
     url = body.get("url")
     if (required or "url" in body) and (not isinstance(url, str) or not url.strip()):
-        raise KeenableInvalidRequestError("page needs a non-empty url string")
+        raise KeenableInvalidRequestError(
+            "page needs a non-empty url string", param="page"
+        )
     return body
 
 
@@ -916,18 +925,21 @@ def _create_call(
 ) -> _Call:
     if type is not None and type not in _TYPES:
         raise KeenableInvalidRequestError(
-            f"type must be 'search' or 'page', got {type!r}"
+            f"type must be 'search' or 'page', got {type!r}", param="type"
         )
     body: dict[str, Any] = {}
     if type == "page":
         if search is not None:
-            raise KeenableInvalidRequestError("a page monitor takes page, not search")
+            raise KeenableInvalidRequestError(
+                "a page monitor takes page, not search", param="search"
+            )
         body["type"] = "page"
         body["page"] = _check_page(page, True)
     else:
         if page is not None:
             raise KeenableInvalidRequestError(
-                "page is only for type='page'; a search monitor takes search"
+                "page is only for type='page'; a search monitor takes search",
+                param="page",
             )
         if type is not None:
             body["type"] = type
@@ -988,18 +1000,23 @@ def _bulk_call(
 ) -> _Call:
     if action not in _BULK_ACTIONS:
         raise KeenableInvalidRequestError(
-            f"action must be one of {', '.join(_BULK_ACTIONS)}, got {action!r}"
+            f"action must be one of {', '.join(_BULK_ACTIONS)}, got {action!r}",
+            param="action",
         )
     if isinstance(ids, str):
-        raise KeenableInvalidRequestError("ids must be a list of monitor ids")
+        raise KeenableInvalidRequestError(
+            "ids must be a list of monitor ids", param="ids"
+        )
     if filter is not None and not isinstance(filter, Mapping):
-        raise KeenableInvalidRequestError("filter must be a mapping")
+        raise KeenableInvalidRequestError("filter must be a mapping", param="filter")
     if not ids and not _selects(filter):
         raise KeenableInvalidRequestError(
             "bulk() needs ids or a filter with a status, a name or metadata"
         )
     if not isinstance(dry_run, bool):
-        raise KeenableInvalidRequestError("dry_run must be True or False")
+        raise KeenableInvalidRequestError(
+            "dry_run must be True or False", param="dry_run"
+        )
     body: dict[str, Any] = {"action": action, "dry_run": dry_run}
     if ids:
         body["ids"] = list(ids)

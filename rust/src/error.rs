@@ -101,7 +101,22 @@ impl Error {
     }
 
     pub(crate) fn invalid(msg: impl Into<String>) -> Self {
-        Error::InvalidRequest(InvalidRequestError { msg: msg.into() })
+        Error::InvalidRequest(InvalidRequestError {
+            msg: msg.into(),
+            param: None,
+        })
+    }
+
+    /// Names the argument an invalid-request error is about. Any other error
+    /// is returned as it is.
+    pub(crate) fn with_param(self, param: &str) -> Self {
+        match self {
+            Error::InvalidRequest(mut e) => {
+                e.param = Some(param.to_string());
+                Error::InvalidRequest(e)
+            }
+            other => other,
+        }
     }
 }
 
@@ -124,6 +139,22 @@ impl std::error::Error for Error {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InvalidRequestError {
     pub(crate) msg: String,
+    pub(crate) param: Option<String>,
+}
+
+impl InvalidRequestError {
+    /// Always [`codes::INVALID_REQUEST`], the code every Keenable SDK gives
+    /// this error.
+    pub fn code(&self) -> &'static str {
+        codes::INVALID_REQUEST
+    }
+
+    /// The argument at fault, spelled as the API spells it (`query`, `url`,
+    /// `max_retries`, `base_url`, ...), the same in every Keenable SDK.
+    /// `None` when no single argument is at fault.
+    pub fn param(&self) -> Option<&str> {
+        self.param.as_deref()
+    }
 }
 
 impl fmt::Display for InvalidRequestError {
@@ -189,8 +220,8 @@ impl std::error::Error for ConnectionError {}
 /// ends with `(code: <code>) (request_id: <id>)` when the API sent them, then
 /// the SDK's own `(<sdk code>)`.
 ///
-/// The API's docs link, a 402's billing and top-up links and a
-/// pay-per-request (x402) offer are not exposed, in a field or in the text.
+/// A 402's billing and top-up links and a pay-per-request (x402) offer are
+/// not exposed, in a field or in the text.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct ApiError {
@@ -230,7 +261,32 @@ pub struct ApiError {
     pub reason: Option<String>,
     /// The limit a 429 hit (the body's `limit`).
     pub limit: Option<RateLimitInfo>,
+    /// The error's entry in the error reference,
+    /// `https://docs.keenable.ai/errors#<code>` with `_` written as `-`. It is
+    /// the body's `docs_url` when that is such a link, else built from
+    /// [`ApiError::code`]; `None` when there is no code. It is not in the text.
+    pub docs_url: Option<String>,
     pub(crate) msg: String,
+}
+
+const DOCS_PREFIX: &str = "https://docs.keenable.ai/errors#";
+
+/// The error reference link: the body's when it is one, else built from the
+/// code. Only a link into <https://docs.keenable.ai/errors> is passed on, so
+/// the error never carries another URL from the response.
+pub(crate) fn docs_url_for(sent: Option<&str>, code: Option<&str>) -> Option<String> {
+    let plain = |s: &str, extra: char| {
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == extra)
+    };
+    if let Some(anchor) = sent.and_then(|s| s.strip_prefix(DOCS_PREFIX)) {
+        if plain(anchor, '-') {
+            return sent.map(str::to_string);
+        }
+    }
+    code.filter(|c| plain(c, '_'))
+        .map(|c| format!("{DOCS_PREFIX}{}", c.replace('_', "-")))
 }
 
 impl ApiError {
@@ -249,6 +305,7 @@ impl ApiError {
             value: None,
             reason: None,
             limit: None,
+            docs_url: None,
             msg,
         }
     }

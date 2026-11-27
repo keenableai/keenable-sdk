@@ -17,8 +17,23 @@ export class KeenableConnectionError extends KeenableError {}
  */
 export class KeenableTimeoutError extends KeenableConnectionError {}
 
-/** The arguments passed to the SDK are invalid; no request was sent. */
-export class KeenableInvalidRequestError extends KeenableError {}
+/**
+ * The arguments passed to the SDK are invalid; no request was sent.
+ *
+ * `code` is always `"invalid_request"`, the same in every Keenable SDK. `param`
+ * names the argument at fault, spelled as the API spells it (`"query"`,
+ * `"url"`, `"max_retries"`, `"base_url"`, ...), and is `undefined` when no
+ * single argument is.
+ */
+export class KeenableInvalidRequestError extends KeenableError {
+  readonly code = "invalid_request";
+  readonly param?: string;
+
+  constructor(message: string, options: { param?: string } = {}) {
+    super(message);
+    this.param = options.param;
+  }
+}
 
 /**
  * The limit a 429 hit, from the API's `limit` object. A field the API left out
@@ -85,6 +100,29 @@ export interface KeenableAPIErrorDetails {
   value?: string;
   /** Why the API rejected `value`. */
   reason?: string;
+  /**
+   * The error's entry in the error reference,
+   * `https://docs.keenable.ai/errors#<code>` with `_` written as `-`. Taken
+   * from the body when it is such a link, else built from `code`; `undefined`
+   * when there is no code.
+   */
+  docsUrl?: string;
+}
+
+const DOCS_URL = /^https:\/\/docs\.keenable\.ai\/errors#[a-z0-9-]+$/;
+const CODE = /^[a-z0-9_]+$/;
+
+/**
+ * The error reference link: the body's when it is one, else built from the
+ * code. Only a link into https://docs.keenable.ai/errors is passed on, so the
+ * error never carries another URL from the response.
+ */
+function docsUrlFor(sent: string | undefined, code: string | undefined): string | undefined {
+  if (sent !== undefined && DOCS_URL.test(sent)) return sent;
+  if (code !== undefined && CODE.test(code)) {
+    return `https://docs.keenable.ai/errors#${code.split("_").join("-")}`;
+  }
+  return undefined;
 }
 
 /**
@@ -105,6 +143,7 @@ export class KeenableAPIError extends KeenableError implements KeenableAPIErrorD
   readonly limit?: RateLimitInfo;
   readonly value?: string;
   readonly reason?: string;
+  readonly docsUrl?: string;
 
   constructor(
     message: string,
@@ -126,6 +165,7 @@ export class KeenableAPIError extends KeenableError implements KeenableAPIErrorD
     this.limit = details.limit;
     this.value = details.value;
     this.reason = details.reason;
+    this.docsUrl = docsUrlFor(details.docsUrl, details.code);
   }
 }
 

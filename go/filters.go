@@ -260,7 +260,7 @@ func toolEnum(f filter, v any) error {
 	if _, ok := v.(string); ok {
 		return nil
 	}
-	return &InvalidRequestError{msg: f.wire + " must be " + enumChoices(f.enum) + ". Pass a JSON string, or leave it out."}
+	return &InvalidRequestError{msg: f.wire + " must be " + enumChoices(f.enum) + ". Pass a JSON string, or leave it out.", Param: f.wire}
 }
 
 func enumChoices(values []string) string {
@@ -284,7 +284,7 @@ func toolBool(wire string, v any) (bool, error) {
 			return false, nil
 		}
 	}
-	return false, &InvalidRequestError{msg: wire + " must be true or false. Pass a JSON boolean."}
+	return false, &InvalidRequestError{msg: wire + " must be true or false. Pass a JSON boolean.", Param: wire}
 }
 
 func assignBool(opts *SearchOptions, wire string) {
