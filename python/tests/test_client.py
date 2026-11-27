@@ -10,6 +10,8 @@ import httpx
 import pytest
 
 from keenable import (
+    ANTHROPIC_TOOLS,
+    GEMINI_TOOLS,
     TOOLS,
     AsyncKeenable,
     Keenable,
@@ -516,6 +518,54 @@ def test_run_tool_call_dispatches_search_and_fetch() -> None:
         run_tool_call(keenable, "keenable_search", "not json")
     with pytest.raises(KeenableInvalidRequestError):
         run_tool_call(keenable, "nope", "{}")
+
+
+def test_anthropic_tools_are_tools_in_the_messages_shape() -> None:
+    assert [
+        {
+            "name": tool["function"]["name"],
+            "description": tool["function"]["description"],
+            "input_schema": tool["function"]["parameters"],
+        }
+        for tool in TOOLS
+    ] == ANTHROPIC_TOOLS
+    assert [t["name"] for t in ANTHROPIC_TOOLS] == ["keenable_search", "keenable_fetch"]
+    assert all(
+        set(t) == {"name", "description", "input_schema"} for t in ANTHROPIC_TOOLS
+    )
+    assert all(t["input_schema"]["type"] == "object" for t in ANTHROPIC_TOOLS)
+
+
+def test_gemini_tools_are_tools_in_the_interactions_shape() -> None:
+    assert [
+        {
+            "type": "function",
+            "name": tool["function"]["name"],
+            "description": tool["function"]["description"],
+            "parameters": tool["function"]["parameters"],
+        }
+        for tool in TOOLS
+    ] == GEMINI_TOOLS
+    assert [t["name"] for t in GEMINI_TOOLS] == ["keenable_search", "keenable_fetch"]
+    assert all(
+        set(t) == {"type", "name", "description", "parameters"} for t in GEMINI_TOOLS
+    )
+
+
+def test_run_tool_call_takes_anthropic_and_gemini_calls() -> None:
+    keenable, seen = _client(_routed)
+    # An Anthropic tool_use block's input and a Gemini function_call's
+    # arguments are decoded objects, passed as they come.
+    tool_use = {"type": "tool_use", "id": "toolu_1", "name": "keenable_search"}
+    tool_use["input"] = {"query": "wafer scale", "site": "cerebras.ai"}
+    out = run_tool_call(keenable, tool_use["name"], tool_use["input"])
+    assert out.startswith("[1] How Cerebras works")
+    assert json.loads(seen[0].content)["site"] == "cerebras.ai"
+
+    function_call = {"type": "function_call", "id": "c1", "name": "keenable_fetch"}
+    function_call["arguments"] = {"urls": ["https://example.com"]}
+    out = run_tool_call(keenable, function_call["name"], function_call["arguments"])
+    assert out.startswith("[1] Example Domain (https://example.com/)")
 
 
 def test_fetch_tool_reads_several_urls_and_keeps_a_failed_one_as_a_block() -> None:

@@ -69,7 +69,15 @@ from .monitors import (
     RunList,
     VersionList,
 )
-from .tools import FETCH_TOOL, SEARCH_TOOL, TOOLS, arun_tool_call, run_tool_call
+from .tools import (
+    ANTHROPIC_TOOLS,
+    FETCH_TOOL,
+    GEMINI_TOOLS,
+    SEARCH_TOOL,
+    TOOLS,
+    arun_tool_call,
+    run_tool_call,
+)
 from .webhooks import (
     DEFAULT_WEBHOOK_TOLERANCE,
     WebhookEvent,
@@ -78,6 +86,7 @@ from .webhooks import (
 )
 
 __all__ = [
+    "ANTHROPIC_TOOLS",
     "AsyncKeenable",
     "AsyncMonitors",
     "Billing",
@@ -94,6 +103,7 @@ __all__ = [
     "FETCH_TOOL",
     "FetchError",
     "FetchResponse",
+    "GEMINI_TOOLS",
     "Keenable",
     "KeenableAPIError",
     "KeenableAuthError",

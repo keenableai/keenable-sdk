@@ -209,6 +209,29 @@ tools render the same numbered, citable block, so the model can cite a fetched
 page the way it cites a search result. `arun_tool_call` is the async
 counterpart, for use with `AsyncKeenable`.
 
+The same two tools come in Anthropic's and Gemini's shapes, and
+`run_tool_call` takes their calls as they come: the name and the decoded
+arguments dict.
+
+```python
+from keenable import ANTHROPIC_TOOLS, GEMINI_TOOLS
+
+# Anthropic Messages API: name, description, input_schema.
+response = anthropic.messages.create(..., tools=ANTHROPIC_TOOLS)
+for block in response.content:
+    if block.type == "tool_use":
+        text = run_tool_call(keenable, block.name, block.input)
+
+# Gemini Interactions API: type "function", name, description, parameters.
+interaction = genai.interactions.create(..., tools=GEMINI_TOOLS)
+for step in interaction.steps or []:
+    if step.type == "function_call":
+        text = run_tool_call(keenable, step.name, step.arguments)
+```
+
+For Gemini's `generate_content`, drop `"type"` from each `GEMINI_TOOLS` entry
+and pass the rest as `function_declarations`.
+
 The model may set `site`, `exclude_domains`, `published_after`, `objective`,
 `disable_cards` and `moderation` on search. The other filters stay on
 `search()` for you to set yourself.

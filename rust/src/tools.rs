@@ -1,5 +1,5 @@
-//! OpenAI-compatible tool definitions and a runner for the calls a model
-//! makes.
+//! Tool definitions in the OpenAI-compatible, Anthropic Messages and Gemini
+//! Interactions shapes, and a runner for the calls a model makes.
 
 use serde::Serialize;
 use serde_json::{json, Map, Value};
@@ -166,6 +166,63 @@ pub fn fetch_tool() -> ToolDefinition {
 /// `keenable_search` and `keenable_fetch`, in that order.
 pub fn tools() -> Vec<ToolDefinition> {
     vec![search_tool(), fetch_tool()]
+}
+
+/// A tool in the Anthropic Messages API shape: the schema goes under
+/// `input_schema`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct AnthropicToolDefinition {
+    /// `keenable_search` or `keenable_fetch`.
+    pub name: String,
+    /// What the tool does, for the model.
+    pub description: String,
+    /// The arguments, as JSON Schema.
+    pub input_schema: Value,
+}
+
+/// A function tool in the Gemini Interactions API shape: flat, with `type`
+/// "function". For `generateContent`, send `name`, `description` and
+/// `parameters` as a function declaration instead.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct GeminiToolDefinition {
+    /// Always "function".
+    #[serde(rename = "type")]
+    pub kind: String,
+    /// `keenable_search` or `keenable_fetch`.
+    pub name: String,
+    /// What the tool does, for the model.
+    pub description: String,
+    /// The arguments, as JSON Schema.
+    pub parameters: Value,
+}
+
+/// [`tools`] in the Anthropic Messages API shape. Pass each `tool_use`
+/// block's `name` and `input` to [`run_tool_call`].
+pub fn anthropic_tools() -> Vec<AnthropicToolDefinition> {
+    tools()
+        .into_iter()
+        .map(|t| AnthropicToolDefinition {
+            name: t.function.name,
+            description: t.function.description,
+            input_schema: t.function.parameters,
+        })
+        .collect()
+}
+
+/// [`tools`] in the Gemini Interactions API shape. Pass each `function_call`
+/// step's `name` and `arguments` to [`run_tool_call`].
+pub fn gemini_tools() -> Vec<GeminiToolDefinition> {
+    tools()
+        .into_iter()
+        .map(|t| GeminiToolDefinition {
+            kind: "function".into(),
+            name: t.function.name,
+            description: t.function.description,
+            parameters: t.function.parameters,
+        })
+        .collect()
 }
 
 /// The arguments of a tool call: the JSON text a model sent, or an object
@@ -381,8 +438,10 @@ impl Client {
     /// Runs one tool call and returns the text for a `role: tool` message.
     ///
     /// `arguments` is the JSON text the model sent, or a parsed
-    /// [`serde_json::Value`] or map. Anything that is not a JSON object is an
-    /// invalid-request error. Both tools render the same numbered block, so a
+    /// [`serde_json::Value`] or map: an OpenAI-compatible `function.arguments`
+    /// string, an Anthropic `tool_use` block's `input`, or a Gemini function
+    /// call's `arguments`, as they come. Anything that is not a JSON object is
+    /// an invalid-request error. Both tools render the same numbered block, so a
     /// model can cite a fetched page the way it cites a search result. A URL
     /// that failed while others were read becomes an error block; if none was
     /// read, its error is returned.

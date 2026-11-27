@@ -5,6 +5,8 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- **Added:** `ANTHROPIC_TOOLS` and `GEMINI_TOOLS` (types `AnthropicToolDefinition`, `GeminiToolDefinition`): `keenable_search` and `keenable_fetch` in the Anthropic Messages shape (`name`, `description`, `input_schema`) and the Gemini Interactions API shape (`type: "function"`, `name`, `description`, `parameters`), built from `TOOLS` so the definitions are the same.
+- **Changed:** `runToolCall`'s `args` is typed `unknown`, so an Anthropic `tool_use` block's `input` or a Gemini `function_call`'s `arguments` passes without a cast. What it accepts at run time is unchanged: a JSON object string or an object; anything else throws `KeenableInvalidRequestError`.
 - **Added:** `SearchResponse.usage` and an exported `Usage` type: what the search cost and, with a key, `cost` and `balance` in US dollars. Undefined on keyless calls.
 - **Changed:** the `keenable_search` tool's `moderation` description: supported for a URL query when `exclude_domains` is set.
 - **Added:** `Page.usage.cost` and `Page.usage.balance` (`Money`, US dollars): what the page cost and the organization's balance after it. Each carries `amountDecimal`, the exact decimal string, as in `billing()`: add costs with it rather than with `amount`.

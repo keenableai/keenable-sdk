@@ -208,8 +208,18 @@ let content = match client.run_tool_call(&call.name, &call.arguments).await {
 };
 ```
 
-`arguments` is the JSON text the model sent, or a `serde_json::Value`. The
-model may set `site`, `exclude_domains`, `published_after`, `objective`,
+`arguments` is the JSON text the model sent, or a `serde_json::Value`.
+
+`keenable::anthropic_tools()` returns the same two tools in the Anthropic
+Messages shape (`name`, `description`, `input_schema`) and
+`keenable::gemini_tools()` in the Gemini Interactions shape (`type:
+"function"`, `name`, `description`, `parameters`). Serialize them the same
+way, and pass an Anthropic `tool_use` block's `input` or a Gemini function
+call's `arguments` to `run_tool_call` as a `serde_json::Value`. For Gemini's
+`generateContent`, send `name`, `description` and `parameters` as a function
+declaration.
+
+The model may set `site`, `exclude_domains`, `published_after`, `objective`,
 `disable_cards` and `moderation` on search.
 
 On fetch the model sets `urls` (1 to 20) and may set `max_chars` (per page),

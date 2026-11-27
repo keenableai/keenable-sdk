@@ -229,6 +229,29 @@ whichever the model picked and returns text ready for the `tool` message. Both
 tools render the same numbered, citable block, so the model can cite a fetched
 page the way it cites a search result.
 
+The same two tools come in Anthropic's and Gemini's shapes, and `runToolCall`
+takes their calls as they come: the name and the decoded arguments object
+(`args` is typed `unknown`, so no cast is needed).
+
+```ts
+import { ANTHROPIC_TOOLS, GEMINI_TOOLS } from "keenable";
+
+// Anthropic Messages API: name, description, input_schema.
+const message = await anthropic.messages.create({ ...params, tools: ANTHROPIC_TOOLS });
+for (const block of message.content) {
+  if (block.type === "tool_use") await runToolCall(keenable, block.name, block.input);
+}
+
+// Gemini Interactions API: type "function", name, description, parameters.
+const interaction = await genai.interactions.create({ ...params, tools: GEMINI_TOOLS });
+for (const step of interaction.steps ?? []) {
+  if (step.type === "function_call") await runToolCall(keenable, step.name, step.arguments);
+}
+```
+
+For Gemini's `generateContent`, drop `type` from each `GEMINI_TOOLS` entry and
+pass the rest as `functionDeclarations`.
+
 The model may set `site`, `exclude_domains`, `published_after`, `objective`,
 `disable_cards` and `moderation` on search. The other filters stay on
 `search()` for you to set yourself.

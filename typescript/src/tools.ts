@@ -1,9 +1,12 @@
 /**
- * Ready-made tool definitions for OpenAI-compatible tool calling.
+ * Ready-made tool definitions for tool calling, in three formats.
  *
- * Every major inference API (Cerebras, OpenAI, and anything speaking the same
- * schema) takes tools in this shape, so these can be passed straight into a
- * `chat.completions.create({ tools })` call.
+ * `TOOLS` is the OpenAI-compatible Chat Completions shape that most inference
+ * APIs (Cerebras, OpenAI, Mistral, Ollama, vLLM and anything speaking the same
+ * schema) take, so it can be passed straight into a
+ * `chat.completions.create({ tools })` call. `ANTHROPIC_TOOLS` is the same two
+ * tools in the Anthropic Messages shape and `GEMINI_TOOLS` in the Gemini
+ * Interactions API shape. `runToolCall` takes a call from any of them.
  */
 
 import { DEFAULT_CONTEXT_MAX_CHARS, type FetchError, type Keenable, type Page } from "./client.js";
@@ -92,10 +95,49 @@ export const FETCH_TOOL: ToolDefinition = {
 
 export const TOOLS: ToolDefinition[] = [SEARCH_TOOL, FETCH_TOOL];
 
-function parseArguments(args: string | Record<string, unknown>): Record<string, unknown> {
+/** A tool in the Anthropic Messages API shape: the schema goes under `input_schema`. */
+export interface AnthropicToolDefinition {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}
+
+/** A function tool in the Gemini Interactions API shape: flat, with `type: "function"`. */
+export interface GeminiToolDefinition {
+  type: "function";
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}
+
+/**
+ * `TOOLS` in the Anthropic Messages API shape, for `messages.create({ tools })`.
+ * Pass each `tool_use` block's `name` and `input` to `runToolCall`.
+ */
+export const ANTHROPIC_TOOLS: AnthropicToolDefinition[] = TOOLS.map(({ function: fn }) => ({
+  name: fn.name,
+  description: fn.description,
+  input_schema: fn.parameters,
+}));
+
+/**
+ * `TOOLS` in the Gemini Interactions API shape, for `interactions.create({ tools })`.
+ * Pass each `function_call` step's `name` and `arguments` to `runToolCall`.
+ * For `generateContent`, drop `type` and pass the rest as `functionDeclarations`.
+ */
+export const GEMINI_TOOLS: GeminiToolDefinition[] = TOOLS.map(({ function: fn }) => ({
+  type: "function",
+  name: fn.name,
+  description: fn.description,
+  parameters: fn.parameters,
+}));
+
+function parseArguments(args: unknown): Record<string, unknown> {
   // An array is `typeof "object"` but carries no named arguments, so let it
   // fall through to the same rejection a JSON array gets below.
-  if (typeof args === "object" && args !== null && !Array.isArray(args)) return args;
+  if (typeof args === "object" && args !== null && !Array.isArray(args)) {
+    return args as Record<string, unknown>;
+  }
   if (typeof args !== "string") {
     throw new KeenableInvalidRequestError(
       `tool call arguments must be a JSON string or an object, got ${typeof args}`,
@@ -202,15 +244,20 @@ function pagesContext(pages: Page[], maxChars: unknown): string {
 /**
  * Execute one tool call and return the string to send back as the result.
  *
- * Pass the tool name and raw arguments straight from the model's response; the
- * return value is ready to attach to a `role: "tool"` message, rendered as the
- * same numbered, citable block for both tools. A URL that failed while others
+ * Pass the tool name and arguments straight from the model's response: the
+ * JSON string of an OpenAI-compatible `function.arguments`, or the decoded
+ * object of an Anthropic `tool_use` block's `input` or a Gemini
+ * `function_call`'s `arguments`. `args` is `unknown` so those pass without a
+ * cast; anything but a JSON object string or an object throws
+ * `KeenableInvalidRequestError`. The return value is ready to send back as the
+ * tool result (a `role: "tool"` message, a `tool_result` block, a
+ * `function_result`), rendered as the same numbered, citable block for both tools. A URL that failed while others
  * were read becomes an error block; if none was read, its error is thrown.
  */
 export async function runToolCall(
   client: Keenable,
   name: string,
-  args: string | Record<string, unknown>,
+  args: unknown,
 ): Promise<string> {
   const parsed = parseArguments(args);
 

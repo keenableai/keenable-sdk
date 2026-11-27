@@ -258,6 +258,14 @@ tools render the same numbered, citable block, so the model can cite a fetched
 page the way it cites a search result. Arguments may be a JSON string,
 `[]byte`, `json.RawMessage`, or `map[string]any`.
 
+`AnthropicTools` is the same two tools in the Anthropic Messages shape (`name`,
+`description`, `input_schema`) and `GeminiTools` in the Gemini Interactions
+shape (`type: "function"`, `name`, `description`, `parameters`). Both marshal
+to the JSON those APIs take. Pass an Anthropic `tool_use` block's `Input`
+(`json.RawMessage`) or a Gemini function call's `Args` (`map[string]any`) to
+`RunToolCall` as it comes. For Gemini's `generateContent`, send `Name`,
+`Description` and `Parameters` as a function declaration.
+
 The model may set `site`, `exclude_domains`, `published_after`, `objective`,
 `disable_cards` and `moderation` on search. The other filters stay on
 `Search` for you to set yourself.

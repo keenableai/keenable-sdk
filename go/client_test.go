@@ -967,6 +967,67 @@ func TestFetchToolReadsSeveralURLs(t *testing.T) {
 	}
 }
 
+func TestAnthropicAndGeminiToolsAreToolsReshaped(t *testing.T) {
+	if len(keenable.AnthropicTools) != 2 || len(keenable.GeminiTools) != 2 {
+		t.Fatal(len(keenable.AnthropicTools), len(keenable.GeminiTools))
+	}
+	for i, tool := range keenable.Tools {
+		openai, err := json.Marshal(tool)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var fn struct {
+			Function map[string]any `json:"function"`
+		}
+		if err := json.Unmarshal(openai, &fn); err != nil {
+			t.Fatal(err)
+		}
+		anthropic := map[string]any{"name": fn.Function["name"], "description": fn.Function["description"], "input_schema": fn.Function["parameters"]}
+		gemini := map[string]any{"type": "function", "name": fn.Function["name"], "description": fn.Function["description"], "parameters": fn.Function["parameters"]}
+		if got := roundTrip(t, keenable.AnthropicTools[i]); !reflect.DeepEqual(got, anthropic) {
+			t.Fatalf("anthropic %d: %v", i, got)
+		}
+		if got := roundTrip(t, keenable.GeminiTools[i]); !reflect.DeepEqual(got, gemini) {
+			t.Fatalf("gemini %d: %v", i, got)
+		}
+	}
+	if keenable.AnthropicTools[0].Name != "keenable_search" || keenable.GeminiTools[1].Name != "keenable_fetch" {
+		t.Fatal(keenable.AnthropicTools[0].Name, keenable.GeminiTools[1].Name)
+	}
+}
+
+func roundTrip(t *testing.T, v any) map[string]any {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func TestRunToolCallTakesAnthropicAndGeminiCalls(t *testing.T) {
+	c, seen := startKeyless(t, routed(), nil)
+	// An Anthropic tool_use block's input is raw JSON; a Gemini function
+	// call's args are a decoded map. Both pass as they come.
+	input := json.RawMessage(`{"query":"wafer scale","site":"cerebras.ai"}`)
+	out, err := keenable.RunToolCall(context.Background(), c, "keenable_search", input)
+	if err != nil || !strings.HasPrefix(out, "[1] How Cerebras works") {
+		t.Fatal(out, err)
+	}
+	if got := payloadOf(t, (*seen)[0])["site"]; got != "cerebras.ai" {
+		t.Fatal(got)
+	}
+	args := map[string]any{"urls": []any{"https://example.com"}}
+	out, err = keenable.RunToolCall(context.Background(), c, "keenable_fetch", args)
+	if err != nil || !strings.HasPrefix(out, "[1] Example Domain (https://example.com/)") {
+		t.Fatal(out, err)
+	}
+}
+
 func TestFetchToolDefinitionAllowsMinusOneMaxAgeHours(t *testing.T) {
 	props := keenable.FetchTool.Function.Parameters["properties"].(map[string]any)
 	prop := props["max_age_hours"].(map[string]any)
