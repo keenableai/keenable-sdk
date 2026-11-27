@@ -2,7 +2,7 @@
 name = "keenable"
 version = "0.3.0"
 edition = "2021"
-rust-version = "1.80"
+rust-version = "1.85"
 description = "Official Rust SDK for Keenable, the web search API built for AI agents: search, fetch, citable context and tool calling."
 license = "MIT"
 repository = "https://github.com/keenableai/keenable-sdk"

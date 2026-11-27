@@ -111,7 +111,7 @@ To release by hand instead:
    packages and publishes the crate, and attaches the `.crate` file to the
    release.
 
-`Cargo.lock` is resolved to versions that build on the MSRV (1.80, the
+`Cargo.lock` is resolved to versions that build on the MSRV (1.85, the
 `rust-version` in `Cargo.toml`). After changing dependencies, regenerate it
 with `CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback cargo generate-lockfile`.
 

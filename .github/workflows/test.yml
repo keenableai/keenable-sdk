@@ -148,9 +148,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 1.80 is rust-version in Cargo.toml (the MSRV). Cargo.lock is resolved
+        # 1.85 is rust-version in Cargo.toml (the MSRV). Cargo.lock is resolved
         # to versions that build on it, so --locked tests the MSRV for real.
-        rust: ["1.80", "stable"]
+        rust: ["1.85", "stable"]
     steps:
       - uses: actions/checkout@v7
       # rustup ships on GitHub's Ubuntu runners, so no third-party action is
