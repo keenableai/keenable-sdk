@@ -14,7 +14,7 @@ use crate::models::{
     FetchResponse, SearchResponse,
 };
 use crate::retry::{retry_after_header, retry_delay, seconds};
-use crate::{json, types, VERSION};
+use crate::{json, types};
 
 /// The Keenable API used when [`Options::base_url`] and `KEENABLE_API_URL`
 /// are both unset.
@@ -524,7 +524,7 @@ impl Client {
             Ok(())
         };
         set("Accept", "application/json")?;
-        set("User-Agent", &format!("keenable-rust/{VERSION}"))?;
+        set("User-Agent", &crate::user_agent::USER_AGENT)?;
         // The public tier rejects requests without this header.
         set("X-Keenable-Title", &self.inner.client_source)?;
         for src in [&self.inner.headers, extra] {

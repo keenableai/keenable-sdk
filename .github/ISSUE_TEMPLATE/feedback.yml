@@ -1,0 +1,48 @@
+name: Feedback
+description: Tell us what was hard, confusing or missing when you used a Keenable SDK.
+title: "[Feedback] "
+labels: ["feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking a minute. Short answers are fine. Please leave out API keys and anything private.
+        For a quick question, the [Keenable Discord](https://discord.gg/be3QybVZ2P) is often faster.
+  - type: dropdown
+    id: sdk
+    attributes:
+      label: Which SDK?
+      multiple: true
+      options:
+        - Python
+        - TypeScript / JavaScript
+        - Go
+        - Rust
+        - The HTTP API directly
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: SDK version and runtime (optional)
+      description: For example "keenable 0.4.0, Python 3.12" or "keenable 0.4.0, Bun 1.1".
+  - type: textarea
+    id: hard
+    attributes:
+      label: What were you trying to do, and what was hard?
+      description: The task, and where you got stuck or slowed down.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+      description: The method, option, error message or docs page you looked for.
+    validations:
+      required: true
+  - type: textarea
+    id: other
+    attributes:
+      label: Anything else?
+      description: Code snippets, links, or a request id from an error (`request_id`).

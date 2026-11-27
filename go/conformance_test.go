@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -150,6 +151,24 @@ type conformance struct {
 		Valid     bool              `json:"valid"`
 		Type      *string           `json:"type"`
 	} `json:"webhook"`
+	UserAgent struct {
+		SDK map[string]struct {
+			Product string  `json:"product"`
+			Runtime *string `json:"runtime"`
+			Parts   int     `json:"parts"`
+		} `json:"sdk"`
+		Format []struct {
+			Name  string      `json:"name"`
+			Parts [][2]string `json:"parts"`
+			Sent  string      `json:"sent"`
+		} `json:"format"`
+		Override []struct {
+			Name   string            `json:"name"`
+			Client map[string]string `json:"client"`
+			Call   map[string]string `json:"call"`
+			Sent   string            `json:"sent"`
+		} `json:"override"`
+	} `json:"user_agent"`
 }
 
 func loadConformance(t *testing.T) *conformance {
@@ -928,6 +947,56 @@ func TestConformanceWebhook(t *testing.T) {
 			}
 			if event.Type != *tc.Type {
 				t.Fatalf("type %q, want %q", event.Type, *tc.Type)
+			}
+		})
+	}
+}
+
+var userAgentPart = regexp.MustCompile(`^[A-Za-z0-9._+-]+(/[A-Za-z0-9._+-]+)?$`)
+
+func TestConformanceUserAgentFormat(t *testing.T) {
+	for _, tc := range loadConformance(t).UserAgent.Format {
+		t.Run(tc.Name, func(t *testing.T) {
+			if got := keenable.FormatUserAgent(tc.Parts); got != tc.Sent {
+				t.Fatalf("got %q, want %q", got, tc.Sent)
+			}
+		})
+	}
+}
+
+func TestConformanceUserAgentDefault(t *testing.T) {
+	want := loadConformance(t).UserAgent.SDK["go"]
+	c, seen := start(t, raw(200, `{"query":"q","results":[]}`), nil)
+	if _, err := c.Search(context.Background(), "q", nil); err != nil {
+		t.Fatal(err)
+	}
+	parts := strings.Split((*seen)[0].Header.Get("User-Agent"), " ")
+	if parts[0] != want.Product+"/"+keenable.Version {
+		t.Fatalf("product %q", parts[0])
+	}
+	if len(parts) != want.Parts {
+		t.Fatalf("parts %q, want %d", parts, want.Parts)
+	}
+	if name, _, _ := strings.Cut(parts[1], "/"); want.Runtime == nil || name != *want.Runtime {
+		t.Fatalf("runtime %q", parts[1])
+	}
+	for _, p := range parts {
+		if !userAgentPart.MatchString(p) {
+			t.Fatalf("part %q", p)
+		}
+	}
+}
+
+func TestConformanceUserAgentOverride(t *testing.T) {
+	for _, tc := range loadConformance(t).UserAgent.Override {
+		t.Run(tc.Name, func(t *testing.T) {
+			c, seen := start(t, raw(200, `{"query":"q","results":[]}`), &keenable.Options{Headers: tc.Client})
+			opts := &keenable.SearchOptions{RequestOptions: keenable.RequestOptions{Headers: tc.Call}}
+			if _, err := c.Search(context.Background(), "q", opts); err != nil {
+				t.Fatal(err)
+			}
+			if got := (*seen)[0].Header.Values("User-Agent"); !reflect.DeepEqual(got, []string{tc.Sent}) {
+				t.Fatalf("got %q, want %q", got, tc.Sent)
 			}
 		})
 	}

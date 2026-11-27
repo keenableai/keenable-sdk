@@ -6418,5 +6418,247 @@
       "valid": false,
       "type": null
     }
-  ]
+  ],
+  "user_agent": {
+    "sdk": {
+      "python": {
+        "product": "keenable-python",
+        "runtime": "python",
+        "parts": 3
+      },
+      "typescript": {
+        "product": "keenable-typescript",
+        "runtime": "node",
+        "parts": 3
+      },
+      "go": {
+        "product": "keenable-go",
+        "runtime": "go",
+        "parts": 3
+      },
+      "rust": {
+        "product": "keenable-rust",
+        "runtime": null,
+        "parts": 2
+      }
+    },
+    "format": [
+      {
+        "name": "all three parts",
+        "parts": [
+          [
+            "keenable-python",
+            "0.4.0"
+          ],
+          [
+            "python",
+            "3.12.4"
+          ],
+          [
+            "linux",
+            "x86_64"
+          ]
+        ],
+        "sent": "keenable-python/0.4.0 python/3.12.4 linux/x86_64"
+      },
+      {
+        "name": "no runtime part",
+        "parts": [
+          [
+            "keenable-rust",
+            "0.4.0"
+          ],
+          [
+            "linux",
+            "aarch64"
+          ]
+        ],
+        "sent": "keenable-rust/0.4.0 linux/aarch64"
+      },
+      {
+        "name": "a runtime with no version is its name alone",
+        "parts": [
+          [
+            "keenable-typescript",
+            "0.4.0"
+          ],
+          [
+            "workerd",
+            ""
+          ]
+        ],
+        "sent": "keenable-typescript/0.4.0 workerd"
+      },
+      {
+        "name": "a part with no name is left out",
+        "parts": [
+          [
+            "keenable-go",
+            "0.4.0"
+          ],
+          [
+            "",
+            "1.23"
+          ],
+          [
+            "linux",
+            "amd64"
+          ]
+        ],
+        "sent": "keenable-go/0.4.0 linux/amd64"
+      },
+      {
+        "name": "a name that cleans to nothing is left out",
+        "parts": [
+          [
+            "keenable-go",
+            "0.4.0"
+          ],
+          [
+            "  ",
+            "1"
+          ],
+          [
+            "linux",
+            "amd64"
+          ]
+        ],
+        "sent": "keenable-go/0.4.0 linux/amd64"
+      },
+      {
+        "name": "spaces become one dash",
+        "parts": [
+          [
+            "keenable-go",
+            "0.4.0"
+          ],
+          [
+            "go",
+            "devel go1.24-abc Tue Nov 1"
+          ]
+        ],
+        "sent": "keenable-go/0.4.0 go/devel-go1.24-abc-Tue-Nov-1"
+      },
+      {
+        "name": "slashes, parentheses and semicolons are cleaned",
+        "parts": [
+          [
+            "keenable-python",
+            "0.4.0"
+          ],
+          [
+            "linux",
+            "x86_64 (v2); x/y"
+          ]
+        ],
+        "sent": "keenable-python/0.4.0 linux/x86_64-v2-x-y"
+      },
+      {
+        "name": "surrounding junk is dropped",
+        "parts": [
+          [
+            "keenable-python",
+            "0.4.0"
+          ],
+          [
+            "python",
+            " (3.12.4) "
+          ]
+        ],
+        "sent": "keenable-python/0.4.0 python/3.12.4"
+      },
+      {
+        "name": "non-ASCII becomes a dash",
+        "parts": [
+          [
+            "keenable-python",
+            "0.4.0"
+          ],
+          [
+            "linüx",
+            "x86_64"
+          ]
+        ],
+        "sent": "keenable-python/0.4.0 lin-x/x86_64"
+      },
+      {
+        "name": "plus and underscore are kept",
+        "parts": [
+          [
+            "keenable-rust",
+            "0.4.0-rc.1+build_7"
+          ],
+          [
+            "linux",
+            "x86_64"
+          ]
+        ],
+        "sent": "keenable-rust/0.4.0-rc.1+build_7 linux/x86_64"
+      },
+      {
+        "name": "a long value is cut to 64 characters",
+        "parts": [
+          [
+            "keenable-go",
+            "0.4.0"
+          ],
+          [
+            "go",
+            "1234567890123456789012345678901234567890123456789012345678901234567890"
+          ]
+        ],
+        "sent": "keenable-go/0.4.0 go/1234567890123456789012345678901234567890123456789012345678901234"
+      },
+      {
+        "name": "a cut that ends in a dash drops it",
+        "parts": [
+          [
+            "keenable-go",
+            "0.4.0"
+          ],
+          [
+            "go",
+            "123456789012345678901234567890123456789012345678901234567890123 x"
+          ]
+        ],
+        "sent": "keenable-go/0.4.0 go/123456789012345678901234567890123456789012345678901234567890123"
+      }
+    ],
+    "override": [
+      {
+        "name": "set on the client",
+        "client": {
+          "User-Agent": "my-app/1.0"
+        },
+        "call": {},
+        "sent": "my-app/1.0"
+      },
+      {
+        "name": "set on the call",
+        "client": {},
+        "call": {
+          "User-Agent": "my-app/2.0"
+        },
+        "sent": "my-app/2.0"
+      },
+      {
+        "name": "lowercase header name",
+        "client": {
+          "user-agent": "my-app/3.0 (+https://example.com)"
+        },
+        "call": {},
+        "sent": "my-app/3.0 (+https://example.com)"
+      },
+      {
+        "name": "the call's over the client's",
+        "client": {
+          "User-Agent": "client/1"
+        },
+        "call": {
+          "USER-AGENT": "call/1"
+        },
+        "sent": "call/1"
+      }
+    ]
+  }
 }

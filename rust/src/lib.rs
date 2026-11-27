@@ -28,6 +28,7 @@ mod models;
 mod monitors;
 mod retry;
 mod tools;
+mod user_agent;
 mod webhooks;
 
 #[cfg(test)]

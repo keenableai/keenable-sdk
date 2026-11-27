@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Changed:** the `User-Agent` header adds the platform: `keenable-rust/<version> <os>/<arch>`, for example `keenable-rust/0.4.0 linux/x86_64`, from `std::env::consts`. Nothing else is sent in it, not the compiler version. A `User-Agent` in `headers` (client or call) still replaces it.
 - **Changed (breaking for Rust 1.80 to 1.84):** the minimum supported Rust version is now 1.85 (`rust-version` in `Cargo.toml`). The lockfile takes `quinn-proto` 0.11.19 for its security fixes, and its dependency `chacha20` 0.10 needs edition 2024 support, which Rust 1.85 added. On an older compiler, `cargo` reports the required version; run `rustup update stable`.
 - **Added:** `SearchResponse::usage` (`Option<Usage>`): what the search cost and, with a key, `cost` and `balance` in US dollars. `None` on keyless calls.
 - **Fixed:** a malformed `cost` or `balance` no longer drops the whole `Usage` of a page; each field is read on its own.

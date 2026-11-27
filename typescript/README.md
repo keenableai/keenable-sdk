@@ -450,6 +450,19 @@ every request so the API key never follows a redirect. If yours follows one
 anyway, the SDK throws a `KeenableRedirectError` that tells you to rotate the
 key, since it may already have been sent to the redirect's target.
 
+Each request sends `User-Agent: keenable-typescript/<version> <runtime>/<runtime
+version> <os>/<arch>`, for example `keenable-typescript/0.4.0 node/22.1.0
+linux/x64`, so Keenable can see which SDK versions and runtimes are in use. The
+runtime is `node`, `bun` or `deno` with its version, or `workerd` or
+`edge-runtime` alone (no platform) on those edge runtimes; a part the SDK
+cannot tell is left out. Nothing else is sent in it: no host name, user name,
+path, key or locale. A `User-Agent` in `defaultHeaders` or a call's `headers`
+replaces it. Browsers may not send it at all.
+
+## Feedback
+
+Something hard or missing? [Tell us](https://github.com/keenableai/keenable-sdk/issues/new?template=feedback.yml) or ask on [Discord](https://discord.gg/be3QybVZ2P).
+
 ## License
 
 MIT

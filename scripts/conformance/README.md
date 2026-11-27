@@ -260,3 +260,28 @@ delivery as a Standard Webhook:
 - A matching signature over a body that is not a JSON object fails too.
 - A failure is the SDK's webhook verification error; a pass returns the parsed
   event, whose `type` the case names.
+
+## User-Agent (`user_agent`)
+
+Each SDK sends `keenable-<lang>/<sdk version>`, then `<runtime>/<runtime
+version>` where it can tell, then `<os>/<arch>` where it can tell, separated by
+single spaces, and nothing else: no host name, user, path, key or locale.
+
+- Python: `keenable-python/<v> python/<platform.python_version()>
+  <platform.system()>/<platform.machine()>`, both lowercased.
+- TypeScript: `keenable-typescript/<v>`, then `node/<v>`, `bun/<v>` or
+  `deno/<v>` with `process.platform`/`process.arch` (Deno: `Deno.build`), or
+  `edge-runtime` or `workerd` alone; nothing more where it cannot tell.
+- Go: `keenable-go/<v> go/<runtime.Version() without "go"> <GOOS>/<GOARCH>`.
+- Rust: `keenable-rust/<v> <OS>/<ARCH>` from `std::env::consts`. No compiler
+  version: it is not known without a build script.
+
+The architecture is the runtime's own name for it (`x86_64`, `amd64`, `x64`),
+not normalised. Formatting (`format`): each part is a name and a version; each
+of the two has every run of characters other than ASCII letters, digits, `.`,
+`_`, `+` and `-` turned into one `-`, is cut to 64 characters, then loses
+leading and trailing `-`. A part whose name is then empty is left out; one
+whose version is empty is its name alone. `sdk` names each SDK's product, the
+runtime its test run reports and how many parts it sends there. A caller's
+`User-Agent` on the client or the call, in any letter case, is sent instead,
+exactly as given, the call's over the client's (`override`).

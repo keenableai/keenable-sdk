@@ -5,6 +5,7 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- **Changed:** the `User-Agent` header adds the runtime and the platform: `keenable-typescript/<version> <runtime>/<runtime version> <os>/<arch>`, for example `keenable-typescript/0.4.0 node/22.1.0 linux/x64`. The runtime is `node`, `bun` or `deno`, or `edge-runtime` or `workerd` alone; a part the SDK cannot tell is left out. Nothing else is sent in it. A `User-Agent` in `defaultHeaders` or a call's `headers` still replaces it.
 - **Added:** `SearchResponse.usage` and an exported `Usage` type: what the search cost and, with a key, `cost` and `balance` in US dollars. Undefined on keyless calls.
 - **Changed:** the `keenable_search` tool's `moderation` description: supported for a URL query when `exclude_domains` is set.
 - **Added:** `Page.usage.cost` and `Page.usage.balance` (`Money`, US dollars): what the page cost and the organization's balance after it. Each carries `amountDecimal`, the exact decimal string, as in `billing()`: add costs with it rather than with `amount`.

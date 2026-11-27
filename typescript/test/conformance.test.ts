@@ -23,6 +23,7 @@ import {
 import type { Billing, KeenableOptions, Money, SearchOptions, SearchResponse } from "../src/index.js";
 import { backoffMs, retryAfterHeader } from "../src/client.js";
 import { SEARCH_FILTERS } from "../src/filters.js";
+import { formatUserAgent, VERSION } from "../src/user-agent.js";
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
@@ -93,6 +94,19 @@ interface Fixture {
     valid: boolean;
     type: string | null;
   }[];
+  user_agent: {
+    sdk: Record<
+      "python" | "typescript" | "go" | "rust",
+      { product: string; runtime: string | null; parts: number }
+    >;
+    format: { name: string; parts: [string, string][]; sent: string }[];
+    override: {
+      name: string;
+      client: Record<string, string>;
+      call: Record<string, string>;
+      sent: string;
+    }[];
+  };
 }
 
 const FIXTURE: Fixture = JSON.parse(
@@ -570,5 +584,34 @@ describe("webhook", () => {
     } else {
       await expect(verify).rejects.toBeInstanceOf(WebhookVerificationError);
     }
+  });
+});
+
+describe("the User-Agent", () => {
+  const ua = FIXTURE.user_agent;
+
+  it.each(ua.format.map((c) => [c.name, c] as const))("format: %s", (_name, c) => {
+    expect(formatUserAgent(c.parts)).toBe(c.sent);
+  });
+
+  it("default: product, runtime and platform", async () => {
+    const want = ua.sdk.typescript;
+    const outcome = await call([SEARCH_OK], {}, (k) => k.search("q"));
+    const sent = new Headers(outcome.requests[0]?.init.headers).get("user-agent") ?? "";
+    const parts = sent.split(" ");
+    expect(parts[0]).toBe(`${want.product}/${VERSION}`);
+    expect(parts).toHaveLength(want.parts);
+    expect(parts[1]?.split("/")[0]).toBe(want.runtime);
+    for (const part of parts) expect(part).toMatch(/^[A-Za-z0-9._+-]+(\/[A-Za-z0-9._+-]+)?$/);
+  });
+
+  it.each(ua.override.map((c) => [c.name, c] as const))("override: %s", async (_name, c) => {
+    const outcome = await call([SEARCH_OK], { defaultHeaders: c.client }, (k) =>
+      k.search("q", { headers: c.call }),
+    );
+    expect(outcome.error).toBeUndefined();
+    const headers = outcome.requests[0]?.init.headers as Record<string, string>;
+    const agents = Object.entries(headers).filter(([name]) => name.toLowerCase() === "user-agent");
+    expect(agents.map(([, v]) => v)).toEqual([c.sent]);
   });
 });

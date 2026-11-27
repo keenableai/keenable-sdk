@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 import socket
 import threading
 import time
@@ -33,11 +34,13 @@ from keenable import (
     KeenableRateLimitError,
     KeenableTimeoutError,
     WebhookVerificationError,
+    __version__,
     arun_tool_call,
     run_tool_call,
     verify_webhook,
 )
 from keenable import client as client_module
+from keenable._user_agent import format_user_agent
 
 FIXTURE: dict[str, Any] = json.loads(
     (Path(__file__).parent / "fixtures" / "conformance.json").read_text("utf-8")
@@ -451,6 +454,7 @@ def test_the_fixture_has_every_section() -> None:
         "tool_call",
         "deadline",
         "webhook",
+        "user_agent",
     }
 
 
@@ -469,6 +473,49 @@ def test_webhook(case: dict[str, Any]) -> None:
     else:
         assert case["valid"]
         assert event.type == case["type"]
+
+
+# --- the User-Agent -----------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case",
+    [pytest.param(c, id=c["name"]) for c in FIXTURE["user_agent"]["format"]],
+)
+def test_user_agent_format(case: dict[str, Any]) -> None:
+    parts = [(name, version) for name, version in case["parts"]]
+    assert format_user_agent(parts) == case["sent"]
+
+
+@pytest.mark.parametrize("kind", CLIENTS)
+async def test_user_agent_default(kind: str, waits: list[float]) -> None:
+    want = FIXTURE["user_agent"]["sdk"]["python"]
+    outcome = await run(kind, [SEARCH_OK], waits)
+    sent = outcome.requests[0].headers["User-Agent"]
+    parts = sent.split(" ")
+    assert parts[0] == f"{want['product']}/{__version__}"
+    assert len(parts) == want["parts"]
+    assert parts[1].split("/")[0] == want["runtime"]
+    assert all(re.fullmatch(r"[A-Za-z0-9._+-]+(/[A-Za-z0-9._+-]+)?", p) for p in parts)
+
+
+@pytest.mark.parametrize("kind", CLIENTS)
+@pytest.mark.parametrize(
+    "case",
+    [pytest.param(c, id=c["name"]) for c in FIXTURE["user_agent"]["override"]],
+)
+async def test_user_agent_override(
+    kind: str, case: dict[str, Any], waits: list[float]
+) -> None:
+    outcome = await run(
+        kind,
+        [SEARCH_OK],
+        waits,
+        options={"default_headers": case["client"]},
+        call={"extra_headers": case["call"]},
+    )
+    assert outcome.error is None
+    assert outcome.requests[0].headers.get_list("User-Agent") == [case["sent"]]
 
 
 # --- the whole-attempt deadline -----------------------------------------------
