@@ -1,0 +1,120 @@
+name: API reference
+
+# Builds the generated API reference for the Python SDK (pdoc) and the
+# TypeScript SDK (TypeDoc) and publishes both to GitHub Pages:
+#   https://keenableai.github.io/keenable-sdk/python/
+#   https://keenableai.github.io/keenable-sdk/typescript/
+# Rust and Go need nothing here: docs.rs and pkg.go.dev build theirs.
+#
+# Pull requests that touch either SDK only build it, so a docstring the
+# generators reject fails the PR before it reaches main. Pushes to main deploy.
+#
+# One-time setup by a repo admin: Settings -> Pages -> Build and deployment ->
+# Source "GitHub Actions". Until then the deploy job fails; the build still runs.
+#
+# Only pushes to main deploy, never release tags: the github-pages environment
+# lets only the default branch deploy, and a tag on an older commit would
+# replace the reference with older output. A release is still published,
+# because the merge of its release PR into main runs this workflow.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - python/keenable/**
+      - python/pyproject.toml
+      - python/README.md
+      - typescript/src/**
+      - typescript/package.json
+      - typescript/typedoc.json
+      - typescript/tsconfig*.json
+      - typescript/README.md
+      - .github/workflows/api-reference.yml
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || 'pages' }}
+  # A Pages deploy in flight is never cancelled half way; PR builds are.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build API reference
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "**/pyproject.toml"
+      # pdoc reports a docstring it cannot render as a Python warning;
+      # PYTHONWARNINGS=error turns that into a failed build.
+      - name: Python (pdoc)
+        working-directory: python
+        env:
+          PYTHONWARNINGS: error
+        run: uv run --group dev pdoc keenable --docformat google --no-show-source -e keenable=https://github.com/keenableai/keenable-sdk/blob/main/python/keenable/ -o api-docs
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      # typedoc.json sets treatWarningsAsErrors: a broken {@link} or an
+      # exported type that references an unexported one fails the build.
+      - name: TypeScript (TypeDoc)
+        working-directory: typescript
+        run: |
+          npm install --legacy-peer-deps
+          npm run docs
+
+      - name: Assemble site
+        run: |
+          mkdir -p site
+          cp -R python/api-docs site/python
+          cp -R typescript/api-docs site/typescript
+          cat > site/index.html <<'EOF'
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Keenable SDK API reference</title>
+          </head>
+          <body>
+            <h1>Keenable SDK API reference</h1>
+            <ul>
+              <li><a href="python/">Python</a></li>
+              <li><a href="typescript/">TypeScript</a></li>
+              <li><a href="https://pkg.go.dev/github.com/keenableai/keenable-sdk/go">Go (pkg.go.dev)</a></li>
+              <li><a href="https://docs.rs/keenable">Rust (docs.rs)</a></li>
+            </ul>
+            <p>Guides and examples: <a href="https://docs.keenable.ai/sdks">docs.keenable.ai/sdks</a></p>
+          </body>
+          </html>
+          EOF
+
+      - if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v6
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

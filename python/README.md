@@ -11,6 +11,9 @@ extracted, plus a fetch endpoint that returns any URL as clean markdown.
 pip install keenable
 ```
 
+Every class and method is listed in the
+[API reference](https://keenableai.github.io/keenable-sdk/python/).
+
 ## Search
 
 ```python
@@ -442,6 +445,16 @@ Both can also be passed to the constructor as `api_key` and `base_url`, alongsid
 e.g. for a proxy) and `client_source`. Building an integration on top of this SDK? Set
 `client_source="Your Integration"` so your traffic is attributed to you rather
 than to the bare SDK.
+
+## API reference
+
+The [API reference](https://keenableai.github.io/keenable-sdk/python/) is
+generated from the docstrings with [pdoc](https://pdoc.dev) and published on
+pushes to `main` only. To build it locally (from `python/`):
+
+```bash
+uv run --group dev pdoc keenable --docformat google --no-show-source -o api-docs
+```
 
 ## License
 

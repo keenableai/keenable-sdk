@@ -1,0 +1,26 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/index.ts"],
+  "tsconfig": "tsconfig.docs.json",
+  "out": "api-docs",
+  "name": "keenable",
+  "readme": "README.md",
+  "includeVersion": true,
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "excludeExternals": true,
+  "githubPages": true,
+  "disableGit": true,
+  "sourceLinkTemplate": "https://github.com/keenableai/keenable-sdk/blob/main/typescript/src/{path}#L{line}",
+  "navigationLinks": {
+    "Docs": "https://docs.keenable.ai/sdks",
+    "GitHub": "https://github.com/keenableai/keenable-sdk"
+  },
+  "treatWarningsAsErrors": true,
+  "validation": {
+    "notExported": true,
+    "invalidLink": true,
+    "rewrittenLink": true,
+    "notDocumented": false
+  }
+}

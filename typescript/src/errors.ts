@@ -92,7 +92,9 @@ export interface KeenableAPIErrorDetails {
  * `(code: <code>)` and `(request_id: <requestId>)` when the API sent them.
  */
 export class KeenableAPIError extends KeenableError implements KeenableAPIErrorDetails {
+  /** The HTTP status code of the response. */
   readonly statusCode: number;
+  /** The raw response body, when there was one. */
   readonly body?: string;
   readonly code?: string;
   readonly type?: KeenableErrorType | (string & {});

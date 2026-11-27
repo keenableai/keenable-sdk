@@ -44,12 +44,14 @@
     "coverage": "vitest run --coverage --coverage.include=src --coverage.reporter=text",
     "typecheck": "tsc --noEmit",
     "errors:sync": "node ../scripts/error-contract/sync.ts",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "docs": "typedoc"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@vitest/coverage-v8": "^4.1.11",
     "tsup": "^8.3.5",
+    "typedoc": "^0.28.20",
     "typescript": "^5.7.2",
     "vitest": "^4.1.11"
   }

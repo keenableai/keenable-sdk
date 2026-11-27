@@ -11,3 +11,4 @@ uv.lock
 package-lock.json
 .DS_Store
 target/
+api-docs/
