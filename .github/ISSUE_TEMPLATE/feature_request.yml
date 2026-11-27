@@ -1,0 +1,38 @@
+name: Feature request
+description: Something the SDKs should do, or an API feature they can't use yet.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The four SDKs move together: a new option or method goes into Python, TypeScript, Go and Rust at once.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The task, and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would help?
+      description: The option, method or behaviour you'd like, with a code sketch in your language if you have one.
+    validations:
+      required: true
+  - type: dropdown
+    id: sdk
+    attributes:
+      label: Which SDK do you use?
+      multiple: true
+      options:
+        - Python
+        - TypeScript
+        - Go
+        - Rust
+  - type: input
+    id: docs
+    attributes:
+      label: Is it in the API docs?
+      description: If the [docs](https://docs.keenable.ai) describe an API feature the SDK can't use, link the page.
+      placeholder: "https://docs.keenable.ai/..."

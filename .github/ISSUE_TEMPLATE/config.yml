@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://docs.keenable.ai
+    about: Guides, the API reference, integrations and every SDK's usage.
+  - name: Discord community
+    url: https://discord.gg/be3QybVZ2P
+    about: Ask questions and talk to the Keenable team and other developers.
+  - name: Report a vulnerability
+    url: https://github.com/keenableai/keenable-sdk/security/advisories/new
+    about: Report security problems privately, not as an issue.

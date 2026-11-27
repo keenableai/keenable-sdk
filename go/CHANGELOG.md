@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Changed:** the README links the Keenable Discord community and X account.
 - **Added:** `SearchResponse.Usage` (`*Usage`): what the search cost and, with a key, `Cost` and `Balance` in US dollars. Nil on keyless calls.
 - **Changed:** `Usage` is read field by field, so a malformed `cost` or `balance` no longer loses the other fields.
 - **Changed:** the `keenable_search` tool's `moderation` description: supported for a URL query when `exclude_domains` is set.

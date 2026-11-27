@@ -1,5 +1,14 @@
 # Keenable SDK
 
+[![PyPI](https://img.shields.io/pypi/v/keenable?label=PyPI)](https://pypi.org/project/keenable/)
+[![npm](https://img.shields.io/npm/v/keenable?label=npm)](https://www.npmjs.com/package/keenable)
+[![crates.io](https://img.shields.io/crates/v/keenable?label=crates.io)](https://crates.io/crates/keenable)
+[![Go Reference](https://pkg.go.dev/badge/github.com/keenableai/keenable-sdk/go.svg)](https://pkg.go.dev/github.com/keenableai/keenable-sdk/go)
+[![Test](https://github.com/keenableai/keenable-sdk/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/keenableai/keenable-sdk/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/be3QybVZ2P)
+[![X](https://img.shields.io/badge/follow-%40KeenableAI-000000?logo=x)](https://x.com/KeenableAI)
+
 Official SDKs for [Keenable](https://keenable.ai), a web search API built for AI
 agents. Search returns ranked pages with their text already extracted, so one
 call gives a model something to reason over; fetch returns any URL as clean
@@ -143,10 +152,58 @@ See each SDK's README for the full list, and [`examples/monitors`](./examples/mo
   in [`go/example/monitors`](./go/example/monitors), Rust in
   [`rust/examples/monitors.rs`](./rust/examples/monitors.rs).
 
+## Integrations and examples
+
+Keenable has ready-made integrations for the agent frameworks and tools you
+may already use. Each page in the
+[integrations directory](https://docs.keenable.ai/integrations) shows the setup
+and a working example:
+
+- **Frameworks and SDKs:**
+  [LangChain](https://docs.keenable.ai/integrations/langchain),
+  [LlamaIndex](https://docs.keenable.ai/integrations/llamaindex),
+  [Vercel AI SDK](https://docs.keenable.ai/integrations/vercel),
+  [Mastra](https://docs.keenable.ai/integrations/mastra),
+  [CrewAI](https://docs.keenable.ai/integrations/crewai),
+  [Agno](https://docs.keenable.ai/integrations/agno),
+  [Haystack](https://docs.keenable.ai/integrations/haystack),
+  [Google ADK](https://docs.keenable.ai/integrations/google-adk),
+  [NVIDIA NeMo Agent Toolkit](https://docs.keenable.ai/integrations/nemo-agent-toolkit),
+  [PraisonAI](https://docs.keenable.ai/integrations/praisonai)
+- **Low-code builders:**
+  [n8n](https://docs.keenable.ai/integrations/n8n),
+  [Dify](https://docs.keenable.ai/integrations/dify),
+  [Langflow](https://docs.keenable.ai/integrations/langflow),
+  [RAGFlow](https://docs.keenable.ai/integrations/ragflow)
+- **Inference providers:**
+  [OpenRouter](https://docs.keenable.ai/integrations/openrouter),
+  [Baseten](https://docs.keenable.ai/integrations/baseten)
+- **Voice agents:**
+  [Pipecat](https://docs.keenable.ai/integrations/pipecat)
+
+The docs also cover [tool calling](https://docs.keenable.ai/tool-calling),
+[best practices](https://docs.keenable.ai/best-practices) for search and fetch,
+and the [MCP server](https://docs.keenable.ai/mcp-server) for coding agents and
+chat apps.
+
 ## Documentation for partners
 
 - [`docs/partners/cerebras/keenable.mdx`](./docs/partners/cerebras/keenable.mdx) -
   integration page written for the Cerebras Inference docs.
+
+## Community
+
+- [Discord](https://discord.gg/be3QybVZ2P): ask questions and talk to the
+  Keenable team and other developers.
+- [X (@KeenableAI)](https://x.com/KeenableAI): releases and news.
+- [Issues](https://github.com/keenableai/keenable-sdk/issues): bugs and feature
+  requests for the SDKs.
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for how the four SDKs stay in step, how
+to run the tests, and the deprecation policy. To report a vulnerability, see
+[SECURITY.md](./SECURITY.md).
 
 ## License
 

@@ -381,6 +381,12 @@ match client.search("q").await {
 }
 ```
 
+## Community
+
+Questions, feedback and news: join the [Keenable Discord](https://discord.gg/be3QybVZ2P)
+and follow [@KeenableAI on X](https://x.com/KeenableAI). Report SDK bugs in the
+[issue tracker](https://github.com/keenableai/keenable-sdk/issues).
+
 ## License
 
 MIT

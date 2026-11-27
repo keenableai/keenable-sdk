@@ -450,6 +450,12 @@ every request so the API key never follows a redirect. If yours follows one
 anyway, the SDK throws a `KeenableRedirectError` that tells you to rotate the
 key, since it may already have been sent to the redirect's target.
 
+## Community
+
+Questions, feedback and news: join the [Keenable Discord](https://discord.gg/be3QybVZ2P)
+and follow [@KeenableAI on X](https://x.com/KeenableAI). Report SDK bugs in the
+[issue tracker](https://github.com/keenableai/keenable-sdk/issues).
+
 ## License
 
 MIT

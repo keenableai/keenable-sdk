@@ -1,0 +1,64 @@
+name: Bug report
+description: An SDK does something wrong or differs from the docs.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Never paste an API key: remove `KEENABLE_API_KEY` and any token from the code and logs below.
+        For a security problem, don't open an issue: see [SECURITY.md](https://github.com/keenableai/keenable-sdk/blob/main/SECURITY.md).
+  - type: dropdown
+    id: sdk
+    attributes:
+      label: SDK
+      options:
+        - Python
+        - TypeScript
+        - Go
+        - Rust
+    validations:
+      required: true
+  - type: input
+    id: sdk-version
+    attributes:
+      label: SDK version
+      description: "`pip show keenable`, `npm ls keenable`, the version in `go.mod`, or `cargo tree -p keenable`."
+      placeholder: "0.3.0"
+    validations:
+      required: true
+  - type: input
+    id: runtime-version
+    attributes:
+      label: Runtime version and OS
+      description: "`python --version`, `node --version`, `go version` or `rustc --version`, and your OS."
+      placeholder: "Python 3.12.4 on macOS 15"
+    validations:
+      required: true
+  - type: input
+    id: request-id
+    attributes:
+      label: request_id
+      description: "From the error (`request_id`, `requestId`, `RequestID`) or the response, if the call reached the API. It lets us find the request in our logs."
+      placeholder: "req_..."
+  - type: textarea
+    id: code
+    attributes:
+      label: Minimal code that reproduces it
+      description: The smallest program that shows the problem.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: The output, error message or stack trace.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
