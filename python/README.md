@@ -443,6 +443,12 @@ e.g. for a proxy) and `client_source`. Building an integration on top of this SD
 `client_source="Your Integration"` so your traffic is attributed to you rather
 than to the bare SDK.
 
+## Community
+
+Questions, feedback and news: join the [Keenable Discord](https://discord.gg/be3QybVZ2P)
+and follow [@KeenableAI on X](https://x.com/KeenableAI). Report SDK bugs in the
+[issue tracker](https://github.com/keenableai/keenable-sdk/issues).
+
 ## License
 
 MIT
