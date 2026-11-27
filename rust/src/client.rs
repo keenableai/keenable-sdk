@@ -10,8 +10,8 @@ use serde_json::{Map, Value};
 use crate::error::{ApiError, ConnectionError, Error, RateLimitError, RateLimitInfo, Result};
 use crate::guard::{reject_private_fetch_target, resolve_base_url};
 use crate::models::{
-    billing_from_json, non_blank, page_from_json, safe_count, search_response_from_json, Billing,
-    FetchResponse, SearchResponse,
+    billing_from_json, fetch_usage, non_blank, page_from_json, safe_count,
+    search_response_from_json, usage_from_json, Billing, FetchResponse, SearchResponse,
 };
 use crate::retry::{retry_after_header, retry_delay, seconds};
 use crate::{json, types, VERSION};
@@ -466,8 +466,10 @@ impl Client {
                 .collect(),
             _ => Vec::new(),
         };
+        let usage = fetch_usage(&data, &results);
         Ok(FetchResponse {
             results,
+            usage,
             request_id: non_blank(data.get("request_id")).or(id),
             raw: data,
         })
@@ -475,8 +477,8 @@ impl Client {
 
     /// The prices and, with an API key, the organization's balance, from
     /// `GET /v1/billing`. Read-only and free. Without a key, `prices` are the
-    /// public list prices and `account` is `None`. Amounts are numbers in US
-    /// dollars.
+    /// public list prices and `account` is `None`. Amounts are exact decimal
+    /// strings in US dollars ([`Money`](crate::Money)).
     pub async fn billing(&self) -> Result<Billing> {
         self.billing_with(&RequestOptions::default()).await
     }
@@ -849,6 +851,7 @@ fn build_api_error(
             resets_at: non_blank(l.get("resets_at")),
         });
     }
+    api.usage = usage_from_json(obj.get("usage"));
     if status == 400 && field("error").as_deref() == Some("invalid_filter") {
         if api.param.is_none() {
             api.param = field("field");

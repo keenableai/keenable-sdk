@@ -230,6 +230,9 @@ pub struct ApiError {
     pub reason: Option<String>,
     /// The limit a 429 hit (the body's `limit`).
     pub limit: Option<RateLimitInfo>,
+    /// What the call was billed before it failed, when the error body says
+    /// (a partly billed call). Read like a success body's usage.
+    pub usage: Option<crate::Usage>,
     pub(crate) msg: String,
 }
 
@@ -249,6 +252,7 @@ impl ApiError {
             value: None,
             reason: None,
             limit: None,
+            usage: None,
             msg,
         }
     }

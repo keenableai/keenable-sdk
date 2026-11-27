@@ -297,6 +297,10 @@ async fn errors() {
             if api.limit != want_limit {
                 problems.push(format!("limit {:?}, want {want_limit:?}", api.limit));
             }
+            let usage = serde_json::to_value(&api.usage).unwrap();
+            if as_floats(&usage) != as_floats(&want["usage"]) {
+                problems.push(format!("usage {usage}, want {}", want["usage"]));
+            }
         }
         let msg = err.to_string();
         for s in want["message_contains"].as_array().unwrap() {
@@ -372,6 +376,41 @@ async fn responses() {
         }
     }
     report("responses", failures);
+}
+
+#[tokio::test]
+async fn fetch_usage() {
+    let fixture = fixture();
+    let mut failures = Vec::new();
+    for case in cases(&fixture, "fetch_usage") {
+        let server = start(Script::Replies(vec![reply_for(case)])).await;
+        let urls: Vec<String> = case["urls"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|u| u.as_str().unwrap().to_string())
+            .collect();
+        let want = &case["expect"];
+        let problem = match keyed(&server).fetch(&urls).await {
+            Ok(r) => {
+                let pages: Vec<Value> = r
+                    .results
+                    .iter()
+                    .map(|p| serde_json::to_value(&p.usage).unwrap())
+                    .collect();
+                let got = serde_json::json!({
+                    "usage": serde_json::to_value(&r.usage).unwrap(),
+                    "pages": pages,
+                });
+                (as_floats(&got) != as_floats(want)).then(|| format!("got {got}"))
+            }
+            Err(e) => Some(format!("{e:?}")),
+        };
+        if let Some(p) = problem {
+            failures.push(format!("{}: {p}, want {want}", name(case)));
+        }
+    }
+    report("fetch_usage", failures);
 }
 
 #[tokio::test]

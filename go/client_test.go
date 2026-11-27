@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -701,7 +702,7 @@ func TestFetchParsesAPageAndAFailedURL(t *testing.T) {
 	}
 }
 
-func TestFetchParsesTheCostAndBalanceInUsage(t *testing.T) {
+func TestFetchReadsAnOlderServersPageUsage(t *testing.T) {
 	billed := map[string]any{
 		"url": "https://example.com", "title": "Example Domain", "content": "# Example Domain",
 		"usage": map[string]any{
@@ -716,15 +717,15 @@ func TestFetchParsesTheCostAndBalanceInUsage(t *testing.T) {
 		t.Fatalf("resp=%+v err=%v", resp, err)
 	}
 	usage := resp.Results[0].Usage
-	if usage == nil || usage.Cost == nil || usage.Balance == nil {
+	if usage == nil || usage.Balance == nil || len(usage.Items) != 1 {
 		t.Fatalf("usage=%#v", usage)
 	}
-	want := [2]keenable.Money{
-		{Amount: 0.004, AmountDecimal: "0.004", Currency: "usd"},
-		{Amount: 47.992, AmountDecimal: "47.992", Currency: "usd"},
+	want := keenable.UsageItem{SKU: "fetch", Quantity: 1, Price: keenable.Money{Amount: "0.004", Currency: "usd"}}
+	if usage.Items[0] != want || usage.Total != want.Price || *usage.Balance != (keenable.Money{Amount: "47.992", Currency: "usd"}) {
+		t.Fatalf("usage=%#v", usage)
 	}
-	if *usage.Cost != want[0] || *usage.Balance != want[1] {
-		t.Fatalf("cost=%#v balance=%#v", usage.Cost, usage.Balance)
+	if resp.Usage == nil || len(resp.Usage.Items) != 1 || resp.Usage.Items[0] != want || resp.Usage.Total != want.Price {
+		t.Fatalf("call usage=%#v", resp.Usage)
 	}
 	if resp.Results[1].Usage != nil {
 		t.Fatalf("a page without usage got %#v", resp.Results[1].Usage)
@@ -1356,3 +1357,29 @@ func titles(results []keenable.SearchResult) string {
 func intPtr(n int) *int { return &n }
 
 func durPtr(d time.Duration) *time.Duration { return &d }
+
+func TestMoneyRatAddsExactly(t *testing.T) {
+	sum := new(big.Rat)
+	for i := 0; i < 3; i++ {
+		sum.Add(sum, keenable.Money{Amount: "0.1", Currency: "usd"}.Rat())
+	}
+	if sum.Cmp(big.NewRat(3, 10)) != 0 {
+		t.Fatalf("sum = %s", sum.FloatString(9))
+	}
+	if r := (keenable.Money{Amount: "1e3"}).Rat(); r.Sign() != 0 {
+		t.Fatalf("a non-decimal amount = %s, want 0", r)
+	}
+}
+
+func TestAPIErrorCarriesUsage(t *testing.T) {
+	body := map[string]any{"error": "Fetch failed", "usage": map[string]any{
+		"items": []any{map[string]any{"sku": "fetch.live", "quantity": 1, "price": map[string]any{"amount": "0.002", "currency": "usd"}}},
+		"total": map[string]any{"amount": "0.002", "currency": "usd"},
+	}}
+	c, _ := startKeyless(t, jsonHandler(http.StatusBadGateway, body), nil)
+	_, err := c.Fetch(context.Background(), []string{"https://example.com"})
+	var api *keenable.APIError
+	if !errors.As(err, &api) || api.Usage == nil || api.Usage.Total.Amount != "0.002" || api.Usage.Balance != nil {
+		t.Fatalf("err=%v", err)
+	}
+}

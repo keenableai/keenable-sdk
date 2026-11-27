@@ -1630,6 +1630,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [
           "Bad thing"
         ],
@@ -1658,6 +1659,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [
           "inner",
@@ -1687,6 +1689,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [
           "the detail"
         ],
@@ -1713,6 +1716,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [
           "true",
@@ -1740,6 +1744,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -1764,6 +1769,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -1788,6 +1794,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -1812,6 +1819,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -1836,6 +1844,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [
           "oops"
@@ -1862,6 +1871,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [
           "null"
@@ -1888,6 +1898,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [
           "4242"
@@ -1914,6 +1925,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [
           "[\"x\"]"
@@ -1940,6 +1952,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -1964,6 +1977,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [
           "1e400"
@@ -1990,6 +2004,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [
           "<html>Bad Gateway</html>"
         ],
@@ -2016,6 +2031,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2040,6 +2056,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2064,6 +2081,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2088,6 +2106,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2112,6 +2131,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2136,6 +2156,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [
           "bom"
         ],
@@ -2162,6 +2183,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2186,6 +2208,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2210,6 +2233,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [
           "(code:"
@@ -2236,6 +2260,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2260,6 +2285,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2286,6 +2312,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [
           "(request_id: from-body)"
         ],
@@ -2314,6 +2341,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2340,6 +2368,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2366,6 +2395,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2392,6 +2422,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2418,6 +2449,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2442,6 +2474,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2466,6 +2499,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2490,6 +2524,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2516,6 +2551,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2542,6 +2578,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2568,6 +2605,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2597,6 +2635,7 @@
           "max": 1000,
           "resets_at": "2026-11-06T12:30:00.000Z"
         },
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2626,6 +2665,7 @@
           "max": null,
           "resets_at": null
         },
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2655,6 +2695,7 @@
           "max": null,
           "resets_at": null
         },
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2684,6 +2725,7 @@
           "max": null,
           "resets_at": null
         },
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2713,6 +2755,7 @@
           "max": null,
           "resets_at": null
         },
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2742,6 +2785,7 @@
           "max": null,
           "resets_at": null
         },
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2766,6 +2810,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2790,6 +2835,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2814,6 +2860,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [
           "Keenable API error (401)"
         ],
@@ -2842,6 +2889,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2866,6 +2914,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2890,6 +2939,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2914,6 +2964,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2938,6 +2989,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -2962,6 +3014,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [
           "bad max_results",
           "Correct max_results."
@@ -2995,6 +3048,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [
           "Keenable: insufficient credits (402)",
           "(code: insufficient_credits)",
@@ -3033,6 +3087,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [
           "Keenable: payment required (402)",
           "does not pay"
@@ -3071,6 +3126,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [
           "Keenable: payment required (402)",
           "(code: payment_required)",
@@ -3107,6 +3163,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [
           "Keenable: insufficient credits (402)"
         ],
@@ -3133,6 +3190,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [
           "[[[["
@@ -3159,6 +3217,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [
           "[[[["
         ],
@@ -3185,6 +3244,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -3209,6 +3269,7 @@
         "value": "spam.com/blog",
         "reason": "paths are not supported; give only the host, such as example.com",
         "limit": null,
+        "usage": null,
         "message_contains": [
           "Correct the \"exclude_domains\" entry \"spam.com/blog\" (paths are not supported; give only the host, such as example.com) and retry."
         ],
@@ -3237,6 +3298,7 @@
         "value": null,
         "reason": "at most 1000 hosts",
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -3261,6 +3323,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -3285,6 +3348,7 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -3309,6 +3373,127 @@
         "value": null,
         "reason": null,
         "limit": null,
+        "usage": null,
+        "message_contains": [],
+        "message_excludes": [],
+        "absent": []
+      }
+    },
+    {
+      "name": "an error body's standard usage object is read",
+      "status": 502,
+      "headers": {},
+      "body": "{\"error\":\"Fetch failed\",\"message\":\"some pages failed\",\"usage\":{\"items\":[{\"sku\":\"fetch.live\",\"quantity\":1,\"price\":{\"amount\":\"0.002\",\"currency\":\"usd\"}}],\"total\":{\"amount\":\"0.002\",\"currency\":\"usd\"},\"balance\":{\"amount\":\"9.998\",\"currency\":\"usd\"}}}",
+      "expect": {
+        "kind": "api",
+        "detail": "some pages failed",
+        "code": null,
+        "type": "api_error",
+        "error": "Fetch failed",
+        "fix": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": null,
+        "value": null,
+        "reason": null,
+        "limit": null,
+        "usage": {
+          "items": [
+            {
+              "sku": "fetch.live",
+              "quantity": 1,
+              "price": {
+                "amount": "0.002",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "0.002",
+            "currency": "usd"
+          },
+          "balance": {
+            "amount": "9.998",
+            "currency": "usd"
+          },
+          "sku": "",
+          "amount": 0,
+          "credits": 0,
+          "paid": false,
+          "credits_remaining": null
+        },
+        "message_contains": [],
+        "message_excludes": [],
+        "absent": []
+      }
+    },
+    {
+      "name": "an error body's old-shape usage is read like a success body's",
+      "status": 500,
+      "headers": {},
+      "body": "{\"error\":\"Internal error\",\"usage\":{\"sku\":\"fetch.live\",\"amount\":1,\"credits\":1,\"paid\":true,\"cost\":{\"amount\":0.002,\"amount_decimal\":\"0.002\",\"currency\":\"usd\"}}}",
+      "expect": {
+        "kind": "api",
+        "detail": "Internal error",
+        "code": null,
+        "type": "api_error",
+        "error": "Internal error",
+        "fix": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": null,
+        "value": null,
+        "reason": null,
+        "limit": null,
+        "usage": {
+          "items": [
+            {
+              "sku": "fetch.live",
+              "quantity": 1,
+              "price": {
+                "amount": "0.002",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "0.002",
+            "currency": "usd"
+          },
+          "balance": null,
+          "sku": "fetch.live",
+          "amount": 1,
+          "credits": 1,
+          "paid": true,
+          "credits_remaining": null
+        },
+        "message_contains": [],
+        "message_excludes": [],
+        "absent": []
+      }
+    },
+    {
+      "name": "an error body's usage that is not an object is null",
+      "status": 500,
+      "headers": {},
+      "body": "{\"error\":\"Internal error\",\"usage\":[1]}",
+      "expect": {
+        "kind": "api",
+        "detail": "Internal error",
+        "code": null,
+        "type": "api_error",
+        "error": "Internal error",
+        "fix": null,
+        "retryable": null,
+        "retry_after_seconds": null,
+        "request_id": null,
+        "param": null,
+        "value": null,
+        "reason": null,
+        "limit": null,
+        "usage": null,
         "message_contains": [],
         "message_excludes": [],
         "absent": []
@@ -4074,7 +4259,7 @@
       }
     },
     {
-      "name": "usage with the cost and balance in US dollars",
+      "name": "usage today (old shape): one item from sku, amount and cost, total from cost",
       "endpoint": "search",
       "arg": "q",
       "status": 200,
@@ -4084,21 +4269,29 @@
         "error": null,
         "warnings": [],
         "usage": {
+          "items": [
+            {
+              "sku": "search.pro",
+              "quantity": 1,
+              "price": {
+                "amount": "0.004",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "0.004",
+            "currency": "usd"
+          },
+          "balance": {
+            "amount": "47.992",
+            "currency": "usd"
+          },
           "sku": "search.pro",
           "amount": 1,
           "credits": 1,
           "paid": true,
-          "credits_remaining": 11998,
-          "cost": {
-            "amount": 0.004,
-            "amount_decimal": "0.004",
-            "currency": "usd"
-          },
-          "balance": {
-            "amount": 47.992,
-            "amount_decimal": "47.992",
-            "currency": "usd"
-          }
+          "credits_remaining": 11998
         },
         "query": "q",
         "mode": null,
@@ -4117,21 +4310,29 @@
         "error": null,
         "warnings": [],
         "usage": {
+          "items": [
+            {
+              "sku": "search.pro",
+              "quantity": 1,
+              "price": {
+                "amount": "0.004",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "0.004",
+            "currency": "usd"
+          },
+          "balance": {
+            "amount": "0",
+            "currency": "usd"
+          },
           "sku": "search.pro",
           "amount": 1,
           "credits": 1,
           "paid": true,
-          "credits_remaining": null,
-          "cost": {
-            "amount": 0.004,
-            "amount_decimal": "0.004",
-            "currency": "usd"
-          },
-          "balance": {
-            "amount": -4e-10,
-            "amount_decimal": "0",
-            "currency": "usd"
-          }
+          "credits_remaining": null
         },
         "query": "q",
         "mode": null,
@@ -4140,7 +4341,7 @@
       }
     },
     {
-      "name": "usage from a server that sends no money",
+      "name": "usage from a server that sends no money: price and total are 0 in usd",
       "endpoint": "search",
       "arg": "q",
       "status": 200,
@@ -4150,13 +4351,26 @@
         "error": null,
         "warnings": [],
         "usage": {
+          "items": [
+            {
+              "sku": "search.realtime",
+              "quantity": 1,
+              "price": {
+                "amount": "0",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "0",
+            "currency": "usd"
+          },
+          "balance": null,
           "sku": "search.realtime",
           "amount": 1,
           "credits": 1,
           "paid": false,
-          "credits_remaining": null,
-          "cost": null,
-          "balance": null
+          "credits_remaining": null
         },
         "query": "q",
         "mode": null,
@@ -4175,13 +4389,26 @@
         "error": null,
         "warnings": [],
         "usage": {
+          "items": [
+            {
+              "sku": "search.pro",
+              "quantity": 1,
+              "price": {
+                "amount": "0",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "0",
+            "currency": "usd"
+          },
+          "balance": null,
           "sku": "search.pro",
           "amount": 1,
           "credits": 1,
           "paid": true,
-          "credits_remaining": 5,
-          "cost": null,
-          "balance": null
+          "credits_remaining": 5
         },
         "query": "q",
         "mode": null,
@@ -4200,21 +4427,29 @@
         "error": null,
         "warnings": [],
         "usage": {
+          "items": [
+            {
+              "sku": "search.pro",
+              "quantity": 1,
+              "price": {
+                "amount": "0.004",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "0.004",
+            "currency": "usd"
+          },
+          "balance": {
+            "amount": "47.992",
+            "currency": ""
+          },
           "sku": "search.pro",
           "amount": 1,
           "credits": 1,
           "paid": true,
-          "credits_remaining": null,
-          "cost": {
-            "amount": 0,
-            "amount_decimal": "0",
-            "currency": "usd"
-          },
-          "balance": {
-            "amount": 47.992,
-            "amount_decimal": "47.992",
-            "currency": ""
-          }
+          "credits_remaining": null
         },
         "query": "q",
         "mode": null,
@@ -4233,13 +4468,26 @@
         "error": null,
         "warnings": [],
         "usage": {
+          "items": [
+            {
+              "sku": "search.pro",
+              "quantity": 1,
+              "price": {
+                "amount": "0",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "0",
+            "currency": "usd"
+          },
+          "balance": null,
           "sku": "search.pro",
           "amount": 1,
           "credits": 1,
           "paid": true,
-          "credits_remaining": null,
-          "cost": null,
-          "balance": null
+          "credits_remaining": null
         },
         "query": "q",
         "mode": null,
@@ -4258,6 +4506,485 @@
         "error": null,
         "warnings": [],
         "usage": null,
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "string money (backend #947): price is cost divided by amount, exactly",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"sku\":\"search.pro\",\"amount\":3,\"credits\":3,\"paid\":true,\"cost\":{\"amount\":\"0.012\",\"currency\":\"usd\"},\"balance\":{\"amount\":\"399.988\",\"currency\":\"usd\"}}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "items": [
+            {
+              "sku": "search.pro",
+              "quantity": 3,
+              "price": {
+                "amount": "0.004",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "0.012",
+            "currency": "usd"
+          },
+          "balance": {
+            "amount": "399.988",
+            "currency": "usd"
+          },
+          "sku": "search.pro",
+          "amount": 3,
+          "credits": 3,
+          "paid": true,
+          "credits_remaining": null
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "an old-shape price that does not divide evenly is rounded to nine decimals, halves away from zero; total stays exact",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"sku\":\"fetch.live\",\"amount\":3,\"credits\":3,\"paid\":true,\"cost\":{\"amount\":\"0.01\",\"currency\":\"usd\"}}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "items": [
+            {
+              "sku": "fetch.live",
+              "quantity": 3,
+              "price": {
+                "amount": "0.003333333",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "0.01",
+            "currency": "usd"
+          },
+          "balance": null,
+          "sku": "fetch.live",
+          "amount": 3,
+          "credits": 3,
+          "paid": true,
+          "credits_remaining": null
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "an old-shape price exactly halfway rounds away from zero",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"sku\":\"fetch.live\",\"amount\":2,\"credits\":2,\"paid\":true,\"cost\":{\"amount\":\"-0.000000005\",\"currency\":\"usd\"}}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "items": [
+            {
+              "sku": "fetch.live",
+              "quantity": 2,
+              "price": {
+                "amount": "-0.000000003",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "-0.000000005",
+            "currency": "usd"
+          },
+          "balance": null,
+          "sku": "fetch.live",
+          "amount": 2,
+          "credits": 2,
+          "paid": true,
+          "credits_remaining": null
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "an old-shape amount of 0 gives a price of 0",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"sku\":\"fetch.live\",\"amount\":0,\"credits\":0,\"paid\":false,\"cost\":{\"amount\":\"0.002\",\"currency\":\"usd\"}}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "items": [
+            {
+              "sku": "fetch.live",
+              "quantity": 0,
+              "price": {
+                "amount": "0",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "0.002",
+            "currency": "usd"
+          },
+          "balance": null,
+          "sku": "fetch.live",
+          "amount": 0,
+          "credits": 0,
+          "paid": false,
+          "credits_remaining": null
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "an old-shape usage with no sku and no cost has no items",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"credits\":1,\"paid\":false}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "items": [],
+          "total": {
+            "amount": "0",
+            "currency": "usd"
+          },
+          "balance": null,
+          "sku": "",
+          "amount": 0,
+          "credits": 1,
+          "paid": false,
+          "credits_remaining": null
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "an old-shape usage with a cost and no sku keeps one item with sku \"\"",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"amount\":2,\"cost\":{\"amount\":\"0.004\",\"currency\":\"usd\"}}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "items": [
+            {
+              "sku": "",
+              "quantity": 2,
+              "price": {
+                "amount": "0.002",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "0.004",
+            "currency": "usd"
+          },
+          "balance": null,
+          "sku": "",
+          "amount": 2,
+          "credits": 0,
+          "paid": false,
+          "credits_remaining": null
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "the standard usage object (backend #951)",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"items\":[{\"sku\":\"search.pro\",\"quantity\":1,\"price\":{\"amount\":\"0.004\",\"currency\":\"usd\"}}],\"total\":{\"amount\":\"0.004\",\"currency\":\"usd\"},\"balance\":{\"amount\":\"399.996\",\"currency\":\"usd\"}}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "items": [
+            {
+              "sku": "search.pro",
+              "quantity": 1,
+              "price": {
+                "amount": "0.004",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "0.004",
+            "currency": "usd"
+          },
+          "balance": {
+            "amount": "399.996",
+            "currency": "usd"
+          },
+          "sku": "",
+          "amount": 0,
+          "credits": 0,
+          "paid": false,
+          "credits_remaining": null
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "the standard usage object without a balance",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"items\":[{\"sku\":\"search.realtime\",\"quantity\":1,\"price\":{\"amount\":\"0.001\",\"currency\":\"usd\"}}],\"total\":{\"amount\":\"0.001\",\"currency\":\"usd\"}}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "items": [
+            {
+              "sku": "search.realtime",
+              "quantity": 1,
+              "price": {
+                "amount": "0.001",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "0.001",
+            "currency": "usd"
+          },
+          "balance": null,
+          "sku": "",
+          "amount": 0,
+          "credits": 0,
+          "paid": false,
+          "credits_remaining": null
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "standard usage items are read field by field; entries that are not objects are skipped",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"items\":[{\"sku\":\"fetch.live\",\"quantity\":2,\"price\":{\"amount\":\"0.002\",\"currency\":\"usd\"}},5,null,\"x\",{\"sku\":7,\"quantity\":\"2\",\"price\":\"x\"},{\"sku\":\"fetch.time_machine\",\"quantity\":1,\"price\":{\"amount\":\"0.01\",\"currency\":\"usd\"}},{\"sku\":\"neg\",\"quantity\":-1,\"price\":{\"amount\":0.5,\"currency\":\"usd\"}},{\"sku\":\"frac\",\"quantity\":1.5,\"price\":{}}],\"total\":{\"amount\":\"0.014\",\"currency\":\"usd\"},\"balance\":\"1\"}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "items": [
+            {
+              "sku": "fetch.live",
+              "quantity": 2,
+              "price": {
+                "amount": "0.002",
+                "currency": "usd"
+              }
+            },
+            {
+              "sku": "",
+              "quantity": 0,
+              "price": {
+                "amount": "0",
+                "currency": ""
+              }
+            },
+            {
+              "sku": "fetch.time_machine",
+              "quantity": 1,
+              "price": {
+                "amount": "0.01",
+                "currency": "usd"
+              }
+            },
+            {
+              "sku": "neg",
+              "quantity": 0,
+              "price": {
+                "amount": "0.5",
+                "currency": "usd"
+              }
+            },
+            {
+              "sku": "frac",
+              "quantity": 0,
+              "price": {
+                "amount": "0",
+                "currency": ""
+              }
+            }
+          ],
+          "total": {
+            "amount": "0.014",
+            "currency": "usd"
+          },
+          "balance": null,
+          "sku": "",
+          "amount": 0,
+          "credits": 0,
+          "paid": false,
+          "credits_remaining": null
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "a standard usage total that is not an object reads as {}",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"items\":[],\"total\":\"0.004\"}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "items": [],
+          "total": {
+            "amount": "0",
+            "currency": ""
+          },
+          "balance": null,
+          "sku": "",
+          "amount": 0,
+          "credits": 0,
+          "paid": false,
+          "credits_remaining": null
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "standard usage amounts are exact strings, never floats",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"items\":[{\"sku\":\"fetch.live\",\"quantity\":1,\"price\":{\"amount\":\"123456789012345678901234567890.123456789\",\"currency\":\"usd\"}}],\"total\":{\"amount\":\"123456789012345678901234567890.123456789\",\"currency\":\"usd\"},\"balance\":{\"amount\":\"-0.000000001\",\"currency\":\"usd\"}}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "items": [
+            {
+              "sku": "fetch.live",
+              "quantity": 1,
+              "price": {
+                "amount": "123456789012345678901234567890.123456789",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "123456789012345678901234567890.123456789",
+            "currency": "usd"
+          },
+          "balance": {
+            "amount": "-0.000000001",
+            "currency": "usd"
+          },
+          "sku": "",
+          "amount": 0,
+          "credits": 0,
+          "paid": false,
+          "credits_remaining": null
+        },
+        "query": "q",
+        "mode": null,
+        "request_id": null,
+        "results": []
+      }
+    },
+    {
+      "name": "items that are not a list read the old shape",
+      "endpoint": "search",
+      "arg": "q",
+      "status": 200,
+      "headers": {},
+      "body": "{\"query\":\"q\",\"results\":[],\"usage\":{\"items\":{\"sku\":\"x\"},\"sku\":\"search.pro\",\"amount\":1,\"cost\":{\"amount\":\"0.004\",\"currency\":\"usd\"}}}",
+      "expect": {
+        "error": null,
+        "warnings": [],
+        "usage": {
+          "items": [
+            {
+              "sku": "search.pro",
+              "quantity": 1,
+              "price": {
+                "amount": "0.004",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "0.004",
+            "currency": "usd"
+          },
+          "balance": null,
+          "sku": "search.pro",
+          "amount": 1,
+          "credits": 0,
+          "paid": false,
+          "credits_remaining": null
+        },
         "query": "q",
         "mode": null,
         "request_id": null,
@@ -4282,8 +5009,7 @@
               "sku": "search.pro",
               "unit": "search",
               "unit_price": {
-                "amount": 0.004,
-                "amount_decimal": "0.004",
+                "amount": "0.004",
                 "currency": "usd"
               },
               "list_unit_price": null,
@@ -4293,8 +5019,7 @@
               "sku": "fetch.live",
               "unit": "page",
               "unit_price": {
-                "amount": 0.002,
-                "amount_decimal": "0.002",
+                "amount": "0.002",
                 "currency": "usd"
               },
               "list_unit_price": null,
@@ -4323,13 +5048,11 @@
               "sku": "search.pro",
               "unit": "search",
               "unit_price": {
-                "amount": 0.003,
-                "amount_decimal": "0.003",
+                "amount": "0.003",
                 "currency": "usd"
               },
               "list_unit_price": {
-                "amount": 0.004,
-                "amount_decimal": "0.004",
+                "amount": "0.004",
                 "currency": "usd"
               },
               "source": "contract"
@@ -4338,13 +5061,11 @@
               "sku": "fetch",
               "unit": "page",
               "unit_price": {
-                "amount": 0.001,
-                "amount_decimal": "0.001",
+                "amount": "0.001",
                 "currency": "usd"
               },
               "list_unit_price": {
-                "amount": 0.001,
-                "amount_decimal": "0.001",
+                "amount": "0.001",
                 "currency": "usd"
               },
               "source": "list"
@@ -4353,8 +5074,7 @@
           "account": {
             "balance": {
               "available": {
-                "amount": -12.345678901,
-                "amount_decimal": "-12.345678901",
+                "amount": "-12.345678901",
                 "currency": "usd"
               }
             },
@@ -4399,7 +5119,7 @@
       }
     },
     {
-      "name": "mistyped prices fall back",
+      "name": "mistyped prices fall back; a plain decimal string amount is kept",
       "keyed": false,
       "status": 200,
       "headers": {},
@@ -4414,8 +5134,7 @@
               "sku": "",
               "unit": "",
               "unit_price": {
-                "amount": 0,
-                "amount_decimal": "0",
+                "amount": "0",
                 "currency": ""
               },
               "list_unit_price": null,
@@ -4425,13 +5144,11 @@
               "sku": "fetch",
               "unit": "page",
               "unit_price": {
-                "amount": 0,
-                "amount_decimal": "0",
+                "amount": "0.001",
                 "currency": ""
               },
               "list_unit_price": {
-                "amount": 0,
-                "amount_decimal": "0",
+                "amount": "0",
                 "currency": "usd"
               },
               "source": null
@@ -4440,13 +5157,11 @@
               "sku": "search",
               "unit": "search",
               "unit_price": {
-                "amount": 1e-9,
-                "amount_decimal": "0.000000001",
+                "amount": "0.000000001",
                 "currency": "usd"
               },
               "list_unit_price": {
-                "amount": 0,
-                "amount_decimal": "0",
+                "amount": "0",
                 "currency": ""
               },
               "source": null
@@ -4473,7 +5188,7 @@
       }
     },
     {
-      "name": "mistyped account fields fall back",
+      "name": "mistyped account fields fall back; a string amount is kept",
       "keyed": true,
       "status": 200,
       "headers": {},
@@ -4487,8 +5202,7 @@
           "account": {
             "balance": {
               "available": {
-                "amount": 0,
-                "amount_decimal": "0",
+                "amount": "0.004",
                 "currency": ""
               }
             },
@@ -4513,8 +5227,7 @@
           "account": {
             "balance": {
               "available": {
-                "amount": 0,
-                "amount_decimal": "0",
+                "amount": "0",
                 "currency": ""
               }
             },
@@ -4539,8 +5252,7 @@
           "account": {
             "balance": {
               "available": {
-                "amount": 5.5,
-                "amount_decimal": "5.5",
+                "amount": "5.5",
                 "currency": "usd"
               }
             },
@@ -4566,13 +5278,11 @@
               "sku": "huge",
               "unit": "page",
               "unit_price": {
-                "amount": 0,
-                "amount_decimal": "0",
+                "amount": "0",
                 "currency": "usd"
               },
               "list_unit_price": {
-                "amount": 0,
-                "amount_decimal": "0",
+                "amount": "0",
                 "currency": "usd"
               },
               "source": null
@@ -4598,13 +5308,11 @@
               "sku": "a",
               "unit": "search",
               "unit_price": {
-                "amount": 12345678.12345679,
-                "amount_decimal": "12345678.123456789",
+                "amount": "12345678.123456789",
                 "currency": "usd"
               },
               "list_unit_price": {
-                "amount": 0,
-                "amount_decimal": "0",
+                "amount": "0",
                 "currency": "usd"
               },
               "source": null
@@ -4613,8 +5321,7 @@
           "account": {
             "balance": {
               "available": {
-                "amount": -0.5,
-                "amount_decimal": "-0.5",
+                "amount": "-0.5",
                 "currency": "usd"
               }
             },
@@ -4640,13 +5347,11 @@
               "sku": "a",
               "unit": "search",
               "unit_price": {
-                "amount": 0.004,
-                "amount_decimal": "0.004",
+                "amount": "0.004",
                 "currency": "usd"
               },
               "list_unit_price": {
-                "amount": 100,
-                "amount_decimal": "100",
+                "amount": "100",
                 "currency": "usd"
               },
               "source": null
@@ -4655,13 +5360,11 @@
               "sku": "b",
               "unit": "page",
               "unit_price": {
-                "amount": 1e-9,
-                "amount_decimal": "0.000000001",
+                "amount": "0.000000001",
                 "currency": "usd"
               },
               "list_unit_price": {
-                "amount": 4e-10,
-                "amount_decimal": "0",
+                "amount": "0",
                 "currency": "usd"
               },
               "source": null
@@ -4670,8 +5373,7 @@
               "sku": "c",
               "unit": "page",
               "unit_price": {
-                "amount": -4e-10,
-                "amount_decimal": "0",
+                "amount": "0",
                 "currency": "usd"
               },
               "list_unit_price": null,
@@ -4681,13 +5383,11 @@
               "sku": "d",
               "unit": "page",
               "unit_price": {
-                "amount": 0.30000000000000004,
-                "amount_decimal": "0.3",
+                "amount": "0.3",
                 "currency": "usd"
               },
               "list_unit_price": {
-                "amount": 25000000.5,
-                "amount_decimal": "25000000.5",
+                "amount": "25000000.5",
                 "currency": "usd"
               },
               "source": null
@@ -4696,8 +5396,7 @@
           "account": {
             "balance": {
               "available": {
-                "amount": -12.345678901,
-                "amount_decimal": "-12.345678901",
+                "amount": "-12.345678901",
                 "currency": "usd"
               }
             },
@@ -4723,13 +5422,11 @@
               "sku": "number",
               "unit": "page",
               "unit_price": {
-                "amount": 0.25,
-                "amount_decimal": "0.25",
+                "amount": "0.25",
                 "currency": "usd"
               },
               "list_unit_price": {
-                "amount": 0.25,
-                "amount_decimal": "0.25",
+                "amount": "0.25",
                 "currency": "usd"
               },
               "source": null
@@ -4738,13 +5435,11 @@
               "sku": "exponent",
               "unit": "page",
               "unit_price": {
-                "amount": 0.25,
-                "amount_decimal": "0.25",
+                "amount": "0.25",
                 "currency": "usd"
               },
               "list_unit_price": {
-                "amount": 0.25,
-                "amount_decimal": "0.25",
+                "amount": "0.25",
                 "currency": "usd"
               },
               "source": null
@@ -4753,13 +5448,11 @@
               "sku": "ten decimals",
               "unit": "page",
               "unit_price": {
-                "amount": 0.25,
-                "amount_decimal": "0.25",
+                "amount": "0.25",
                 "currency": "usd"
               },
               "list_unit_price": {
-                "amount": 0.25,
-                "amount_decimal": "0.25",
+                "amount": "0.25",
                 "currency": "usd"
               },
               "source": null
@@ -4768,13 +5461,11 @@
               "sku": "signs and dots",
               "unit": "page",
               "unit_price": {
-                "amount": 0.25,
-                "amount_decimal": "0.25",
+                "amount": "0.25",
                 "currency": "usd"
               },
               "list_unit_price": {
-                "amount": 0.25,
-                "amount_decimal": "0.25",
+                "amount": "0.25",
                 "currency": "usd"
               },
               "source": null
@@ -4783,13 +5474,11 @@
               "sku": "trailing dot and newline",
               "unit": "page",
               "unit_price": {
-                "amount": 0.25,
-                "amount_decimal": "0.25",
+                "amount": "0.25",
                 "currency": "usd"
               },
               "list_unit_price": {
-                "amount": 0.25,
-                "amount_decimal": "0.25",
+                "amount": "0.25",
                 "currency": "usd"
               },
               "source": null
@@ -4798,15 +5487,178 @@
               "sku": "not ASCII digits",
               "unit": "page",
               "unit_price": {
-                "amount": 0.25,
-                "amount_decimal": "0.25",
+                "amount": "0.25",
                 "currency": "usd"
               },
               "list_unit_price": {
-                "amount": 0,
-                "amount_decimal": "0",
+                "amount": "0.25",
                 "currency": "usd"
               },
+              "source": null
+            }
+          ],
+          "account": null
+        }
+      }
+    },
+    {
+      "name": "string money (backend #947): amount is the exact decimal string sent",
+      "keyed": true,
+      "status": 200,
+      "headers": {},
+      "body": "{\"prices\":[{\"sku\":\"search.pro\",\"unit\":\"search\",\"unit_price\":{\"amount\":\"0.004\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":\"0.005\",\"currency\":\"usd\"},\"source\":\"contract\"}],\"account\":{\"balance\":{\"available\":{\"amount\":\"-12.345678901\",\"currency\":\"usd\"}},\"billing_url\":\"https://keenable.ai/console\",\"as_of\":\"2026-11-27T10:00:00Z\"}}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [
+            {
+              "sku": "search.pro",
+              "unit": "search",
+              "unit_price": {
+                "amount": "0.004",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": "0.005",
+                "currency": "usd"
+              },
+              "source": "contract"
+            }
+          ],
+          "account": {
+            "balance": {
+              "available": {
+                "amount": "-12.345678901",
+                "currency": "usd"
+              }
+            },
+            "billing_url": "https://keenable.ai/console",
+            "as_of": "2026-11-27T10:00:00Z"
+          }
+        }
+      }
+    },
+    {
+      "name": "a string amount more exact than a double is kept digit for digit",
+      "keyed": false,
+      "status": 200,
+      "headers": {},
+      "body": "{\"prices\":[{\"sku\":\"a\",\"unit\":\"page\",\"unit_price\":{\"amount\":\"123456789012345678901234567890.123456789\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":\"0.000000001\",\"currency\":\"usd\"}}]}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [
+            {
+              "sku": "a",
+              "unit": "page",
+              "unit_price": {
+                "amount": "123456789012345678901234567890.123456789",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": "0.000000001",
+                "currency": "usd"
+              },
+              "source": null
+            }
+          ],
+          "account": null
+        }
+      }
+    },
+    {
+      "name": "a string amount that is not a plain decimal falls back to amount_decimal, then to 0",
+      "keyed": false,
+      "status": 200,
+      "headers": {},
+      "body": "{\"prices\":[{\"sku\":\"exponent\",\"unit\":\"page\",\"unit_price\":{\"amount\":\"4e-3\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":\"4e-3\",\"amount_decimal\":\"0.004\",\"currency\":\"usd\"}},{\"sku\":\"spaces\",\"unit\":\"page\",\"unit_price\":{\"amount\":\" 0.004\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":\"0.004 \",\"amount_decimal\":0.004,\"currency\":\"usd\"}},{\"sku\":\"ten decimals\",\"unit\":\"page\",\"unit_price\":{\"amount\":\"0.0040000000\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":\"\",\"currency\":\"usd\"}},{\"sku\":\"plus and dot\",\"unit\":\"page\",\"unit_price\":{\"amount\":\"+0.004\",\"currency\":\"usd\"},\"list_unit_price\":{\"amount\":\".004\",\"currency\":\"usd\"}}]}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [
+            {
+              "sku": "exponent",
+              "unit": "page",
+              "unit_price": {
+                "amount": "0",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": "0.004",
+                "currency": "usd"
+              },
+              "source": null
+            },
+            {
+              "sku": "spaces",
+              "unit": "page",
+              "unit_price": {
+                "amount": "0",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": "0",
+                "currency": "usd"
+              },
+              "source": null
+            },
+            {
+              "sku": "ten decimals",
+              "unit": "page",
+              "unit_price": {
+                "amount": "0",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": "0",
+                "currency": "usd"
+              },
+              "source": null
+            },
+            {
+              "sku": "plus and dot",
+              "unit": "page",
+              "unit_price": {
+                "amount": "0",
+                "currency": "usd"
+              },
+              "list_unit_price": {
+                "amount": "0",
+                "currency": "usd"
+              },
+              "source": null
+            }
+          ],
+          "account": null
+        }
+      }
+    },
+    {
+      "name": "a string amount wins over amount_decimal",
+      "keyed": false,
+      "status": 200,
+      "headers": {},
+      "body": "{\"prices\":[{\"sku\":\"a\",\"unit\":\"page\",\"unit_price\":{\"amount\":\"0.004\",\"amount_decimal\":\"0.005\",\"currency\":\"usd\"}}]}",
+      "expect": {
+        "path": "/v1/billing",
+        "error": null,
+        "request_id": null,
+        "billing": {
+          "prices": [
+            {
+              "sku": "a",
+              "unit": "page",
+              "unit_price": {
+                "amount": "0.004",
+                "currency": "usd"
+              },
+              "list_unit_price": null,
               "source": null
             }
           ],
@@ -4838,6 +5690,578 @@
         "error": "api",
         "request_id": null,
         "billing": null
+      }
+    }
+  ],
+  "fetch_usage": [
+    {
+      "name": "the standard usage object (backend #951) is the call's; pages carry none",
+      "urls": [
+        "https://example.com/a",
+        "https://example.com/b"
+      ],
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[{\"url\":\"https://example.com/a\",\"title\":\"T\",\"content\":\"C\"},{\"url\":\"https://example.com/b\",\"title\":\"T\",\"content\":\"C\"}],\"usage\":{\"items\":[{\"sku\":\"fetch.live\",\"quantity\":2,\"price\":{\"amount\":\"0.002\",\"currency\":\"usd\"}}],\"total\":{\"amount\":\"0.004\",\"currency\":\"usd\"},\"balance\":{\"amount\":\"9.996\",\"currency\":\"usd\"}}}",
+      "expect": {
+        "usage": {
+          "items": [
+            {
+              "sku": "fetch.live",
+              "quantity": 2,
+              "price": {
+                "amount": "0.002",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "0.004",
+            "currency": "usd"
+          },
+          "balance": {
+            "amount": "9.996",
+            "currency": "usd"
+          },
+          "sku": "",
+          "amount": 0,
+          "credits": 0,
+          "paid": false,
+          "credits_remaining": null
+        },
+        "pages": [
+          null,
+          null
+        ]
+      }
+    },
+    {
+      "name": "today's server: the call's usage is built from each page's",
+      "urls": [
+        "https://example.com/a",
+        "https://example.com/b",
+        "https://example.com/c"
+      ],
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[{\"url\":\"https://example.com/a\",\"title\":\"T\",\"content\":\"C\",\"usage\":{\"sku\":\"fetch.live\",\"amount\":1,\"credits\":1,\"paid\":true,\"cost\":{\"amount\":0.002,\"amount_decimal\":\"0.002\",\"currency\":\"usd\"},\"balance\":{\"amount\":9.998,\"amount_decimal\":\"9.998\",\"currency\":\"usd\"}}},{\"url\":\"https://example.com/b\",\"title\":\"T\",\"content\":\"C\",\"usage\":{\"sku\":\"fetch.live\",\"amount\":1,\"credits\":1,\"paid\":true,\"cost\":{\"amount\":0.002,\"amount_decimal\":\"0.002\",\"currency\":\"usd\"},\"balance\":{\"amount\":9.996,\"amount_decimal\":\"9.996\",\"currency\":\"usd\"}}},{\"url\":\"https://example.com/c\",\"error\":{\"status\":404,\"error\":\"Not found\"}}]}",
+      "expect": {
+        "usage": {
+          "items": [
+            {
+              "sku": "fetch.live",
+              "quantity": 2,
+              "price": {
+                "amount": "0.002",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "0.004",
+            "currency": "usd"
+          },
+          "balance": {
+            "amount": "9.996",
+            "currency": "usd"
+          },
+          "sku": "",
+          "amount": 0,
+          "credits": 0,
+          "paid": false,
+          "credits_remaining": null
+        },
+        "pages": [
+          {
+            "items": [
+              {
+                "sku": "fetch.live",
+                "quantity": 1,
+                "price": {
+                  "amount": "0.002",
+                  "currency": "usd"
+                }
+              }
+            ],
+            "total": {
+              "amount": "0.002",
+              "currency": "usd"
+            },
+            "balance": {
+              "amount": "9.998",
+              "currency": "usd"
+            },
+            "sku": "fetch.live",
+            "amount": 1,
+            "credits": 1,
+            "paid": true,
+            "credits_remaining": null
+          },
+          {
+            "items": [
+              {
+                "sku": "fetch.live",
+                "quantity": 1,
+                "price": {
+                  "amount": "0.002",
+                  "currency": "usd"
+                }
+              }
+            ],
+            "total": {
+              "amount": "0.002",
+              "currency": "usd"
+            },
+            "balance": {
+              "amount": "9.996",
+              "currency": "usd"
+            },
+            "sku": "fetch.live",
+            "amount": 1,
+            "credits": 1,
+            "paid": true,
+            "credits_remaining": null
+          },
+          null
+        ]
+      }
+    },
+    {
+      "name": "pages with different skus and prices stay separate items; balance is the last page's that has one",
+      "urls": [
+        "https://example.com/a",
+        "https://example.com/b",
+        "https://example.com/c"
+      ],
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[{\"url\":\"https://example.com/a\",\"title\":\"T\",\"content\":\"C\",\"usage\":{\"sku\":\"fetch.live\",\"amount\":1,\"credits\":1,\"paid\":true,\"cost\":{\"amount\":\"0.002\",\"currency\":\"usd\"}}},{\"url\":\"https://example.com/b\",\"title\":\"T\",\"content\":\"C\",\"usage\":{\"sku\":\"fetch.cached\",\"amount\":1,\"credits\":1,\"paid\":true,\"cost\":{\"amount\":\"0.001\",\"currency\":\"usd\"},\"balance\":{\"amount\":\"5.5\",\"currency\":\"usd\"}}},{\"url\":\"https://example.com/c\",\"title\":\"T\",\"content\":\"C\",\"usage\":{\"sku\":\"fetch.live\",\"amount\":1,\"credits\":1,\"paid\":true,\"cost\":{\"amount\":\"0.002\",\"currency\":\"usd\"}}}]}",
+      "expect": {
+        "usage": {
+          "items": [
+            {
+              "sku": "fetch.live",
+              "quantity": 2,
+              "price": {
+                "amount": "0.002",
+                "currency": "usd"
+              }
+            },
+            {
+              "sku": "fetch.cached",
+              "quantity": 1,
+              "price": {
+                "amount": "0.001",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "0.005",
+            "currency": "usd"
+          },
+          "balance": {
+            "amount": "5.5",
+            "currency": "usd"
+          },
+          "sku": "",
+          "amount": 0,
+          "credits": 0,
+          "paid": false,
+          "credits_remaining": null
+        },
+        "pages": [
+          {
+            "items": [
+              {
+                "sku": "fetch.live",
+                "quantity": 1,
+                "price": {
+                  "amount": "0.002",
+                  "currency": "usd"
+                }
+              }
+            ],
+            "total": {
+              "amount": "0.002",
+              "currency": "usd"
+            },
+            "balance": null,
+            "sku": "fetch.live",
+            "amount": 1,
+            "credits": 1,
+            "paid": true,
+            "credits_remaining": null
+          },
+          {
+            "items": [
+              {
+                "sku": "fetch.cached",
+                "quantity": 1,
+                "price": {
+                  "amount": "0.001",
+                  "currency": "usd"
+                }
+              }
+            ],
+            "total": {
+              "amount": "0.001",
+              "currency": "usd"
+            },
+            "balance": {
+              "amount": "5.5",
+              "currency": "usd"
+            },
+            "sku": "fetch.cached",
+            "amount": 1,
+            "credits": 1,
+            "paid": true,
+            "credits_remaining": null
+          },
+          {
+            "items": [
+              {
+                "sku": "fetch.live",
+                "quantity": 1,
+                "price": {
+                  "amount": "0.002",
+                  "currency": "usd"
+                }
+              }
+            ],
+            "total": {
+              "amount": "0.002",
+              "currency": "usd"
+            },
+            "balance": null,
+            "sku": "fetch.live",
+            "amount": 1,
+            "credits": 1,
+            "paid": true,
+            "credits_remaining": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "the built total is an exact sum",
+      "urls": [
+        "https://example.com/a",
+        "https://example.com/b",
+        "https://example.com/c"
+      ],
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[{\"url\":\"https://example.com/a\",\"title\":\"T\",\"content\":\"C\",\"usage\":{\"sku\":\"fetch.live\",\"amount\":1,\"credits\":1,\"paid\":true,\"cost\":{\"amount\":0.1,\"currency\":\"usd\"}}},{\"url\":\"https://example.com/b\",\"title\":\"T\",\"content\":\"C\",\"usage\":{\"sku\":\"fetch.live\",\"amount\":1,\"credits\":1,\"paid\":true,\"cost\":{\"amount\":0.2,\"currency\":\"usd\"}}},{\"url\":\"https://example.com/c\",\"title\":\"T\",\"content\":\"C\",\"usage\":{\"sku\":\"fetch.prompt\",\"amount\":2,\"credits\":2,\"paid\":true,\"cost\":{\"amount\":\"0.000000001\",\"currency\":\"usd\"}}}]}",
+      "expect": {
+        "usage": {
+          "items": [
+            {
+              "sku": "fetch.live",
+              "quantity": 1,
+              "price": {
+                "amount": "0.1",
+                "currency": "usd"
+              }
+            },
+            {
+              "sku": "fetch.live",
+              "quantity": 1,
+              "price": {
+                "amount": "0.2",
+                "currency": "usd"
+              }
+            },
+            {
+              "sku": "fetch.prompt",
+              "quantity": 2,
+              "price": {
+                "amount": "0.000000001",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "0.300000001",
+            "currency": "usd"
+          },
+          "balance": null,
+          "sku": "",
+          "amount": 0,
+          "credits": 0,
+          "paid": false,
+          "credits_remaining": null
+        },
+        "pages": [
+          {
+            "items": [
+              {
+                "sku": "fetch.live",
+                "quantity": 1,
+                "price": {
+                  "amount": "0.1",
+                  "currency": "usd"
+                }
+              }
+            ],
+            "total": {
+              "amount": "0.1",
+              "currency": "usd"
+            },
+            "balance": null,
+            "sku": "fetch.live",
+            "amount": 1,
+            "credits": 1,
+            "paid": true,
+            "credits_remaining": null
+          },
+          {
+            "items": [
+              {
+                "sku": "fetch.live",
+                "quantity": 1,
+                "price": {
+                  "amount": "0.2",
+                  "currency": "usd"
+                }
+              }
+            ],
+            "total": {
+              "amount": "0.2",
+              "currency": "usd"
+            },
+            "balance": null,
+            "sku": "fetch.live",
+            "amount": 1,
+            "credits": 1,
+            "paid": true,
+            "credits_remaining": null
+          },
+          {
+            "items": [
+              {
+                "sku": "fetch.prompt",
+                "quantity": 2,
+                "price": {
+                  "amount": "0.000000001",
+                  "currency": "usd"
+                }
+              }
+            ],
+            "total": {
+              "amount": "0.000000001",
+              "currency": "usd"
+            },
+            "balance": null,
+            "sku": "fetch.prompt",
+            "amount": 2,
+            "credits": 2,
+            "paid": true,
+            "credits_remaining": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "pages without money: items at price 0, total 0 in usd",
+      "urls": [
+        "https://example.com/a",
+        "https://example.com/b"
+      ],
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[{\"url\":\"https://example.com/a\",\"title\":\"T\",\"content\":\"C\",\"usage\":{\"sku\":\"fetch\",\"amount\":1,\"credits\":1,\"paid\":true}},{\"url\":\"https://example.com/b\",\"title\":\"T\",\"content\":\"C\",\"usage\":{\"sku\":\"fetch\",\"amount\":1,\"credits\":1,\"paid\":true}}]}",
+      "expect": {
+        "usage": {
+          "items": [
+            {
+              "sku": "fetch",
+              "quantity": 2,
+              "price": {
+                "amount": "0",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "0",
+            "currency": "usd"
+          },
+          "balance": null,
+          "sku": "",
+          "amount": 0,
+          "credits": 0,
+          "paid": false,
+          "credits_remaining": null
+        },
+        "pages": [
+          {
+            "items": [
+              {
+                "sku": "fetch",
+                "quantity": 1,
+                "price": {
+                  "amount": "0",
+                  "currency": "usd"
+                }
+              }
+            ],
+            "total": {
+              "amount": "0",
+              "currency": "usd"
+            },
+            "balance": null,
+            "sku": "fetch",
+            "amount": 1,
+            "credits": 1,
+            "paid": true,
+            "credits_remaining": null
+          },
+          {
+            "items": [
+              {
+                "sku": "fetch",
+                "quantity": 1,
+                "price": {
+                  "amount": "0",
+                  "currency": "usd"
+                }
+              }
+            ],
+            "total": {
+              "amount": "0",
+              "currency": "usd"
+            },
+            "balance": null,
+            "sku": "fetch",
+            "amount": 1,
+            "credits": 1,
+            "paid": true,
+            "credits_remaining": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "no usage anywhere is null",
+      "urls": [
+        "https://example.com/a",
+        "https://example.com/b"
+      ],
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[{\"url\":\"https://example.com/a\",\"title\":\"T\",\"content\":\"C\"},{\"url\":\"https://example.com/b\",\"error\":{\"status\":404,\"error\":\"Not found\"}}]}",
+      "expect": {
+        "usage": null,
+        "pages": [
+          null,
+          null
+        ]
+      }
+    },
+    {
+      "name": "a call usage that is not an object is built from the pages",
+      "urls": [
+        "https://example.com/a"
+      ],
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[{\"url\":\"https://example.com/a\",\"title\":\"T\",\"content\":\"C\",\"usage\":{\"sku\":\"fetch.live\",\"amount\":1,\"credits\":1,\"paid\":true,\"cost\":{\"amount\":\"0.002\",\"currency\":\"usd\"}}}],\"usage\":\"x\"}",
+      "expect": {
+        "usage": {
+          "items": [
+            {
+              "sku": "fetch.live",
+              "quantity": 1,
+              "price": {
+                "amount": "0.002",
+                "currency": "usd"
+              }
+            }
+          ],
+          "total": {
+            "amount": "0.002",
+            "currency": "usd"
+          },
+          "balance": null,
+          "sku": "",
+          "amount": 0,
+          "credits": 0,
+          "paid": false,
+          "credits_remaining": null
+        },
+        "pages": [
+          {
+            "items": [
+              {
+                "sku": "fetch.live",
+                "quantity": 1,
+                "price": {
+                  "amount": "0.002",
+                  "currency": "usd"
+                }
+              }
+            ],
+            "total": {
+              "amount": "0.002",
+              "currency": "usd"
+            },
+            "balance": null,
+            "sku": "fetch.live",
+            "amount": 1,
+            "credits": 1,
+            "paid": true,
+            "credits_remaining": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "the call's usage wins over the pages'",
+      "urls": [
+        "https://example.com/a"
+      ],
+      "status": 200,
+      "headers": {},
+      "body": "{\"results\":[{\"url\":\"https://example.com/a\",\"title\":\"T\",\"content\":\"C\",\"usage\":{\"sku\":\"fetch.live\",\"amount\":1,\"credits\":1,\"paid\":true,\"cost\":{\"amount\":\"0.002\",\"currency\":\"usd\"}}}],\"usage\":{\"items\":[],\"total\":{\"amount\":\"0\",\"currency\":\"usd\"}}}",
+      "expect": {
+        "usage": {
+          "items": [],
+          "total": {
+            "amount": "0",
+            "currency": "usd"
+          },
+          "balance": null,
+          "sku": "",
+          "amount": 0,
+          "credits": 0,
+          "paid": false,
+          "credits_remaining": null
+        },
+        "pages": [
+          {
+            "items": [
+              {
+                "sku": "fetch.live",
+                "quantity": 1,
+                "price": {
+                  "amount": "0.002",
+                  "currency": "usd"
+                }
+              }
+            ],
+            "total": {
+              "amount": "0.002",
+              "currency": "usd"
+            },
+            "balance": null,
+            "sku": "fetch.live",
+            "amount": 1,
+            "credits": 1,
+            "paid": true,
+            "credits_remaining": null
+          }
+        ]
       }
     }
   ],

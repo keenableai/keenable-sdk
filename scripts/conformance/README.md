@@ -149,28 +149,85 @@ bodies (not a JSON object is an API error), with these fields:
 
 - Required text (`sku`, `unit`, `billing_url`, `as_of`, and a Money's
   `currency`) is the string sent or `""`.
-- A Money's `amount` is a number in US dollars (Python `float`, TypeScript
-  `number`, Go `float64`, Rust `f64`): the JSON number sent, with its sign and
-  fraction, when it is finite, else `0`. This is the rule for every required
-  number: a wrong type reads as `0`, never parsed or coerced. A string (an older
-  server's `"0.004"`), a boolean, null, a list or an object is `0`, and so is a
-  number too large for a double (`1e999`), which drops only that amount.
-- A Money's `amount_decimal` is the same amount as an exact decimal string,
-  for adding amounts without float error. It is the string sent when it
-  matches `^-?[0-9]+(\.[0-9]{1,9})?$` (ASCII digits, nothing before or after).
-  Otherwise (an older server sends none, or a wrong type) it is `amount`
-  above written in fixed point with nine decimal places, correctly rounded,
-  then with trailing zeros and a bare trailing point removed, and `-0` written
-  as `0`: `0.004` is `"0.004"`, `100` is `"100"`, `0.30000000000000004` is
-  `"0.3"`, `0.0000000004` is `"0"`.
+- A Money is `{amount, currency}`. `amount` is an exact decimal string in US
+  dollars, never a float, so amounts add up exactly (check a bill with
+  Python `decimal.Decimal`, Go `big.Rat`, a JavaScript decimal library or
+  integer nano-dollars). It is the first of:
+  1. the body's `amount` when it is a string matching
+     `^-?[0-9]+(\.[0-9]{1,9})?$` (ASCII digits, nothing before or after): what
+     the API sends since backend #947;
+  2. the body's `amount_decimal` when it is such a string: what an older server
+     sent next to a number;
+  3. the body's `amount` when it is a finite JSON number (an older server
+     without `amount_decimal`), written in fixed point with nine decimal
+     places, correctly rounded, then with trailing zeros and a bare trailing
+     point removed, and `-0` written as `0`: `0.004` is `"0.004"`, `100` is
+     `"100"`, `0.30000000000000004` is `"0.3"`, `0.0000000004` is `"0"`;
+  4. else `"0"`. A string that is not a plain decimal (`"4e-3"`, `" 0.004"`,
+     ten decimals, `"+1"`, `".5"`) is not one, and neither is a boolean, a
+     list or a number too large for a double (`1e999`).
 - A required Money (`unit_price`, `available`) that is not an object reads as
-  `{}`. `list_unit_price` is a Money when an object, else null; `source` is a
+  `{}` (amount `"0"`, currency `""`). `list_unit_price` is a Money when an object, else null; `source` is a
   string with more than whitespace, else null.
 - `account` is null unless it is an object; a `balance` that is not an object
   reads as `{}`. Fields an older server sent (`balance.purchased`, `usage`) are
   ignored.
 - `prices` keeps its object entries and is empty when not a list.
 - The request id follows the success-body rule above.
+
+## Usage (`responses`, `errors`, `fetch_usage`)
+
+A paid call reports what it was billed in `usage`: on a search, on a fetch
+(the call), and on an error body of a call that was partly billed. It is null
+unless the body's `usage` is an object. Every SDK reads all three shapes the
+API has sent into one model:
+
+- `items`: one `{sku, quantity, price}` per SKU and unit price. `price` is a
+  Money (above) for one unit.
+- `total`: a Money, the cost of the whole call.
+- `balance`: a Money, the organization's balance after the call, or null when
+  the API did not send an object.
+
+The standard object (backend #951) has an `items` list:
+`{"items": [{"sku", "quantity", "price"}], "total", "balance"?}`. Its object
+entries are read field by field (others are skipped): `sku` is the string sent
+or `""`, `quantity` a whole number from 0 to 2^53 - 1 (`1.0` counts) or `0`,
+`price` a Money (`{}` when not an object). `total` is a Money, `{}` when not an
+object.
+
+A `usage` whose `items` is not a list is the old shape, which servers before
+#951 send: `{sku, amount, credits, paid, credits_remaining?, cost?, balance?}`
+with Money that is either `{amount: <number>, amount_decimal?, currency}` or,
+after #947, `{amount: "<decimal>", currency}`. It becomes:
+
+- one item when `sku` is a string with more than whitespace or `cost` is an
+  object: `sku` the string sent or `""`, `quantity` the `amount` read as above,
+  `price` the cost divided by the quantity, exactly, in integer nano-dollars,
+  rounded to nine decimal places with halves away from zero (`"0.01"` over 3 is
+  `"0.003333333"`), with the cost's currency. A quantity of 0 gives a price of
+  `"0"`. No item when there is neither.
+- `total`: `cost` when it is an object, else `{"amount": "0", "currency":
+  "usd"}`. An older server sends no `cost` on calls it did not charge for
+  money (the free allowance), so 0 is what was charged; the old fields still
+  say what was used.
+- `balance`: `balance` when it is an object, else null.
+
+The old fields stay readable, deprecated, for one release: `sku` the string
+sent or `""`, `amount` the whole number sent or `0`, `credits` the finite number
+sent or `0`, `paid` true only when true, `credits_remaining` the finite number
+sent or null. They read so from either shape, so on the standard object they
+are `""`, `0`, `0`, false and null. `cost` is gone: read `total`. Python keeps
+the old dict as sent behind `usage["..."]` and `usage.get(...)`, deprecated.
+
+A fetch reports one `usage` for the call. Pages carry none from a server with
+#951; before it, each page carried its own, which stays readable on the page,
+deprecated. When the body's `usage` is not an object, the call's usage is built
+from the pages' (results in order, each read as above): items are merged in
+order of first appearance by `sku`, price amount and price currency, adding
+their quantities; `total` is the exact sum of the pages' totals, with the
+first page's total currency; `balance` is the last non-null page balance; the
+old fields are `""`, `0`, `0`, false and null. With no usage anywhere it is
+null.
 
 ## Arguments (`options`, `search_body`)
 

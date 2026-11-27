@@ -123,8 +123,12 @@ type APIError struct {
 	Reason string
 	// RateLimit is the limit a 429 hit (the body's "limit").
 	RateLimit *RateLimitInfo
-	msg       string
-	code      string
+	// Usage is what the call was billed before it failed, when the API
+	// billed part of it (such as the pages of a fetch that were read). Nil
+	// when the error body carries no usage.
+	Usage *Usage
+	msg   string
+	code  string
 	// retryAfterSet tells a sent zero wait apart from none.
 	retryAfterSet bool
 }

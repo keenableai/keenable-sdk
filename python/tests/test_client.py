@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -16,7 +17,10 @@ from keenable import (
     KeenableAuthError,
     KeenableInvalidRequestError,
     KeenableRateLimitError,
+    Money,
     SearchWarning,
+    Usage,
+    UsageItem,
     arun_tool_call,
     run_tool_call,
 )
@@ -422,17 +426,31 @@ def test_fetch_keeps_the_cost_and_balance_in_usage() -> None:
     keenable, _ = _client(_ok({"results": [billed]}))
     page = keenable.fetch("https://example.com").results[0]
 
+    response = keenable.fetch("https://example.com")
+    page = response.results[0]
+
     assert page.usage is not None
-    assert page.usage["cost"] == {
-        "amount": 0.004,
-        "amount_decimal": "0.004",
-        "currency": "usd",
-    }
-    assert page.usage["balance"] == {
-        "amount": 47.992,
-        "amount_decimal": "47.992",
-        "currency": "usd",
-    }
+    assert page.usage.items == [UsageItem("fetch", 1, Money("0.004", "usd"))]
+    assert page.usage.total == Money("0.004", "usd")
+    assert page.usage.balance == Money("47.992", "usd")
+    assert response.usage == Usage(
+        items=[UsageItem("fetch", 1, Money("0.004", "usd"))],
+        total=Money("0.004", "usd"),
+        balance=Money("47.992", "usd"),
+    )
+    # The old dict-style read still works for one release, with a warning.
+    with pytest.warns(DeprecationWarning):
+        assert page.usage["credits"] == 1
+    with pytest.warns(DeprecationWarning):
+        assert page.usage.get("credits_remaining") is None
+    with pytest.warns(DeprecationWarning):
+        assert "paid" in page.usage
+
+
+def test_money_adds_up_exactly_with_decimal() -> None:
+    prices = [Money("0.1", "usd"), Money("0.2", "usd")]
+    assert sum(m.decimal() for m in prices) == Decimal("0.3")
+    assert Money("-12.345678901", "usd").decimal() == Decimal("-12.345678901")
 
 
 def test_page_to_context_is_citable_like_search_results() -> None:

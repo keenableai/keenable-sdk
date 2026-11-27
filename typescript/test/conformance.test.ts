@@ -20,7 +20,15 @@ import {
   verifyWebhook,
   WebhookVerificationError,
 } from "../src/index.js";
-import type { Billing, KeenableOptions, Money, SearchOptions, SearchResponse } from "../src/index.js";
+import type {
+  Billing,
+  FetchResponse,
+  KeenableOptions,
+  Money,
+  SearchOptions,
+  SearchResponse,
+  Usage,
+} from "../src/index.js";
 import { backoffMs, retryAfterHeader } from "../src/client.js";
 import { SEARCH_FILTERS } from "../src/filters.js";
 
@@ -55,6 +63,7 @@ interface Fixture {
     keyed: boolean;
     expect: { path: string; error: string | null; request_id: string | null; billing: Json };
   })[];
+  fetch_usage: (Reply & { name: string; urls: string[]; expect: { usage: Json; pages: Json[] } })[];
   options: {
     name: string;
     option: "max_retries" | "timeout" | "headers" | "query" | "url" | "disable_cards";
@@ -187,6 +196,7 @@ function errorFields(error: KeenableAPIError): Record<string, Json> {
     value: error.value ?? null,
     reason: error.reason ?? null,
     limit,
+    usage: usageFields(error.usage),
   };
 }
 
@@ -299,11 +309,22 @@ describe("errors", () => {
 });
 
 /** A Money spelled the way the cases do. */
-const money = (m: Money) => ({
-  amount: m.amount,
-  amount_decimal: m.amountDecimal,
-  currency: m.currency,
-});
+const money = (m: Money) => ({ amount: m.amount, currency: m.currency });
+
+/** A Usage spelled the way the cases do. */
+function usageFields(u: Usage | undefined): Json {
+  if (!u) return null;
+  return {
+    items: u.items.map((i) => ({ sku: i.sku, quantity: i.quantity, price: money(i.price) })),
+    total: money(u.total),
+    balance: u.balance ? money(u.balance) : null,
+    sku: u.sku,
+    amount: u.amount,
+    credits: u.credits,
+    paid: u.paid,
+    credits_remaining: u.credits_remaining ?? null,
+  };
+}
 
 describe("success bodies", () => {
   it.each(FIXTURE.responses.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
@@ -333,17 +354,7 @@ describe("success bodies", () => {
         acquired_at: x.acquiredAt ?? null,
       })),
       warnings: r.warnings.map((w) => ({ code: w.code, path: w.path, message: w.message })),
-      usage: r.usage
-        ? {
-            sku: r.usage.sku,
-            amount: r.usage.amount,
-            credits: r.usage.credits,
-            paid: r.usage.paid,
-            credits_remaining: r.usage.credits_remaining ?? null,
-            cost: r.usage.cost ? money(r.usage.cost) : null,
-            balance: r.usage.balance ? money(r.usage.balance) : null,
-          }
-        : null,
+      usage: usageFields(r.usage),
     }).toEqual(want);
   });
 });
@@ -386,6 +397,18 @@ describe("billing", () => {
         as_of: b.account.asOf,
       },
     }).toEqual(c.expect.billing);
+  });
+});
+
+describe("fetch usage", () => {
+  it.each(FIXTURE.fetch_usage.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
+    const outcome = await call([c], { maxRetries: 0 }, (client) => client.fetch(c.urls));
+    expect(outcome.error).toBeUndefined();
+    const r = outcome.result as FetchResponse;
+    expect({
+      usage: usageFields(r.usage),
+      pages: r.results.map((p) => usageFields(p.usage)),
+    }).toEqual(c.expect);
   });
 });
 

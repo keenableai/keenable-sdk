@@ -2,7 +2,9 @@ package keenable
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
+	"math/big"
 	"regexp"
 	"strconv"
 	"strings"
@@ -124,8 +126,8 @@ type SearchResponse struct {
 	// parameter it used; the request was still served. Nil when the API
 	// sent none.
 	Warnings []SearchWarning `json:"warnings,omitempty"`
-	// Usage is what the search cost and, with a key, the balance left after
-	// it. Nil when the API sent none, as on keyless calls.
+	// Usage is what the search was billed and, with a key, the balance left
+	// after it. Nil when the API sent none, as on keyless calls.
 	Usage *Usage         `json:"usage,omitempty"`
 	Raw   map[string]any `json:"-"`
 }
@@ -146,8 +148,14 @@ type FetchResponse struct {
 	Results []Page `json:"results"`
 	// RequestID is the API's id for this request. Quote it when reporting a
 	// problem. Empty when the API sent none.
-	RequestID string         `json:"request_id,omitempty"`
-	Raw       map[string]any `json:"-"`
+	RequestID string `json:"request_id,omitempty"`
+	// Usage is what the whole call was billed and, with a key, the balance
+	// left after it. From an older server that bills each page on its own,
+	// it is built from the pages' usage: their items merged by SKU and price,
+	// the exact sum of their totals, and the last page's balance. Nil when
+	// the API sent none, as on keyless calls.
+	Usage *Usage         `json:"usage,omitempty"`
+	Raw   map[string]any `json:"-"`
 }
 
 // FetchError is why one URL of a [Client.Fetch] call failed, as the API sent it.
@@ -179,19 +187,64 @@ type AnswerError struct {
 	Message string `json:"message"`
 }
 
-// Usage is what reading one page cost.
+// Usage is what a call was billed: one [UsageItem] per SKU and unit price,
+// the Total, and the organization's Balance after the call.
+//
+// Every paid response carries this one shape. Amounts are exact decimal
+// strings, so a bill can be checked by adding them with [Money.Rat] (or a
+// decimal library) without float error. An older server's usage
+// ({sku, amount, credits, paid, cost, balance}) is read into the same shape:
+// one item whose Price is the cost divided by the amount (rounded to nine
+// decimal places, halves away from zero, when it does not divide evenly),
+// Total is the cost, and an older response that sent no cost (a call paid
+// from the free allowance) has a Price and Total of "0" in "usd".
 type Usage struct {
-	SKU              string   `json:"sku"`
-	Amount           int      `json:"amount"`
-	Credits          float64  `json:"credits"`
-	Paid             bool     `json:"paid"`
-	CreditsRemaining *float64 `json:"credits_remaining,omitempty"`
-	// Cost is what this page cost, in US dollars. Nil when the API did not
-	// send it.
-	Cost *Money `json:"cost,omitempty"`
-	// Balance is the organization's balance after this page, in US dollars.
-	// Nil when the API did not send it.
+	// Items are what was billed, one per SKU and unit price, in the order
+	// first billed. Never nil.
+	Items []UsageItem `json:"items"`
+	// Total is the cost of the whole call.
+	Total Money `json:"total"`
+	// Balance is an estimate of the organization's balance after the call:
+	// what is left of the free monthly allowance plus prepaid credits.
+	// Negative for an organization in debt. Nil when the API did not send it.
 	Balance *Money `json:"balance,omitempty"`
+
+	// SKU is the billed item, as an older server sent it.
+	//
+	// Deprecated: read Items. Empty from a server that sends the standard
+	// usage object; removed in a future release.
+	SKU string `json:"sku"`
+	// Amount is how many units were billed, as an older server sent it.
+	//
+	// Deprecated: read Items[i].Quantity. 0 from a server that sends the
+	// standard usage object; removed in a future release.
+	Amount int `json:"amount"`
+	// Credits is the credits spent, as an older server sent it.
+	//
+	// Deprecated: read Total. 0 from a server that sends the standard usage
+	// object; removed in a future release.
+	Credits float64 `json:"credits"`
+	// Paid is true when paid credits were spent, as an older server sent it.
+	//
+	// Deprecated: read Total. False from a server that sends the standard
+	// usage object; removed in a future release.
+	Paid bool `json:"paid"`
+	// CreditsRemaining is the credits left, as an older server sent it.
+	//
+	// Deprecated: read Balance. Nil from a server that sends the standard
+	// usage object; removed in a future release.
+	CreditsRemaining *float64 `json:"credits_remaining,omitempty"`
+}
+
+// UsageItem is one line of a [Usage]: Quantity units of SKU at Price each.
+type UsageItem struct {
+	// SKU is what was billed, such as "search.pro" or "fetch.time_machine".
+	SKU string `json:"sku"`
+	// Quantity is how many units of SKU the call used.
+	Quantity int `json:"quantity"`
+	// Price is the price of one unit. Quantity times Price is this item's
+	// share of the total.
+	Price Money `json:"price"`
 }
 
 // Page is one result of [Client.Fetch]: a page as markdown, or Error when
@@ -223,7 +276,12 @@ type Page struct {
 	Structured  map[string]any `json:"structured,omitempty"`
 	AnswerError *AnswerError   `json:"answer_error,omitempty"`
 	Stale       *bool          `json:"stale,omitempty"`
-	Usage       *Usage         `json:"usage,omitempty"`
+	// Usage is what this page cost, as an older server reported it per page.
+	//
+	// Deprecated: read [FetchResponse.Usage], the usage of the whole call. A
+	// server that sends the standard usage object sends none per page, so
+	// this is nil; removed in a future release.
+	Usage *Usage `json:"usage,omitempty"`
 	// Error is set when this URL failed; the other fields are then empty.
 	Error *FetchError `json:"error,omitempty"`
 }
@@ -447,13 +505,15 @@ func searchResponseFromJSON(data map[string]any, query string) *SearchResponse {
 }
 
 // usageFromJSON reads a usage object field by field, so one malformed field
-// does not lose the others. Nil unless the value is an object.
+// does not lose the others. Nil unless the value is an object. A usage with an
+// items list is the standard object; any other is an older server's, read
+// into the same shape.
 func usageFromJSON(v any) *Usage {
 	obj, ok := v.(map[string]any)
 	if !ok {
 		return nil
 	}
-	u := &Usage{SKU: asString(obj["sku"]), Credits: asAmount(obj["credits"])}
+	u := &Usage{Items: []UsageItem{}, SKU: asString(obj["sku"]), Credits: asAmount(obj["credits"])}
 	if n, ok := asInt(obj["amount"]); ok && n >= 0 {
 		u.Amount = n
 	}
@@ -461,9 +521,119 @@ func usageFromJSON(v any) *Usage {
 	if f, ok := obj["credits_remaining"].(float64); ok && !math.IsNaN(f) && !math.IsInf(f, 0) {
 		u.CreditsRemaining = &f
 	}
-	u.Cost = optionalMoney(obj["cost"])
 	u.Balance = optionalMoney(obj["balance"])
+	if items, ok := obj["items"].([]any); ok {
+		for _, item := range items {
+			o, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			quantity := 0
+			if n := count(o["quantity"]); n != nil {
+				quantity = *n
+			}
+			u.Items = append(u.Items, UsageItem{SKU: asString(o["sku"]), Quantity: quantity, Price: moneyFromJSON(o["price"])})
+		}
+		u.Total = moneyFromJSON(obj["total"])
+		return u
+	}
+	cost := optionalMoney(obj["cost"])
+	u.Total = Money{Amount: "0", Currency: "usd"}
+	if cost != nil {
+		u.Total = *cost
+	}
+	if nonEmptyString(obj["sku"]) != nil || cost != nil {
+		price := Money{Amount: "0", Currency: "usd"}
+		if cost != nil {
+			price.Currency = cost.Currency
+			if u.Amount > 0 {
+				price.Amount = formatNanos(divideNanos(nanos(cost.Amount), u.Amount))
+			}
+		}
+		u.Items = append(u.Items, UsageItem{SKU: u.SKU, Quantity: u.Amount, Price: price})
+	}
 	return u
+}
+
+// usageKey is what merges two items: the same SKU at the same price.
+type usageKey struct{ sku, amount, currency string }
+
+// mergePageUsage builds a call's usage from its pages' (an older server bills
+// each page on its own): items merged by SKU and price in order of first
+// appearance, the exact sum of the totals in the first total's currency, and
+// the last balance sent. Nil when no page has usage.
+func mergePageUsage(pages []Page) *Usage {
+	var out *Usage
+	index := map[usageKey]int{}
+	total := new(big.Int)
+	for _, page := range pages {
+		pu := page.Usage
+		if pu == nil {
+			continue
+		}
+		if out == nil {
+			out = &Usage{Items: []UsageItem{}, Total: Money{Currency: pu.Total.Currency}}
+		}
+		for _, item := range pu.Items {
+			key := usageKey{item.SKU, item.Price.Amount, item.Price.Currency}
+			if i, ok := index[key]; ok {
+				out.Items[i].Quantity += item.Quantity
+				continue
+			}
+			index[key] = len(out.Items)
+			out.Items = append(out.Items, item)
+		}
+		total.Add(total, nanos(pu.Total.Amount))
+		if pu.Balance != nil {
+			balance := *pu.Balance
+			out.Balance = &balance
+		}
+	}
+	if out != nil {
+		out.Total.Amount = formatNanos(total)
+	}
+	return out
+}
+
+var nanosPerDollar = big.NewInt(1_000_000_000)
+
+// nanos is a plain decimal string as a whole number of billionths, exactly;
+// 0 for anything else.
+func nanos(s string) *big.Int {
+	if !decimalPattern.MatchString(s) {
+		return new(big.Int)
+	}
+	neg := strings.HasPrefix(s, "-")
+	whole, frac, _ := strings.Cut(strings.TrimPrefix(s, "-"), ".")
+	n, _ := new(big.Int).SetString(whole+frac+strings.Repeat("0", 9-len(frac)), 10)
+	if neg {
+		n.Neg(n)
+	}
+	return n
+}
+
+// divideNanos is n / q rounded to a whole nano, halves away from zero.
+func divideNanos(n *big.Int, q int) *big.Int {
+	d := big.NewInt(int64(q))
+	quo, rem := new(big.Int).QuoRem(n, d, new(big.Int))
+	if new(big.Int).Mul(new(big.Int).Abs(rem), big.NewInt(2)).Cmp(d) >= 0 {
+		quo.Add(quo, big.NewInt(int64(n.Sign())))
+	}
+	return quo
+}
+
+// formatNanos writes billionths as a plain decimal string: no trailing
+// zeros, no exponent, "0" for zero.
+func formatNanos(n *big.Int) string {
+	whole, frac := new(big.Int).QuoRem(new(big.Int).Abs(n), nanosPerDollar, new(big.Int))
+	s := whole.String()
+	if f := strings.TrimRight(fmt.Sprintf("%09d", frac.Int64()), "0"); f != "" {
+		s += "." + f
+	}
+	if n.Sign() < 0 {
+		s = "-" + s
+	}
+	return s
 }
 
 func searchResultFromJSON(data map[string]any) SearchResult {
@@ -583,21 +753,28 @@ func asString(v any) string {
 	return s
 }
 
-// Money is an amount of money, as the API sent it.
+// Money is an amount of money.
 type Money struct {
-	// Amount is the amount in the currency's major unit (US dollars), such
-	// as 0.004, with up to nine decimal places. Negative for an account in
-	// debt. 0 when the API sent no finite number. For display: add amounts
-	// with AmountDecimal.
-	Amount float64 `json:"amount"`
-	// AmountDecimal is the same amount as an exact decimal string, such as
-	// "0.004": up to nine decimal places, no trailing zeros, no exponent, "-"
-	// when negative, "0" for zero. Add amounts exactly with
-	// new(big.Rat).SetString(m.AmountDecimal), never by summing Amount. From
-	// an older server that sends none, Amount written this way.
-	AmountDecimal string `json:"amount_decimal"`
+	// Amount is the amount in US dollars as an exact decimal string, such as
+	// "0.004": up to nine decimal places (a price per request is a fraction
+	// of a cent), no trailing zeros, no exponent, "-" when negative (an
+	// organization in debt), "0" for zero. It is a string so amounts add up
+	// exactly, for example to check a bill against usage: add them with
+	// [Money.Rat], never through float64. From an older server that sent a
+	// number, that number written this way.
+	Amount string `json:"amount"`
 	// Currency is the lowercase ISO 4217 code, such as "usd".
 	Currency string `json:"currency"`
+}
+
+// Rat is Amount as an exact rational number, for adding and comparing
+// amounts without float error. Zero if Amount is not a decimal number.
+func (m Money) Rat() *big.Rat {
+	r, ok := new(big.Rat).SetString(m.Amount)
+	if !ok || !decimalPattern.MatchString(m.Amount) {
+		return new(big.Rat)
+	}
+	return r
 }
 
 // BillingPrice is the price of one SKU, from [Client.Billing].
@@ -674,14 +851,22 @@ func asAmount(v any) float64 {
 
 var decimalPattern = regexp.MustCompile(`^-?[0-9]+(\.[0-9]{1,9})?$`)
 
-// amountDecimal is the API's exact decimal string when it is one, else amount
-// as one: at most nine decimal places, trailing zeros trimmed, "0" for zero
-// (an older server sends no amount_decimal).
-func amountDecimal(v any, amount float64) string {
-	if s, ok := v.(string); ok && decimalPattern.MatchString(s) {
+// exactAmount is a Money object's amount as an exact decimal string: the
+// amount the API sends as one (since backend #947), else the amount_decimal an
+// older server sent next to a number, else that number written with at most
+// nine decimal places, trailing zeros trimmed, else "0".
+func exactAmount(m map[string]any) string {
+	if s, ok := m["amount"].(string); ok && decimalPattern.MatchString(s) {
 		return s
 	}
-	s := strings.TrimSuffix(strings.TrimRight(strconv.FormatFloat(amount, 'f', 9, 64), "0"), ".")
+	if s, ok := m["amount_decimal"].(string); ok && decimalPattern.MatchString(s) {
+		return s
+	}
+	f, ok := m["amount"].(float64)
+	if !ok || math.IsNaN(f) || math.IsInf(f, 0) {
+		return "0"
+	}
+	s := strings.TrimSuffix(strings.TrimRight(strconv.FormatFloat(f, 'f', 9, 64), "0"), ".")
 	if s == "-0" {
 		return "0"
 	}
@@ -690,12 +875,7 @@ func amountDecimal(v any, amount float64) string {
 
 func moneyFromJSON(v any) Money {
 	m := objectOrEmpty(v)
-	amount := asAmount(m["amount"])
-	return Money{
-		Amount:        amount,
-		AmountDecimal: amountDecimal(m["amount_decimal"], amount),
-		Currency:      asString(m["currency"]),
-	}
+	return Money{Amount: exactAmount(m), Currency: asString(m["currency"])}
 }
 
 // optionalMoney is a Money when v is an object, else nil.

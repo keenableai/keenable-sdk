@@ -154,7 +154,47 @@ when set (the API checks their values):
 | `images` | The most images per page to return, in `page.images` |
 | `max_age_hours` | Use a stored copy only if younger than this many hours; `0` reads every page live; `-1` reads only the stored copy, never the live page (no stored copy: a 404 error entry) |
 
-## Billing
+## Usage and billing
+
+Every paid call says what it was billed in `usage`: `search()` on the
+response, `fetch()` once for the whole call, and an API error of a call that
+was billed in part (`err.usage`). It is `None` when nothing was billed, as on
+keyless calls.
+
+```python
+from decimal import Decimal
+
+results = keenable.search("wafer scale engine")
+if results.usage:
+    for item in results.usage.items:  # one per SKU and unit price
+        print(item.sku, item.quantity, item.price.amount)  # search.pro 1 0.004
+    print("total:", results.usage.total.amount)
+    if results.usage.balance:  # None when the API did not say
+        print("balance:", results.usage.balance.amount)
+
+pages = keenable.fetch(["https://example.com", "https://example.org"])
+spent = Decimal(0)
+for response in (results, pages):
+    if response.usage:
+        spent += response.usage.total.decimal()  # exact, never a float
+```
+
+Amounts are `Money(amount, currency)` with `amount` an exact decimal string in
+US dollars, such as `"0.004"` (up to nine decimal places, no exponent, `"-"`
+for an organization in debt). A price per request is a fraction of a cent, and
+floats cannot hold most of them exactly: summing a month of `0.004`s as floats
+drifts away from the bill. Add amounts with `money.decimal()` (a
+`decimal.Decimal`) so your total matches the invoice to the nano-dollar.
+
+The SDK reads every shape the API has sent into this one model, so it works
+against older servers too: a usage with `sku`, `amount` and `cost` becomes one
+item priced `cost / amount` with `total` = `cost`, and a fetch whose pages each
+carry their own usage gets a call-level `usage` built from them (items merged
+by SKU and price, the exact sum as `total`, the last page's balance). Without
+a `cost` from such a server, price and total are `"0"`. The old dict-style
+reads (`usage["sku"]`, `usage.get("credits")`) and `Page.usage` still work
+for one release and are deprecated: they warn, and only an older server sends
+those fields.
 
 ```python
 billing = keenable.billing()
@@ -168,16 +208,11 @@ if billing.account:  # None without an API key
 Without one, `prices` are the public list prices and `account` is `None`. With
 one, `prices` are your organization's (with `list_unit_price` and `source`,
 `"list"` or `"contract"`), and `account` holds the available balance and
-`billing_url`, the console page for adding funds. Amounts are numbers in US
-dollars (`Money.amount`, a `float` such as `0.004`, up to nine decimal places,
-negative for an account in debt). `Money.amount_decimal` is the same amount as
-an exact decimal string (`"0.004"`); add amounts with it, not with the float,
-when they must match a bill:
+`billing_url`, the console page for adding funds. Its amounts are `Money` as
+above:
 
 ```python
-from decimal import Decimal
-
-total = sum(Decimal(p.unit_price.amount_decimal) for p in billing.prices)
+total = sum(p.unit_price.decimal() for p in billing.prices)
 ```
 
 ## Tool calling
@@ -385,6 +420,7 @@ except KeenableAPIError as err:
 | `param` | The parameter a 400 is about |
 | `value`, `reason` | What a 400 `invalid_filter` rejected (usually the entry; for a size cap the count or a truncated entry), and why |
 | `limit` | On a 429: `RateLimitInfo(scope, window, max, resets_at)` |
+| `usage` | What a call that failed after being billed in part was charged, as a `Usage` |
 
 When the API sends `fix`, the error message ends with it, then with
 `(code: <code>)` and `(request_id: <id>)`, as in the Go and TypeScript SDKs.

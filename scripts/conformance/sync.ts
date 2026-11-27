@@ -127,6 +127,7 @@ const ERROR_FIELDS = [
   "value",
   "reason",
   "limit",
+  "usage",
 ] as const;
 const ERROR_LISTS = ["message_contains", "message_excludes", "absent"] as const;
 
@@ -192,6 +193,24 @@ function billing(): Obj[] {
         request_id: (given.request_id as Json | undefined) ?? null,
         billing: (given.billing as Json | undefined) ?? null,
       },
+    };
+  });
+}
+
+function fetchUsage(): Obj[] {
+  return (load("fetch-usage.json").cases as Obj[]).map((item) => {
+    const name = item.name as string;
+    const urls = item.urls as Json[];
+    if (!Array.isArray(urls) || urls.some((u) => typeof u !== "string")) fail(`fetch_usage ${name}: urls must be strings`);
+    const given = item.expect as Obj;
+    if (!("usage" in given) || !Array.isArray(given.pages)) fail(`fetch_usage ${name}: expect needs usage and pages`);
+    return {
+      name,
+      urls,
+      status: (item.status as number | undefined) ?? 200,
+      headers: headers(item),
+      body: bodyText(item, `fetch_usage ${name}`),
+      expect: { usage: given.usage, pages: given.pages },
     };
   });
 }
@@ -312,6 +331,7 @@ export function buildConformance(): string {
     errors: errors(),
     responses: responses(),
     billing: billing(),
+    fetch_usage: fetchUsage(),
     options: options(),
     search_body: searchBodies(),
     tool_call: toolCalls(),

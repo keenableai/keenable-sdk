@@ -9,6 +9,7 @@ import {
 } from "./errors.js";
 import type { KeenableAPIErrorDetails, KeenableErrorType, RateLimitInfo } from "./errors.js";
 import { SEARCH_FILTERS } from "./filters.js";
+import { fetchUsage, optionalMoney, toMoney, toUsage } from "./usage.js";
 import { Monitors } from "./monitors.js";
 import type { MonitorCall } from "./monitors.js";
 import {
@@ -462,6 +463,12 @@ export interface FetchError {
 /** What `fetch()` returns: `results[i]` is for `urls[i]`. */
 export interface FetchResponse {
   results: Page[];
+  /**
+   * What the call was billed: one usage for all its pages. From an older
+   * server, which billed each page on its own, it is built from the pages'
+   * usage. Undefined when the API reported none, as on keyless calls.
+   */
+  usage?: Usage;
   /** The API's id for this request. Quote it when reporting a problem. */
   requestId?: string;
   raw: Record<string, unknown>;
@@ -506,7 +513,11 @@ export class Page {
   /** Why the answer for `schema` could not be made. */
   readonly answerError?: { code: string; message: string };
   readonly stale?: boolean;
-  /** What this page cost and, with a key, the balance after it, as the API sent it. */
+  /**
+   * What this page cost, from an older server that billed each page on its
+   * own; a current server sends none.
+   * @deprecated Read `FetchResponse.usage`, the call's usage.
+   */
   readonly usage?: Usage;
   /** Set when this URL failed; the other fields are then empty. */
   readonly error?: FetchError;
@@ -580,49 +591,6 @@ function toPage(data: Record<string, unknown>, url: string): Page {
     error: record(data.error),
     raw: data,
   });
-}
-
-/** Reads a usage object field by field, so one malformed field does not lose the others. */
-function toUsage(value: unknown): Usage | undefined {
-  if (!isRecord(value)) return undefined;
-  const remaining = value.credits_remaining;
-  return {
-    sku: text(value.sku),
-    amount: count(value.amount) ?? 0,
-    credits: num(value.credits) ?? 0,
-    paid: value.paid === true,
-    ...(typeof remaining === "number" && Number.isFinite(remaining) && { credits_remaining: remaining }),
-    cost: optionalMoney(value.cost),
-    balance: optionalMoney(value.balance),
-  };
-}
-
-/** A Money when the value is an object, else undefined. */
-function optionalMoney(value: unknown): Money | undefined {
-  return isRecord(value) ? toMoney(value) : undefined;
-}
-
-function toMoney(value: unknown): Money {
-  const data = isRecord(value) ? value : {};
-  const sent = num(data.amount) ?? 0;
-  return {
-    amount: sent,
-    amountDecimal: amountDecimal(data.amount_decimal, sent),
-    currency: text(data.currency),
-  };
-}
-
-const DECIMAL = /^-?[0-9]+(\.[0-9]{1,9})?$/;
-
-/**
- * The API's exact decimal string when it is one, else `amount` as one: at most
- * nine decimal places, trailing zeros trimmed, "0" for zero (an older server
- * sends no `amount_decimal`).
- */
-function amountDecimal(value: unknown, dollars: number): string {
-  if (typeof value === "string" && DECIMAL.test(value)) return value;
-  const fixed = dollars.toFixed(9).replace(/0+$/, "").replace(/\.$/, "");
-  return fixed === "-0" ? "0" : fixed;
 }
 
 function toBillingPrice(data: Record<string, unknown>): BillingPrice {
@@ -952,10 +920,12 @@ export class Keenable {
     }
     const { data, requestId } = await this.request("fetch", { method: "POST", body }, options);
     const entries: unknown[] = Array.isArray(data.results) ? data.results : [];
+    const results = entries.flatMap((entry, i) =>
+      isRecord(entry) ? [toPage(entry, String(targets[i] ?? ""))] : [],
+    );
     return {
-      results: entries.flatMap((entry, i) =>
-        isRecord(entry) ? [toPage(entry, String(targets[i] ?? ""))] : [],
-      ),
+      results,
+      usage: fetchUsage(data.usage, results.map((page) => page.usage)),
       requestId,
       raw: data,
     };
@@ -965,7 +935,7 @@ export class Keenable {
    * Prices, and with an API key the balance, from `GET /v1/billing`.
    *
    * Read-only and free. Without a key, `prices` are the public list prices and
-   * `account` is null. Amounts are numbers in US dollars.
+   * `account` is null. Amounts are exact decimal strings in US dollars.
    */
   async billing(options: RequestOptions = {}): Promise<Billing> {
     // The same path with and without a key: billing has no /public variant.
@@ -1417,5 +1387,6 @@ function errorDetails(
     limit: rateLimitInfo(b.limit),
     value: invalidFilter ? nonEmpty(b.value) : undefined,
     reason: invalidFilter ? nonEmpty(b.reason) : undefined,
+    usage: toUsage(b.usage),
   };
 }
