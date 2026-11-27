@@ -300,6 +300,43 @@ function webhooks(): Obj[] {
   });
 }
 
+const DEBUG_ERRORS = new Set(["timeout", "redirect", "canceled", "connection"]);
+
+function debugLog(): Obj {
+  const source = load("debug-log.json");
+  return {
+    env: (source.env as [string, boolean, string][]).map(([value, enabled, why]) => ({
+      name: `${why}: ${JSON.stringify(value)}`,
+      value,
+      enabled,
+    })),
+    lines: (source.lines as Obj[]).map((item) => {
+      const name = item.name as string;
+      const given = item.attempt as Obj;
+      const hasStatus = typeof given.status === "number";
+      if (hasStatus === (given.error !== undefined)) fail(`debug_log ${name}: give exactly one of "status" and "error"`);
+      if (!hasStatus && !DEBUG_ERRORS.has(given.error as string)) fail(`debug_log ${name}: unknown error`);
+      if (typeof given.retry !== "boolean") fail(`debug_log ${name}: retry must be true or false`);
+      if (given.retry !== (typeof given.wait_ms === "number")) fail(`debug_log ${name}: wait_ms goes with retry true only`);
+      return {
+        name,
+        attempt: {
+          method: given.method as string,
+          path: given.path as string,
+          attempt: given.attempt as number,
+          status: (given.status as number | undefined) ?? null,
+          error: (given.error as string | undefined) ?? null,
+          elapsed_ms: given.elapsed_ms as number,
+          retry: given.retry,
+          wait_ms: (given.wait_ms as number | undefined) ?? null,
+          request_id: (given.request_id as string | undefined) ?? null,
+        },
+        line: item.line as string,
+      };
+    }),
+  };
+}
+
 /** The fixture's exact text for the case files on disk. */
 export function buildConformance(): string {
   const fixture = {
@@ -317,12 +354,15 @@ export function buildConformance(): string {
     tool_call: toolCalls(),
     deadline: deadline(),
     webhook: webhooks(),
+    debug_log: debugLog(),
   };
   for (const [section, cases] of Object.entries(fixture)) {
     if (Array.isArray(cases)) uniqueNames(section, cases as { name: string }[]);
   }
   uniqueNames("retry_after", fixture.retry_after.cases as { name: string }[]);
   uniqueNames("deadline", fixture.deadline.cases as { name: string }[]);
+  uniqueNames("debug_log env", fixture.debug_log.env as { name: string }[]);
+  uniqueNames("debug_log lines", fixture.debug_log.lines as { name: string }[]);
   return `${JSON.stringify(fixture, null, 2)}\n`;
 }
 

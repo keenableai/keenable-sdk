@@ -5,6 +5,7 @@ All notable changes to the `keenable` Python package. Versions follow
 
 ## Unreleased
 
+- **Added:** debug logging. Every attempt logs one line on the standard `logging` logger `keenable` at `DEBUG`: method, path, attempt number, status (or `error=timeout`, `redirect` or `connection`), `elapsed_ms`, the retry decision and `wait_ms`, and `request_id`. Never the API key, other headers, the query string or a body. `KEENABLE_LOG=debug` attaches a stderr handler; otherwise enable the logger in your own logging setup.
 - **Added:** `SearchResponse.usage`, the dict the API sent: what the search cost and, with a key, `cost` and `balance` in US dollars (read as below). None on keyless calls.
 - **Changed:** the `keenable_search` tool's `moderation` description: supported for a URL query when `exclude_domains` is set.
 - **Added:** `Page.usage` documents `cost` and `balance` (`{"amount": <US dollars>, "amount_decimal": "<the same amount, exact>", "currency": "usd"}`): what the page cost and the organization's balance after it. `usage` stays the dict the API sent, except that `cost` and `balance` are read like `Money` and given as its dict, so `amount_decimal` is filled in from `amount` for an older server, and a `cost` or `balance` that is not an object is left out. Add costs with `Decimal(usage["cost"]["amount_decimal"])` rather than with the float `amount`.

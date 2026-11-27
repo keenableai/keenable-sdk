@@ -430,12 +430,41 @@ reporting a problem). A search response's `warnings` lists what the request
 should change, such as a deprecated parameter it used; it is empty otherwise. Redirects are never followed, so the API key cannot leak
 to another host.
 
+## Debugging
+
+Set `KEENABLE_LOG=debug` to see what the SDK sends:
+
+```
+$ KEENABLE_LOG=debug python agent.py
+keenable: method=POST path=/v1/search attempt=1 status=503 elapsed_ms=41 retry=true wait_ms=437 request_id=req_1
+keenable: method=POST path=/v1/search attempt=2 status=200 elapsed_ms=212 retry=false request_id=req_2
+```
+
+One line per attempt: the method, the URL's path, the attempt number, the
+HTTP status (or `error=timeout`, `redirect` or `connection` when there was
+none), the elapsed milliseconds, whether the SDK retries and how long it
+waits first, and the request id. The lines never hold the API key, any other
+header, the query string or a request or response body.
+
+The lines go to the standard `logging` logger named `keenable` at `DEBUG`
+level. `KEENABLE_LOG=debug` attaches a stderr handler to it; to send them
+through your own logging setup instead, leave the variable unset and enable
+the logger:
+
+```python
+import logging
+
+logging.basicConfig()
+logging.getLogger("keenable").setLevel(logging.DEBUG)
+```
+
 ## Configuration
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `KEENABLE_API_KEY` | unset | Lifts the hourly rate limit. Create one at [keenable.ai/console](https://keenable.ai/console) |
 | `KEENABLE_API_URL` | `https://api.keenable.ai` | Override the API base URL |
+| `KEENABLE_LOG` | unset | `debug` prints one line per attempt to stderr (see Debugging) |
 
 Both can also be passed to the constructor as `api_key` and `base_url`, alongside
 `timeout`, `max_retries`, `default_headers`, `client` (your own `httpx.Client`,

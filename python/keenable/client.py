@@ -24,6 +24,7 @@ from urllib.parse import unquote, urlsplit
 import httpcore
 import httpx
 
+from . import _debug
 from ._filters import SEARCH_FILTERS
 from ._version import __version__
 from .errors import (
@@ -732,6 +733,64 @@ class _RedirectError(KeenableConnectionError):
     """A redirect this SDK refused to follow; retrying would refuse it again."""
 
 
+def _log_failure(
+    method: str,
+    url: str,
+    attempt: int,
+    started: float,
+    error: KeenableError,
+    delay: float | None,
+) -> None:
+    """Log a failed attempt: its status, or what failed, and the retry decision."""
+    if not _debug.enabled():
+        return
+    status: int | None = None
+    kind: str | None = None
+    request_id: str | None = None
+    if isinstance(error, KeenableAPIError):
+        status, request_id = error.status_code, error.request_id
+    elif isinstance(error, KeenableTimeoutError):
+        kind = "timeout"
+    elif isinstance(error, _RedirectError):
+        kind = "redirect"
+    else:
+        kind = "connection"
+    _debug.log_attempt(
+        method=method,
+        path=urlsplit(url).path,
+        attempt=attempt,
+        status=status,
+        error=kind,
+        elapsed=time.monotonic() - started,
+        wait=delay,
+        request_id=request_id,
+    )
+
+
+def _log_success(
+    method: str,
+    url: str,
+    attempt: int,
+    started: float,
+    response: httpx.Response,
+    body: dict[str, Any],
+    header_id: str | None,
+) -> None:
+    """Log an attempt that succeeded, with the request id the result reports."""
+    if not _debug.enabled():
+        return
+    _debug.log_attempt(
+        method=method,
+        path=urlsplit(url).path,
+        attempt=attempt,
+        status=response.status_code,
+        error=None,
+        elapsed=time.monotonic() - started,
+        wait=None,
+        request_id=_str_field(body, "request_id") or header_id,
+    )
+
+
 def _decode(response: httpx.Response) -> tuple[dict[str, Any], str | None]:
     """Validate the status and decode a JSON object body, with the request id."""
     if response.is_redirect or 300 <= response.status_code < 400:
@@ -1198,6 +1257,7 @@ class _BaseClient:
         self._timeout: Any = _check_client_timeout(timeout)
         self._max_retries = _check_max_retries(max_retries)
         self._default_headers = _check_headers(default_headers or {}, "default_headers")
+        _debug.enable_from_env()
 
     @property
     def keyless(self) -> bool:
@@ -1398,8 +1458,11 @@ class Keenable(_BaseClient):
         """
         call_timeout, retries = self._call_settings(timeout, max_retries)
         headers = self._headers(extra_headers, json=json is not None)
+        verb = method or ("GET" if json is None else "POST")
+        target = url or self._url(endpoint)
         retry = 0
         while True:
+            started = time.monotonic()
             try:
                 with _transport_errors(call_timeout):
                     response = _send_within(
@@ -1407,8 +1470,8 @@ class Keenable(_BaseClient):
                         _attempt_deadline(call_timeout)
                         if self._bounds_attempts
                         else None,
-                        method or ("GET" if json is None else "POST"),
-                        url or self._url(endpoint),
+                        verb,
+                        target,
                         params=params,
                         json=json,
                         headers=headers,
@@ -1417,17 +1480,23 @@ class Keenable(_BaseClient):
                         # host a redirect names.
                         follow_redirects=False,
                     )
-                return _decode(response)
+                body, request_id = _decode(response)
             except KeenableError as error:
                 delay = (
                     _retry_delay(error, retry)
                     if retry < retries and (safe or _rate_limited(error))
                     else None
                 )
+                _log_failure(verb, target, retry + 1, started, error, delay)
                 if delay is None:
                     raise
                 time.sleep(delay)
                 retry += 1
+            else:
+                _log_success(
+                    verb, target, retry + 1, started, response, body, request_id
+                )
+                return body, request_id
 
     def search(
         self,
@@ -1699,15 +1768,18 @@ class AsyncKeenable(_BaseClient):
         """Async counterpart of :meth:`Keenable._request`."""
         call_timeout, retries = self._call_settings(timeout, max_retries)
         headers = self._headers(extra_headers, json=json is not None)
+        verb = method or ("GET" if json is None else "POST")
+        target = url or self._url(endpoint)
         retry = 0
         while True:
+            started = time.monotonic()
             try:
                 with _transport_errors(call_timeout):
                     # A number bounds the whole attempt, not only each phase.
                     response = await asyncio.wait_for(
                         self._client.request(
-                            method or ("GET" if json is None else "POST"),
-                            url or self._url(endpoint),
+                            verb,
+                            target,
                             params=params,
                             json=json,
                             headers=headers,
@@ -1716,17 +1788,23 @@ class AsyncKeenable(_BaseClient):
                         ),
                         _attempt_deadline(call_timeout),
                     )
-                return _decode(response)
+                body, request_id = _decode(response)
             except KeenableError as error:
                 delay = (
                     _retry_delay(error, retry)
                     if retry < retries and (safe or _rate_limited(error))
                     else None
                 )
+                _log_failure(verb, target, retry + 1, started, error, delay)
                 if delay is None:
                     raise
                 await asyncio.sleep(delay)
                 retry += 1
+            else:
+                _log_success(
+                    verb, target, retry + 1, started, response, body, request_id
+                )
+                return body, request_id
 
     async def search(
         self,

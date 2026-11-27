@@ -690,3 +690,37 @@ fn webhook() {
     }
     report("webhook", failures);
 }
+
+#[test]
+fn debug_log() {
+    use crate::debug_log::{env_enabled, fields, AttemptLog};
+    let fixture = fixture();
+    let section = &fixture["debug_log"];
+    let mut failures = Vec::new();
+    for case in section["env"].as_array().unwrap() {
+        let got = env_enabled(case["value"].as_str().unwrap());
+        if got != case["enabled"].as_bool().unwrap() {
+            failures.push(format!("KEENABLE_LOG {}: got {got}", name(case)));
+        }
+    }
+    for case in section["lines"].as_array().unwrap() {
+        let a = &case["attempt"];
+        let log = AttemptLog {
+            method: a["method"].as_str().unwrap(),
+            path: a["path"].as_str().unwrap(),
+            attempt: a["attempt"].as_u64().unwrap() as u32,
+            status: a["status"].as_u64().map(|s| s as u16),
+            error: a["error"].as_str(),
+            elapsed_ms: u128::from(a["elapsed_ms"].as_u64().unwrap()),
+            wait_ms: a["wait_ms"].as_u64().map(u128::from),
+            request_id: a["request_id"].as_str(),
+        };
+        // A wait is logged exactly when the attempt is retried.
+        assert_eq!(a["retry"].as_bool(), Some(log.wait_ms.is_some()));
+        let got = format!("keenable: {}", fields(&log));
+        if got != case["line"].as_str().unwrap() {
+            failures.push(format!("{}: got {got}", name(case)));
+        }
+    }
+    report("debug_log", failures);
+}

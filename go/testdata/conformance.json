@@ -6418,5 +6418,221 @@
       "valid": false,
       "type": null
     }
-  ]
+  ],
+  "debug_log": {
+    "env": [
+      {
+        "name": "the one value: \"debug\"",
+        "value": "debug",
+        "enabled": true
+      },
+      {
+        "name": "any letter case: \"DEBUG\"",
+        "value": "DEBUG",
+        "enabled": true
+      },
+      {
+        "name": "surrounding whitespace: \" Debug\\n\"",
+        "value": " Debug\n",
+        "enabled": true
+      },
+      {
+        "name": "empty: \"\"",
+        "value": "",
+        "enabled": false
+      },
+      {
+        "name": "another level: \"info\"",
+        "value": "info",
+        "enabled": false
+      },
+      {
+        "name": "a finer level: \"trace\"",
+        "value": "trace",
+        "enabled": false
+      },
+      {
+        "name": "a number: \"1\"",
+        "value": "1",
+        "enabled": false
+      },
+      {
+        "name": "a boolean: \"true\"",
+        "value": "true",
+        "enabled": false
+      },
+      {
+        "name": "a list: \"debug,http\"",
+        "value": "debug,http",
+        "enabled": false
+      }
+    ],
+    "lines": [
+      {
+        "name": "a first attempt that succeeds",
+        "attempt": {
+          "method": "POST",
+          "path": "/v1/search",
+          "attempt": 1,
+          "status": 200,
+          "error": null,
+          "elapsed_ms": 123,
+          "retry": false,
+          "wait_ms": null,
+          "request_id": "req_1"
+        },
+        "line": "keenable: method=POST path=/v1/search attempt=1 status=200 elapsed_ms=123 retry=false request_id=req_1"
+      },
+      {
+        "name": "a 503 that is retried after a wait",
+        "attempt": {
+          "method": "POST",
+          "path": "/v1/fetch/public",
+          "attempt": 1,
+          "status": 503,
+          "error": null,
+          "elapsed_ms": 40,
+          "retry": true,
+          "wait_ms": 437,
+          "request_id": "req_2"
+        },
+        "line": "keenable: method=POST path=/v1/fetch/public attempt=1 status=503 elapsed_ms=40 retry=true wait_ms=437 request_id=req_2"
+      },
+      {
+        "name": "a third attempt that fails for good, with no request id",
+        "attempt": {
+          "method": "GET",
+          "path": "/v1/billing",
+          "attempt": 3,
+          "status": 500,
+          "error": null,
+          "elapsed_ms": 0,
+          "retry": false,
+          "wait_ms": null,
+          "request_id": null
+        },
+        "line": "keenable: method=GET path=/v1/billing attempt=3 status=500 elapsed_ms=0 retry=false"
+      },
+      {
+        "name": "a timeout",
+        "attempt": {
+          "method": "POST",
+          "path": "/v1/search",
+          "attempt": 1,
+          "status": null,
+          "error": "timeout",
+          "elapsed_ms": 30000,
+          "retry": true,
+          "wait_ms": 500,
+          "request_id": null
+        },
+        "line": "keenable: method=POST path=/v1/search attempt=1 error=timeout elapsed_ms=30000 retry=true wait_ms=500"
+      },
+      {
+        "name": "a refused redirect",
+        "attempt": {
+          "method": "DELETE",
+          "path": "/v1/monitors/mon_1",
+          "attempt": 1,
+          "status": null,
+          "error": "redirect",
+          "elapsed_ms": 9,
+          "retry": false,
+          "wait_ms": null,
+          "request_id": null
+        },
+        "line": "keenable: method=DELETE path=/v1/monitors/mon_1 attempt=1 error=redirect elapsed_ms=9 retry=false"
+      },
+      {
+        "name": "a connection failure",
+        "attempt": {
+          "method": "PATCH",
+          "path": "/v1/monitors/mon_1",
+          "attempt": 2,
+          "status": null,
+          "error": "connection",
+          "elapsed_ms": 1,
+          "retry": false,
+          "wait_ms": null,
+          "request_id": null
+        },
+        "line": "keenable: method=PATCH path=/v1/monitors/mon_1 attempt=2 error=connection elapsed_ms=1 retry=false"
+      },
+      {
+        "name": "a 429 waited out for its Retry-After",
+        "attempt": {
+          "method": "POST",
+          "path": "/v1/search",
+          "attempt": 1,
+          "status": 429,
+          "error": null,
+          "elapsed_ms": 15,
+          "retry": true,
+          "wait_ms": 3000,
+          "request_id": "req_3"
+        },
+        "line": "keenable: method=POST path=/v1/search attempt=1 status=429 elapsed_ms=15 retry=true wait_ms=3000 request_id=req_3"
+      },
+      {
+        "name": "a request id with a space is left out",
+        "attempt": {
+          "method": "POST",
+          "path": "/v1/search",
+          "attempt": 1,
+          "status": 200,
+          "error": null,
+          "elapsed_ms": 5,
+          "retry": false,
+          "wait_ms": null,
+          "request_id": "req 4"
+        },
+        "line": "keenable: method=POST path=/v1/search attempt=1 status=200 elapsed_ms=5 retry=false"
+      },
+      {
+        "name": "a request id outside ASCII is left out",
+        "attempt": {
+          "method": "POST",
+          "path": "/v1/search",
+          "attempt": 1,
+          "status": 200,
+          "error": null,
+          "elapsed_ms": 5,
+          "retry": false,
+          "wait_ms": null,
+          "request_id": "réq"
+        },
+        "line": "keenable: method=POST path=/v1/search attempt=1 status=200 elapsed_ms=5 retry=false"
+      },
+      {
+        "name": "a request id of 128 characters is kept",
+        "attempt": {
+          "method": "POST",
+          "path": "/v1/search",
+          "attempt": 1,
+          "status": 200,
+          "error": null,
+          "elapsed_ms": 5,
+          "retry": false,
+          "wait_ms": null,
+          "request_id": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr"
+        },
+        "line": "keenable: method=POST path=/v1/search attempt=1 status=200 elapsed_ms=5 retry=false request_id=rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr"
+      },
+      {
+        "name": "a request id of 129 characters is left out",
+        "attempt": {
+          "method": "POST",
+          "path": "/v1/search",
+          "attempt": 1,
+          "status": 200,
+          "error": null,
+          "elapsed_ms": 5,
+          "retry": false,
+          "wait_ms": null,
+          "request_id": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr"
+        },
+        "line": "keenable: method=POST path=/v1/search attempt=1 status=200 elapsed_ms=5 retry=false"
+      }
+    ]
+  }
 }

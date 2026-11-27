@@ -33,6 +33,7 @@ from keenable import (
     KeenableRateLimitError,
     KeenableTimeoutError,
     WebhookVerificationError,
+    _debug,
     arun_tool_call,
     run_tool_call,
     verify_webhook,
@@ -451,6 +452,7 @@ def test_the_fixture_has_every_section() -> None:
         "tool_call",
         "deadline",
         "webhook",
+        "debug_log",
     }
 
 
@@ -660,3 +662,19 @@ def test_a_blank_env_base_url_is_the_default(
 ) -> None:
     monkeypatch.setenv("KEENABLE_API_URL", "   ")
     assert Keenable()._base_url == "https://api.keenable.ai"
+
+
+@pytest.mark.parametrize(
+    "case", [pytest.param(c, id=c["name"]) for c in FIXTURE["debug_log"]["env"]]
+)
+def test_debug_log_env(case: dict[str, Any]) -> None:
+    assert _debug.env_enabled(case["value"]) is case["enabled"]
+
+
+@pytest.mark.parametrize(
+    "case", [pytest.param(c, id=c["name"]) for c in FIXTURE["debug_log"]["lines"]]
+)
+def test_debug_log_line(case: dict[str, Any]) -> None:
+    # The logger's message is the line after "keenable: ", which the
+    # KEENABLE_LOG handler (and a "%(name)s: %(message)s" format) prints.
+    assert f"keenable: {_debug.attempt_fields(**case['attempt'])}" == case["line"]

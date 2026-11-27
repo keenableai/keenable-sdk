@@ -150,6 +150,28 @@ type conformance struct {
 		Valid     bool              `json:"valid"`
 		Type      *string           `json:"type"`
 	} `json:"webhook"`
+	DebugLog struct {
+		Env []struct {
+			Name    string `json:"name"`
+			Value   string `json:"value"`
+			Enabled bool   `json:"enabled"`
+		} `json:"env"`
+		Lines []struct {
+			Name    string `json:"name"`
+			Attempt struct {
+				Method    string  `json:"method"`
+				Path      string  `json:"path"`
+				Attempt   int     `json:"attempt"`
+				Status    *int    `json:"status"`
+				Error     *string `json:"error"`
+				ElapsedMS int64   `json:"elapsed_ms"`
+				Retry     bool    `json:"retry"`
+				WaitMS    *int64  `json:"wait_ms"`
+				RequestID *string `json:"request_id"`
+			} `json:"attempt"`
+			Line string `json:"line"`
+		} `json:"lines"`
+	} `json:"debug_log"`
 }
 
 func loadConformance(t *testing.T) *conformance {

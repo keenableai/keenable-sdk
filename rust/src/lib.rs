@@ -21,6 +21,7 @@
 
 mod client;
 mod context_clean;
+mod debug_log;
 mod error;
 mod guard;
 mod json;

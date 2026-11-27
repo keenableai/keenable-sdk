@@ -5,6 +5,7 @@ All notable changes to the `keenable` npm package. Versions follow
 
 ## Unreleased
 
+- **Added:** debug logging. Every attempt logs one line: method, path, attempt number, status (or `error=timeout`, `redirect`, `canceled` or `connection`), `elapsed_ms`, the retry decision and `wait_ms`, and `request_id`. Never the API key, other headers, the query string or a body. `KEENABLE_LOG=debug` writes the lines to stderr (`console.error`), as the other SDKs do; the new `logger` option (`KeenableLogger`, any object with `debug(message)`) sends them to your own logger instead.
 - **Added:** `SearchResponse.usage` and an exported `Usage` type: what the search cost and, with a key, `cost` and `balance` in US dollars. Undefined on keyless calls.
 - **Changed:** the `keenable_search` tool's `moderation` description: supported for a URL query when `exclude_domains` is set.
 - **Added:** `Page.usage.cost` and `Page.usage.balance` (`Money`, US dollars): what the page cost and the organization's balance after it. Each carries `amountDecimal`, the exact decimal string, as in `billing()`: add costs with it rather than with `amount`.
