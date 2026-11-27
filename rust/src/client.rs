@@ -78,6 +78,11 @@ pub struct Options {
     /// Headers sent with every request, for example for a proxy or gateway.
     /// `X-API-Key` is ignored here: it always comes from `api_key`.
     pub headers: HashMap<String, String>,
+    /// The id of the agent run this client works for, sent as the
+    /// `X-Keenable-Session-Id` header on every request so the API can group
+    /// the run's calls. Use one value per run, such as a UUID. `None` or ""
+    /// sends none. Printable ASCII; the API keeps the first 128 characters.
+    pub session_id: Option<String>,
     /// Your own HTTP client settings, for a proxy or custom TLS. The SDK
     /// builds the client from it and turns redirects off, so the API key goes
     /// only to the configured host.
@@ -159,6 +164,10 @@ pub struct SearchOptions {
     /// "pro" and "realtime" modes, and not when the query is a URL or with
     /// `query_time`; the API rejects it there.
     pub moderation: Option<String>,
+    /// The agent run this call belongs to, sent as the
+    /// `X-Keenable-Session-Id` header over [`Options::session_id`]. `None` or
+    /// "" keeps the client's.
+    pub session_id: Option<String>,
     /// This call's timeout, retry budget and headers.
     pub request: RequestOptions,
 }
@@ -184,6 +193,9 @@ pub struct FetchOptions {
     /// `error` set (404). Other negative values are refused with a 400.
     /// `None` uses a stored copy of any age, or reads live when there is none.
     pub max_age_hours: Option<f64>,
+    /// The agent run this call belongs to, as in
+    /// [`SearchOptions::session_id`].
+    pub session_id: Option<String>,
     /// This call's timeout, retry budget and headers.
     pub request: RequestOptions,
 }
@@ -208,6 +220,7 @@ struct Inner {
     timeout: Duration,
     max_retries: u32,
     headers: HashMap<String, String>,
+    session_id: Option<String>,
     http: reqwest::Client,
 }
 
@@ -230,6 +243,7 @@ impl std::fmt::Debug for Options {
             .field("client_source", &self.client_source)
             .field("max_retries", &self.max_retries)
             .field("headers", &self.headers.keys().collect::<Vec<_>>())
+            .field("session_id", &self.session_id)
             .field("http_client", &self.http_client.as_ref().map(|_| "<set>"))
             .finish()
     }
@@ -244,6 +258,7 @@ impl std::fmt::Debug for Inner {
             .field("timeout", &self.timeout)
             .field("max_retries", &self.max_retries)
             .field("headers", &self.headers.keys().collect::<Vec<_>>())
+            .field("session_id", &self.session_id)
             .finish_non_exhaustive()
     }
 }
@@ -267,6 +282,7 @@ impl Client {
             Some(t) => t,
         };
         check_headers(&opts.headers)?;
+        let session_id = check_session_id("Options::session_id", opts.session_id.as_deref())?;
         let api_key = opts
             .api_key
             .or_else(|| std::env::var("KEENABLE_API_KEY").ok())
@@ -298,6 +314,7 @@ impl Client {
                 timeout,
                 max_retries: opts.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
                 headers: opts.headers,
+                session_id,
                 http,
             }),
         })
@@ -354,8 +371,14 @@ impl Client {
             payload.insert("disable_cards".into(), Value::Bool(true));
         }
         put(&mut payload, "moderation", &opts.moderation);
-        self.search_payload(query, opts.mode.as_deref(), payload, &opts.request)
-            .await
+        self.search_payload(
+            query,
+            opts.mode.as_deref(),
+            payload,
+            &opts.request,
+            opts.session_id.as_deref(),
+        )
+        .await
     }
 
     /// Sends a search with `filters` already in wire form.
@@ -365,6 +388,7 @@ impl Client {
         mode: Option<&str>,
         mut payload: Map<String, Value>,
         request: &RequestOptions,
+        session_id: Option<&str>,
     ) -> Result<SearchResponse> {
         if query.trim().is_empty() {
             return Err(Error::invalid(
@@ -386,6 +410,7 @@ impl Client {
                 Some(body),
                 Vec::new(),
                 request,
+                session_id,
             )
             .await?;
         Ok(search_response_from_json(data, query, id))
@@ -453,6 +478,7 @@ impl Client {
                 Some(body),
                 Vec::new(),
                 &opts.request,
+                opts.session_id.as_deref(),
             )
             .await?;
         let results = match data.get("results") {
@@ -507,10 +533,16 @@ impl Client {
         url
     }
 
-    /// The SDK's own headers, then the client's, then the call's. The API key
-    /// always comes from the client, so a stray header cannot send a
-    /// different key or turn a keyless call keyed.
-    fn headers(&self, json_body: bool, extra: &HashMap<String, String>) -> Result<HeaderMap> {
+    /// The SDK's own headers, then the client's, the client's session id, the
+    /// call's and the call's session id. The API key always comes from the
+    /// client, so a stray header cannot send a different key or turn a keyless
+    /// call keyed.
+    fn headers(
+        &self,
+        json_body: bool,
+        extra: &HashMap<String, String>,
+        session_id: Option<&str>,
+    ) -> Result<HeaderMap> {
         let mut h = HeaderMap::new();
         let mut set = |name: &str, value: &str| -> Result<()> {
             let name = HeaderName::from_bytes(name.as_bytes())
@@ -527,7 +559,13 @@ impl Client {
         set("User-Agent", &format!("keenable-rust/{VERSION}"))?;
         // The public tier rejects requests without this header.
         set("X-Keenable-Title", &self.inner.client_source)?;
-        for src in [&self.inner.headers, extra] {
+        let session = |id: Option<&str>| -> HashMap<String, String> {
+            id.map(|id| HashMap::from([(SESSION_HEADER.to_string(), id.to_string())]))
+                .unwrap_or_default()
+        };
+        let client_session = session(self.inner.session_id.as_deref());
+        let call_session = session(session_id);
+        for src in [&self.inner.headers, &client_session, extra, &call_session] {
             for (k, v) in src {
                 if !k.eq_ignore_ascii_case("x-api-key") {
                     set(k, v)?;
@@ -550,9 +588,10 @@ impl Client {
         body: Option<Vec<u8>>,
         query: Vec<(String, String)>,
         opts: &RequestOptions,
+        session_id: Option<&str>,
     ) -> Result<(Map<String, Value>, Option<String>)> {
         let url = self.endpoint_url(endpoint, &query);
-        self.send_url(method, url, body, &HashMap::new(), opts, true)
+        self.send_session(method, url, body, &HashMap::new(), opts, true, session_id)
             .await
     }
 
@@ -568,6 +607,23 @@ impl Client {
         opts: &RequestOptions,
         safe: bool,
     ) -> Result<(Map<String, Value>, Option<String>)> {
+        self.send_session(method, url, body, extra, opts, safe, None)
+            .await
+    }
+
+    /// [`Client::send_url`] with the call's session id.
+    #[allow(clippy::too_many_arguments)]
+    async fn send_session(
+        &self,
+        method: reqwest::Method,
+        url: String,
+        body: Option<Vec<u8>>,
+        extra: &HashMap<String, String>,
+        opts: &RequestOptions,
+        safe: bool,
+        session_id: Option<&str>,
+    ) -> Result<(Map<String, Value>, Option<String>)> {
+        let session_id = check_session_id("session_id", session_id)?;
         let timeout = match opts.timeout {
             None => self.inner.timeout,
             Some(t) if t.is_zero() => {
@@ -586,7 +642,7 @@ impl Client {
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
         call_headers.extend(opts.headers.clone());
-        let headers = self.headers(body.is_some(), &call_headers)?;
+        let headers = self.headers(body.is_some(), &call_headers, session_id.as_deref())?;
         let mut retry = 0;
         loop {
             let err = match self
@@ -718,6 +774,23 @@ async fn pause(wait: Duration) {
         return;
     }
     tokio::time::sleep(wait).await;
+}
+
+/// The header the API groups the calls of one agent run by.
+const SESSION_HEADER: &str = "X-Keenable-Session-Id";
+
+/// A session id to send, trimmed of spaces; `None` when unset, empty or
+/// blank. Only printable ASCII is sent: HTTP stacks disagree on other
+/// characters.
+fn check_session_id(name: &str, id: Option<&str>) -> Result<Option<String>> {
+    let Some(id) = id else { return Ok(None) };
+    if !id.chars().all(|c| (' '..='~').contains(&c)) {
+        return Err(Error::invalid(format!(
+            "{name} must be printable ASCII, with no control characters, tabs or non-ASCII letters, got {id:?}."
+        )));
+    }
+    let id = id.trim_matches(' ');
+    Ok((!id.is_empty()).then(|| id.to_string()))
 }
 
 /// Refuses a header the transport would refuse, before anything is sent: a

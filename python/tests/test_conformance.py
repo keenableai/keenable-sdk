@@ -436,6 +436,36 @@ async def test_tool_call(kind: str, case: dict[str, Any], waits: list[float]) ->
         assert json.loads(seen[0].content) == case["sent"]
 
 
+@pytest.mark.parametrize("kind", CLIENTS)
+@pytest.mark.parametrize("method", ["search", "fetch"])
+@pytest.mark.parametrize("case", cases("session_id"))
+async def test_session_id(
+    kind: str, method: str, case: dict[str, Any], waits: list[float]
+) -> None:
+    options: dict[str, Any] = {"default_headers": case["client_headers"]}
+    call: dict[str, Any] = {"extra_headers": case["call_headers"]}
+    if case["client"] is not None:
+        options["session_id"] = case["client"]
+    if case["call"] is not None:
+        call["session_id"] = case["call"]
+    outcome = await run(
+        kind,
+        [SEARCH_OK if method == "search" else PAGE_OK],
+        waits,
+        method=method,
+        arg="q" if method == "search" else "https://example.com/",
+        options=options,
+        call=call,
+    )
+    if case["invalid"]:
+        assert isinstance(outcome.error, KeenableInvalidRequestError)
+        assert outcome.requests == []
+    else:
+        assert outcome.error is None
+        sent = outcome.requests[0].headers.get_list("X-Keenable-Session-Id")
+        assert sent == ([] if case["sent"] is None else [case["sent"]])
+
+
 def test_the_fixture_has_every_section() -> None:
     sections = set(FIXTURE) - {"_comment"}
     assert sections == {
@@ -449,6 +479,7 @@ def test_the_fixture_has_every_section() -> None:
         "options",
         "search_body",
         "tool_call",
+        "session_id",
         "deadline",
         "webhook",
     }

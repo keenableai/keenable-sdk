@@ -387,7 +387,19 @@ impl Client {
     /// that failed while others were read becomes an error block; if none was
     /// read, its error is returned.
     pub async fn run_tool_call(&self, name: &str, arguments: impl ToolArguments) -> Result<String> {
+        self.run_tool_call_with(name, arguments, &ToolCallOptions::default())
+            .await
+    }
+
+    /// [`Client::run_tool_call`] with the settings in [`ToolCallOptions`].
+    pub async fn run_tool_call_with(
+        &self,
+        name: &str,
+        arguments: impl ToolArguments,
+        options: &ToolCallOptions,
+    ) -> Result<String> {
         let args = arguments.into_arguments()?;
+        let session_id = options.session_id.as_deref();
         match name {
             SEARCH_TOOL_NAME => {
                 let query = require_string(
@@ -396,13 +408,16 @@ impl Client {
                 )?;
                 let filters = tool_filters(&args)?;
                 let resp = self
-                    .search_payload(query, None, filters, &RequestOptions::default())
+                    .search_payload(query, None, filters, &RequestOptions::default(), session_id)
                     .await?;
                 Ok(resp.to_context())
             }
             FETCH_TOOL_NAME => {
                 let urls = tool_fetch_urls(&args)?;
-                let opts = tool_fetch_options(&args)?;
+                let opts = FetchOptions {
+                    session_id: options.session_id.clone(),
+                    ..tool_fetch_options(&args)?
+                };
                 let resp = self.fetch_with(urls, &opts).await?;
                 pages_context(resp.results, opts.max_chars)
             }
@@ -411,6 +426,15 @@ impl Client {
             ))),
         }
     }
+}
+
+/// The optional settings of [`Client::run_tool_call_with`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ToolCallOptions {
+    /// The agent run this call belongs to, sent as the call's session id over
+    /// [`Options::session_id`](crate::Options::session_id). `None` keeps the
+    /// client's.
+    pub session_id: Option<String>,
 }
 
 /// Runs one tool call with `client`: the same as [`Client::run_tool_call`].

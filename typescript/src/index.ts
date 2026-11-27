@@ -36,7 +36,7 @@ export {
 } from "./errors.js";
 export type { KeenableAPIErrorDetails, KeenableErrorType, RateLimitInfo } from "./errors.js";
 export { FETCH_TOOL, SEARCH_TOOL, TOOLS, runToolCall } from "./tools.js";
-export type { ToolDefinition } from "./tools.js";
+export type { RunToolCallOptions, ToolDefinition } from "./tools.js";
 export type {
   Billing,
   BillingAccount,
@@ -46,6 +46,7 @@ export type {
   FetchOptions,
   RequestOptions,
   SearchOptions,
+  SessionOptions,
   SearchResult,
   SearchWarning,
   ToContextOptions,

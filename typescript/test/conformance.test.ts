@@ -71,6 +71,16 @@ interface Fixture {
     skip: Record<string, string>;
   }[];
   tool_call: { name: string; arguments: string; sent: Json; invalid: boolean }[];
+  session_id: {
+    name: string;
+    client: Json;
+    call: Json;
+    client_headers: Record<string, string>;
+    call_headers: Record<string, string>;
+    sent: string | null;
+    invalid: boolean;
+    skip: Record<string, string>;
+  }[];
   deadline: {
     slack: number;
     cases: {
@@ -464,6 +474,31 @@ describe("tool calls", () => {
       expect(outcome.error).toBeUndefined();
       expect(JSON.parse(String(outcome.requests[0]?.init.body))).toEqual(c.sent);
     }
+  });
+});
+
+describe("session ids", () => {
+  const cases = FIXTURE.session_id.filter((c) => !("typescript" in c.skip));
+  describe.each(["search", "fetch"] as const)("%s", (method) => {
+    it.each(cases.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
+      const options = { headers: c.call_headers, sessionId: value(c.call) as string | undefined };
+      const outcome = await call(
+        [method === "search" ? SEARCH_OK : PAGE_OK],
+        { defaultHeaders: c.client_headers, sessionId: value(c.client) as string | undefined },
+        (client) =>
+          method === "search"
+            ? client.search("q", options)
+            : client.fetch("https://example.com/", options),
+      );
+      if (c.invalid) {
+        expect(outcome.error).toBeInstanceOf(KeenableInvalidRequestError);
+        expect(outcome.requests).toHaveLength(0);
+      } else {
+        expect(outcome.error).toBeUndefined();
+        const sent = new Headers(outcome.requests[0]?.init.headers);
+        expect(sent.get("X-Keenable-Session-Id")).toBe(c.sent);
+      }
+    });
   });
 });
 

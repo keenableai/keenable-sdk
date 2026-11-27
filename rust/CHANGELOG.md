@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Added:** `Options::session_id`, sent as the `X-Keenable-Session-Id` header on every request so the API groups the calls of one agent run, and `SearchOptions::session_id`, `FetchOptions::session_id` and `Client::run_tool_call_with` (with `ToolCallOptions`) for one call. Code that builds `Options`, `SearchOptions` or `FetchOptions` without `..Default::default()` must add the new field. A call's value replaces the client's; `None` or `""` keeps the client's. The value is trimmed of surrounding spaces and must be printable ASCII: a control character, tab or non-ASCII letter is an invalid-request error, and nothing is sent. The API keeps the first 128 characters. An `X-Keenable-Session-Id` header passed in `Options::headers` or `RequestOptions::headers` still works; the option at the same level replaces it.
 - **Changed (breaking for Rust 1.80 to 1.84):** the minimum supported Rust version is now 1.85 (`rust-version` in `Cargo.toml`). The lockfile takes `quinn-proto` 0.11.19 for its security fixes, and its dependency `chacha20` 0.10 needs edition 2024 support, which Rust 1.85 added. On an older compiler, `cargo` reports the required version; run `rustup update stable`.
 - **Added:** `SearchResponse::usage` (`Option<Usage>`): what the search cost and, with a key, `cost` and `balance` in US dollars. `None` on keyless calls.
 - **Fixed:** a malformed `cost` or `balance` no longer drops the whole `Usage` of a page; each field is read on its own.

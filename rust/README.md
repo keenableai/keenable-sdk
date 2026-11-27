@@ -66,6 +66,7 @@ let client = keenable::Client::with_options(keenable::Options {
 | `client_source` | Sent as `X-Keenable-Title`. Default `Keenable SDK`. Set it to your product's name if you build on this SDK |
 | `max_retries` | Default 2; `Some(0)` turns retries off |
 | `headers` | Sent with every request, for a proxy or gateway. `X-API-Key` is ignored here |
+| `session_id` | Sent as `X-Keenable-Session-Id` on every request, to group the calls of one agent run. See [below](#group-an-agent-runs-calls) |
 | `http_client` | Your own `reqwest::ClientBuilder`, for a proxy or custom TLS. The SDK turns redirects off on it |
 
 `Client` is cheap to clone and shares its connection pool: build one and reuse it.
@@ -218,6 +219,28 @@ live, -1 only the stored copy), as on the hosted MCP tool. A call without
 `urls` is an invalid request. Each page comes back as its own numbered block. A URL
 that failed while others were read becomes a `[n] <url> - failed: <reason>`
 block; `run_tool_call` returns its error only when no URL could be read.
+
+## Group an agent run's calls
+
+Set `Options::session_id` and the client sends it as the
+`X-Keenable-Session-Id` header on every request, so the API groups the calls
+of one agent run. `SearchOptions::session_id`, `FetchOptions::session_id` and
+`run_tool_call_with` set it for one call.
+
+```rust
+let client = keenable::Client::with_options(keenable::Options {
+    session_id: Some("run-7f3a".into()),
+    ..Default::default()
+})?;
+client.search("wafer scale engine").await?;
+let one_call = keenable::FetchOptions {
+    session_id: Some("run-8b21".into()), // this call only
+    ..Default::default()
+};
+client.fetch_with(["https://example.com"], &one_call).await?;
+```
+
+Use one value per run, such as a UUID. A call's `session_id` replaces the client's for that call; unset or `""` keeps the client's. The value is trimmed and must be printable ASCII: anything else is an invalid-request error, before anything is sent. The API keeps the first 128 characters. The hosted MCP tools take the same id as their `session_id` argument.
 
 ## Retries
 

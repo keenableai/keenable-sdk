@@ -430,6 +430,20 @@ reporting a problem). A search response's `warnings` lists what the request
 should change, such as a deprecated parameter it used; it is empty otherwise. Redirects are never followed, so the API key cannot leak
 to another host.
 
+## Group an agent run's calls
+
+Pass `session_id` and the client sends it as the `X-Keenable-Session-Id` header
+on every request, so the API groups the calls of one agent run. `search()`,
+`fetch()` and `run_tool_call()` take a `session_id` for one call.
+
+```python
+keenable = Keenable(session_id="run-7f3a")
+keenable.search("wafer scale engine")
+keenable.fetch(["https://example.com"], session_id="run-8b21")  # this call only
+```
+
+Use one value per run, such as a UUID. A call's `session_id` replaces the client's for that call; unset or `""` keeps the client's. The value is trimmed and must be printable ASCII: anything else is a `KeenableInvalidRequestError`, before anything is sent. The API keeps the first 128 characters. The hosted MCP tools take the same id as their `session_id` argument.
+
 ## Configuration
 
 | Variable | Default | Purpose |
@@ -438,7 +452,7 @@ to another host.
 | `KEENABLE_API_URL` | `https://api.keenable.ai` | Override the API base URL |
 
 Both can also be passed to the constructor as `api_key` and `base_url`, alongside
-`timeout`, `max_retries`, `default_headers`, `client` (your own `httpx.Client`,
+`timeout`, `max_retries`, `default_headers`, `session_id`, `client` (your own `httpx.Client`,
 e.g. for a proxy) and `client_source`. Building an integration on top of this SDK? Set
 `client_source="Your Integration"` so your traffic is attributed to you rather
 than to the bare SDK.

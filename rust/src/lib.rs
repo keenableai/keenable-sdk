@@ -58,8 +58,8 @@ pub use monitors::{
     MonitorWebhook, MonitorWebhookParams, Monitors, ResultList, RunList, VersionList,
 };
 pub use tools::{
-    fetch_tool, run_tool_call, search_tool, tools, ToolArguments, ToolDefinition, ToolFunction,
-    FETCH_TOOL_NAME, SEARCH_TOOL_NAME,
+    fetch_tool, run_tool_call, search_tool, tools, ToolArguments, ToolCallOptions, ToolDefinition,
+    ToolFunction, FETCH_TOOL_NAME, SEARCH_TOOL_NAME,
 };
 pub use webhooks::{
     verify_webhook, verify_webhook_with, WebhookEvent, WebhookEventData, WebhookOptions,

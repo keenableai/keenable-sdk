@@ -1356,3 +1356,28 @@ func titles(results []keenable.SearchResult) string {
 func intPtr(n int) *int { return &n }
 
 func durPtr(d time.Duration) *time.Duration { return &d }
+
+func TestRunToolCallSendsTheSessionID(t *testing.T) {
+	c, seen := startKeyless(t, routed(), &keenable.Options{SessionID: "run-1"})
+	ctx := context.Background()
+	if _, err := keenable.RunToolCall(ctx, c, "keenable_search", `{"query":"q"}`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := keenable.RunToolCallWithOptions(ctx, c, "keenable_fetch", map[string]any{"urls": []string{"https://example.com"}}, &keenable.ToolCallOptions{SessionID: "run-2"}); err != nil {
+		t.Fatal(err)
+	}
+	// The model cannot set it: the tool schemas do not offer it.
+	if _, err := keenable.RunToolCall(ctx, c, "keenable_search", `{"query":"q","session_id":"model"}`); err != nil {
+		t.Fatal(err)
+	}
+	var sent []string
+	for _, req := range *seen {
+		sent = append(sent, req.Header.Get("X-Keenable-Session-Id"))
+	}
+	if want := []string{"run-1", "run-2", "run-1"}; !reflect.DeepEqual(sent, want) {
+		t.Fatalf("sent %q, want %q", sent, want)
+	}
+	if _, ok := payloadOf(t, (*seen)[2])["session_id"]; ok {
+		t.Fatal("session_id sent in the body")
+	}
+}

@@ -337,6 +337,56 @@ async fn fetch_parses_a_page_and_a_failed_url() {
 }
 
 #[tokio::test]
+async fn a_tool_call_sends_the_session_id() {
+    let server = start(Script::ByPath {
+        search: search_reply(),
+        fetch: Reply::new(
+            200,
+            r#"{"results":[{"url":"https://e.com/","content":"c"}]}"#,
+        ),
+    })
+    .await;
+    let client = crate::Client::with_options(crate::Options {
+        api_key: Some("k".into()),
+        base_url: Some(server.base_url.clone()),
+        session_id: Some("run-1".into()),
+        ..Default::default()
+    })
+    .unwrap();
+    client
+        .run_tool_call("keenable_search", json!({"query": "q"}))
+        .await
+        .unwrap();
+    let run_2 = crate::ToolCallOptions {
+        session_id: Some("run-2".into()),
+    };
+    client
+        .run_tool_call_with(
+            "keenable_fetch",
+            json!({"urls": ["https://e.com/"]}),
+            &run_2,
+        )
+        .await
+        .unwrap();
+    // The model cannot set it: the tool schemas do not offer it.
+    client
+        .run_tool_call(
+            "keenable_search",
+            json!({"query": "q", "session_id": "model"}),
+        )
+        .await
+        .unwrap();
+    let seen = server.requests();
+    let sent: Vec<_> = seen
+        .iter()
+        .map(|r| r.header("X-Keenable-Session-Id"))
+        .collect();
+    assert_eq!(sent, [Some("run-1"), Some("run-2"), Some("run-1")]);
+    let body: Value = serde_json::from_slice(&seen[2].body).unwrap();
+    assert!(body.get("session_id").is_none(), "{body}");
+}
+
+#[tokio::test]
 async fn a_fetch_tool_call_renders_the_page() {
     let server = start(Script::Replies(vec![Reply::new(
         200,

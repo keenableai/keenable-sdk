@@ -211,6 +211,17 @@ describe("search", () => {
     expect(seen).toHaveLength(0);
   });
 
+  it("sends the session id on a tool call, never from the model", async () => {
+    const { client, seen } = mockClient(routed, { sessionId: "run-1" });
+    await runToolCall(client, "keenable_search", { query: "q" });
+    await runToolCall(client, "keenable_fetch", { urls: ["https://example.com"] }, { sessionId: "run-2" });
+    await runToolCall(client, "keenable_search", { query: "q", session_id: "model", sessionId: "model" });
+    const sent = seen.map((s) => new Headers(s.init.headers).get("X-Keenable-Session-Id"));
+    // The model cannot set it: the tool schemas do not offer it.
+    expect(sent).toEqual(["run-1", "run-2", "run-1"]);
+    expect(JSON.parse(String(seen[2]?.init.body))).not.toHaveProperty("session_id");
+  });
+
   it("still sends malformed but encodable values for the API to judge", async () => {
     const { client, seen } = mockClient(() => json(SEARCH_BODY));
     await client.search("q", { excludeDomains: [42, null, "", { host: "a.com" }] as unknown as string[] });
