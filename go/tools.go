@@ -71,6 +71,48 @@ var FetchTool = ToolDefinition{
 // Tools is keenable_search and keenable_fetch, in that order.
 var Tools = []ToolDefinition{SearchTool, FetchTool}
 
+// AnthropicToolDefinition is a tool in the Anthropic Messages API shape: the
+// schema goes under input_schema.
+type AnthropicToolDefinition struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	InputSchema map[string]any `json:"input_schema"`
+}
+
+// GeminiToolDefinition is a function tool in the Gemini Interactions API
+// shape: flat, with Type "function". For generateContent, pass Name,
+// Description and Parameters as a function declaration instead.
+type GeminiToolDefinition struct {
+	Type        string         `json:"type"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Parameters  map[string]any `json:"parameters"`
+}
+
+// AnthropicTools is [Tools] in the Anthropic Messages API shape. Pass each
+// tool_use block's name and input to [RunToolCall].
+var AnthropicTools = anthropicTools(Tools)
+
+// GeminiTools is [Tools] in the Gemini Interactions API shape. Pass each
+// function_call step's name and arguments to [RunToolCall].
+var GeminiTools = geminiTools(Tools)
+
+func anthropicTools(tools []ToolDefinition) []AnthropicToolDefinition {
+	out := make([]AnthropicToolDefinition, len(tools))
+	for i, t := range tools {
+		out[i] = AnthropicToolDefinition{Name: t.Function.Name, Description: t.Function.Description, InputSchema: t.Function.Parameters}
+	}
+	return out
+}
+
+func geminiTools(tools []ToolDefinition) []GeminiToolDefinition {
+	out := make([]GeminiToolDefinition, len(tools))
+	for i, t := range tools {
+		out[i] = GeminiToolDefinition{Type: "function", Name: t.Function.Name, Description: t.Function.Description, Parameters: t.Function.Parameters}
+	}
+	return out
+}
+
 func newSearchTool() ToolDefinition {
 	props := map[string]any{
 		"query": map[string]any{
@@ -99,7 +141,9 @@ func newSearchTool() ToolDefinition {
 
 // RunToolCall executes one tool call and returns text for a role=tool message.
 //
-// arguments may be a JSON string, []byte, json.RawMessage, or map[string]any.
+// arguments may be a JSON string, []byte, json.RawMessage, or map[string]any:
+// an OpenAI-compatible function.arguments string, an Anthropic tool_use
+// block's input, or a Gemini function call's arguments, as they come.
 // Anything else, including invalid JSON, is an [InvalidRequestError].
 // Both tools render the same numbered block, so a model can cite a fetched
 // page the way it cites a search result. A URL that failed while others were

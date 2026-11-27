@@ -336,6 +336,68 @@ async fn fetch_parses_a_page_and_a_failed_url() {
     );
 }
 
+#[test]
+fn the_anthropic_and_gemini_tools_are_the_tools_reshaped() {
+    let tools = serde_json::to_value(crate::tools()).unwrap();
+    let anthropic = serde_json::to_value(crate::anthropic_tools()).unwrap();
+    let gemini = serde_json::to_value(crate::gemini_tools()).unwrap();
+    let expect_anthropic: Vec<Value> = tools
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| {
+            let f = &t["function"];
+            json!({"name": f["name"], "description": f["description"], "input_schema": f["parameters"]})
+        })
+        .collect();
+    let expect_gemini: Vec<Value> = tools
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| {
+            let f = &t["function"];
+            json!({"type": "function", "name": f["name"], "description": f["description"], "parameters": f["parameters"]})
+        })
+        .collect();
+    assert_eq!(anthropic, json!(expect_anthropic));
+    assert_eq!(gemini, json!(expect_gemini));
+    assert_eq!(anthropic[0]["name"], "keenable_search");
+    assert_eq!(gemini[1]["name"], "keenable_fetch");
+}
+
+#[tokio::test]
+async fn anthropic_and_gemini_tool_calls_run_as_they_come() {
+    let server = start(Script::Replies(vec![
+        search_reply(),
+        Reply::new(
+            200,
+            r#"{"results":[{"url":"https://e.com/","title":"T","content":"Body"}]}"#,
+        ),
+    ]))
+    .await;
+    let client = keyed(&server);
+    // An Anthropic tool_use block's input and a Gemini function call's
+    // arguments are decoded JSON objects.
+    let tool_use = json!({"type": "tool_use", "id": "toolu_1", "name": "keenable_search",
+        "input": {"query": "q", "site": "cerebras.ai"}});
+    client
+        .run_tool_call(tool_use["name"].as_str().unwrap(), &tool_use["input"])
+        .await
+        .unwrap();
+    let sent: Value = serde_json::from_slice(&server.requests()[0].body).unwrap();
+    assert_eq!(sent["site"], "cerebras.ai");
+    let function_call = json!({"type": "function_call", "id": "c1", "name": "keenable_fetch",
+        "arguments": {"urls": ["https://e.com/"]}});
+    let text = client
+        .run_tool_call(
+            function_call["name"].as_str().unwrap(),
+            &function_call["arguments"],
+        )
+        .await
+        .unwrap();
+    assert!(text.starts_with("[1] T (https://e.com/)"), "{text}");
+}
+
 #[tokio::test]
 async fn a_fetch_tool_call_renders_the_page() {
     let server = start(Script::Replies(vec![Reply::new(

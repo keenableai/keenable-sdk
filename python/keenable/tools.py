@@ -1,8 +1,9 @@
-"""Ready-made tool definitions for OpenAI-compatible tool calling.
+"""Ready-made tool definitions for tool calling, in three formats.
 
-Every major inference API (Cerebras, OpenAI, and anything speaking the same
-schema) takes tools in this shape, so these constants can be passed straight
-into a ``chat.completions.create(tools=...)`` call:
+``TOOLS`` is the OpenAI-compatible Chat Completions shape that most inference
+APIs (Cerebras, OpenAI, Mistral, Ollama, vLLM and anything speaking the same
+schema) take, so it can be passed straight into a
+``chat.completions.create(tools=...)`` call:
 
     from keenable import Keenable, TOOLS, run_tool_call
 
@@ -10,6 +11,13 @@ into a ``chat.completions.create(tools=...)`` call:
     ...
     output = run_tool_call(keenable, tool_call.function.name,
                            tool_call.function.arguments)
+
+``ANTHROPIC_TOOLS`` is the same two tools in the Anthropic Messages shape
+(``name``, ``description``, ``input_schema``), and ``GEMINI_TOOLS`` in the
+Gemini Interactions API shape (``type: "function"``, ``name``, ``description``,
+``parameters``). ``run_tool_call`` takes a call from any of them: the name,
+and the arguments as a JSON string or a decoded dict (an Anthropic
+``tool_use`` block's ``input``, a Gemini ``function_call``'s ``arguments``).
 """
 
 from __future__ import annotations
@@ -22,7 +30,15 @@ from .client import AsyncKeenable, Keenable
 from .errors import KeenableAPIError, KeenableInvalidRequestError
 from .models import DEFAULT_CONTEXT_MAX_CHARS, FetchError, FetchResponse
 
-__all__ = ["SEARCH_TOOL", "FETCH_TOOL", "TOOLS", "run_tool_call", "arun_tool_call"]
+__all__ = [
+    "ANTHROPIC_TOOLS",
+    "FETCH_TOOL",
+    "GEMINI_TOOLS",
+    "SEARCH_TOOL",
+    "TOOLS",
+    "arun_tool_call",
+    "run_tool_call",
+]
 
 SEARCH_TOOL: dict[str, Any] = {
     "type": "function",
@@ -104,6 +120,35 @@ FETCH_TOOL: dict[str, Any] = {
 }
 
 TOOLS: list[dict[str, Any]] = [SEARCH_TOOL, FETCH_TOOL]
+
+ANTHROPIC_TOOLS: list[dict[str, Any]] = [
+    {
+        "name": tool["function"]["name"],
+        "description": tool["function"]["description"],
+        "input_schema": tool["function"]["parameters"],
+    }
+    for tool in TOOLS
+]
+"""``TOOLS`` in the Anthropic Messages API shape, for ``messages.create``.
+
+Pass each ``tool_use`` block's ``name`` and ``input`` to :func:`run_tool_call`.
+"""
+
+GEMINI_TOOLS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "name": tool["function"]["name"],
+        "description": tool["function"]["description"],
+        "parameters": tool["function"]["parameters"],
+    }
+    for tool in TOOLS
+]
+"""``TOOLS`` in the Gemini Interactions API shape, for ``interactions.create``.
+
+Pass each ``function_call`` step's ``name`` and ``arguments`` to
+:func:`run_tool_call`. For ``generate_content``, drop ``"type"`` and pass the
+rest as ``function_declarations``.
+"""
 
 
 class _Call(NamedTuple):
@@ -248,10 +293,14 @@ def run_tool_call(
         name: The tool name the model chose (``keenable_search`` or
             ``keenable_fetch``).
         arguments: The model's arguments, as the raw JSON string from the API
-            or an already-decoded dict.
+            (OpenAI-compatible ``function.arguments``) or an already-decoded
+            dict (an Anthropic ``tool_use`` block's ``input``, a Gemini
+            ``function_call``'s ``arguments``).
 
     Returns:
-        Text ready to be attached to a ``role="tool"`` message, rendered as the
+        Text ready to be sent back as the tool result (a ``role="tool"``
+        message, an Anthropic ``tool_result`` block, a Gemini
+        ``function_result``), rendered as the
         same numbered, citable block for both tools. A URL that failed while
         others were read becomes an error block; if none was read, its error
         is raised.

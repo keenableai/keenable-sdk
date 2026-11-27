@@ -1,9 +1,12 @@
 /**
- * Ready-made tool definitions for OpenAI-compatible tool calling.
+ * Ready-made tool definitions for tool calling, in three formats.
  *
- * Every major inference API (Cerebras, OpenAI, and anything speaking the same
- * schema) takes tools in this shape, so these can be passed straight into a
- * `chat.completions.create({ tools })` call.
+ * `TOOLS` is the OpenAI-compatible Chat Completions shape that most inference
+ * APIs (Cerebras, OpenAI, Mistral, Ollama, vLLM and anything speaking the same
+ * schema) take, so it can be passed straight into a
+ * `chat.completions.create({ tools })` call. `ANTHROPIC_TOOLS` is the same two
+ * tools in the Anthropic Messages shape and `GEMINI_TOOLS` in the Gemini
+ * Interactions API shape. `runToolCall` takes a call from any of them.
  */
 
 import { DEFAULT_CONTEXT_MAX_CHARS, type FetchError, type Keenable, type Page } from "./client.js";
@@ -22,80 +25,138 @@ export interface ToolDefinition {
   };
 }
 
-export const SEARCH_TOOL: ToolDefinition = {
-  type: "function",
-  function: {
-    name: "keenable_search",
-    description:
-      "Search the web for current information. Returns ranked pages with their " +
-      "title, URL and extracted page text. Use this whenever the answer depends " +
-      "on recent events or facts you are unsure about.",
-    parameters: {
-      type: "object",
-      properties: {
-        query: {
-          type: "string",
-          description:
-            "What to look for, described in natural language rather than keywords.",
-        },
-        // Only the filters marked tool-exposed; see filters.ts.
-        ...toolProperties(),
+/**
+ * The JSON Schema of a tool's arguments: always an object. Typed this precisely
+ * so `ANTHROPIC_TOOLS` and `GEMINI_TOOLS` fit the provider SDKs' tool types
+ * without a cast.
+ */
+export interface ToolInputSchema {
+  type: "object";
+  properties: Record<string, unknown>;
+  required: string[];
+  [key: string]: unknown;
+}
+
+/** One tool, before it is put in a provider's shape. */
+interface ToolSpec {
+  name: string;
+  description: string;
+  parameters: ToolInputSchema;
+}
+
+const SEARCH_SPEC: ToolSpec = {
+  name: "keenable_search",
+  description:
+    "Search the web for current information. Returns ranked pages with their " +
+    "title, URL and extracted page text. Use this whenever the answer depends " +
+    "on recent events or facts you are unsure about.",
+  parameters: {
+    type: "object",
+    properties: {
+      query: {
+        type: "string",
+        description:
+          "What to look for, described in natural language rather than keywords.",
       },
-      required: ["query"],
+      // Only the filters marked tool-exposed; see filters.ts.
+      ...toolProperties(),
     },
+    required: ["query"],
   },
 };
 
-export const FETCH_TOOL: ToolDefinition = {
-  type: "function",
-  function: {
-    name: "keenable_fetch",
-    description:
-      "Fetch up to 20 web pages and return each one's main content as markdown. " +
-      "Use after keenable_search when a search snippet is not enough. Add a prompt " +
-      "to get back only the part you need from long pages.",
-    parameters: {
-      type: "object",
-      properties: {
-        urls: {
-          type: "array",
-          items: { type: "string" },
-          minItems: 1,
-          maxItems: 20,
-          description: "The URLs of the pages to read, 1 to 20.",
-        },
-        max_chars: {
-          type: "integer",
-          minimum: 1,
-          description: "The most characters of content to return for each page.",
-        },
-        prompt: {
-          type: "string",
-          description:
-            "An instruction applied to every page; each page's content is then only " +
-            "the answer to it. Use it to get one detail from long pages.",
-        },
-        max_age_hours: {
-          type: "number",
-          minimum: -1,
-          maximum: 720,
-          description:
-            "How old Keenable's stored copy may be, in hours; an older copy is read " +
-            "again from the source. 0 reads every page live. -1 reads only the stored " +
-            "copy, never the live page; other negative values are refused.",
-        },
+const FETCH_SPEC: ToolSpec = {
+  name: "keenable_fetch",
+  description:
+    "Fetch up to 20 web pages and return each one's main content as markdown. " +
+    "Use after keenable_search when a search snippet is not enough. Add a prompt " +
+    "to get back only the part you need from long pages.",
+  parameters: {
+    type: "object",
+    properties: {
+      urls: {
+        type: "array",
+        items: { type: "string" },
+        minItems: 1,
+        maxItems: 20,
+        description: "The URLs of the pages to read, 1 to 20.",
       },
-      required: ["urls"],
+      max_chars: {
+        type: "integer",
+        minimum: 1,
+        description: "The most characters of content to return for each page.",
+      },
+      prompt: {
+        type: "string",
+        description:
+          "An instruction applied to every page; each page's content is then only " +
+          "the answer to it. Use it to get one detail from long pages.",
+      },
+      max_age_hours: {
+        type: "number",
+        minimum: -1,
+        maximum: 720,
+        description:
+          "How old Keenable's stored copy may be, in hours; an older copy is read " +
+          "again from the source. 0 reads every page live. -1 reads only the stored " +
+          "copy, never the live page; other negative values are refused.",
+      },
     },
+    required: ["urls"],
   },
 };
+
+const SPECS = [SEARCH_SPEC, FETCH_SPEC];
+
+export const SEARCH_TOOL: ToolDefinition = { type: "function", function: { ...SEARCH_SPEC } };
+
+export const FETCH_TOOL: ToolDefinition = { type: "function", function: { ...FETCH_SPEC } };
 
 export const TOOLS: ToolDefinition[] = [SEARCH_TOOL, FETCH_TOOL];
 
-function parseArguments(args: string | Record<string, unknown>): Record<string, unknown> {
+/** A tool in the Anthropic Messages API shape: the schema goes under `input_schema`. */
+export interface AnthropicToolDefinition {
+  name: string;
+  description: string;
+  input_schema: ToolInputSchema;
+}
+
+/** A function tool in the Gemini Interactions API shape: flat, with `type: "function"`. */
+export interface GeminiToolDefinition {
+  type: "function";
+  name: string;
+  description: string;
+  parameters: ToolInputSchema;
+}
+
+/**
+ * `TOOLS` in the Anthropic Messages API shape, for `messages.create({ tools })`.
+ * Pass each `tool_use` block's `name` and `input` to `runToolCall`.
+ */
+export const ANTHROPIC_TOOLS: AnthropicToolDefinition[] = SPECS.map((spec) => ({
+  name: spec.name,
+  description: spec.description,
+  input_schema: spec.parameters,
+}));
+
+/**
+ * `TOOLS` in the Gemini Interactions API shape, for `interactions.create({ tools })`.
+ * Pass each `function_call` step's `name` and `arguments` to `runToolCall`.
+ * For `generateContent`, drop `type` and pass the rest as `functionDeclarations`.
+ */
+export const GEMINI_TOOLS: GeminiToolDefinition[] = SPECS.map((spec) => ({
+  type: "function",
+  name: spec.name,
+  description: spec.description,
+  parameters: spec.parameters,
+}));
+
+function parseArguments(args: unknown): Record<string, unknown> {
   // An array is `typeof "object"` but carries no named arguments, so let it
   // fall through to the same rejection a JSON array gets below.
-  if (typeof args === "object" && args !== null && !Array.isArray(args)) return args;
+  if (typeof args === "object" && args !== null && !Array.isArray(args)) {
+    return args as Record<string, unknown>;
+  }
   if (typeof args !== "string") {
     throw new KeenableInvalidRequestError(
       `tool call arguments must be a JSON string or an object, got ${typeof args}`,
@@ -202,15 +263,20 @@ function pagesContext(pages: Page[], maxChars: unknown): string {
 /**
  * Execute one tool call and return the string to send back as the result.
  *
- * Pass the tool name and raw arguments straight from the model's response; the
- * return value is ready to attach to a `role: "tool"` message, rendered as the
- * same numbered, citable block for both tools. A URL that failed while others
+ * Pass the tool name and arguments straight from the model's response: the
+ * JSON string of an OpenAI-compatible `function.arguments`, or the decoded
+ * object of an Anthropic `tool_use` block's `input` or a Gemini
+ * `function_call`'s `arguments`. `args` is `unknown` so those pass without a
+ * cast; anything but a JSON object string or an object throws
+ * `KeenableInvalidRequestError`. The return value is ready to send back as the
+ * tool result (a `role: "tool"` message, a `tool_result` block, a
+ * `function_result`), rendered as the same numbered, citable block for both tools. A URL that failed while others
  * were read becomes an error block; if none was read, its error is thrown.
  */
 export async function runToolCall(
   client: Keenable,
   name: string,
-  args: string | Record<string, unknown>,
+  args: unknown,
 ): Promise<string> {
   const parsed = parseArguments(args);
 

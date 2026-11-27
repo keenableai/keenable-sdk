@@ -35,8 +35,20 @@ export {
   WebhookVerificationError,
 } from "./errors.js";
 export type { KeenableAPIErrorDetails, KeenableErrorType, RateLimitInfo } from "./errors.js";
-export { FETCH_TOOL, SEARCH_TOOL, TOOLS, runToolCall } from "./tools.js";
-export type { ToolDefinition } from "./tools.js";
+export {
+  ANTHROPIC_TOOLS,
+  FETCH_TOOL,
+  GEMINI_TOOLS,
+  SEARCH_TOOL,
+  TOOLS,
+  runToolCall,
+} from "./tools.js";
+export type {
+  AnthropicToolDefinition,
+  GeminiToolDefinition,
+  ToolDefinition,
+  ToolInputSchema,
+} from "./tools.js";
 export type {
   Billing,
   BillingAccount,

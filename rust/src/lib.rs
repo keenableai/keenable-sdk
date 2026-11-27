@@ -58,7 +58,8 @@ pub use monitors::{
     MonitorWebhook, MonitorWebhookParams, Monitors, ResultList, RunList, VersionList,
 };
 pub use tools::{
-    fetch_tool, run_tool_call, search_tool, tools, ToolArguments, ToolDefinition, ToolFunction,
+    anthropic_tools, fetch_tool, gemini_tools, run_tool_call, search_tool, tools,
+    AnthropicToolDefinition, GeminiToolDefinition, ToolArguments, ToolDefinition, ToolFunction,
     FETCH_TOOL_NAME, SEARCH_TOOL_NAME,
 };
 pub use webhooks::{

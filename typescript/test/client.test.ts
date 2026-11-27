@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ANTHROPIC_TOOLS,
+  GEMINI_TOOLS,
   Keenable,
   KeenableAuthError,
   KeenableConnectionError,
@@ -9,6 +11,7 @@ import {
   FETCH_TOOL,
   runToolCall,
   SEARCH_TOOL,
+  TOOLS,
 } from "../src/index.js";
 import type { KeenableOptions } from "../src/index.js";
 
@@ -496,6 +499,60 @@ describe("errors", () => {
     );
     // Plain http is allowed against localhost for local development.
     expect(() => new Keenable({ baseUrl: "http://localhost:8000" })).not.toThrow();
+  });
+});
+
+describe("tool formats", () => {
+  it("ANTHROPIC_TOOLS is TOOLS in the Messages shape", () => {
+    expect(ANTHROPIC_TOOLS).toEqual(
+      TOOLS.map((t) => ({
+        name: t.function.name,
+        description: t.function.description,
+        input_schema: t.function.parameters,
+      })),
+    );
+    expect(ANTHROPIC_TOOLS.map((t) => t.name)).toEqual(["keenable_search", "keenable_fetch"]);
+    for (const tool of ANTHROPIC_TOOLS) {
+      expect(Object.keys(tool).sort()).toEqual(["description", "input_schema", "name"]);
+      expect(tool.input_schema.type).toBe("object");
+    }
+  });
+
+  it("GEMINI_TOOLS is TOOLS in the Interactions shape", () => {
+    expect(GEMINI_TOOLS).toEqual(
+      TOOLS.map((t) => ({
+        type: "function",
+        name: t.function.name,
+        description: t.function.description,
+        parameters: t.function.parameters,
+      })),
+    );
+    expect(GEMINI_TOOLS.map((t) => t.name)).toEqual(["keenable_search", "keenable_fetch"]);
+    for (const tool of GEMINI_TOOLS) {
+      expect(Object.keys(tool).sort()).toEqual(["description", "name", "parameters", "type"]);
+    }
+  });
+
+  it("runToolCall takes Anthropic and Gemini calls as they come", async () => {
+    const { client, seen } = mockClient(routed);
+    // Provider SDKs type a tool_use block's input as unknown; it passes without a cast.
+    const toolUse: { name: string; input: unknown } = {
+      name: "keenable_search",
+      input: { query: "wafer scale", site: "cerebras.ai" },
+    };
+    const searched = await runToolCall(client, toolUse.name, toolUse.input);
+    expect(searched.startsWith("[1] How Cerebras works")).toBe(true);
+    expect(JSON.parse(String(seen[0]?.init.body)).site).toBe("cerebras.ai");
+
+    const functionCall = { name: "keenable_fetch", arguments: { urls: ["https://example.com"] } };
+    const fetched = await runToolCall(client, functionCall.name, functionCall.arguments);
+    expect(fetched.startsWith("[1] Example Domain (https://example.com/)")).toBe(true);
+
+    for (const bad of [undefined, null, 7, ["q"]]) {
+      await expect(runToolCall(client, "keenable_search", bad)).rejects.toBeInstanceOf(
+        KeenableInvalidRequestError,
+      );
+    }
   });
 });
 

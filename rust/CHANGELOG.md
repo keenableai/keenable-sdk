@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Added:** `anthropic_tools()` (`Vec<AnthropicToolDefinition>`) and `gemini_tools()` (`Vec<GeminiToolDefinition>`): `keenable_search` and `keenable_fetch` in the Anthropic Messages shape (`name`, `description`, `input_schema`) and the Gemini Interactions API shape (`type: "function"`, `name`, `description`, `parameters`), built from `tools()` so the definitions are the same. `run_tool_call` already takes an Anthropic `tool_use` block's `input` and a Gemini function call's `arguments` as a `serde_json::Value`.
 - **Changed (breaking for Rust 1.80 to 1.84):** the minimum supported Rust version is now 1.85 (`rust-version` in `Cargo.toml`). The lockfile takes `quinn-proto` 0.11.19 for its security fixes, and its dependency `chacha20` 0.10 needs edition 2024 support, which Rust 1.85 added. On an older compiler, `cargo` reports the required version; run `rustup update stable`.
 - **Added:** `SearchResponse::usage` (`Option<Usage>`): what the search cost and, with a key, `cost` and `balance` in US dollars. `None` on keyless calls.
 - **Fixed:** a malformed `cost` or `balance` no longer drops the whole `Usage` of a page; each field is read on its own.
